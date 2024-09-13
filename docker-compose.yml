@@ -1,0 +1,38 @@
+# ctrl + F to find which line should you edit
+
+version: "0.0.1"
+
+services:
+  # Enter the correct service nam you can use company name
+  sudoerp:
+    # Enter the correct image name here
+    image: sudoerp:16.0
+    ports:
+      - "9000:8069"
+    networks:
+      - host
+    volumes:
+     - ./datadir:/opt/odoo/datadir
+     - ./log:/var/log/odoo
+    environment:
+     - PORT
+     - GEVENT_PORT
+     - WORKERS
+     - MAX_CRON_THREADS
+     - LIMIT_MEMORY_SOFT
+     - LIMIT_MEMORY_HARD
+     - LIMIT_TIME_CPU
+     - LIMIT_TIME_REAL
+     - LIMIT_TIME_REAL_CRON
+     - LIMIT_REQUEST
+     - TRANSIENT_AGE_LIMIT
+     - DATA_DIR
+     - DB_USER
+     - DB_PASSWORD
+     - DB_NAME
+     - DB_HOST
+     - DB_PORT
+     - DB_MAXCONN
+    env_file:
+      - .env
+    restart: always

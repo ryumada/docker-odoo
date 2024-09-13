@@ -1,0 +1,66 @@
+# odoo 16
+# Find "enter" word to hightlight what should to setup
+
+# This is the password that allows database operations on database manager
+admin_passwd = enter_random_password_string
+
+# proxy_mode should be true because we will use nginx as reverse proxy for odoo docker deployment
+proxy_mode = True
+
+# Specify which addons should be enabled
+## example:
+## addons_path=/opt/sudoerp/odoo-base/tilabs_odoo16_com/odoo/addons,/opt/sudoerp/odoo-base/tilabs_odoo16_com/addons,/opt/sudoerp/git/sudoerp/custom-external-addons,/opt/sudoerp/git/sudoerp/custom-tilabs-addons
+addons_path = enter_addons_paths
+
+# If not correct, enter the correct file log name
+logfile = /var/log/odoo/odoo.log
+
+# # # # # # # # # # # # # # # # # # # # # # # # # # 
+# THESE VARIABLE HAS BEEN SETUP IN ENV FILE       #
+# # # # # # # # # # # # # # # # # # # # # # # # # #
+
+# The port odoo will use for http (Default is 8069)
+# http_port = enter_http_port
+# The port for websocket used by odoo (Default is 8072)
+# gevent_port = enter_gevent_port
+
+# Use db_name to disable odoo database manager edit in docker-compose.yml
+# db_name=$COMPANY_NAME
+# db_user = enter_db_user
+# db_password = enter_db_password
+# db_host = enter_db_host
+# db_port = enter_db_port
+# setup max_connections on /etc/postgresql/$VERSION/main/postgresql
+## make sure that the value below is the same as the config.
+# db_maxconn = 270
+
+# setup db_name first before disable database manager
+# automated when DB_NAME in env file is set
+# list_db=False
+
+# remember the formula (CPU * 2) + 1 and then...
+# decide how much the worker will be use by the main worker and its cron worker
+# workers = enter_total_workers
+# max_cron_threads = enter_total_cron_workers
+
+# If not correct, enter the correct datadir one
+# data_dir = /opt/odoo/datadir
+
+# focus only on limit_time_real if you don't want some messy configuration of reusable worker
+# limit_time_cpu = 2100
+# limit_time_real = 2700
+# limit_time_real_cron=30000
+
+# limit_memory_soft default to 2048MiB
+##=1024*1024*1024B
+# limit_memory_soft = 1073741824
+# limit_memory_hard default to 2560MiB
+##=2560*1024*1024B
+## set 0 to no enforce hard memory limit for worker process)
+# limit_memory_hard=2684354560
+
+# limit request before the worker being recycled
+## default limit 8196 times
+# limit_request=8196
+
+# transient_age_limit = 1.0

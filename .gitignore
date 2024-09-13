@@ -1,2 +1,14 @@
-odoo-base/
-git/
+conf/*
+!conf/odoo.conf.example
+
+datadir/*
+!datadir/README.md
+
+git/*
+!git/README.md
+
+odoo-base/*
+!odoo-base/README.md
+
+requirements.txt
+.env
