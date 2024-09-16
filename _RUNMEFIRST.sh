@@ -83,6 +83,10 @@ function printTodo() {
 }
 
 function main() {
+  echo "[$(date +"%Y-%m-%d %H:%M:%S")] Path for working directory: $(pwd)/"
+
+  sleep 7
+  
   isDockerInstalled
 
   isSubDirectoryExists "$GIT_DIR" "" "No directories found inside $GIT_DIR. That means no Odoo custom module will be added to your Odoo image."
