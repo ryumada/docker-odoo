@@ -19,63 +19,84 @@ error_handler() {
 
 trap 'error_handler $LINENO' ERR
 
+# Global Variable
 TODO=()
 
-if ! command -v docker &>/dev/null; then
-  echo "[$(date +"%Y-%m-%d %H:%M:%S")] ❌ docker command not found."
-  TODO+=("Please install docker engine by following this docs: https://docs.docker.com/engine/install/")
-else
-  echo "[$(date +"%Y-%m-%d %H:%M:%S")] ✅ docker command found"
-fi
+function isDockerInstalled() {
+  if ! command -v docker &>/dev/null; then
+    echo "[$(date +"%Y-%m-%d %H:%M:%S")] ❌ docker command not found."
+    TODO+=("Please install docker engine by following this docs: https://docs.docker.com/engine/install/")
+  else
+    echo "[$(date +"%Y-%m-%d %H:%M:%S")] ✅ docker command found"
+  fi
+}
 
-# Check if there are directories inside the git directory
-if $(ls -d "$GIT_DIR"/*/ 1> /dev/null 2>&1); then
-  echo "[$(date +"%Y-%m-%d %H:%M:%S")] ✅ Directories exist inside $GIT_DIR"
-else
-  echo "[$(date +"%Y-%m-%d %H:%M:%S")] ℹ️ No directories found inside $GIT_DIR. That means no Odoo custom module will be added to your Odoo image."
-fi
+function isSubDirectoryExists() {
+  dir=$1
+  todo=$2
+  additional_info=$3
 
-# Check if the odoo-base directory exists
-if $(ls -d "$ODOO_BASE_DIR"/*/ 1> /dev/null 2>&1); then
-  echo "[$(date +"%Y-%m-%d %H:%M:%S")] ✅ directory exists inside $ODOO_BASE_DIR"
-else
-  echo "[$(date +"%Y-%m-%d %H:%M:%S")] ❌ no directories found inside $ODOO_BASE_DIR"
-  TODO+=("Please clone your odoo-base repository inside the odoo-base directory")
-fi
+  if ls -d "$dir"/*/ >/dev/null 2>&1; then
+    echo "[$(date +"%Y-%m-%d %H:%M:%S")] ✅ A directory exists inside $dir"
+  else
+    if [ -n "$todo" ]; then
+      TODO+=("$todo")
+    fi
 
-# Check if the .env file exists
-if [ -f "$ENV_FILE" ]; then
-  echo "[$(date +"%Y-%m-%d %H:%M:%S")] ✅ .env file exists"
-else
-  echo "[$(date +"%Y-%m-%d %H:%M:%S")] ❌ .env file does not exist"
-  TODO+=("Please create a .env file by folowing the .env.example file.")
-fi
+    if [ -n "$additional_info" ]; then
+      echo "[$(date +"%Y-%m-%d %H:%M:%S")] ℹ️  $additional_info"
+    else
+      echo "[$(date +"%Y-%m-%d %H:%M:%S")] ❌ No directory found inside $dir"
+    fi
+  fi
+}
 
-# Check if the requirements.txt file exists
-if [ -f "$REQUIREMENTS_FILE" ]; then
-  echo "[$(date +"%Y-%m-%d %H:%M:%S")] ✅ requirements.txt file exists"
-else
-  echo "[$(date +"%Y-%m-%d %H:%M:%S")] ❌ requirements.txt file does not exist"
-  TODO+=("Please create a requirements.txt file by following the requirements.txt.example file.")
-fi
+function isFileExists() {
+  file=$1
+  todo=$2
 
-# Check if the odoo.conf file exists
-if [ -f "$ODOO_CONF_FILE" ]; then
-  echo "[$(date +"%Y-%m-%d %H:%M:%S")] ✅ odoo.conf file exists"
-else
-  echo "[$(date +"%Y-%m-%d %H:%M:%S")] ❌ odoo.conf file does not exist"
-  TODO+=("Please create a odoo.conf file by following the odoo.conf.example file.")
-fi
+  if [ -f "$file" ]; then
+    echo "[$(date +"%Y-%m-%d %H:%M:%S")] ✅ $file file exists"
+  else
+    TODO+=("$todo")
 
-if [[ ${#TODO[@]} -gt 0 ]]; then
-  echo
-  echo "[$(date +"%Y-%m-%d %H:%M:%S")] ❌ There are some things that need to be done before we create your docker image."
-  echo
-  for i in "${TODO[@]}"; do
-    echo "ℹ️  $i"
-  done
-  echo
-  exit 1
-else
-  echo "[$(date +"%Y-%m-%d %H:%M:%S")] ✅ Everything is ready to build your docker image."
-fi
+    echo "[$(date +"%Y-%m-%d %H:%M:%S")] ❌ $file file does not exist"
+  fi
+}
+
+function printTodo() {
+  if [[ ${#TODO[@]} -gt 0 ]]; then
+    echo
+    echo "There are ${#TODO[@]} items need to be done."
+    echo
+    for i in "${TODO[@]}"; do
+      echo "ℹ️  $i"
+    done
+    echo
+    
+    return 1
+  else
+    echo "[$(date +"%Y-%m-%d %H:%M:%S")] ✅ Everything is ready to build your docker image."
+
+    return 0
+  fi
+}
+
+function main() {
+  isDockerInstalled
+
+  isSubDirectoryExists "$GIT_DIR" "" "No directories found inside $GIT_DIR. That means no Odoo custom module will be added to your Odoo image."
+  isSubDirectoryExists "$ODOO_BASE_DIR" "Please clone your odoo-base repository inside the odoo-base directory" ""
+
+  isFileExists "$ENV_FILE" "Please create a .env file by folowing the .env.example file."
+  isFileExists "$REQUIREMENTS_FILE" "Please create a requirements.txt file by following the requirements.txt.example file."
+  isFileExists "$ODOO_CONF_FILE" "Please create a odoo.conf file by following the odoo.conf.example file."
+
+  if printTodo; then
+    echo "[$(date +"%Y-%m-%d %H:%M:%S")] ✅ Everything is ready to build your docker image."
+  else
+    echo "[$(date +"%Y-%m-%d %H:%M:%S")] ❌ There are some things that need to be done before we create your docker image."
+  fi
+}
+
+main
