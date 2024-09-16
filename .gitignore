@@ -1,3 +1,5 @@
+.vscode/
+
 conf/*
 !conf/odoo.conf.example
 
@@ -6,6 +8,9 @@ datadir/*
 
 git/*
 !git/README.md
+
+log/*
+!log/README.md
 
 odoo-base/*
 !odoo-base/README.md

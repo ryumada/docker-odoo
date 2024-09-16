@@ -1,6 +1,6 @@
 # ctrl + F to find which line should you edit
 
-version: "0.0.1"
+version: "1.0"
 
 services:
   # Enter the correct service nam you can use company name
