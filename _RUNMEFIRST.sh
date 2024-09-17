@@ -64,6 +64,20 @@ function isFileExists() {
   fi
 }
 
+function isOdooUserExists() {
+  if ! id "odoo" &>/dev/null; then
+    echo "[$(date +"%Y-%m-%d %H:%M:%S")] ℹ️  Create a new Odoo user."
+    if sudo useradd -m -u 8069 -s /bin/bash odoo; then
+      echo "[$(date +"%Y-%m-%d %H:%M:%S")] ✅ odoo user created."
+    else
+      echo "[$(date +"%Y-%m-%d %H:%M:%S")] ❌ Failed to create odoo user."
+      exit 1
+    fi
+  else
+    echo "[$(date +"%Y-%m-%d %H:%M:%S")] ✅ odoo user already exists"
+  fi
+}
+
 function printTodo() {
   if [[ ${#TODO[@]} -gt 0 ]]; then
     echo
@@ -72,12 +86,9 @@ function printTodo() {
     for i in "${TODO[@]}"; do
       echo "ℹ️  $i"
     done
-    echo
     
     return 1
   else
-    echo "[$(date +"%Y-%m-%d %H:%M:%S")] ✅ Everything is ready to build your docker image."
-
     return 0
   fi
 }
@@ -89,6 +100,13 @@ function main() {
   
   isDockerInstalled
 
+  isOdooUserExists
+
+  echo "[$(date +"%Y-%m-%d %H:%M:%S")] Change the ownership of datadir and log dir."
+  sudo chown -R odoo: ./log
+  sudo chown -R odoo: ./datadir
+  sudo chown -R odoo: ./conf
+
   isSubDirectoryExists "$GIT_DIR" "" "No directories found inside $GIT_DIR. That means no Odoo custom module will be added to your Odoo image."
   isSubDirectoryExists "$ODOO_BASE_DIR" "Please clone your odoo-base repository inside the odoo-base directory" ""
 
@@ -97,8 +115,12 @@ function main() {
   isFileExists "$ODOO_CONF_FILE" "Please create a odoo.conf file by following the odoo.conf.example file."
 
   if printTodo; then
+    echo
+    echo
     echo "[$(date +"%Y-%m-%d %H:%M:%S")] ✅ Everything is ready to build your docker image."
   else
+    echo
+    echo
     echo "[$(date +"%Y-%m-%d %H:%M:%S")] ❌ There are some things that need to be done before we create your docker image."
   fi
 }

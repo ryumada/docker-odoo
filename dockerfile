@@ -4,10 +4,14 @@
 FROM python:3.7-bookworm
 
 # install odoo dependencies
-RUN apt -y install wget software-properties-common build-essential libxslt-dev libzip-dev libldap2-dev libsasl2-dev node-less libpq-dev tmux xfonts-75dpi fontconfig libxrender1 xfonts-base libcups2-dev
-RUN apt --no-install-recommends -y install libreoffice
+RUN apt update
+RUN apt install -y wget software-properties-common build-essential libxslt-dev libzip-dev libldap2-dev libsasl2-dev node-less libpq-dev tmux xfonts-75dpi fontconfig libxrender1 xfonts-base libcups2-dev
+RUN apt install -y postgresql-client
 RUN wget https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6.1-3/wkhtmltox_0.12.6.1-3.bookworm_amd64.deb
 RUN dpkg -i ./wkhtmltox_0.12.6.1-3.bookworm_amd64.deb
+
+# install libreoffice only be needed if there is a module need to use libreoffice featrue
+# RUN apt --no-install-recommends -y install libreoffice
 
 # create an odoo user and give that user sudo privilege
 RUN groupadd -g 8069 odoo
@@ -17,19 +21,27 @@ RUN useradd -r -u 8069 -g 8069 -m -s /bin/bash odoo
 # copy the source code to the image
 COPY ./entrypoint.sh /opt/odoo/entrypoint.sh
 RUN chmod 550 /opt/odoo/entrypoint.sh
+RUN chown odoo: /opt/odoo/entrypoint.sh
 
 COPY ./git /opt/odoo/git
+RUN chown -R odoo: /opt/odoo/git
+
 COPY ./odoo-base /opt/odoo/odoo-base
+RUN chown -R odoo: /opt/odoo/odoo-base
+
 COPY ./requirements.txt /opt/odoo/requirements.txt
+RUN chown odoo: /opt/odoo/requirements.txt
 
 RUN mkdir -p /opt/odoo/datadir
-RUN chown -R odoo: /opt/odoo
+RUN chown -R odoo: /opt/odoo/datadir
 
 COPY ./conf/odoo.conf /etc/odoo/odoo.conf
 RUN chown odoo: /etc/odoo/odoo.conf
 
 # set the working directory to /opt/odoo
 WORKDIR /opt/odoo
+
+USER odoo
 
 # install odoo python dependecies
 RUN export MAKEFLAGS="-j $(nproc)"
@@ -38,8 +50,6 @@ RUN pip install -r ./requirements.txt
 # expose the default port of odoo
 EXPOSE 8069
 EXPOSE 8072
-
-USER odoo
 
 # set the command to run odoo instance using entrypoint.sh
 ENTRYPOINT [ "/opt/odoo/entrypoint.sh" ]

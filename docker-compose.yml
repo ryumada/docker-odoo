@@ -5,12 +5,11 @@ version: "1.0"
 services:
   # Enter the correct service nam you can use company name
   sudoerp:
-    # Enter the correct image name here
+    # Enter the correct image name here (format: username/repo:tag)
     image: sudoerp:16.0
     ports:
       - "9000:8069"
-    networks:
-      - host
+    network_mode: "host"
     volumes:
      - ./datadir:/opt/odoo/datadir
      - ./log:/var/log/odoo
