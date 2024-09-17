@@ -1,12 +1,12 @@
 # ctrl + F to find which line should you edit
 
-version: "1.0"
+version: "0.0.1"
 
 services:
   # Enter the correct service nam you can use company name
   sudoerp:
     # Enter the correct image name here (format: username/repo:tag)
-    image: sudoerp:16.0
+    image: tilabs/odoo-16-community:latest
     ports:
       - "9000:8069"
     network_mode: "host"
@@ -27,11 +27,16 @@ services:
      - TRANSIENT_AGE_LIMIT
      - DATA_DIR
      - DB_USER
-     - DB_PASSWORD
      - DB_NAME
      - DB_HOST
      - DB_PORT
      - DB_MAXCONN
     env_file:
       - .env
+    secrets:
+      - db_password
     restart: always
+
+secrets:
+  db_password:
+    file: .secrets/db_password

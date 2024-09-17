@@ -5,13 +5,13 @@
 # This is the password that allows database operations on database manager
 admin_passwd = enter_random_password_string
 
-# proxy_mode should be true because we will use nginx as reverse proxy for odoo docker deployment
-proxy_mode = True
-
 # Specify which addons should be enabled
 ## example:
 ## addons_path=/opt/sudoerp/odoo-base/tilabs_odoo16_com/odoo/addons,/opt/sudoerp/odoo-base/tilabs_odoo16_com/addons,/opt/sudoerp/git/sudoerp/custom-external-addons,/opt/sudoerp/git/sudoerp/custom-tilabs-addons
 addons_path = enter_addons_paths
+
+# proxy_mode should be true because we will use nginx as reverse proxy for odoo docker deployment
+proxy_mode = True
 
 # If not correct, enter the correct file log name
 logfile = /var/log/odoo/odoo.log
@@ -27,10 +27,10 @@ logfile = /var/log/odoo/odoo.log
 
 # Use db_name to disable odoo database manager edit in docker-compose.yml
 # db_name=$COMPANY_NAME
-# db_user = enter_db_user
-# db_password = enter_db_password
 # db_host = enter_db_host
 # db_port = enter_db_port
+# db_user = enter_db_user
+# db_password = enter_db_password
 # setup max_connections on /etc/postgresql/$VERSION/main/postgresql
 ## make sure that the value below is the same as the config.
 # db_maxconn = 270

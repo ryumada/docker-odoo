@@ -61,8 +61,14 @@ add_arg "data-dir" "$DATA_DIR"
 add_arg "db_host" "$DB_HOST"
 add_arg "db_port" "$DB_PORT"
 add_arg "db_user" "$DB_USER"
-add_arg "db_password" "$DB_PASSWORD"
 add_arg "db_maxconn" "$DB_MAXCONN"
+
+if [ -f /run/secrets/db_password ]; then
+  add_arg "db_password" "$(cat /run/secrets/db_password)"
+else
+  echo "No secret found at /run/secrets/db_password. Exiting..."
+  exit 1
+fi
 
 if [ -n "$DB_NAME" ]; then
   add_arg "database" "$DB_NAME"

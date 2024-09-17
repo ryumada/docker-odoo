@@ -1,3 +1,6 @@
+.secrets/*
+!.secrets/db_password.example
+
 .vscode/
 
 conf/*

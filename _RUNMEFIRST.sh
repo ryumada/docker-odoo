@@ -8,6 +8,7 @@ ODOO_BASE_DIR="./odoo-base"
 REQUIREMENTS_FILE="./requirements.txt"
 ODOO_CONF_FILE="./conf/odoo.conf"
 ENV_FILE="./.env"
+DB_PASSWORD_SECRET="./.secrets/db_password"
 
 # Exit immediately if a command exits with a non-zero status
 set -e
@@ -93,7 +94,16 @@ function printTodo() {
   fi
 }
 
+function amIRoot() {
+  if [ "$EUID" -ne 0 ]; then
+    echo "[$(date +"%Y-%m-%d %H:%M:%S")] ❌ Please run this script using sudo."
+    exit 1
+  fi
+}
+
 function main() {
+  amIRoot
+
   echo "[$(date +"%Y-%m-%d %H:%M:%S")] Path for working directory: $(pwd)/"
 
   sleep 7
@@ -105,7 +115,10 @@ function main() {
   echo "[$(date +"%Y-%m-%d %H:%M:%S")] Change the ownership of datadir and log dir."
   sudo chown -R odoo: ./log
   sudo chown -R odoo: ./datadir
-  sudo chown -R odoo: ./conf
+
+  echo "[$(date +"%Y-%m-%d %H:%M:%S")] Change the ownership of odoo.conf and db_password file."
+  sudo chown -R odoo: ./conf/odoo.conf
+  sudo chown -R odoo: ./.secrets/db_password
 
   isSubDirectoryExists "$GIT_DIR" "" "No directories found inside $GIT_DIR. That means no Odoo custom module will be added to your Odoo image."
   isSubDirectoryExists "$ODOO_BASE_DIR" "Please clone your odoo-base repository inside the odoo-base directory" ""
@@ -113,6 +126,7 @@ function main() {
   isFileExists "$ENV_FILE" "Please create a .env file by folowing the .env.example file."
   isFileExists "$REQUIREMENTS_FILE" "Please create a requirements.txt file by following the requirements.txt.example file."
   isFileExists "$ODOO_CONF_FILE" "Please create a odoo.conf file by following the odoo.conf.example file."
+  isFileExists "$DB_PASSWORD_SECRET" "Please create a db_password file by following the db_password.example file."
 
   if printTodo; then
     echo
