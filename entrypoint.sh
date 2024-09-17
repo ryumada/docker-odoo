@@ -14,6 +14,7 @@ trap 'error_handler $LINENO' ERR
 : "${GEVENT_PORT:=8072}"
 
 : "${WORKERS:=4}"
+: "${MAX_CRON_THREADS:=2}"
 
 : "${LIMIT_MEMORY_SOFT:=1073741824}"
 : "${LIMIT_MEMORY_HARD:=2684354560}"
@@ -34,19 +35,44 @@ function add_arg() {
   param=$1
   value=$2
   
-  if [ -z "$value"]; then
+  if [ -z "$value" ]; then
     ODOO_ARGS+=("--$param")
   else
     ODOO_ARGS+=("--$param=$value")
   fi
 }
 
+add_arg "http-port" "$PORT"
 add_arg "gevent-port" "$GEVENT_PORT"
-add_arg "max-cron-threads" "$MAX_CRON_THREADS:=2"
+
+add_arg "workers" "$WORKERS"
+add_arg "max-cron-threads" "$MAX_CRON_THREADS"
+
+add_arg "limit-memory-soft" "$LIMIT_MEMORY_SOFT"
+add_arg "limit-memory-hard" "$LIMIT_MEMORY_HARD"
+add_arg "limit-time-cpu" "$LIMIT_TIME_CPU"
+add_arg "limit-time-real" "$LIMIT_TIME_REAL"
+add_arg "limit-time-real-cron" "$LIMIT_TIME_REAL_CRON"
+add_arg "limit-request" "$LIMIT_REQUEST"
+add_arg "transient-age-limit" "$TRANSIENT_AGE_LIMIT"
+
+add_arg "data-dir" "$DATA_DIR"
+
+add_arg "db_host" "$DB_HOST"
+add_arg "db_port" "$DB_PORT"
+add_arg "db_user" "$DB_USER"
+add_arg "db_maxconn" "$DB_MAXCONN"
+
+if [ -f /run/secrets/db_password ]; then
+  add_arg "db_password" "$(cat /run/secrets/db_password)"
+else
+  echo "No secret found at /run/secrets/db_password. Exiting..."
+  exit 1
+fi
 
 if [ -n "$DB_NAME" ]; then
+  add_arg "database" "$DB_NAME"
   add_arg "db-filter" "^$DB_NAME\$"
-else
   add_arg "no-database-list"
 fi
 
