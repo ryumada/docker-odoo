@@ -9,6 +9,7 @@ REQUIREMENTS_FILE="./requirements.txt"
 ODOO_CONF_FILE="./conf/odoo.conf"
 ENV_FILE="./.env"
 DB_PASSWORD_SECRET="./.secrets/db_password"
+DOCKER_COMPOSE_FILE="./docker-compose.yml"
 
 # Exit immediately if a command exits with a non-zero status
 set -e
@@ -127,6 +128,7 @@ function main() {
   isFileExists "$REQUIREMENTS_FILE" "Please create a requirements.txt file by following the requirements.txt.example file."
   isFileExists "$ODOO_CONF_FILE" "Please create a odoo.conf file by following the odoo.conf.example file."
   isFileExists "$DB_PASSWORD_SECRET" "Please create a db_password file by following the db_password.example file."
+  isFileExists "$DOCKER_COMPOSE_FILE" "Please create a docker-compose.yml file by following the docker-compose.yml.example file."
 
   if printTodo; then
     echo
