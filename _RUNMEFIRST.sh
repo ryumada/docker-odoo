@@ -5,10 +5,12 @@
 # Define the paths
 GIT_DIR="./git"
 ODOO_BASE_DIR="./odoo-base"
-REQUIREMENTS_FILE="./requirements.txt"
 ODOO_CONF_FILE="./conf/odoo.conf"
-ENV_FILE="./.env"
+ODOO_DATADIR="./datadir"
+ODOO_LOG_DIR="./log"
 DB_PASSWORD_SECRET="./.secrets/db_password"
+REQUIREMENTS_FILE="./requirements.txt"
+ENV_FILE="./.env"
 DOCKER_COMPOSE_FILE="./docker-compose.yml"
 
 # Exit immediately if a command exits with a non-zero status
@@ -59,10 +61,12 @@ function isFileExists() {
 
   if [ -f "$file" ]; then
     echo "[$(date +"%Y-%m-%d %H:%M:%S")] ✅ $file file exists"
+    return 0
   else
     TODO+=("$todo")
 
     echo "[$(date +"%Y-%m-%d %H:%M:%S")] ❌ $file file does not exist"
+    return 1
   fi
 }
 
@@ -114,21 +118,25 @@ function main() {
   isOdooUserExists
 
   echo "[$(date +"%Y-%m-%d %H:%M:%S")] Change the ownership of datadir and log dir."
-  sudo chown -R odoo: ./log
-  sudo chown -R odoo: ./datadir
-
-  echo "[$(date +"%Y-%m-%d %H:%M:%S")] Change the ownership of odoo.conf and db_password file."
-  sudo chown -R odoo: ./conf/odoo.conf
-  sudo chown -R odoo: ./.secrets/db_password
+  sudo chown -R odoo: $ODOO_LOG_DIR
+  sudo chown -R odoo: $ODOO_DATADIR
 
   isSubDirectoryExists "$GIT_DIR" "" "No directories found inside $GIT_DIR. That means no Odoo custom module will be added to your Odoo image."
   isSubDirectoryExists "$ODOO_BASE_DIR" "Please clone your odoo-base repository inside the odoo-base directory" ""
 
   isFileExists "$ENV_FILE" "Please create a .env file by folowing the .env.example file."
   isFileExists "$REQUIREMENTS_FILE" "Please create a requirements.txt file by following the requirements.txt.example file."
-  isFileExists "$ODOO_CONF_FILE" "Please create a odoo.conf file by following the odoo.conf.example file."
-  isFileExists "$DB_PASSWORD_SECRET" "Please create a db_password file by following the db_password.example file."
   isFileExists "$DOCKER_COMPOSE_FILE" "Please create a docker-compose.yml file by following the docker-compose.yml.example file."
+  
+  if isFileExists "$ODOO_CONF_FILE" "Please create a odoo.conf file by following the odoo.conf.example file."; then
+    sudo chown -R odoo: $ODOO_CONF_FILE
+    sudo chmod 600 $ODOO_CONF_FILE
+  fi
+  
+  if isFileExists "$DB_PASSWORD_SECRET" "Please create a db_password file by following the db_password.example file."; then
+    sudo chmod 600 $DB_PASSWORD_SECRET
+    sudo chown -R odoo: $DB_PASSWORD_SECRET
+  fi
 
   if printTodo; then
     echo
