@@ -128,10 +128,7 @@ function main() {
   isFileExists "$REQUIREMENTS_FILE" "Please create a requirements.txt file by following the requirements.txt.example file." || true
   isFileExists "$DOCKER_COMPOSE_FILE" "Please create a docker-compose.yml file by following the docker-compose.yml.example file." || true
   
-  if isFileExists "$ODOO_CONF_FILE" "Please create a odoo.conf file by following the odoo.conf.example file."; then
-    sudo chown -R odoo: $ODOO_CONF_FILE
-    sudo chmod 600 $ODOO_CONF_FILE
-  fi
+  isFileExists "$ODOO_CONF_FILE" "Please create an odoo.conf file by following the odoo.conf.example file." || true
   
   if isFileExists "$DB_PASSWORD_SECRET" "Please create a db_password file by following the db_password.example file."; then
     sudo chmod 600 $DB_PASSWORD_SECRET
