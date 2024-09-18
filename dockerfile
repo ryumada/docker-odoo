@@ -7,8 +7,15 @@ FROM python:3.7-bookworm
 RUN apt update
 RUN apt install -y wget software-properties-common build-essential libxslt-dev libzip-dev libldap2-dev libsasl2-dev node-less libpq-dev tmux xfonts-75dpi fontconfig libxrender1 xfonts-base libcups2-dev
 RUN apt install -y postgresql-client
+
 RUN wget https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6.1-3/wkhtmltox_0.12.6.1-3.bookworm_amd64.deb
 RUN dpkg -i ./wkhtmltox_0.12.6.1-3.bookworm_amd64.deb
+RUN rm ./wkhtmltox_0.12.6.1-3.bookworm_amd64.deb
+
+RUN apt install -y cabextract
+RUN wget http://ftp.jp.debian.org/debian/pool/contrib/m/msttcorefonts/ttf-mscorefonts-installer_3.8.1_all.deb
+RUN dpkg -i ./ttf-mscorefonts-installer_3.8.1_all.deb
+RUN rm ./ttf-mscorefonts-installer_3.8.1_all.deb
 
 # install libreoffice only be needed if there is a module need to use libreoffice featrue
 # RUN apt --no-install-recommends -y install libreoffice
@@ -16,7 +23,6 @@ RUN dpkg -i ./wkhtmltox_0.12.6.1-3.bookworm_amd64.deb
 # create an odoo user and give that user sudo privilege
 RUN groupadd -g 8069 odoo
 RUN useradd -r -u 8069 -g 8069 -m -s /bin/bash odoo
-# RUN echo "odoo ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
 
 # copy the source code to the image
 COPY ./entrypoint.sh /opt/odoo/entrypoint.sh
@@ -24,10 +30,10 @@ RUN chmod 550 /opt/odoo/entrypoint.sh
 RUN chown odoo: /opt/odoo/entrypoint.sh
 
 COPY ./git /opt/odoo/git
-RUN chown -R odoo: /opt/odoo/git
+RUN chown -Rv odoo: /opt/odoo/git
 
 COPY ./odoo-base /opt/odoo/odoo-base
-RUN chown -R odoo: /opt/odoo/odoo-base
+RUN chown -Rv odoo: /opt/odoo/odoo-base
 
 COPY ./requirements.txt /opt/odoo/requirements.txt
 RUN chown odoo: /opt/odoo/requirements.txt
@@ -37,6 +43,7 @@ RUN chown -R odoo: /opt/odoo/datadir
 
 COPY ./conf/odoo.conf /etc/odoo/odoo.conf
 RUN chown odoo: /etc/odoo/odoo.conf
+RUN chmod 640 /etc/odoo/odoo.conf
 
 # set the working directory to /opt/odoo
 WORKDIR /opt/odoo
@@ -47,7 +54,7 @@ USER odoo
 RUN export MAKEFLAGS="-j $(nproc)"
 RUN pip install -r ./requirements.txt
 
-# expose the default port of odoo
+# expose the default port of odoo (Will need to be set in the .env file and docker-compose.yml)
 EXPOSE 8069
 EXPOSE 8072
 

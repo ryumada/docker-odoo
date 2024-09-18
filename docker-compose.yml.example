@@ -3,12 +3,16 @@
 version: "0.0.1"
 
 services:
-  # Enter the correct service nam you can use company name
-  sudoerp:
-    # Enter the correct image name here (format: username/repo:tag)
-    image: tilabs/odoo-16-community:latest
-    ports:
-      - "9000:8069"
+  # Enter the correct the service name, you can use company name (example: sudoerp)
+  enter_the_correct_service_name:
+    # Enter the correct image name below (format: username/repo:tag, example: odoo:16.0)
+    image: username/repo:tag
+    # Because we use host network, the port opened by your container will be automatically opened.
+    # Please make sure there are no ports collide. (sudo netstat -tulpn)
+    # Set the ports below the same as you have set in your .env file.
+    #ports:
+    #  - "9000:8069"
+    #  - "19001:8072"
     network_mode: "host"
     volumes:
      - ./datadir:/opt/odoo/datadir

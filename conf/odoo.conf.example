@@ -5,9 +5,9 @@
 # This is the password that allows database operations on database manager
 admin_passwd = enter_random_password_string
 
-# Specify which addons should be enabled
+# Specify your odoo addons path, the app dir would be in /opt/odoo.
 ## example:
-## addons_path=/opt/sudoerp/odoo-base/tilabs_odoo16_com/odoo/addons,/opt/sudoerp/odoo-base/tilabs_odoo16_com/addons,/opt/sudoerp/git/sudoerp/custom-external-addons,/opt/sudoerp/git/sudoerp/custom-tilabs-addons
+## addons_path = /opt/odoo/odoo-base/odoo/odoo/addons,/opt/odoo/odoo-base/odoo/addons
 addons_path = enter_addons_paths
 
 # proxy_mode should be true because we will use nginx as reverse proxy for odoo docker deployment
