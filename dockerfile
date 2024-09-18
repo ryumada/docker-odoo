@@ -10,10 +10,12 @@ RUN apt install -y postgresql-client
 
 RUN wget https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6.1-3/wkhtmltox_0.12.6.1-3.bookworm_amd64.deb
 RUN dpkg -i ./wkhtmltox_0.12.6.1-3.bookworm_amd64.deb
+RUN rm ./wkhtmltox_0.12.6.1-3.bookworm_amd64.deb
 
 RUN apt install -y cabextract
 RUN wget http://ftp.jp.debian.org/debian/pool/contrib/m/msttcorefonts/ttf-mscorefonts-installer_3.8.1_all.deb
 RUN dpkg -i ./ttf-mscorefonts-installer_3.8.1_all.deb
+RUN rm ./ttf-mscorefonts-installer_3.8.1_all.deb
 
 # install libreoffice only be needed if there is a module need to use libreoffice featrue
 # RUN apt --no-install-recommends -y install libreoffice
@@ -21,7 +23,6 @@ RUN dpkg -i ./ttf-mscorefonts-installer_3.8.1_all.deb
 # create an odoo user and give that user sudo privilege
 RUN groupadd -g 8069 odoo
 RUN useradd -r -u 8069 -g 8069 -m -s /bin/bash odoo
-# RUN echo "odoo ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
 
 # copy the source code to the image
 COPY ./entrypoint.sh /opt/odoo/entrypoint.sh
@@ -52,7 +53,7 @@ USER odoo
 RUN export MAKEFLAGS="-j $(nproc)"
 RUN pip install -r ./requirements.txt
 
-# expose the default port of odoo
+# expose the default port of odoo (Will need to be set in the .env file and docker-compose.yml)
 EXPOSE 8069
 EXPOSE 8072
 
