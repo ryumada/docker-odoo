@@ -43,6 +43,7 @@ RUN chown -R odoo: /opt/odoo/datadir
 
 COPY ./conf/odoo.conf /etc/odoo/odoo.conf
 RUN chown odoo: /etc/odoo/odoo.conf
+RUN chmod 640 /etc/odoo/odoo.conf
 
 # set the working directory to /opt/odoo
 WORKDIR /opt/odoo
