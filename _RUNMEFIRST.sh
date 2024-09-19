@@ -42,6 +42,7 @@ function isSubDirectoryExists() {
 
   if ls -d "$dir"/*/ >/dev/null 2>&1; then
     echo "[$(date +"%Y-%m-%d %H:%M:%S")] ✅ A directory exists inside $dir"
+    return 0
   else
     if [ -n "$todo" ]; then
       TODO+=("$todo")
@@ -52,6 +53,8 @@ function isSubDirectoryExists() {
     else
       echo "[$(date +"%Y-%m-%d %H:%M:%S")] ❌ No directory found inside $dir"
     fi
+
+    return 1
   fi
 }
 
@@ -121,8 +124,10 @@ function main() {
   sudo chown -R odoo: $ODOO_LOG_DIR
   sudo chown -R odoo: $ODOO_DATADIR
 
-  isSubDirectoryExists "$GIT_DIR" "" "No directories found inside $GIT_DIR. That means no Odoo custom module will be added to your Odoo image."
-  isSubDirectoryExists "$ODOO_BASE_DIR" "Please clone your odoo-base repository inside the odoo-base directory" ""
+  isSubDirectoryExists "$GIT_DIR" "" "No directories found inside $GIT_DIR. That means no Odoo custom module will be added to your Odoo image." || true
+  if isSubDirectoryExists "$ODOO_BASE_DIR" "Please clone your odoo-base repository inside the odoo-base directory" ""; then
+    sudo chown -R odoo: $(ls -d $ODOO_BASE_DIR/*/)
+  fi
 
   isFileExists "$ENV_FILE" "Please create a .env file by folowing the .env.example file." || true
   isFileExists "$REQUIREMENTS_FILE" "Please create a requirements.txt file by following the requirements.txt.example file." || true
