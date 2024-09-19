@@ -12,6 +12,7 @@ DB_PASSWORD_SECRET="./.secrets/db_password"
 REQUIREMENTS_FILE="./requirements.txt"
 ENV_FILE="./.env"
 DOCKER_COMPOSE_FILE="./docker-compose.yml"
+ENTRYPOINT_FILE="./entrypoint.sh"
 
 # Exit immediately if a command exits with a non-zero status
 set -e
@@ -124,21 +125,37 @@ function main() {
   sudo chown -R odoo: $ODOO_LOG_DIR
   sudo chown -R odoo: $ODOO_DATADIR
 
-  isSubDirectoryExists "$GIT_DIR" "" "No directories found inside $GIT_DIR. That means no Odoo custom module will be added to your Odoo image." || true
+  if isSubDirectoryExists "$GIT_DIR" "" "No directories found inside $GIT_DIR. That means no Odoo custom module will be added to your Odoo image."; then
+    sudo chown -R odoo: $(ls -d $GIT_DIR/*/)
+  fi
+  
   if isSubDirectoryExists "$ODOO_BASE_DIR" "Please clone your odoo-base repository inside the odoo-base directory" ""; then
     sudo chown -R odoo: $(ls -d $ODOO_BASE_DIR/*/)
   fi
 
-  isFileExists "$ENV_FILE" "Please create a .env file by folowing the .env.example file." || true
-  isFileExists "$REQUIREMENTS_FILE" "Please create a requirements.txt file by following the requirements.txt.example file." || true
+  if isFileExists "$ENV_FILE" "Please create a .env file by folowing the .env.example file."; then
+    sudo chown -R odoo: $ENV_FILE
+  fi
+
+  if isFileExists "$REQUIREMENTS_FILE" "Please create a requirements.txt file by following the requirements.txt.example file."; then
+    sudo chown -R odoo: $REQUIREMENTS_FILE
+  fi
+
   isFileExists "$DOCKER_COMPOSE_FILE" "Please create a docker-compose.yml file by following the docker-compose.yml.example file." || true
   
-  isFileExists "$ODOO_CONF_FILE" "Please create an odoo.conf file by following the odoo.conf.example file." || true
+  if isFileExists "$ODOO_CONF_FILE" "Please create an odoo.conf file by following the odoo.conf.example file."; then
+    sudo chown -R odoo: $ODOO_CONF_FILE
+    sudo chmod 640 $ODOO_CONF_FILE
+  fi
   
   if isFileExists "$DB_PASSWORD_SECRET" "Please create a db_password file by following the db_password.example file."; then
     sudo chmod 600 $DB_PASSWORD_SECRET
     sudo chown -R odoo: $DB_PASSWORD_SECRET
   fi
+
+  echo "[$(date +"%Y-%m-%d %H:%M:%S")] Change the ownership and permission of entrypoint.sh file."
+  sudo chmod 550 $ENTRYPOINT_FILE
+  sudo chown odoo: $ENTRYPOINT_FILE
 
   if printTodo; then
     echo
