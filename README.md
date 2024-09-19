@@ -9,6 +9,8 @@ A Dockerfile to create a custom Odoo docker image.
 
 | Python `'3.10'` has slower build time and not compatible with ks_dashboard.
 
+| ⚠️ You need to read this README.md file thoroughly. ⚠️
+
 There are some points you should know:
 
 - First, you need to execute `sudo ./_RUNMEFIRST.sh` script to check if all of your files and directories are ready to build image.
@@ -57,6 +59,10 @@ There are some points you should know:
   ...
   ```
 
+- If you want to commit changes of your config, make sure to change the ownership to your user first before create a new commit.
+  ```bash
+  sudo chmod -R $USER: ./
+  ```
 
 ---
 
