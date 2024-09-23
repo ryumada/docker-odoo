@@ -38,9 +38,12 @@ services:
     env_file:
       - .env
     secrets:
+      - db_user
       - db_password
     restart: always
 
 secrets:
+  db_user:
+    file: .secrets/db_user
   db_password:
     file: .secrets/db_password

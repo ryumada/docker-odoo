@@ -20,9 +20,26 @@ RUN rm ./ttf-mscorefonts-installer_3.8.1_all.deb
 # install libreoffice only be needed if there is a module need to use libreoffice featrue
 # RUN apt --no-install-recommends -y install libreoffice
 
-# create an odoo user and give that user sudo privilege
 RUN groupadd -g 8069 odoo
 RUN useradd -r -u 8069 -g 8069 -m -s /bin/bash odoo
+
+RUN mkdir -p /opt/odoo
+RUN chown odoo: /opt/odoo
+
+RUN mkdir -p /var/log/odoo
+RUN chown odoo: /var/log/odoo
+
+COPY ./entrypoint.sh /opt/odoo/entrypoint.sh
+RUN chmod 550 /opt/odoo/entrypoint.sh
+# RUN chown odoo: /opt/odoo/entrypoint.sh
+
+WORKDIR /opt/odoo
+
+USER odoo
+
+COPY ./conf/odoo.conf /etc/odoo/odoo.conf
+# RUN chown odoo: /etc/odoo/odoo.conf
+# RUN chmod 640 /etc/odoo/odoo.conf
 
 COPY ./git /opt/odoo/git
 # RUN chown -Rv odoo: /opt/odoo/git
@@ -30,27 +47,12 @@ COPY ./git /opt/odoo/git
 COPY ./odoo-base /opt/odoo/odoo-base
 # RUN chown -Rv odoo: /opt/odoo/odoo-base
 
-# copy the source code to the image
-COPY ./entrypoint.sh /opt/odoo/entrypoint.sh
-# RUN chmod 550 /opt/odoo/entrypoint.sh
-# RUN chown odoo: /opt/odoo/entrypoint.sh
-
 COPY ./requirements.txt /opt/odoo/requirements.txt
 # RUN chown odoo: /opt/odoo/requirements.txt
 
 RUN mkdir -p /opt/odoo/datadir
 # RUN chown -R odoo: /opt/odoo/datadir
 
-COPY ./conf/odoo.conf /etc/odoo/odoo.conf
-# RUN chown odoo: /etc/odoo/odoo.conf
-# RUN chmod 640 /etc/odoo/odoo.conf
-
-# set the working directory to /opt/odoo
-WORKDIR /opt/odoo
-
-USER odoo
-
-# install odoo python dependecies
 RUN export MAKEFLAGS="-j $(nproc)"
 RUN pip install -r ./requirements.txt
 

@@ -1,5 +1,6 @@
 .secrets/*
 !.secrets/db_password.example
+!.secrets/db_user.example
 
 .vscode/
 
