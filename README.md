@@ -26,7 +26,7 @@ There are some points you should know:
 - Build your docker image with this command below:
 
   ```bash
-  docker build -t enter_your_username/enter_docker_image_name:enter_version .
+  docker compose build
   ```
 
   After the build completed, you can copy the image name and enter it in your `docker-compose.yml`.
@@ -61,7 +61,7 @@ There are some points you should know:
 
 - If you want to commit changes of your config, make sure to change the ownership to your user first before create a new commit.
   ```bash
-  sudo chmod -R $USER: ./
+  sudo chown -R $USER: ./
   ```
 
 ---
