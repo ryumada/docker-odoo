@@ -1,7 +1,5 @@
 # ctrl + F to find which line should you edit
 
-version: "0.0.1"
-
 services:
   # Enter the correct the service name, you can use company name (example: sudoerp)
   enter_the_correct_service_name:
