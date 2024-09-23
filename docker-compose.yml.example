@@ -7,6 +7,9 @@ services:
   enter_the_correct_service_name:
     # Enter the correct image name below (format: username/repo:tag, example: odoo:16.0)
     image: username/repo:tag
+    build:
+      context: .
+      dockerfile: dockerfile
     # Because we use host network, the port opened by your container will be automatically opened.
     # Please make sure there are no ports collide. (sudo netstat -tulpn)
     # Set the ports below the same as you have set in your .env file.
