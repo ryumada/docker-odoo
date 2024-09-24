@@ -23,35 +23,24 @@ RUN rm ./ttf-mscorefonts-installer_3.8.1_all.deb
 RUN groupadd -g 8069 odoo
 RUN useradd -r -u 8069 -g 8069 -m -s /bin/bash odoo
 
-RUN mkdir -p /opt/odoo
-RUN chown odoo: /opt/odoo
+RUN mkdir -p /var/log/odoo && \
+    chown odoo: /var/log/odoo && \
+    mkdir -p /opt/odoo && \
+    chown odoo: /opt/odoo
 
-RUN mkdir -p /var/log/odoo
-RUN chown odoo: /var/log/odoo
-
-COPY ./entrypoint.sh /opt/odoo/entrypoint.sh
+COPY --chown=odoo:odoo ./entrypoint.sh /opt/odoo/entrypoint.sh
 RUN chmod 550 /opt/odoo/entrypoint.sh
-# RUN chown odoo: /opt/odoo/entrypoint.sh
 
-WORKDIR /opt/odoo
+COPY --chown=odoo:odoo ./conf/odoo.conf /etc/odoo/odoo.conf
+COPY --chown=odoo:odoo ./git /opt/odoo/git
+COPY --chown=odoo:odoo ./odoo-base /opt/odoo/odoo-base
+COPY --chown=odoo:odoo ./requirements.txt /opt/odoo/requirements.txt
 
 USER odoo
 
-COPY ./conf/odoo.conf /etc/odoo/odoo.conf
-# RUN chown odoo: /etc/odoo/odoo.conf
-# RUN chmod 640 /etc/odoo/odoo.conf
-
-COPY ./git /opt/odoo/git
-# RUN chown -Rv odoo: /opt/odoo/git
-
-COPY ./odoo-base /opt/odoo/odoo-base
-# RUN chown -Rv odoo: /opt/odoo/odoo-base
-
-COPY ./requirements.txt /opt/odoo/requirements.txt
-# RUN chown odoo: /opt/odoo/requirements.txt
-
 RUN mkdir -p /opt/odoo/datadir
-# RUN chown -R odoo: /opt/odoo/datadir
+
+WORKDIR /opt/odoo
 
 RUN export MAKEFLAGS="-j $(nproc)"
 RUN pip install -r ./requirements.txt
@@ -62,4 +51,4 @@ EXPOSE 8072
 
 # set the command to run odoo instance using entrypoint.sh
 ENTRYPOINT [ "/opt/odoo/entrypoint.sh" ]
-CMD ["-c", "/etc/odoo/odoo.conf"]
+CMD [ "-c", "/etc/odoo/odoo.conf" ]
