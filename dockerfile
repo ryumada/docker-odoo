@@ -28,22 +28,28 @@ RUN mkdir -p /var/log/odoo && \
     mkdir -p /opt/odoo && \
     chown odoo: /opt/odoo
 
+RUN mkdir /opt/odoo/datadir && \
+    chown odoo: /opt/odoo/datadir
+
 COPY --chown=odoo:odoo ./entrypoint.sh /opt/odoo/entrypoint.sh
 RUN chmod 550 /opt/odoo/entrypoint.sh
 
 COPY --chown=odoo:odoo ./conf/odoo.conf /etc/odoo/odoo.conf
-COPY --chown=odoo:odoo ./git /opt/odoo/git
 COPY --chown=odoo:odoo ./odoo-base /opt/odoo/odoo-base
 COPY --chown=odoo:odoo ./requirements.txt /opt/odoo/requirements.txt
 
 USER odoo
 
-RUN mkdir -p /opt/odoo/datadir
-
 WORKDIR /opt/odoo
 
 RUN export MAKEFLAGS="-j $(nproc)"
 RUN pip install -r ./requirements.txt
+
+USER root
+
+COPY --chown=odoo:odoo ./git /opt/odoo/git
+
+USER odoo
 
 # expose the default port of odoo (Will need to be set in the .env file and docker-compose.yml)
 EXPOSE 8069
