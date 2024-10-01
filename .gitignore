@@ -21,6 +21,5 @@ log/*
 odoo-base/*
 !odoo-base/README.md
 
-docker-compose.yml
 requirements.txt
 .env

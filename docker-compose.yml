@@ -1,10 +1,5 @@
-# ctrl + F to find which line should you edit
-
 services:
-  # Enter the correct the service name, you can use company name (example: sudoerp)
-  enter_the_correct_service_name:
-    # Enter the correct image name below (format: username/repo:tag, example: odoo:16.0)
-    image: username/repo:tag
+  odoo:
     build:
       context: .
       dockerfile: dockerfile
