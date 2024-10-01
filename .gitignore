@@ -1,11 +1,13 @@
 .secrets/*
 !.secrets/db_password.example
 !.secrets/db_user.example
+!.secrets/README.md
 
 .vscode/
 
 conf/*
 !conf/odoo.conf.example
+!conf/README.md
 
 datadir/*
 !datadir/README.md

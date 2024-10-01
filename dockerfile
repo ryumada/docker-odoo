@@ -26,16 +26,15 @@ RUN useradd -r -u 8069 -g 8069 -m -s /bin/bash odoo
 RUN mkdir -p /var/log/odoo && \
     chown odoo: /var/log/odoo && \
     mkdir -p /opt/odoo && \
-    chown odoo: /opt/odoo
-
-RUN mkdir /opt/odoo/datadir && \
+    chown odoo: /opt/odoo && \
+    mkdir /opt/odoo/datadir && \
     chown odoo: /opt/odoo/datadir
 
-COPY --chown=odoo:odoo ./entrypoint.sh /opt/odoo/entrypoint.sh
-RUN chmod 550 /opt/odoo/entrypoint.sh
+COPY ./utilities/getinfo-odoo_base.sh /usr/local/bin/getinfo-odoo_base
+RUN chmod 555 /usr/local/bin/getinfo-odoo_base
+COPY ./utilities/getinfo-odoo_git_addons.sh /usr/local/bin/getinfo-odoo_git_addons
+RUN chmod 555 /usr/local/bin/getinfo-odoo_git_addons
 
-COPY --chown=odoo:odoo ./conf/odoo.conf /etc/odoo/odoo.conf
-COPY --chown=odoo:odoo ./odoo-base /opt/odoo/odoo-base
 COPY --chown=odoo:odoo ./requirements.txt /opt/odoo/requirements.txt
 
 USER odoo
@@ -46,6 +45,12 @@ RUN export MAKEFLAGS="-j $(nproc)"
 RUN pip install -r ./requirements.txt
 
 USER root
+
+COPY --chown=odoo:odoo ./conf/odoo.conf /etc/odoo/odoo.conf
+COPY --chown=odoo:odoo ./odoo-base /opt/odoo/odoo-base
+
+COPY --chown=odoo:odoo ./entrypoint.sh /opt/odoo/entrypoint.sh
+RUN chmod 550 /opt/odoo/entrypoint.sh
 
 COPY --chown=odoo:odoo ./git /opt/odoo/git
 
