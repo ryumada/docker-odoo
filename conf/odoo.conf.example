@@ -13,9 +13,6 @@ addons_path = enter_addons_paths
 # proxy_mode should be true because we will use nginx as reverse proxy for odoo docker deployment
 proxy_mode = True
 
-# If not correct, enter the correct file log name
-logfile = /var/log/odoo/odoo.log
-
 # # # # # # # # # # # # # # # # # # # # # # # # # # 
 # THESE VARIABLE HAS BEEN SETUP IN ENV FILE       #
 # # # # # # # # # # # # # # # # # # # # # # # # # #
@@ -46,6 +43,9 @@ logfile = /var/log/odoo/odoo.log
 
 # If not correct, enter the correct datadir one
 # data_dir = /opt/odoo/datadir
+
+# If not correct, enter the correct file log name
+logfile = /var/log/odoo/odoo.log
 
 # focus only on limit_time_real if you don't want some messy configuration of reusable worker
 # limit_time_cpu = 2100

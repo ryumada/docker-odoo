@@ -10,6 +10,8 @@ error_handler() {
 
 trap 'error_handler $LINENO' ERR
 
+: "${SERVICE_NAME:=$(basename "$(pwd)")}"
+
 : "${PORT:=8069}"
 : "${GEVENT_PORT:=8072}"
 
@@ -24,7 +26,8 @@ trap 'error_handler $LINENO' ERR
 : "${LIMIT_REQUEST:=8196}"
 : "${TRANSIENT_AGE_LIMIT:=1.0}"
 
-: "${DATA_DIR:=/opt/odoo/datadir}"
+: "${ODOO_DATADIR_SERVICE:=/var/lib/odoo/$SERVICE_NAME}"
+ODOO_LOG_FILE=$ODOO_LOG_DIR_SERVICE/$SERVICE_NAME.log
 
 : "${DB_HOST:=localhost}"
 : "${DB_PORT:=5432}"
@@ -56,7 +59,8 @@ add_arg "limit-time-real-cron" "$LIMIT_TIME_REAL_CRON"
 add_arg "limit-request" "$LIMIT_REQUEST"
 add_arg "transient-age-limit" "$TRANSIENT_AGE_LIMIT"
 
-add_arg "data-dir" "$DATA_DIR"
+add_arg "data-dir" "$ODOO_DATADIR_SERVICE"
+add_arg "logfile" "$ODOO_LOG_FILE"
 
 add_arg "db_host" "$DB_HOST"
 add_arg "db_port" "$DB_PORT"

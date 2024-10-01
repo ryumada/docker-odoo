@@ -27,8 +27,8 @@ RUN mkdir -p /var/log/odoo && \
     chown odoo: /var/log/odoo && \
     mkdir -p /opt/odoo && \
     chown odoo: /opt/odoo && \
-    mkdir /opt/odoo/datadir && \
-    chown odoo: /opt/odoo/datadir
+    mkdir /var/lib/odoo && \
+    chown odoo: /var/lib/odoo
 
 COPY ./utilities/getinfo-odoo_base.sh /usr/local/bin/getinfo-odoo_base
 RUN chmod 555 /usr/local/bin/getinfo-odoo_base

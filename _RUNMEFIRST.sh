@@ -1,6 +1,8 @@
 #!/bin/bash
 
-# TODO: FIX THIS SCRIPT SEE ENTRYPOINT TO CHECK THE DIRECTORIES INSIDE
+CURRENT_DIRNAME="$(basename "$(pwd)")"
+SERVICE_NAME=$CURRENT_DIRNAME
+ODOO_LINUX_USER="odoo"
 
 # Define the paths
 DB_USER_SECRET="./.secrets/db_user"
@@ -10,8 +12,10 @@ ENV_FILE="./.env"
 GIT_DIR="./git"
 ODOO_BASE_DIR="./odoo-base"
 ODOO_CONF_FILE="./conf/odoo.conf"
-ODOO_DATADIR="./datadir"
-ODOO_LOG_DIR="./log"
+ODOO_DATADIR="/var/lib/odoo"
+ODOO_DATADIR_SERVICE="$ODOO_DATADIR/$SERVICE_NAME"
+ODOO_LOG_DIR="/var/log/odoo"
+ODOO_LOG_DIR_SERVICE="$ODOO_LOG_DIR/$SERVICE_NAME"
 REQUIREMENTS_FILE="./requirements.txt"
 
 # Exit immediately if a command exits with a non-zero status
@@ -34,7 +38,42 @@ function amIRoot() {
   fi
 }
 
+function createDataDir() {
+  echo "[$(date +"%Y-%m-%d %H:%M:%S")] Create Odoo datadir..."
+
+  if [ ! -d "$ODOO_DATADIR" ]; then
+    sudo mkdir "$ODOO_DATADIR"
+    sudo chown $ODOO_LINUX_USER: $ODOO_DATADIR
+  fi
+
+  if [ ! -d "$ODOO_DATADIR_SERVICE" ]; then
+    sudo mkdir "$ODOO_DATADIR_SERVICE"
+    sudo chown $ODOO_LINUX_USER: "$ODOO_DATADIR_SERVICE"
+  fi
+
+  writeDatadirVariableOnEnvFile
+}
+
+function createLogDir() {
+  echo "[$(date +"%Y-%m-%d %H:%M:%S")] Create log directories..."
+
+  if [ ! -d "$ODOO_LOG_DIR" ]; then
+    sudo mkdir $ODOO_LOG_DIR
+    sudo chown $ODOO_LINUX_USER: $ODOO_LOG_DIR
+  fi
+
+  if [ ! -d "$ODOO_LOG_DIR_SERVICE" ]; then
+    sudo mkdir "$ODOO_LOG_DIR_SERVICE"
+    sudo chown $ODOO_LINUX_USER: "$ODOO_LOG_DIR_SERVICE"
+  fi
+
+  writeLogDirVariableOnEnvFile
+  installOdooLogRotator
+}
+
 function getGitHash() {
+  # _inherit = writeGitHash
+
   git_path=$1
 
   OUTPUT_GIT_HASHES_FILE="$git_path/../git_hashes.txt"
@@ -53,6 +92,37 @@ function getSubDirectories() {
   dir=$1
   subdirs="$(ls -d "$dir"/*/)"
   echo "$subdirs"
+}
+
+function installOdooLogRotator() {
+  # _inherit = createLogDir
+
+  log_filename="$ODOO_LOG_DIR_SERVICE/$SERVICE_NAME.log"
+  
+  cat <<-EOF > ~/"$SERVICE_NAME"
+$log_filename {
+    rotate 14
+    olddir $log_filename-old
+    su $ODOO_LINUX_USER $ODOO_LINUX_USER
+    daily
+    missingok
+    #notifempty
+    nocreate
+    createolddir 755 $ODOO_LINUX_USER $ODOO_LINUX_USER
+    renamecopy
+    compress
+    compresscmd /usr/bin/xz
+    compressoptions -ze -T 4
+    delaycompress
+    dateext
+    dateformat -%Y%m%d-%H%M%S
+}
+EOF
+
+  sudo chown root: ~/"$SERVICE_NAME"
+  sudo chmod 644 ~/"$SERVICE_NAME"
+
+  sudo mv ~/"$SERVICE_NAME" "/etc/logrotate.d/$SERVICE_NAME"
 }
 
 function isDirectoryGitRepository {
@@ -146,6 +216,8 @@ function printTodo() {
 }
 
 function resetGitHashFile(){
+  # _inherit = writeGitHash
+
   git_path=$1
   OUTPUT_GIT_HASHES_FILE="$git_path/../git_hashes.txt"
 
@@ -174,6 +246,31 @@ function writeGitHash() {
   done
 }
 
+function writeDatadirVariableOnEnvFile() {
+  # _inherit = CreateDataDir
+
+  if ! grep -q "ODOO_DATADIR_SERVICE" "$ENV_FILE"; then
+    cat <<-EOF >> "$ENV_FILE"
+ODOO_DATADIR_SERVICE=$ODOO_DATADIR_SERVICE
+EOF
+  fi
+}
+
+function writeLogDirVariableOnEnvFile() {
+  # _inherit = createLogDir
+
+  if ! grep -q "SERVICE_NAME" "$ENV_FILE"; then
+    cat <<-EOF >> "$ENV_FILE"
+
+# # # # # # # # # # # # #
+# DIRECTORIES           #
+# # # # # # # # # # # # #
+SERVICE_NAME=$SERVICE_NAME
+ODOO_LOG_DIR_SERVICE=$ODOO_LOG_DIR_SERVICE
+EOF
+  fi
+}
+
 function main() {
   amIRoot
 
@@ -185,23 +282,23 @@ function main() {
 
   if isFileExists "$DB_USER_SECRET" "Please create a db_user file by following the db_user.example file."; then
     sudo chmod 400 $DB_USER_SECRET
-    sudo chown -R odoo: $DB_USER_SECRET
+    sudo chown -R $ODOO_LINUX_USER: $DB_USER_SECRET
   fi
 
   if isFileExists "$DB_PASSWORD_SECRET" "Please create a db_password file by following the db_password.example file."; then
     sudo chmod 400 $DB_PASSWORD_SECRET
-    sudo chown -R odoo: $DB_PASSWORD_SECRET
+    sudo chown -R $ODOO_LINUX_USER: $DB_PASSWORD_SECRET
   fi
 
-  isFileExists "$ENV_FILE" "Please create a .env file by folowing the .env.example file." || true
+  if isFileExists "$ENV_FILE" "Please create a .env file by folowing the .env.example file."; then
+    createLogDir
+    createDataDir
+  fi
+  
   isFileExists "$DOCKER_COMPOSE_FILE" "Please create a docker-compose.yml file by following the docker-compose.yml.example file." || true
 
-  echo "[$(date +"%Y-%m-%d %H:%M:%S")] Change the ownership of datadir and log dir."
-  sudo chown -R odoo: $ODOO_LOG_DIR
-  sudo chown -R odoo: $ODOO_DATADIR
-
   isFileExists "$ODOO_CONF_FILE" "Please create an odoo.conf file by following the odoo.conf.example file." || true
-  
+
   if isSubDirectoryExists "$GIT_DIR" "" "No directories found inside $GIT_DIR. That means no Odoo custom module will be added to your Odoo image."; then
     writeGitHash "$GIT_DIR"
   fi
