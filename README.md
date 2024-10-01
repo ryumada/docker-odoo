@@ -52,7 +52,7 @@ There are some points you should know:
 
   or you can uncomment this `RUN` syntax on dockerfile to include the installation of libreoffice on your docker image.
 
-  ```docker
+  ```dockerfile
   ...
   # install libreoffice only be needed if there is a module need to use libreoffice featrue
   # RUN apt --no-install-recommends -y install libreoffice
@@ -63,6 +63,59 @@ There are some points you should know:
   ```bash
   sudo chown -R $USER: ./
   ```
+
+## Maintenance
+The image build using the dockerfile in this repository installed some utility scripts.
+
+### Check the version of Odoo base
+You can check the Odoo version and its git hash by running this command:
+
+```bash
+docker compose exec $SERVICE_NAME getinfo-odoo_base
+```
+
+<details>
+  <summary>You can get <code>$SERVICE_NAME</code> by looking at your <code>docker-compose.yml</code> file. </summary>
+
+  ```dockerfile
+  ...
+  services:
+    # Enter the correct the service name, you can use company name (example: sudoerp)
+    enter_the_correct_service_name: <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+      # Enter the correct image name below (format: username/repo:tag, example: odoo:16.0)
+      image: username/repo:tag
+      build:
+        context: .
+        dockerfile: dockerfile
+      # Because we use host ne
+  ...
+  ```
+</details>
+
+### Check the git repository used by Docker Image
+You can check the git repository information by running this command:
+
+```bash
+docker compose exec $SERVICE_NAME getinfo-odoo_git_addons
+```
+
+<details>
+  <summary>You can get <code>$SERVICE_NAME</code> by looking at your <code>docker-compose.yml</code> file. </summary>
+
+  ```dockerfile
+  ...
+  services:
+    # Enter the correct the service name, you can use company name (example: sudoerp)
+    enter_the_correct_service_name: <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+      # Enter the correct image name below (format: username/repo:tag, example: odoo:16.0)
+      image: username/repo:tag
+      build:
+        context: .
+        dockerfile: dockerfile
+      # Because we use host ne
+  ...
+  ```
+</details>
 
 ---
 
