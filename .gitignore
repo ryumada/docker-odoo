@@ -18,6 +18,7 @@ odoo-base/*
 scripts/*
 !scripts/snapshot.sh.example
 !scripts/change_mode_to_git.sh
+!scripts/restore-snapshot.sh
 !scripts/README.md
 
 .env
