@@ -94,12 +94,12 @@ else
   echo "[$(date +"%Y-%m-%d %H:%M:%S")] 🧹 Cleaning up the SQL file."
   rm $TEMP_FILES_TO_REMOVE
 
-  # enable this line if you want to move the snapshot file to Google Cloud Storage.
-  # (don't change or enter any codes below, just uncomment the code) 
-  # echo "[$(date +"%Y-%m-%d %H:%M:%S")] ☁ Moving the snapshot file to tilabs-ctb-backup at Google Cloud Storage."
-  # $PRE_COMMAND gsutil -m mv /tmp/$TAR_FILE_NAME gs://$GCS_BUCKET_NAME/$TAR_FILE_NAME
-
-  # echo -e "[$(date +"%Y-%m-%d %H:%M:%S")] ✅ The snapshot File Created Successfully named $TAR_FILE_NAME."
-  echo -e "[$(date +"%Y-%m-%d %H:%M:%S")] ✅ The snapshot File Created Successfully named $TAR_FILE_NAME.\nFile Backupped at gs://$GCS_BUCKET_NAME/$TAR_FILE_NAME."
+  if [ "$GCS_BUCKET_NAME" != "enter_your_gcs_bucket_name" ] && [ "$GCS_BUCKET_NAME" != "" ]; then
+    echo "[$(date +"%Y-%m-%d %H:%M:%S")] ☁ Moving the snapshot file to tilabs-ctb-backup at Google Cloud Storage."
+    $PRE_COMMAND gsutil -m mv /tmp/$TAR_FILE_NAME gs://$GCS_BUCKET_NAME/$TAR_FILE_NAME
+    echo -e "[$(date +"%Y-%m-%d %H:%M:%S")] ✅ The snapshot File Created Successfully named $TAR_FILE_NAME.\nFile Backupped at gs://$GCS_BUCKET_NAME/$TAR_FILE_NAME."
+  else
+    echo -e "[$(date +"%Y-%m-%d %H:%M:%S")] ✅ The snapshot File Created Successfully named $TAR_FILE_NAME.\nFile Backupped at /tmp/$TAR_FILE_NAME."
+  fi
   echo
 fi
