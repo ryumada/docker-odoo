@@ -1,0 +1,105 @@
+#!/bin/bash
+
+# Press ctrl + F then type enter to see the highlight of variables should be added
+
+CURRENT_DIRNAME=$(dirname "$(readlink -f "$0")")
+cd "$CURRENT_DIRNAME/.." || { echo "🔴 Can't change directory to $CURRENT_DIRNAME/.."; exit 1; }
+SERVICE_NAME=$(basename "$(pwd)")
+## ex. odoo-prd (replace with production database name or leave as is to read it from the )
+ODOO_DATABASE_NAME_PRD=enter_production_database_name
+PATH_TO_ODOO="$(pwd)"
+
+## This variable below to define the new variable (DON'T EDIT)
+FILES_DIRS_TO_TAR=""
+## Add Directory (ADD MORE VARIABLE TO ADD NEW DIRECTORY for the archive)
+FILES_DIRS_TO_TAR="enter_path_to_directory $FILES_DIRS_TO_TAR"
+FILES_DIRS_TO_TAR="enter_path_to_directory $FILES_DIRS_TO_TAR"
+
+## Make sure that the git directory and odoo base directory has git_hashes.txt file.
+## If not, you need to change this to the directory of odoo modules and odoo-base instead of git_hashes.txt. 
+## enter the correct path
+FILES_DIRS_TO_TAR="git/git_hashes.txt $FILES_DIRS_TO_TAR"
+FILES_DIRS_TO_TAR="git/enter_additional_git_odoo_module_directory $FILES_DIRS_TO_TAR"
+FILES_DIRS_TO_TAR="odoo-base/git_hashes.txt $FILES_DIRS_TO_TAR"
+
+## Make sure that the datadir location is correct (enter the correct one)
+FILES_DIRS_TO_TAR="/var/lib/odoo/$SERVICE_NAME/filestore/$ODOO_DATABASE_NAME_PRD $FILES_DIRS_TO_TAR"
+
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+# DON'T change these codes below
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+GCS_BUCKET_NAME=enter_your_gcs_bucket_name
+# DATE_FOR_FILENAME="$(date +"%Y%m%d-%H%M%S")"
+# DATE_FOR_MESSAGE=$(date +"%Y-%m-%d %H:%M:%S")
+TAR_FILE_NAME=snapshot-$SERVICE_NAME.tar.zst
+
+FILES_DIRS_TO_TAR=".secrets/db_user $FILES_DIRS_TO_TAR"
+FILES_DIRS_TO_TAR=".secrets/db_password $FILES_DIRS_TO_TAR"
+FILES_DIRS_TO_TAR="conf/odoo.conf $FILES_DIRS_TO_TAR"
+FILES_DIRS_TO_TAR=".env $FILES_DIRS_TO_TAR"
+FILES_DIRS_TO_TAR="requirements.txt $FILES_DIRS_TO_TAR"
+
+FILES_DIRS_TO_TAR="/tmp/$ODOO_DATABASE_NAME_PRD.sql $FILES_DIRS_TO_TAR"
+FILES_DIRS_TO_TAR="crontab $FILES_DIRS_TO_TAR"
+
+FILES_DIRS_TO_TAR="/etc/nginx/sites-available $FILES_DIRS_TO_TAR"
+FILES_DIRS_TO_TAR="/etc/logrotate.d/$SERVICE_NAME* $FILES_DIRS_TO_TAR"
+
+if [ -f "/etc/logrotate.d/sudo-*" ]; then
+  FILES_DIRS_TO_TAR="/etc/logrotate.d/sudo-* $FILES_DIRS_TO_TAR"
+fi
+
+if [ -f "scripts/snapshot-$SERVICE_NAME" ]; then
+  FILES_DIRS_TO_TAR="scripts/snapshot-$SERVICE_NAME $FILES_DIRS_TO_TAR"
+fi
+
+if [ -f "/usr/local/sbin/sudo-*" ]; then
+  FILES_DIRS_TO_TAR="/usr/local/sbin/sudo-* $FILES_DIRS_TO_TAR"
+fi
+
+TEMP_FILES_TO_REMOVE="/tmp/$ODOO_DATABASE_NAME_PRD.sql"
+TEMP_FILES_TO_REMOVE="crontab $TEMP_FILES_TO_REMOVE"
+
+LOG_PATH=/var/log/snapshot-$SERVICE_NAME.log
+
+# Redirect stdout and stderr to tee
+exec > >(tee -a "$LOG_PATH") 2>&1
+
+echo "-------------------------------------------------------------------------------"
+echo " DAILY SNAPSHOT FOR $SERVICE_NAME @ $(date +"%A, %d %B %Y %H:%M %Z")"
+echo "-------------------------------------------------------------------------------"
+
+if [ "$(id -u)" -ne 0 ]; then
+  echo "🔴 Please run this script with sudo." 1>&2
+  exit 1
+else
+  echo "[$(date +"%Y-%m-%d %H:%M:%S")] Change WORKDIR to $PATH_TO_ODOO."
+  cd "$PATH_TO_ODOO" || { echo "🔴 Can't change directory to $PATH_TO_ODOO"; exit 1; }
+
+  echo "[$(date +"%Y-%m-%d %H:%M:%S")] Dumping $ODOO_DATABASE_NAME_PRD database..."
+  sudo -u postgres pg_dump -f /tmp/"$ODOO_DATABASE_NAME_PRD.sql" $ODOO_DATABASE_NAME_PRD
+
+  echo "[$(date +"%Y-%m-%d %H:%M:%S")] ⏱️ Backing up cron jobs list..."
+  crontab -l > ./crontab
+
+  echo "[$(date +"%Y-%m-%d %H:%M:%S")] 📦 Backing up the database and its datadir..."
+  tar -cf $TAR_FILE_NAME -I "zstd -vT0 -7 --ultra" $FILES_DIRS_TO_TAR
+
+  echo "[$(date +"%Y-%m-%d %H:%M:%S")] Changing the ownership of the snapshot file..."
+  chown odoo: $TAR_FILE_NAME
+
+  echo "[$(date +"%Y-%m-%d %H:%M:%S")] 🚛 Moving the tar file to /tmp directory."
+  mv $TAR_FILE_NAME /tmp/$TAR_FILE_NAME
+
+  echo "[$(date +"%Y-%m-%d %H:%M:%S")] 🧹 Cleaning up the SQL file."
+  rm $TEMP_FILES_TO_REMOVE
+
+  if [ "$GCS_BUCKET_NAME" != "enter_your_gcs_bucket_name" ] && [ "$GCS_BUCKET_NAME" != "" ]; then
+    echo "[$(date +"%Y-%m-%d %H:%M:%S")] ☁ Moving the snapshot file to tilabs-ctb-backup at Google Cloud Storage."
+    $PRE_COMMAND gsutil -m mv /tmp/$TAR_FILE_NAME gs://$GCS_BUCKET_NAME/$TAR_FILE_NAME
+    echo -e "[$(date +"%Y-%m-%d %H:%M:%S")] ✅ The snapshot File Created Successfully named $TAR_FILE_NAME.\nFile Backupped at gs://$GCS_BUCKET_NAME/$TAR_FILE_NAME."
+  else
+    echo -e "[$(date +"%Y-%m-%d %H:%M:%S")] ✅ The snapshot File Created Successfully named $TAR_FILE_NAME.\nFile Backupped at /tmp/$TAR_FILE_NAME."
+  fi
+  echo
+fi

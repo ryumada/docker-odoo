@@ -15,5 +15,15 @@ git/*
 odoo-base/*
 !odoo-base/README.md
 
-requirements.txt
+scripts/*
+!scripts/snapshot.sh.example
+!scripts/change_mode_to_git.sh
+!scripts/restore-snapshot.sh
+!scripts/README.md
+
 .env
+
+crontab
+requirements.txt
+
+**.tar**
