@@ -14,14 +14,17 @@ A Dockerfile to create a custom Odoo docker image.
 There are some points you should know:
 
 - First, you need to execute `sudo ./_RUNMEFIRST.sh` script to check if all of your files and directories are ready to build image.
+  ```bash
+  sudo ./_RUNMEFIRST.sh
+  ```
 
 - Please follow the instruction after you run that script above, before continue the porcess.
 
 - You should add your Odoo base, whether it is Odoo Community, Odoo Enterprise, or your custom Odoo base, to the `odoo-base` directory (⚠️ Only add one directory to `odoo-base` as this will be read automatically by the `entrypoint.sh` script, for the name of the directory is no need to be `odoo` ⚠️).
 
-- Add your custom Odoo Modules (Odoo Addons) to `git` directory and add the path to addons_path in `./conf/odoo.conf`. Don't add unused custom module directory to this as it will be added to your docker image.
+- Add your custom Odoo Modules (Odoo Addons) to `git` directory and add the path to addons_path in `./conf/odoo.conf`. Don't add unused custom module directory to this directory as it will be added to your docker image and increased the image size.
 
-- `datadir` and `log` directories will be used by Odoo for static data storage and logging. It will be called in docker-compose.
+- Odoo `datadir` is placed on `/var/lib/odoo` and Odoo `log` is placed on `/var/log/odoo`. These directories will be used by Odoo for static data storage and logging. It will be called in docker-compose. (⚠️ This directories are automatically created on your host machine after you run `sudo ./_RUNMEFIRST.sh` ⚠️)
 
 - Build your docker image with this command below:
 

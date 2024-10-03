@@ -9,18 +9,11 @@ conf/*
 !conf/odoo.conf.example
 !conf/README.md
 
-datadir/*
-!datadir/README.md
-
 git/*
 !git/README.md
-
-log/*
-!log/README.md
 
 odoo-base/*
 !odoo-base/README.md
 
-docker-compose.yml
 requirements.txt
 .env

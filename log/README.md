@@ -1,1 +1,0 @@
-Log file from the container will be written here.

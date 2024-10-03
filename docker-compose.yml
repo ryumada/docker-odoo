@@ -1,10 +1,5 @@
-# ctrl + F to find which line should you edit
-
 services:
-  # Enter the correct the service name, you can use company name (example: sudoerp)
-  enter_the_correct_service_name:
-    # Enter the correct image name below (format: username/repo:tag, example: odoo:16.0)
-    image: username/repo:tag
+  odoo:
     build:
       context: .
       dockerfile: dockerfile
@@ -16,9 +11,14 @@ services:
     #  - "19001:8072"
     network_mode: "host"
     volumes:
-     - ./datadir:/opt/odoo/datadir
-     - ./log:/var/log/odoo
+     - ${ODOO_DATADIR_SERVICE}:${ODOO_DATADIR_SERVICE}
+     - ${ODOO_LOG_DIR_SERVICE}:${ODOO_LOG_DIR_SERVICE}
     environment:
+     - DB_USER
+     - DB_NAME
+     - DB_HOST
+     - DB_PORT
+     - DB_MAXCONN
      - PORT
      - GEVENT_PORT
      - WORKERS
@@ -31,11 +31,9 @@ services:
      - LIMIT_REQUEST
      - TRANSIENT_AGE_LIMIT
      - DATA_DIR
-     - DB_USER
-     - DB_NAME
-     - DB_HOST
-     - DB_PORT
-     - DB_MAXCONN
+     - SERVICE_NAME
+     - ODOO_DATADIR_SERVICE
+     - ODOO_LOG_DIR_SERVICE
     env_file:
       - .env
     secrets:
