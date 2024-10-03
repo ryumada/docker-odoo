@@ -69,6 +69,13 @@ echo "--------------------------------------------------------------------------
 echo " DAILY SNAPSHOT FOR $SERVICE_NAME @ $(date +"%A, %d %B %Y %H:%M %Z")"
 echo "-------------------------------------------------------------------------------"
 
+if ! command -v zstd >/dev/null 2>&1; then
+  echo "🔴 zstd is not installed. Please install zstd first."
+  echo "For Ubuntu: sudo apt install zstd"
+  echo "For CentOS: sudo yum install zstd"
+  exit 1
+fi
+
 if [ "$(id -u)" -ne 0 ]; then
   echo "🔴 Please run this script with sudo." 1>&2
   exit 1
