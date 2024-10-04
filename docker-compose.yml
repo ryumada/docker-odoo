@@ -10,6 +10,8 @@ services:
     #  - "9000:8069"
     #  - "19001:8072"
     network_mode: "host"
+    entrypoint: [ "/opt/odoo/entrypoint.sh" ]
+    command: [ "-c", "/etc/odoo/odoo.conf" ]
     volumes:
      - ${ODOO_DATADIR_SERVICE}:${ODOO_DATADIR_SERVICE}
      - ${ODOO_LOG_DIR_SERVICE}:${ODOO_LOG_DIR_SERVICE}
