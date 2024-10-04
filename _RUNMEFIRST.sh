@@ -1,7 +1,8 @@
 #!/bin/bash
 
-CURRENT_DIRNAME="$(basename "$(pwd)")"
-SERVICE_NAME=$CURRENT_DIRNAME
+REPOSITORY_DIRPATH="$(pwd)"
+REPOSITORY_DIRNAME="$(basename "$(pwd)")"
+SERVICE_NAME=$REPOSITORY_DIRNAME
 ODOO_LINUX_USER="odoo"
 
 # Define the paths
@@ -75,6 +76,10 @@ function getGitHash() {
   # _inherit = writeGitHash
 
   git_path=$1
+  git_real_owner=$(stat -c '%U' "$git_path")
+  repository_owner=$(stat -c '%U' "$REPOSITORY_DIRPATH")
+
+  chown -R $repository_owner: $git_path
 
   OUTPUT_GIT_HASHES_FILE="$git_path/../git_hashes.txt"
 
@@ -86,6 +91,8 @@ function getGitHash() {
   Git Branch: $(git -C "$git_path" branch --show-current)
   Git Hashes: $(git -C "$git_path" rev-parse HEAD)
 EOF
+
+  chown -R $git_real_owner: $git_path
 }
 
 function getSubDirectories() {
@@ -196,7 +203,12 @@ function isOdooUserExists() {
       exit 1
     fi
   else
-    echo "[$(date +"%Y-%m-%d %H:%M:%S")] ✅ odoo user already exists"
+    if [ "$(id -u odoo)" -ne 8069 ]; then
+      echo "[$(date +"%Y-%m-%d %H:%M:%S")] ❌ odoo user already exists but the user id is not 8069."
+      TODO+=("Please change the odoo user id to 8069 using the following command: 'sudo usermod -u 8069 odoo '")
+    else
+      echo "[$(date +"%Y-%m-%d %H:%M:%S")] ✅ odoo user already exists."
+    fi
   fi
 }
 
