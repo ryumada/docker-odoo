@@ -40,7 +40,7 @@ function amIRoot() {
 }
 
 function createDataDir() {
-  echo "[$(date +"%Y-%m-%d %H:%M:%S")] Create Odoo datadir... (path: $ODOO_DATADIR_SERVICE)"
+  echo "[$(date +"%Y-%m-%d %H:%M:%S")] 🟦 Create Odoo datadir... (path: $ODOO_DATADIR_SERVICE)"
 
   if [ ! -d "$ODOO_DATADIR" ]; then
     sudo mkdir "$ODOO_DATADIR"
@@ -56,7 +56,7 @@ function createDataDir() {
 }
 
 function createLogDir() {
-  echo "[$(date +"%Y-%m-%d %H:%M:%S")] Create log directories... (path: $ODOO_LOG_DIR_SERVICE)"
+  echo "[$(date +"%Y-%m-%d %H:%M:%S")] 🟦 Create log directory... (path: $ODOO_LOG_DIR_SERVICE)"
 
   if [ ! -d "$ODOO_LOG_DIR" ]; then
     sudo mkdir $ODOO_LOG_DIR
@@ -159,10 +159,23 @@ function isSubDirectoryExists() {
   dir=$1
   todo=$2
   additional_info=$3
+  only_one=$4
 
   if ls -d "$dir"/*/ >/dev/null 2>&1; then
-    echo "[$(date +"%Y-%m-%d %H:%M:%S")] ✅ A directory exists inside $dir"
-    return 0
+    if [ -n "$only_one" ]; then
+      if ! ls -d "$dir"/*/ | wc -l | grep -q 1 ; then
+        echo "[$(date +"%Y-%m-%d %H:%M:%S")] ❌ There are more than one directories found inside $dir. Please keep only one directory."
+
+        TODO+=("Please remove the unnecessary directories inside $dir. Only keep one directory that contains your Odoo base.")
+        return 1
+      else
+        echo "[$(date +"%Y-%m-%d %H:%M:%S")] ✅ A directory exists inside $dir"
+        return 0
+      fi
+    else
+      echo "[$(date +"%Y-%m-%d %H:%M:%S")] ✅ Directories exists inside $dir"
+      return 0
+    fi
   else
     if [ -n "$todo" ]; then
       TODO+=("$todo")
@@ -253,7 +266,7 @@ function writeGitHash() {
     if isDirectoryGitRepository "$dir"; then
       getGitHash "$dir"
     else
-      echo "[$(date +"%Y-%m-%d %H:%M:%S")] ❌ $dir is not a git repository. You need to backup this directory."      
+      echo "[$(date +"%Y-%m-%d %H:%M:%S")] 🟨 $dir is not a git repository. You need to backup this directory by adding it to your snapshot utilities."      
     fi
   done
 }
@@ -315,20 +328,21 @@ function main() {
     writeGitHash "$GIT_DIR"
   fi
 
-  if isSubDirectoryExists "$ODOO_BASE_DIR" "Please clone your odoo-base repository inside the odoo-base directory" ""; then
+  if isSubDirectoryExists "$ODOO_BASE_DIR" "Please clone your odoo-base repository inside the odoo-base directory" "" "only-one"; then
     writeGitHash "$ODOO_BASE_DIR"
   fi
-
-  isFileExists "$REQUIREMENTS_FILE" "Please create a requirements.txt file by following the requirements.txt.example file." || true
 
   if printTodo; then
     echo
     echo
     echo "[$(date +"%Y-%m-%d %H:%M:%S")] ✅ Everything is ready to build your docker image."
+    echo "[$(date +"%Y-%m-%d %H:%M:%S")] 🟦 Please run the following command to build your docker image: ' docker compose build '"
+    echo "[$(date +"%Y-%m-%d %H:%M:%S")] 🟦 Then, you can run the compose using this command: ' docker compose up -d '"
+    echo "[$(date +"%Y-%m-%d %H:%M:%S")] 🟦 You can combine the command using: ' docker compose up --build -d '."
   else
     echo
     echo
-    echo "[$(date +"%Y-%m-%d %H:%M:%S")] ❌ There are some things that need to be done before we create your docker image."
+    echo "[$(date +"%Y-%m-%d %H:%M:%S")] ❌ There are some things that need to be done before you can create your docker image."
   fi
 }
 
