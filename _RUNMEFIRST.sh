@@ -332,6 +332,8 @@ function main() {
     writeGitHash "$ODOO_BASE_DIR"
   fi
 
+  isFileExists "$REQUIREMENTS_FILE" "Please create a requirements.txt file by following the requirements.txt.example file." || true
+
   if printTodo; then
     echo
     echo
