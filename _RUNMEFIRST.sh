@@ -40,7 +40,7 @@ function amIRoot() {
 }
 
 function createDataDir() {
-  echo "[$(date +"%Y-%m-%d %H:%M:%S")] Create Odoo datadir..."
+  echo "[$(date +"%Y-%m-%d %H:%M:%S")] Create Odoo datadir... (path: $ODOO_DATADIR)"
 
   if [ ! -d "$ODOO_DATADIR" ]; then
     sudo mkdir "$ODOO_DATADIR"
@@ -56,7 +56,7 @@ function createDataDir() {
 }
 
 function createLogDir() {
-  echo "[$(date +"%Y-%m-%d %H:%M:%S")] Create log directories..."
+  echo "[$(date +"%Y-%m-%d %H:%M:%S")] Create log directories... (path: $ODOO_LOG_DIR)"
 
   if [ ! -d "$ODOO_LOG_DIR" ]; then
     sudo mkdir $ODOO_LOG_DIR
