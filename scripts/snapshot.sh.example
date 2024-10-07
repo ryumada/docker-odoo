@@ -5,7 +5,7 @@
 CURRENT_DIRNAME=$(dirname "$(readlink -f "$0")")
 cd "$CURRENT_DIRNAME/.." || { echo "🔴 Can't change directory to $CURRENT_DIRNAME/.."; exit 1; }
 SERVICE_NAME=$(basename "$(pwd)")
-## ex. odoo-prd (replace with production database name or leave as is to read it from the )
+## ex. odoo-prd (replace with production database name)
 ODOO_DATABASE_NAME_PRD=enter_production_database_name
 PATH_TO_ODOO="$(pwd)"
 
@@ -64,7 +64,7 @@ fi
 TEMP_FILES_TO_REMOVE="/tmp/$ODOO_DATABASE_NAME_PRD.sql"
 TEMP_FILES_TO_REMOVE="crontab $TEMP_FILES_TO_REMOVE"
 
-LOG_PATH=/var/log/snapshot-$SERVICE_NAME.log
+LOG_PATH=/var/log/odoo/_utilities/snapshot-$SERVICE_NAME.log
 
 # Redirect stdout and stderr to tee
 exec > >(tee -a "$LOG_PATH") 2>&1

@@ -50,7 +50,7 @@ See the example file to create the data backup utility (`./scripts/backupdata.sh
 
 To use restore snapshot, make sure the main directory (`../`) is has the same name of the archive file. For example, `snapshot-docker-odoo.tar.zst` the main directory name should be `docker-odoo` removing the `snapshot-` prefix and `.tar.zst` suffix.
 
-Before you run the snapshot script, you need to prepare [snapshot utilities first](#snapshot-utilities).
+Before you run the restore snapshot script, you need to prepare [snapshot utilities first](#snapshot-utilities).
 
 </details>
 
@@ -111,10 +111,10 @@ Before you run the snapshot script, you need to prepare [snapshot utilities firs
       ```bash
       export SERVICE_NAME=$(basename "$PWD")
       sudo cat << EOF > ~/snapshot-$SERVICE_NAME
-      /var/log/snapshot-$SERVICE_NAME.log {
+      /var/log/odoo/_utilities/snapshot-$SERVICE_NAME.log {
           rotate 4
           su root syslog
-          olddir /var/log/snapshot-$SERVICE_NAME.log-old
+          olddir /var/log/odoo/_utilities/snapshot-$SERVICE_NAME.log-old
           weekly
           missingok
           #notifempty
