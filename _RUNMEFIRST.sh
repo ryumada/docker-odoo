@@ -68,6 +68,10 @@ function createLogDir() {
     sudo chown $ODOO_LINUX_USER: "$ODOO_LOG_DIR_SERVICE"
   fi
 
+  if [ ! -d "$ODOO_LOG_DIR/_utilities" ]; then
+    sudo mkdir "$ODOO_LOG_DIR/_utilities"
+  fi
+
   writeLogDirVariableOnEnvFile
   installOdooLogRotator
 }
@@ -130,6 +134,53 @@ EOF
   sudo chmod 644 ~/"$SERVICE_NAME"
 
   sudo mv ~/"$SERVICE_NAME" "/etc/logrotate.d/$SERVICE_NAME"
+}
+
+function installPostgresRestartorScript() {
+  echo "[$(date +"%Y-%m-%d %H:%M:%S")] 🟦 Install Postgresql restartor script and cron job..."
+  # create a script that restarts the postgresql service
+  cat <<-EOF > /usr/local/sbin/restart_postgres
+#!/bin/bash
+
+exec > >(tee -a /var/log/odoo/_utilities/restart_postgres.log) 2>&1
+
+echo "[$(date +"%Y-%m-%d %H:%M:%S")] 🟦 Restarting Postgresql service..."
+sudo systemctl restart postgresql
+
+EOF
+
+  chmod +x /usr/local/sbin/restart_postgres
+
+  # install cronjob
+  cat <<-EOF > /etc/cron.d/restart_postgres
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
+
+0 3 * * * root /usr/local/sbin/restart_postgres
+EOF
+
+  chmod 644 /etc/cron.d/restart_postgres
+
+  #install logrotation for restart_postgres.log
+  cat <<-EOF > /etc/logrotate.d/restart_postgres
+/var/log/odoo/_utilities/restart_postgres.log {
+    rotate 14
+    olddir /var/log/odoo/_utilities/restart_postgres.log-old
+    su root root
+    daily
+    missingok
+    #notifempty
+    nocreate
+    createolddir 755 root root
+    renamecopy
+    compress
+    compresscmd /usr/bin/xz
+    compressoptions -ze -T 4
+    delaycompress
+    dateext
+    dateformat -%Y%m%d-%H%M%S
+}
+EOF
 }
 
 function isDirectoryGitRepository {
@@ -318,6 +369,11 @@ function main() {
   isDockerInstalled
   isLogRotateInstalled
   isOdooUserExists
+
+  installPostgresRestartorScript
+
+  echo -e "\n[$(date +"%Y-%m-%d %H:%M:%S")] 🟦 Checking the necessary files and directories..."
+  echo "==================================================================="
 
   if isFileExists "$DB_USER_SECRET" "Please create a db_user file by following the db_user.example file."; then
     sudo chmod 400 $DB_USER_SECRET
