@@ -105,6 +105,52 @@ function getSubDirectories() {
   echo "$subdirs"
 }
 
+function installDockerServiceRestartorScript() {
+  echo "[$(date +"%Y-%m-%d %H:%M:%S")] 🟦 Install Docker service restartor script and cron job..."
+  
+  # create a script that restarts the docker service
+  cat <<-EOF > /usr/local/sbin/restart_$SERVICE_NAME
+#!/bin/bash
+
+exec > >(tee -a /var/log/odoo/_utilities/restart_$SERVICE_NAME.log) 2>&1
+
+docker compose -f $REPOSITORY_DIRPATH/$DOCKER_COMPOSE_FILE restart
+EOF
+
+  chmod +x /usr/local/sbin/restart_$SERVICE_NAME
+
+  # install cronjob
+  cat <<-EOF > /etc/cron.d/restart_$SERVICE_NAME
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
+
+5 3 * * * root /usr/local/sbin/restart_$SERVICE_NAME
+EOF
+  
+  chmod 644 /etc/cron.d/restart_$SERVICE_NAME
+
+  #install logrotation for restart_$SERVICE_NAME.log
+  cat <<-EOF > /etc/logrotate.d/restart_$SERVICE_NAME
+/var/log/odoo/_utilities/restart_$SERVICE_NAME.log {
+  rotate 14
+  olddir /var/log/odoo/_utilities/restart_$SERVICE_NAME.log-old
+  su root root
+  daily
+  missingok
+  #notifempty
+  nocreate
+  createolddir 755 root root
+  renamecopy
+  compress
+  compresscmd /usr/bin/xz
+  compressoptions -ze -T 4
+  delaycompress
+  dateext
+  dateformat -%Y%m%d-%H%M%S
+}
+EOF
+}
+
 function installOdooLogRotator() {
   # _inherit = createLogDir
 
@@ -371,6 +417,7 @@ function main() {
   isOdooUserExists
 
   installPostgresRestartorScript
+  installDockerServiceRestartorScript
 
   echo -e "\n[$(date +"%Y-%m-%d %H:%M:%S")] 🟦 Checking the necessary files and directories..."
   echo "==================================================================="
