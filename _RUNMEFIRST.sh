@@ -308,7 +308,11 @@ EOF
 function main() {
   amIRoot
 
-  echo "[$(date +"%Y-%m-%d %H:%M:%S")] Path for working directory: $(pwd)/"
+  echo -e "\n==================================================================="
+  echo "Path for working directory : $REPOSITORY_DIRPATH"
+  echo "Deployment name will be    : $SERVICE_NAME"
+  echo -e "===================================================================\n"
+
   sleep 7
   
   isDockerInstalled
