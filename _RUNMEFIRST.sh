@@ -83,7 +83,7 @@ function getGitHash() {
   git_real_owner=$(stat -c '%U' "$git_path")
   repository_owner=$(stat -c '%U' "$REPOSITORY_DIRPATH")
 
-  chown -R $repository_owner: $git_path
+  chown -R "$repository_owner": "$git_path"
 
   OUTPUT_GIT_HASHES_FILE="$git_path/../git_hashes.txt"
 
@@ -96,7 +96,7 @@ function getGitHash() {
   Git Hashes: $(git -C "$git_path" rev-parse HEAD)
 EOF
 
-  chown -R $git_real_owner: $git_path
+  chown -R "$git_real_owner": "$git_path"
 }
 
 function getSubDirectories() {
@@ -109,7 +109,7 @@ function installDockerServiceRestartorScript() {
   echo "[$(date +"%Y-%m-%d %H:%M:%S")] 🟦 Install Docker service restartor script and cron job..."
   
   # create a script that restarts the docker service
-  cat <<-EOF > /usr/local/sbin/restart_$SERVICE_NAME
+  cat <<-EOF > "/usr/local/sbin/restart_$SERVICE_NAME"
 #!/bin/bash
 
 exec > >(tee -a /var/log/odoo/_utilities/restart_$SERVICE_NAME.log) 2>&1
@@ -117,20 +117,20 @@ exec > >(tee -a /var/log/odoo/_utilities/restart_$SERVICE_NAME.log) 2>&1
 docker compose -f $REPOSITORY_DIRPATH/$DOCKER_COMPOSE_FILE restart
 EOF
 
-  chmod +x /usr/local/sbin/restart_$SERVICE_NAME
+  chmod +x "/usr/local/sbin/restart_$SERVICE_NAME"
 
   # install cronjob
-  cat <<-EOF > /etc/cron.d/restart_$SERVICE_NAME
+  cat <<-EOF > "/etc/cron.d/restart_$SERVICE_NAME"
 SHELL=/bin/bash
 PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
 
-5 3 * * * root /usr/local/sbin/restart_$SERVICE_NAME
+5 3 * * * root "/usr/local/sbin/restart_$SERVICE_NAME"
 EOF
   
-  chmod 644 /etc/cron.d/restart_$SERVICE_NAME
+  chmod 644 "/etc/cron.d/restart_$SERVICE_NAME"
 
   #install logrotation for restart_$SERVICE_NAME.log
-  cat <<-EOF > /etc/logrotate.d/restart_$SERVICE_NAME
+  cat <<-EOF > "/etc/logrotate.d/restart_$SERVICE_NAME"
 /var/log/odoo/_utilities/restart_$SERVICE_NAME.log {
   rotate 14
   olddir /var/log/odoo/_utilities/restart_$SERVICE_NAME.log-old
@@ -229,7 +229,7 @@ EOF
 EOF
 }
 
-function isDirectoryGitRepository {
+function isDirectoryGitRepository() {
   dir=$1
 
   if [ -d "$dir/.git" ]; then
@@ -269,7 +269,7 @@ function isSubDirectoryExists() {
 
   if ls -d "$dir"/*/ >/dev/null 2>&1; then
     if [ -n "$only_one" ]; then
-      if ! ls -d "$dir"/*/ | wc -l | grep -q 1 ; then
+      if [ "$(find "$dir" -mindepth 1 -maxdepth 1 -type d | wc -l)" -ne 1 ]; then
         echo "[$(date +"%Y-%m-%d %H:%M:%S")] ❌ There are more than one directories found inside $dir. Please keep only one directory."
 
         TODO+=("Please remove the unnecessary directories inside $dir. Only keep one directory that contains your Odoo base.")
