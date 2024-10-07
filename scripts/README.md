@@ -3,6 +3,47 @@ This directory contains utilities to help docker-odoo deployment.
 <details>
 <summary>
 
+# Backup Data
+
+</summary>
+
+This utilities will backup Odoo database and its datadir into a zip file. This zip file can be restored using Odoo Database Manager.
+
+See the example file to create the data backup utility (`./scripts/backupdata.sh.example`)
+
+  1. Copy the example file. This will export the service name from your cloned respository dirname.
+      ```bash
+      export SERVICE_NAME=$(basename "$PWD")
+      cp ./scripts/backupdata.sh.example ./scripts/backupdata-$SERVICE_NAME
+      ```
+
+  2. Edit your example file with your favorite text-editor (`vim` or `nano`, etc)
+      ```bash
+      vi ./scripts/backupdata-$SERVICE_NAME
+      ```
+
+  3. You need to find (`ctrl + f`) the `enter` word to see which value should be changed
+
+  4. Save the file and change the permission.
+      ```bash
+      sudo chmod 755 ./scripts/backupdata-$SERVICE_NAME
+      ```
+
+  5. Create a soft-link to system-wide bin
+      ```bash
+      sudo ln -s $PWD/scripts/backupdata-$SERVICE_NAME /usr/local/sbin/backupdata-$SERVICE_NAME
+      ```
+
+  6. Done, you can try to run the command.
+      ```bash
+      backupdata-$SERVICE_NAME
+      ```
+
+</details>
+
+<details>
+<summary>
+
 # Restore Snapshot
 
 </summary>

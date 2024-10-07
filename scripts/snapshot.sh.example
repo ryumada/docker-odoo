@@ -53,6 +53,10 @@ if [ -f "scripts/snapshot-$SERVICE_NAME" ]; then
   FILES_DIRS_TO_TAR="scripts/snapshot-$SERVICE_NAME $FILES_DIRS_TO_TAR"
 fi
 
+if [ -f "scripts/backupdata-$SERVICE_NAME" ]; then
+  FILES_DIRS_TO_TAR="scripts/backupdata-$SERVICE_NAME $FILES_DIRS_TO_TAR"
+fi
+
 if [ -f "/usr/local/sbin/sudo-*" ]; then
   FILES_DIRS_TO_TAR="/usr/local/sbin/sudo-* $FILES_DIRS_TO_TAR"
 fi
