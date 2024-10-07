@@ -16,11 +16,13 @@ odoo-base/*
 !odoo-base/README.md
 
 scripts/*
-!scripts/snapshot.sh.example
-!scripts/change_mode_to_git.sh
 !scripts/backupdata.sh.example
-!scripts/restore-snapshot.sh
+!scripts/change_mode_to_git.sh
+!scripts/git_addons_updater.sh
+!scripts/git_odoo-base_updater.sh
 !scripts/README.md
+!scripts/restore-snapshot.sh
+!scripts/snapshot.sh.example
 
 .env
 
