@@ -155,6 +155,15 @@ function isDockerInstalled() {
   fi
 }
 
+function isLogRotateInstalled() {
+  if ! command -v logrotate &>/dev/null; then
+    echo "[$(date +"%Y-%m-%d %H:%M:%S")] ❌ logrotate command not found."
+    TODO+=("Please install logrotate by running the following command: 'sudo apt install logrotate'")
+  else
+    echo "[$(date +"%Y-%m-%d %H:%M:%S")] ✅ logrotate command found"
+  fi
+}
+
 function isSubDirectoryExists() {
   dir=$1
   todo=$2
@@ -303,6 +312,7 @@ function main() {
   sleep 7
   
   isDockerInstalled
+  isLogRotateInstalled
   isOdooUserExists
 
   if isFileExists "$DB_USER_SECRET" "Please create a db_user file by following the db_user.example file."; then
