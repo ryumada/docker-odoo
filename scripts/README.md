@@ -14,7 +14,7 @@ See the example file to create the data backup utility (`./scripts/backupdata.sh
   1. Copy the example file. This will export the service name from your cloned respository dirname.
       ```bash
       export SERVICE_NAME=$(basename "$PWD")
-      cp ./scripts/backupdata.sh.example ./scripts/backupdata-$SERVICE_NAME
+      cp ./scripts/example/backupdata.sh.example ./scripts/backupdata-$SERVICE_NAME
       ```
 
   2. Edit your example file with your favorite text-editor (`vim` or `nano`, etc)
@@ -66,7 +66,7 @@ Before you run the restore snapshot script, you need to prepare [snapshot utilit
   1. Copy the example file. This will export the service name from your cloned repository dirname.
       ```bash
       export SERVICE_NAME=$(basename "$PWD")
-      cp ./scripts/snapshot.sh.example ./scripts/snapshot-$SERVICE_NAME
+      cp ./scripts/example/snapshot.sh.example ./scripts/snapshot-$SERVICE_NAME
       ```
 
   2. Edit your example file with your favorite text-editor (`vim` or `nano`, etc)
