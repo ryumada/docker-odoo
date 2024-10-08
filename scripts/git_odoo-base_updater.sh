@@ -1,7 +1,5 @@
 #!/bin/bash
 
-# Press ctrl + F then type enter to see the highlight of variables should be added
-
 CURRENT_DIRNAME=$(dirname "$(readlink -f "$0")")
 cd "$CURRENT_DIRNAME/.." || { echo "🔴 Can't change directory to $CURRENT_DIRNAME/.."; exit 1; }
 PATH_TO_ODOO="$(pwd)"
