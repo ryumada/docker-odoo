@@ -9,7 +9,7 @@ This directory contains utilities to help docker-odoo deployment.
 
 This utilities will backup Odoo database and its datadir into a zip file. This zip file can be restored using Odoo Database Manager.
 
-See the example file to create the data backup utility (`./scripts/backupdata.sh.example`)
+See the example file to create the data backup utility (`./scripts/example/backupdata.sh.example`).
 
   1. Copy the example file. This will export the service name from your cloned respository dirname.
       ```bash
@@ -44,6 +44,47 @@ See the example file to create the data backup utility (`./scripts/backupdata.sh
 <details>
 <summary>
 
+# Database Cloner
+
+</summary>
+
+This utilies will clone the database from the current deployment to it's dev (development), stg (staging), tst (testing), or other deployment.
+
+See the example file to create the database cloner utility (`./scripts/example/databasecloner.sh.example`).
+
+  1. Copy the example file. This will export the service name from your cloned respository dirname.
+      ```bash
+      export SERVICE_NAME=$(basename "$PWD")
+      cp ./scripts/example/databasecloner.sh.example ./scripts/databasecloner-$SERVICE_NAME
+      ```
+
+  2. Edit your example file with your favorite text-editor (`vim` or `nano`, etc)
+      ```bash
+      vi ./scripts/databasecloner-$SERVICE_NAME
+      ```
+
+  3. You need to find (`ctrl + f`) the `enter` word to see which value should be changed
+
+  4. Save the file and change the permission.
+      ```bash
+      sudo chmod 755 ./scripts/databasecloner-$SERVICE_NAME
+      ```
+  
+  5. Create a soft-link to system-wide bin
+      ```bash
+      sudo ln -s $PWD/scripts/databasecloner-$SERVICE_NAME /usr/local/sbin/databasecloner-$SERVICE_NAME
+      ```
+
+  6. Done, you can try to run the command.
+      ```bash
+      databasecloner-$SERVICE_NAME
+      ```
+
+</details>
+
+<details>
+<summary>
+
 # Restore Snapshot
 
 </summary>
@@ -61,7 +102,7 @@ Before you run the restore snapshot script, you need to prepare [snapshot utilit
 
   </summary>
 
-  See the example file to create the snapshot utility (`./scripts/snapshot.sh.example`).
+  See the example file to create the snapshot utility (`./scripts/example/snapshot.sh.example`).
 
   1. Copy the example file. This will export the service name from your cloned repository dirname.
       ```bash
