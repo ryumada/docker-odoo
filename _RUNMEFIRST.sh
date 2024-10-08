@@ -410,8 +410,17 @@ function main() {
   echo "Deployment name will be    : $SERVICE_NAME"
   echo -e "===================================================================\n"
 
-  sleep 7
-  
+  read -rp "Press any key to continue..."
+  echo
+
+  read -rp "Do you want to build or pull images?
+  1. Build (default)
+  2. Pull
+
+  : " -e build_or_pull
+
+  : "${build_or_pull:=1}"
+
   isDockerInstalled
   isLogRotateInstalled
   isOdooUserExists
@@ -436,20 +445,30 @@ function main() {
     createLogDir
     createDataDir
   fi
-  
+
   isFileExists "$DOCKER_COMPOSE_FILE" "Please create a docker-compose.yml file by following the docker-compose.yml.example file." || true
 
-  isFileExists "$ODOO_CONF_FILE" "Please create an odoo.conf file by following the odoo.conf.example file." || true
+  if [ "$build_or_pull" -eq 1 ]; then
+    isFileExists "$ODOO_CONF_FILE" "Please create an odoo.conf file by following the odoo.conf.example file." || true
 
-  if isSubDirectoryExists "$GIT_DIR" "" "No directories found inside $GIT_DIR. That means no Odoo custom module will be added to your Odoo image."; then
-    writeGitHash "$GIT_DIR"
+    if isSubDirectoryExists "$GIT_DIR" "" "No directories found inside $GIT_DIR. That means no Odoo custom module will be added to your Odoo image."; then
+      writeGitHash "$GIT_DIR"
+    fi
+
+    if isSubDirectoryExists "$ODOO_BASE_DIR" "Please clone your odoo-base repository inside the odoo-base directory" "" "only-one"; then
+      writeGitHash "$ODOO_BASE_DIR"
+    fi
+
+    isFileExists "$REQUIREMENTS_FILE" "Please create a requirements.txt file by following the requirements.txt.example file." || true
+  elif [ "$build_or_pull" -eq 2 ]; then
+    # check if docker-compose file has image name
+    if ! grep -q "^[^#]*image:" "$DOCKER_COMPOSE_FILE"; then
+      echo "[$(date +"%Y-%m-%d %H:%M:%S")] ❌ Please add the image name to your docker-compose.yml file."
+      TODO+=("Please add the image name to your docker-compose.yml file.")
+    else
+      echo "[$(date +"%Y-%m-%d %H:%M:%S")] ✅ Image name found in docker-compose.yml file."
+    fi
   fi
-
-  if isSubDirectoryExists "$ODOO_BASE_DIR" "Please clone your odoo-base repository inside the odoo-base directory" "" "only-one"; then
-    writeGitHash "$ODOO_BASE_DIR"
-  fi
-
-  isFileExists "$REQUIREMENTS_FILE" "Please create a requirements.txt file by following the requirements.txt.example file." || true
 
   if printTodo; then
     echo

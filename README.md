@@ -5,8 +5,8 @@ A Dockerfile to create a custom Odoo docker image.
 |----|----|
 |OS|Ubuntu 22.04 (Linux/Debian)|
 |Python|`'3.7'` (recommended) or `'3.10'`|
-|Odoo version|`'16'`|
-|PostgreSQL|`'14'`|
+|Odoo version|`'16' (tested)`|
+|PostgreSQL|`'14' (tested)`|
 
 | Python `'3.10'` has slower build time and not compatible with ks_dashboard.
 
@@ -19,29 +19,31 @@ There are some points you should know:
   sudo ./_RUNMEFIRST.sh
   ```
 
-- Please follow the instruction after you run that script above, before continue the porcess.
+  > ⚠️ When you are asked to enter whether you want to build or pull container image, choose the `build` option.
 
-- You should add your Odoo base, whether it is Odoo Community, Odoo Enterprise, or your custom Odoo base, to the `odoo-base` directory (⚠️ Only add one directory to `odoo-base` as this will be read automatically by the `entrypoint.sh` script, for the name of the directory is no need to be `odoo` ⚠️).
+- Please follow the instruction after you run that script above, before continue the process below.
 
-- Add your custom Odoo Modules (Odoo Addons) to `git` directory and add the path to addons_path in `./conf/odoo.conf`. Don't add unused custom module directory to this directory as it will be added to your docker image and increased the image size.
+- [`Odoo Base`] You should add your Odoo base, whether it is Odoo Community, Odoo Enterprise, or your custom Odoo base, to the `odoo-base` directory (⚠️ Only add one directory to `odoo-base` as this will be read automatically by the `entrypoint.sh` script, for the name of the directory is no need to be `odoo` ⚠️).
 
-> ⚠️ If your path is in `./git/odoo-custom-modules`, then your addons_path should be `/opt/odoo/git/odoo-custom-modules`.
+- [`Extra Addons/Modules`] Add your custom Odoo Modules (Odoo Addons) to `git` directory and add the path to addons_path in `./conf/odoo.conf`. Don't add unused custom module directory to this directory as it will be added to your docker image and increased the image size.
 
-> ⚠️ If you have subdirectory inside your git addons repository path it should be like this:
-> - `/opt/odoo/git/odoo-custom-modules/subdir-1`
-> - `/opt/odoo/git/odoo-custom-modules/subdir-2`
+  > ⚠️ If your path is in `./git/odoo-custom-modules`, then your addons_path should be `/opt/odoo/git/odoo-custom-modules`.
 
-- Odoo `datadir` is placed on `/var/lib/odoo` and Odoo `log` is placed on `/var/log/odoo`. These directories will be used by Odoo for static data storage and logging. It will be called in docker-compose. (⚠️ This directories are automatically created on your host machine after you run `sudo ./_RUNMEFIRST.sh` ⚠️)
+  > ⚠️ If you have subdirectory inside your git addons repository path it should be like this:
+  > - `/opt/odoo/git/odoo-custom-modules/subdir-1`
+  > - `/opt/odoo/git/odoo-custom-modules/subdir-2`
 
-- Build your docker image with this command below:
+- [`Odoo Static Data`] Odoo `datadir` is placed on `/var/lib/odoo` and Odoo `log` is placed on `/var/log/odoo`. These directories will be used by Odoo for static data storage and logging. It will be called in docker-compose (⚠️ These directories are automatically created on your host machine after you run `sudo ./_RUNMEFIRST.sh` ⚠️).
+
+- `Build and Run` your odoo deployment with docker compose.
+
+  Build your Image using this command:
 
   ```bash
   docker compose build
   ```
 
-  After the build completed, you can copy the image name and enter it in your `docker-compose.yml`.
-
-- Run your odoo deployment with docker compose.
+  Run your Container Image using this command:
 
   ```bash
   docker compose up
@@ -58,7 +60,6 @@ There are some points you should know:
   ```bash
   docker compose up -d --build
   ```
-  
 
 - If your Odoo module needs libreoffice you can install it using this command:
 
@@ -75,10 +76,95 @@ There are some points you should know:
   ...
   ```
 
-- If you want to commit changes of your config, make sure to change the ownership to your user first before create a new commit.
-  ```bash
-  sudo chown -R $USER: ./
-  ```
+- Setup your container registry.
+  <details>
+  <summary>Setup your Docker container registry.</summary>
+    
+    > ⚠️ To use Github and Gitlab Container Registry, you need to generate a personal access token (PAT) and use it as a password.
+    
+    1. Login to Github Container Registry (ghcr.io) using your Github account.
+
+        ```bash
+        # if using Github (ghcr.io)
+        ## using parameter
+        docker login ghcr.io -u your_github_username -p enter_your_personal_access_token
+        ## or just login then enter your username and password
+        docker login ghcr.io
+
+        # if using Gitlab (registry.gitlab.com)
+        ## using parameter
+        docker login registry.gitlab.com -u your_gitlab_username -p enter_your_personal_access_token
+        ## or just login and then enter your username and password
+        docker login registry.gitlab.com
+
+        # if using Docker Hub
+        docker login
+        ```
+
+  </details>
+  <details>
+    <summary>Push your Docker container registry.</summary>
+
+    1. Tag your image with the Github Container Registry (ghcr.io) repository. First, you need to edit `docker-compose.yml` file to add the image name and tag.
+
+        ```yaml
+        ...
+        # push the image to Container registry (enter and choose one)
+        ## Use the image from the GitHub Container Registry
+        # image: ghcr.io/enter_username/enter_project_name:enter_version
+        ## Use the image from the Docker Hub
+        # image: enter_username/enter_project_name:enter_version
+        ## Use the image from the Gitlab Container Registry
+        # image: registry.gitlab.com/enter_username/enter_project_name:enter_version  
+        ...
+        ```
+
+        > ⚠️ For Github Container Registry (ghcr.io). You need to add labels to the build section on your `docker-compose.yml` file.
+        > ```yaml
+        > ...
+        > # Add labels to connect to github repository (enter github)
+        > # labels:
+        >   # - org.opencontainers.image.source=https://github.com/enter_username/enter_repository
+        > ...
+        > ```
+
+    2. Build and push your image to the container registry.
+
+        ```bash
+        docker compose up --build -d
+        docker compose push
+        ```
+
+  </details>
+
+  <details>
+    <summary>Pull image from container registry</summary>
+
+    > ⚠️ Before you pull the image from the container registry, make sure the image name is set on your docker compose file.
+    
+    > ⚠️ You also need to run the `sudo ./_RUNMEFIRST.sh`. When the script asks you to enter whether you want to build or pull container image, choose the `pull` option.
+
+    1. Make sure the image name is set on your docker compose file.
+
+        ```yaml
+        ...
+        # push the image to Container registry (enter and choose one)
+        ## Use the image from the GitHub Container Registry
+        # image: ghcr.io/enter_username/enter_project_name:enter_version
+        ## Use the image from the Docker Hub
+        # image: enter_username/enter_project_name:enter_version
+        ## Use the image from the Gitlab Container Registry
+        # image: registry.gitlab.com/enter_username/enter_project_name:enter_version  
+        ...
+        ```
+
+    2. Pull the image from the container registry.
+
+        ```bash
+        docker compose up -d --pull
+        ```
+
+  </details>
 
 # Maintenance
 The image build using the dockerfile in this repository installed some utility scripts.

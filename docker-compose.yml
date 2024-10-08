@@ -1,8 +1,21 @@
+# press ctrl + f and search "enter" string to find which value should you change.
+
 services:
   odoo:
+    # push the image to Container registry (enter and choose one)
+    ## Use the image from the GitHub Container Registry; (find this string 'enter github' to link the image to repoistory)
+    # image: ghcr.io/enter_username/enter_project_name:enter_version
+    ## Use the image from the Docker Hub
+    # image: itpplabs/enter_project_name:enter_version
+    ## Use the image from the Gitlab Container Registry
+    # image: registry.gitlab.com/enter_username/enter_project_name:enter_version
+
     build:
       context: .
       dockerfile: dockerfile
+      # Add labels to connect to github repository (enter github)
+      # labels:
+        # - org.opencontainers.image.source=https://github.com/enter_username/enter_repository
     # Because we use host network, the port opened by your container will be automatically opened.
     # Please make sure there are no ports collide. (sudo netstat -tulpn)
     # Set the ports below the same as you have set in your .env file.
