@@ -288,7 +288,7 @@ function isSubDirectoryExists() {
     fi
 
     if [ -n "$additional_info" ]; then
-      echo "[$(date +"%Y-%m-%d %H:%M:%S")] ℹ️  $additional_info"
+      echo "[$(date +"%Y-%m-%d %H:%M:%S")] 🟦  $additional_info"
     else
       echo "[$(date +"%Y-%m-%d %H:%M:%S")] ❌ No directory found inside $dir"
     fi
@@ -314,7 +314,7 @@ function isFileExists() {
 
 function isOdooUserExists() {
   if ! id "odoo" &>/dev/null; then
-    echo "[$(date +"%Y-%m-%d %H:%M:%S")] ℹ️  Create a new Odoo user."
+    echo "[$(date +"%Y-%m-%d %H:%M:%S")] 🟦  Create a new Odoo user."
     if sudo useradd -m -u 8069 -s /bin/bash odoo; then
       echo "[$(date +"%Y-%m-%d %H:%M:%S")] ✅ odoo user created."
     else
@@ -337,7 +337,7 @@ function printTodo() {
     echo "There are ${#TODO[@]} items need to be done."
     echo
     for i in "${TODO[@]}"; do
-      echo "ℹ️  $i"
+      echo "🟦  $i"
     done
     
     return 1
@@ -458,10 +458,12 @@ function main() {
     echo "[$(date +"%Y-%m-%d %H:%M:%S")] 🟦 Please run the following command to build your docker image: ' docker compose build '"
     echo "[$(date +"%Y-%m-%d %H:%M:%S")] 🟦 Then, you can run the compose using this command: ' docker compose up -d '"
     echo "[$(date +"%Y-%m-%d %H:%M:%S")] 🟦 You can combine the command using: ' docker compose up --build -d '."
+    exit 0
   else
     echo
     echo
     echo "[$(date +"%Y-%m-%d %H:%M:%S")] ❌ There are some things that need to be done before you can create your docker image."
+    exit 1
   fi
 }
 
