@@ -29,6 +29,9 @@ fi
 
 cd $PATH_TO_ODOO || { echo "🔴 Can't change directory to $PATH_TO_ODOO"; exit 1; }
 
+echo "[$(date +"%Y-%m-%d %H:%M:%S")] Stopping $SERVICE_NAME service"
+docker compose down
+
 echo "[$(date +"%Y-%m-%d %H:%M:%S")] Extracting /tmp/$TAR_FILE_NAME to $TEMP_DIR"
 mkdir $TEMP_DIR
 tar -xaf "/tmp/$TAR_FILE_NAME" -C /tmp/snapshot-$SERVICE_NAME
