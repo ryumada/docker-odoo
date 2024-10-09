@@ -110,12 +110,14 @@ echo "==========================================================================
 
 echo -e "\n\n[$(date +"%Y-%m-%d %H:%M:%S")] This is the git Odoo modules used by the previous snapshot.\n"
 cat $TEMP_DIR/git/git_hashes.txt
-echo -e "\n[$(date +"%Y-%m-%d %H:%M:%S")] ⚠️ You need to clone these repositories manually into git directory. ⚠️\n\n"
+echo -e "\n[$(date +"%Y-%m-%d %H:%M:%S")] ⚠️ You need to clone these repositories manually into git directory. If you want to rebuild the image. ⚠️\n\n"
 
 echo "==========================================================================="
 
 echo -e "\n\n[$(date +"%Y-%m-%d %H:%M:%S")] This is the odoo-base git hashes used by the previous snapshot.\n"
 cat $TEMP_DIR/odoo-base/git_hashes.txt
-echo -e "\n[$(date +"%Y-%m-%d %H:%M:%S")] ⚠️ You need to clone these repositories manually into odoo-base directory. ⚠️\n\n"
+echo -e "\n[$(date +"%Y-%m-%d %H:%M:%S")] ⚠️ You need to clone these repositories manually into odoo-base directory. If you want to rebuild the image. ⚠️\n\n"
 
 echo "==========================================================================="
+
+echo -e "\n\n[$(date +"%Y-%m-%d %H:%M:%S")] If you ready to turn up your deployment, you can run 'docker compose up -d' to start the service.\n\n"
