@@ -88,8 +88,8 @@ fi
 cp -r $TEMP_DIR/var/lib/odoo/$SERVICE_NAME/filestore/$ODOO_DATABASE_NAME_PRD /var/lib/odoo/$SERVICE_NAME/filestore/$ODOO_DATABASE_NAME_PRD || { echo "🔴 Can't restore /var/lib/odoo/$SERVICE_NAME/filestore/$ODOO_DATABASE_NAME_PRD"; }
 
 echo "[$(date +"%Y-%m-%d %H:%M:%S")] Restoring database $ODOO_DATABASE_NAME_PRD from $TEMP_DIR/tmp/$ODOO_DATABASE_NAME_PRD.sql"
-sudo -u postgres psql -c "DROP DATABASE IF EXISTS $ODOO_DATABASE_NAME_PRD"
-sudo -u postgres psql -c "CREATE DATABASE $ODOO_DATABASE_NAME_PRD"
+sudo -u postgres psql -c "DROP DATABASE IF EXISTS \"$ODOO_DATABASE_NAME_PRD\""
+sudo -u postgres psql -c "CREATE DATABASE \"$ODOO_DATABASE_NAME_PRD\""
 sudo -u postgres psql -d $ODOO_DATABASE_NAME_PRD -f $TEMP_DIR/tmp/$ODOO_DATABASE_NAME_PRD.sql
 
 echo "[$(date +"%Y-%m-%d %H:%M:%S")] Restoring Odoo modules without git."

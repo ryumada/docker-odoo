@@ -229,6 +229,34 @@ EOF
 EOF
 }
 
+function isBuildOrPull() {
+    while true; do
+      read -rp "Do you want to build or pull images?
+      [Any] Build (default)
+      [2] Pull
+
+      : " -e user_choice
+
+      choice=()
+      case $user_choice in
+        1)
+          choice=("1" "Build")
+          break
+          ;;
+        2)
+          choice=("2" "Pull")
+          break
+          ;;
+        *)
+          choice=("1" "Build")
+          break
+          ;;
+      esac
+    done
+
+    echo "${choice[@]}"
+}
+
 function isDirectoryGitRepository() {
   dir=$1
 
@@ -410,16 +438,14 @@ function main() {
   echo "Deployment name will be    : $SERVICE_NAME"
   echo -e "===================================================================\n"
 
-  read -rp "Press any key to continue..."
+  read -rp "Press enter key to continue..."
   echo
 
-  read -rp "Do you want to build or pull images?
-  1. Build (default)
-  2. Pull
+  isbuildorpull=($(isBuildOrPull))
+  is_build_or_pull="${isbuildorpull[1]}"
+  build_or_pull="${isbuildorpull[0]}"
 
-  : " -e build_or_pull
-
-  : "${build_or_pull:=1}"
+  echo -e "\n==================================================================="
 
   isDockerInstalled
   isLogRotateInstalled
@@ -428,7 +454,10 @@ function main() {
   installPostgresRestartorScript
   installDockerServiceRestartorScript
 
-  echo -e "\n[$(date +"%Y-%m-%d %H:%M:%S")] 🟦 Checking the necessary files and directories..."
+
+  echo -e "\n==================================================================="
+  echo -e "[$(date +"%Y-%m-%d %H:%M:%S")] 🟦 This script will run in $is_build_or_pull Mode."
+  echo -e "[$(date +"%Y-%m-%d %H:%M:%S")] 🟦 Checking the necessary files and directories..."
   echo "==================================================================="
 
   if isFileExists "$DB_USER_SECRET" "Please create a db_user file by following the db_user.example file."; then
@@ -474,9 +503,9 @@ function main() {
     echo
     echo
     echo "[$(date +"%Y-%m-%d %H:%M:%S")] ✅ Everything is ready to build your docker image."
-    echo "[$(date +"%Y-%m-%d %H:%M:%S")] 🟦 Please run the following command to build your docker image: ' docker compose build '"
-    echo "[$(date +"%Y-%m-%d %H:%M:%S")] 🟦 Then, you can run the compose using this command: ' docker compose up -d '"
-    echo "[$(date +"%Y-%m-%d %H:%M:%S")] 🟦 You can combine the command using: ' docker compose up --build -d '."
+    echo "[$(date +"%Y-%m-%d %H:%M:%S")] 🟦 Please run the following command to build your docker image: 'docker compose build'"
+    echo "[$(date +"%Y-%m-%d %H:%M:%S")] 🟦 Then, you can run the compose using this command: 'docker compose up -d'"
+    echo "[$(date +"%Y-%m-%d %H:%M:%S")] 🟦 You can combine the command using: 'docker compose up --build -d'."
     exit 0
   else
     echo

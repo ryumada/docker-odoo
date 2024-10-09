@@ -127,7 +127,7 @@ Before you run the restore snapshot script, you need to prepare [snapshot utilit
       sudo ln -s $PWD/scripts/snapshot-$SERVICE_NAME /usr/local/sbin/snapshot-$SERVICE_NAME
       ```
 
-  6. Add a new crontab to run your script
+  6. Add a new crontab to run your script (You can skip this step and continue to step 7 if you don't want to use cron for automatic snapshot).
       ```bash
       sudo crontab -e
       ```

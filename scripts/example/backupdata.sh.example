@@ -49,17 +49,22 @@ mv /tmp/dump.sql "/tmp/backupdata-$SERVICE_NAME/dump.sql"
 echo "[$(date +"%Y-%m-%d %H:%M:%S")] Copy filestore files to temporary directory"
 cp -r "$ODOO_FILESTORE_PATH" "/tmp/backupdata-$SERVICE_NAME/filestore"
 
-echo "[$(date +"%Y-%m-%d %H:%M:%S")] Copy git_hashes.txt to temporary directory"
-cp -r git/git_hashes.txt "/tmp/backupdata-$SERVICE_NAME/git_hashes.txt"
+if [ -f "git/git_hashes.txt" ]; then
+  echo "[$(date +"%Y-%m-%d %H:%M:%S")] Copy git_hashes.txt to temporary directory"
+  cp -r git/git_hashes.txt "/tmp/backupdata-$SERVICE_NAME/git_hashes.txt"
+fi
 
-echo "[$(date +"%Y-%m-%d %H:%M:%S")] Copy odoo-base/git_hashes.txt to temporary directory"
-cp -r odoo-base/git_hashes.txt "/tmp/backupdata-$SERVICE_NAME/odoo-base_git_hashes.txt"
+if [ -f "odoo-base/git_hashes.txt" ]; then
+  echo "[$(date +"%Y-%m-%d %H:%M:%S")] Copy odoo-base/git_hashes.txt to temporary directory"
+  cp -r odoo-base/git_hashes.txt "/tmp/backupdata-$SERVICE_NAME/odoo-base_git_hashes.txt"
+fi
 
 echo "[$(date +"%Y-%m-%d %H:%M:%S")] Change Directory to /tmp/backupdata-$SERVICE_NAME"
 cd "/tmp/backupdata-$SERVICE_NAME" || { echo "🔴 Can't change directory to /tmp/backupdata-$SERVICE_NAME"; exit 1; }
 
 echo "[$(date +"%Y-%m-%d %H:%M:%S")] Compress all files to $ZIP_FILE_NAME"
-zip -r /tmp/$ZIP_FILE_NAME ./dump.sql filestore ./git_hashes.txt ./odoo-base_git_hashes.txt
+zip -r "/tmp/$ZIP_FILE_NAME" ./dump.sql filestore ./git_hashes.txt ./odoo-base_git_hashes.txt
+chown "$SUDO_USER":"$SUDO_USER" "/tmp/$ZIP_FILE_NAME"
 
 echo "[$(date +"%Y-%m-%d %H:%M:%S")] Remove temporary directory"
 rm -rf "/tmp/backupdata-$SERVICE_NAME"

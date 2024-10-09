@@ -6,7 +6,7 @@ services:
     ## Use the image from the GitHub Container Registry; (find this string 'enter github' to link the image to repoistory)
     # image: ghcr.io/enter_username/enter_project_name:enter_version
     ## Use the image from the Docker Hub
-    # image: itpplabs/enter_project_name:enter_version
+    # image: enter_username/enter_project_name:enter_version
     ## Use the image from the Gitlab Container Registry
     # image: registry.gitlab.com/enter_username/enter_project_name:enter_version
 

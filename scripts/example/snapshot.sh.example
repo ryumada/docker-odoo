@@ -2,11 +2,15 @@
 
 # Press ctrl + F then type enter to see the highlight of variables should be added
 
+# enter the production database name this is required to backup the database
+ODOO_DATABASE_NAME_PRD=enter_production_database_name
+# you can leave as is to not backup your snapshot to Google Cloud Storage (GCS)
+GCS_BUCKET_NAME=enter_your_gcs_bucket_name
+
 CURRENT_DIRNAME=$(dirname "$(readlink -f "$0")")
 cd "$CURRENT_DIRNAME/.." || { echo "🔴 Can't change directory to $CURRENT_DIRNAME/.."; exit 1; }
 SERVICE_NAME=$(basename "$(pwd)")
 ## ex. odoo-prd (replace with production database name)
-ODOO_DATABASE_NAME_PRD=enter_production_database_name
 PATH_TO_ODOO="$(pwd)"
 
 ## This variable below to define the new variable (DON'T EDIT)
@@ -28,7 +32,6 @@ FILES_DIRS_TO_TAR="/var/lib/odoo/$SERVICE_NAME/filestore/$ODOO_DATABASE_NAME_PRD
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 # DON'T change these codes below
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
-GCS_BUCKET_NAME=enter_your_gcs_bucket_name
 # DATE_FOR_FILENAME="$(date +"%Y%m%d-%H%M%S")"
 # DATE_FOR_MESSAGE=$(date +"%Y-%m-%d %H:%M:%S")
 TAR_FILE_NAME=snapshot-$SERVICE_NAME.tar.zst
