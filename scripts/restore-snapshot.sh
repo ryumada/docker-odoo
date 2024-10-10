@@ -13,8 +13,9 @@ function amIRoot() {
     exit 1
   fi
 }
+
 function areYouReallySure() {
-  echo -e "\nAre you sure?\n⚠️ This script will replace your current Odoo data and deployment files. ⚠️\nType 'yes I am sure' and click enter to continue.\n"
+  echo -e "\nAre you sure?\n⚠️ This script will replace your current Odoo data and deployment files. ⚠️\nType 'yes I am sure' and press enter to continue.\n"
   read -rp ": " response
   case "$response" in
   "yes I am sure")
