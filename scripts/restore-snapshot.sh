@@ -4,6 +4,7 @@ CURRENT_DIRNAME=$(dirname "$(readlink -f "$0")")
 cd "$CURRENT_DIRNAME/.." || { echo "🔴 Can't change directory to $CURRENT_DIRNAME/.."; exit 1; }
 SERVICE_NAME=$(basename "$(pwd)")
 PATH_TO_ODOO="$(pwd)"
+REPOSITORY_OWNER=$(stat -c '%U' "$PATH_TO_ODOO")
 
 TAR_FILE_NAME=snapshot-$SERVICE_NAME.tar.zst
 TEMP_DIR=/tmp/snapshot-$SERVICE_NAME
@@ -59,9 +60,11 @@ function main() {
 
   echo "[$(date +"%Y-%m-%d %H:%M:%S")] Restoring conf/odoo.conf"
   cp -f "$TEMP_DIR/conf/odoo.conf" "conf/odoo.conf" || { echo "🔴 Can't restore conf/odoo.conf"; }
+  chown "$REPOSITORY_OWNER": "conf/odoo.conf"
 
   echo "[$(date +"%Y-%m-%d %H:%M:%S")] Restoring environment file (.env)"
   cp -f "$TEMP_DIR/.env" .env || { echo "🔴 Can't restore .env"; }
+  chown "$REPOSITORY_OWNER": .env
 
   echo "[$(date +"%Y-%m-%d %H:%M:%S")] Restoring /etc/nginx/sites-available"
   cp -rf "$TEMP_DIR/etc/nginx/sites-available" /etc/nginx/ || { echo "🔴 Can't restore /etc/nginx/sites-available"; }
@@ -90,15 +93,21 @@ function main() {
 
   echo "[$(date +"%Y-%m-%d %H:%M:%S")] Restoring .secrets/db_user"
   cp -f "$TEMP_DIR/.secrets/db_user" .secrets/db_user || { echo "🔴 Can't restore .secrets/db_user"; }
+  chown odoo: .secrets/db_user
+  chmod 400 .secrets/db_user
 
   echo "[$(date +"%Y-%m-%d %H:%M:%S")] Restoring .secrets/db_password"
   cp -f "$TEMP_DIR/.secrets/db_password" .secrets/db_password || { echo "🔴 Can't restore .secrets/db_password"; }
+  chown odoo: .secrets/db_password
+  chmod 400 .secrets/db_password
 
   echo "[$(date +"%Y-%m-%d %H:%M:%S")] Restoring the snapshot script scripts/snapshot-$SERVICE_NAME"
   cp -f "$TEMP_DIR/scripts/snapshot-$SERVICE_NAME" "scripts/snapshot-$SERVICE_NAME" || { echo "🔴 Can't restore scripts/snapshot-$SERVICE_NAME"; }
+  chown "$REPOSITORY_OWNER": "scripts/snapshot-$SERVICE_NAME"
 
   echo "[$(date +"%Y-%m-%d %H:%M:%S")] Restoring requirements.txt"
   cp -f "$TEMP_DIR/requirements.txt" ./requirements.txt || { echo "🔴 Can't restore requirements.txt"; }
+  chown "$REPOSITORY_OWNER": ./requirements.txt
 
   ODOO_DATABASE_NAME_PRD=$(find "$TEMP_DIR/var/lib/odoo/$SERVICE_NAME/filestore/" -mindepth 1 -maxdepth 1 -type d -print | head -n 1 | xargs -n 1 basename)
   ODOO_DATABASE_USER=$(cat "$PATH_TO_ODOO/.secrets/db_user")
@@ -108,7 +117,6 @@ function main() {
     rm -rf "/var/lib/odoo/$SERVICE_NAME/filestore/$ODOO_DATABASE_NAME_PRD"
   else
     mkdir -p "/var/lib/odoo/$SERVICE_NAME/filestore/$ODOO_DATABASE_NAME_PRD"
-    chown -R odoo: /var/lib/odoo
   fi
   cp -r "$TEMP_DIR/var/lib/odoo/$SERVICE_NAME/filestore/$ODOO_DATABASE_NAME_PRD" "/var/lib/odoo/$SERVICE_NAME/filestore/$ODOO_DATABASE_NAME_PRD" || { echo "🔴 Can't restore /var/lib/odoo/$SERVICE_NAME/filestore/$ODOO_DATABASE_NAME_PRD"; }
   chown -R odoo: "/var/lib/odoo/$SERVICE_NAME/filestore/$ODOO_DATABASE_NAME_PRD"
@@ -150,10 +158,11 @@ function main() {
             EXECUTE 'ALTER VIEW ' || quote_ident(rec.table_name) || ' OWNER TO \"${ODOO_DATABASE_USER}\"';
         END LOOP;
     END \$\$;
-    "
+  "
 
   echo "[$(date +"%Y-%m-%d %H:%M:%S")] Restoring Odoo modules without git."
   find "$TEMP_DIR/git/" -mindepth 1 -maxdepth 1 -type d -exec cp -r {} ./git/ \; || { echo "🔴 Can't restore Odoo modules without git."; }
+  chown -R "$REPOSITORY_OWNER": ./git/
 
   echo "==========================================================================="
 
