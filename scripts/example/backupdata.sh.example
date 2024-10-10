@@ -20,7 +20,7 @@ ODOO_FILESTORE_PATH="/var/lib/odoo/$SERVICE_NAME/filestore/$ODOO_DATABASE_NAME_P
 # DATE_FOR_MESSAGE=$(date +"%Y-%m-%d %H:%M:%S")
 ZIP_FILE_NAME=backupdata-$SERVICE_NAME.zip
 
-echo "🟢 Start backup data for $SERVICE_NAME"
+echo "[$(date +"%Y-%m-%d %H:%M:%S")] 🔵 Start backup data for $SERVICE_NAME"
 
 if ! command -v zip &> /dev/null; then
   echo "[$(date +"%Y-%m-%d %H:%M:%S")] 🔴 zip command could not be found. Please install zip first."
@@ -35,33 +35,33 @@ if [ "$(id -u)" -ne 0 ]; then
 fi
 
 echo "[$(date +"%Y-%m-%d %H:%M:%S")] Change Directory to $PATH_TO_ODOO"
-cd "$PATH_TO_ODOO" 2> /dev/null > /dev/null || { echo "[$(date +"%Y-%m-%d %H:%M:%S")] 🔴 Can't change directory to $PATH_TO_ODOO"; exit 1; }
+cd "$PATH_TO_ODOO" > /dev/null 2>&1 || { echo "[$(date +"%Y-%m-%d %H:%M:%S")] 🔴 Can't change directory to $PATH_TO_ODOO"; exit 1; }
 
 echo "[$(date +"%Y-%m-%d %H:%M:%S")] Create temporary directory"
-mkdir -p "/tmp/backupdata-$SERVICE_NAME" 2> /dev/null > /dev/null || { echo "[$(date +"%Y-%m-%d %H:%M:%S")] 🔴 /tmp/backupdata-$SERVICE_NAME may be exist."; true; }
+mkdir -p "/tmp/backupdata-$SERVICE_NAME" > /dev/null 2>&1 || { echo "[$(date +"%Y-%m-%d %H:%M:%S")] 🔴 /tmp/backupdata-$SERVICE_NAME may be exist."; true; }
 
 echo "[$(date +"%Y-%m-%d %H:%M:%S")] Backup database $ODOO_DATABASE_NAME_PRD"
-sudo -u postgres pg_dump -f "/tmp/dump.sql" "$ODOO_DATABASE_NAME_PRD"
-mv /tmp/dump.sql "/tmp/backupdata-$SERVICE_NAME/dump.sql" 2> /dev/null > /dev/null || { echo "[$(date +"%Y-%m-%d %H:%M:%S")] 🔴 Error moving dump.sql to /tmp/backupdata-$SERVICE_NAME"; exit 1; }
+sudo -u postgres pg_dump -f "/tmp/dump.sql" "$ODOO_DATABASE_NAME_PRD" > /dev/null 2>&1 || { echo "[$(date +"%Y-%m-%d %H:%M:%S")] 🔴 Error backup database $ODOO_DATABASE_NAME_PRD"; exit 1; }
+mv /tmp/dump.sql "/tmp/backupdata-$SERVICE_NAME/dump.sql" > /dev/null 2>&1 || { echo "[$(date +"%Y-%m-%d %H:%M:%S")] 🔴 Error moving dump.sql to /tmp/backupdata-$SERVICE_NAME"; exit 1; }
 
 echo "[$(date +"%Y-%m-%d %H:%M:%S")] Copy filestore files to temporary directory"
-cp -r "$ODOO_FILESTORE_PATH" "/tmp/backupdata-$SERVICE_NAME/filestore" 2> /dev/null > /dev/null || { echo "[$(date +"%Y-%m-%d %H:%M:%S")] 🔴 Error copying filestore to /tmp/backupdata-$SERVICE_NAME"; exit 1; }
+cp -r "$ODOO_FILESTORE_PATH" "/tmp/backupdata-$SERVICE_NAME/filestore" > /dev/null 2>&1 || { echo "[$(date +"%Y-%m-%d %H:%M:%S")] 🔴 Error copying filestore to /tmp/backupdata-$SERVICE_NAME"; exit 1; }
 
 if [ -f "git/git_hashes.txt" ]; then
   echo "[$(date +"%Y-%m-%d %H:%M:%S")] Copy git_hashes.txt to temporary directory"
-  cp -r git/git_hashes.txt "/tmp/backupdata-$SERVICE_NAME/git_hashes.txt" 2> /dev/null > /dev/null || { echo "[$(date +"%Y-%m-%d %H:%M:%S")] 🔴 Error copying git_hashes.txt to /tmp/backupdata-$SERVICE_NAME"; exit 1; }
+  cp -r git/git_hashes.txt "/tmp/backupdata-$SERVICE_NAME/git_hashes.txt" > /dev/null 2>&1 || { echo "[$(date +"%Y-%m-%d %H:%M:%S")] 🔴 Error copying git_hashes.txt to /tmp/backupdata-$SERVICE_NAME"; exit 1; }
 fi
 
 if [ -f "odoo-base/git_hashes.txt" ]; then
   echo "[$(date +"%Y-%m-%d %H:%M:%S")] Copy odoo-base/git_hashes.txt to temporary directory"
-  cp -r odoo-base/git_hashes.txt "/tmp/backupdata-$SERVICE_NAME/odoo-base_git_hashes.txt" 2> /dev/null > /dev/null || { echo "[$(date +"%Y-%m-%d %H:%M:%S")] 🔴 Error copying odoo-base/git_hashes.txt to /tmp/backupdata-$SERVICE_NAME"; exit 1; }
+  cp -r odoo-base/git_hashes.txt "/tmp/backupdata-$SERVICE_NAME/odoo-base_git_hashes.txt" > /dev/null 2>&1 || { echo "[$(date +"%Y-%m-%d %H:%M:%S")] 🔴 Error copying odoo-base/git_hashes.txt to /tmp/backupdata-$SERVICE_NAME"; exit 1; }
 fi
 
 echo "[$(date +"%Y-%m-%d %H:%M:%S")] Change Directory to /tmp/backupdata-$SERVICE_NAME"
-cd "/tmp/backupdata-$SERVICE_NAME" 2> /dev/null > /dev/null || { echo "[$(date +"%Y-%m-%d %H:%M:%S")] 🔴 Can't change directory to /tmp/backupdata-$SERVICE_NAME"; exit 1; }
+cd "/tmp/backupdata-$SERVICE_NAME" > /dev/null 2>&1 || { echo "[$(date +"%Y-%m-%d %H:%M:%S")] 🔴 Can't change directory to /tmp/backupdata-$SERVICE_NAME"; exit 1; }
 
 echo "[$(date +"%Y-%m-%d %H:%M:%S")] Compress all files to $ZIP_FILE_NAME"
-zip -r "/tmp/$ZIP_FILE_NAME" ./dump.sql filestore ./git_hashes.txt ./odoo-base_git_hashes.txt 2> /dev/null > /dev/null || { echo "[$(date +"%Y-%m-%d %H:%M:%S")] 🔴 Error compressing files to /tmp/$ZIP_FILE_NAME"; exit 1; }
+zip -r "/tmp/$ZIP_FILE_NAME" ./dump.sql filestore ./git_hashes.txt ./odoo-base_git_hashes.txt > /dev/null 2>&1 || { echo "[$(date +"%Y-%m-%d %H:%M:%S")] 🔴 Error compressing files to /tmp/$ZIP_FILE_NAME"; exit 1; }
 chown "$SUDO_USER":"$SUDO_USER" "/tmp/$ZIP_FILE_NAME"
 
 echo "[$(date +"%Y-%m-%d %H:%M:%S")] Remove temporary directory"
