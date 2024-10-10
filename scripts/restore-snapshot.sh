@@ -72,7 +72,7 @@ function restoreNginxConfig() {
     if [ "$NGINX_SITES_AVAILABLE" = "default" ]; then
       continue
     fi
-    ln -s "/etc/nginx/sites-available/$NGINX_SITES_AVAILABLE" "/etc/nginx/sites-enabled/$NGINX_SITES_AVAILABLE" > /dev/null 2>&1 || true
+    ln -s "/etc/nginx/sites-available/$NGINX_SITES_AVAILABLE" "/etc/nginx/sites-enabled/$NGINX_SITES_AVAILABLE" > /dev/null 2>&1 || echo "[$(date +"%Y-%m-%d %H:%M:%S")] 🔴 Can't create symlink /etc/nginx/sites-enabled/$NGINX_SITES_AVAILABLE. Maybe the symlink is exists."
   done
 }
 
@@ -172,8 +172,8 @@ function main() {
   docker compose down > /dev/null 2>&1 || true
 
   echo "[$(date +"%Y-%m-%d %H:%M:%S")] Restore the snapshot script scripts/snapshot-$SERVICE_NAME"
-  cp -f "$TEMP_DIR/scripts/snapshot-$SERVICE_NAME" "scripts/snapshot-$SERVICE_NAME" || { echo "[$(date +"%Y-%m-%d %H:%M:%S")] 🔴 Can't restore scripts/snapshot-$SERVICE_NAME"; }
-  ln -s "$PATH_TO_ODOO/scripts/snapshot-$SERVICE_NAME" /usr/local/sbin/snapshot-$SERVICE_NAME > /dev/null 2>&1 || { echo "[$(date +"%Y-%m-%d %H:%M:%S")] 🔴 Can't create symlink for snapshot-$SERVICE_NAME. Maybe the symlink is exist."; }
+  cp -f $TEMP_DIR/scripts/snapshot-$SERVICE_NAME "scripts/snapshot-$SERVICE_NAME" || { echo "[$(date +"%Y-%m-%d %H:%M:%S")] 🔴 Can't restore scripts/snapshot-$SERVICE_NAME"; }
+  ln -s "$PATH_TO_ODOO/scripts/snapshot-$SERVICE_NAME" /usr/local/sbin/snapshot-$SERVICE_NAME > /dev/null 2>&1 || { echo "[$(date +"%Y-%m-%d %H:%M:%S")] 🔴 Can't create symlink on /usr/local/sbin/snapshot-$SERVICE_NAME. Maybe the symlink is exist."; }
   chown "$REPOSITORY_OWNER": "scripts/snapshot-$SERVICE_NAME"
 
   echo "[$(date +"%Y-%m-%d %H:%M:%S")] Restore requirements.txt"
