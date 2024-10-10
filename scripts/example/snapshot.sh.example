@@ -15,16 +15,19 @@ PATH_TO_ODOO="$(pwd)"
 
 ## This variable below to define the new variable (DON'T EDIT)
 FILES_DIRS_TO_TAR=""
-## Add Directory (ADD MORE VARIABLE TO ADD NEW DIRECTORY for the archive)
-FILES_DIRS_TO_TAR="enter_path_to_directory $FILES_DIRS_TO_TAR"
-FILES_DIRS_TO_TAR="enter_path_to_directory $FILES_DIRS_TO_TAR"
+
+## Add Directory (ADD MORE VARIABLE TO ADD NEW DIRECTORY for the archive by uncomment this line and add the path of the directory.)
+# FILES_DIRS_TO_TAR="enter_path_to_directory $FILES_DIRS_TO_TAR"
+# FILES_DIRS_TO_TAR="enter_path_to_directory $FILES_DIRS_TO_TAR"
 
 ## Make sure that the git directory and odoo base directory has git_hashes.txt file.
 ## If not, you need to change this to the directory of odoo modules and odoo-base instead of git_hashes.txt. 
 ## enter the correct path
 FILES_DIRS_TO_TAR="git/git_hashes.txt $FILES_DIRS_TO_TAR"
-FILES_DIRS_TO_TAR="git/enter_additional_git_odoo_module_directory $FILES_DIRS_TO_TAR"
 FILES_DIRS_TO_TAR="odoo-base/git_hashes.txt $FILES_DIRS_TO_TAR"
+
+## Add the additional odoo module directory that don't use git (uncomment and add the path of the directory)
+# FILES_DIRS_TO_TAR="git/enter_additional_git_odoo_module_directory $FILES_DIRS_TO_TAR"
 
 ## Make sure that the datadir location is correct (enter the correct one)
 FILES_DIRS_TO_TAR="/var/lib/odoo/$SERVICE_NAME/filestore/$ODOO_DATABASE_NAME_PRD $FILES_DIRS_TO_TAR"
