@@ -1,6 +1,6 @@
 #!/bin/bash
 
-PATH_TO_ODOO="$(git -C "$(dirname "$(readlink -f "$0")")" rev-parse --show-toplevel)"
+PATH_TO_ODOO=$(git -C "$(dirname "$(readlink -f "$0")")" rev-parse --show-toplevel)
 SERVICE_NAME=$(basename "$PATH_TO_ODOO")
 REPOSITORY_OWNER=$(stat -c '%U' "$PATH_TO_ODOO")
 
@@ -89,12 +89,12 @@ function restoreOdooData() {
   chown -R odoo: "/var/lib/odoo/$SERVICE_NAME/filestore/$ODOO_DATABASE_NAME_PRD"
 
   echo "[$(date +"%Y-%m-%d %H:%M:%S")] Restore database $ODOO_DATABASE_NAME_PRD from $TEMP_DIR/tmp/$ODOO_DATABASE_NAME_PRD.sql"
-  sudo -u postgres psql -c "DROP DATABASE IF EXISTS \"$ODOO_DATABASE_NAME_PRD\"" --quiet -t -P pager=off 2> /dev/null > /dev/null
-  sudo -u postgres psql -c "CREATE DATABASE \"$ODOO_DATABASE_NAME_PRD\"" --quiet -t -P pager=off 2> /dev/null > /dev/null
-  sudo -u postgres psql -d "$ODOO_DATABASE_NAME_PRD" -f "$TEMP_DIR/tmp/$ODOO_DATABASE_NAME_PRD.sql" --quiet -t -P pager=off 2> /dev/null > /dev/null
+  sudo -u postgres psql -c "DROP DATABASE IF EXISTS \"$ODOO_DATABASE_NAME_PRD\"" --quiet -t -P pager=off 2> /dev/null > /dev/null || echo "[$(date +"%Y-%m-%d %H:%M:%S")] 🔴 Can't drop database $ODOO_DATABASE_NAME_PRD"
+  sudo -u postgres psql -c "CREATE DATABASE \"$ODOO_DATABASE_NAME_PRD\"" --quiet -t -P pager=off 2> /dev/null > /dev/null || echo "[$(date +"%Y-%m-%d %H:%M:%S")] 🔴 Can't create database $ODOO_DATABASE_NAME_PRD"
+  sudo -u postgres psql -d "$ODOO_DATABASE_NAME_PRD" -f "$TEMP_DIR/tmp/$ODOO_DATABASE_NAME_PRD.sql" --quiet -t -P pager=off 2> /dev/null > /dev/null || echo "[$(date +"%Y-%m-%d %H:%M:%S")] 🔴 Can't restore database $ODOO_DATABASE_NAME_PRD"
 
   echo "[$(date +"%Y-%m-%d %H:%M:%S")] Change the owner of the database."
-  sudo -u postgres psql -c "ALTER DATABASE \"$ODOO_DATABASE_NAME_PRD\" OWNER TO \"$ODOO_DATABASE_USER\"" --quiet -t -P pager=off 2> /dev/null > /dev/null
+  sudo -u postgres psql -c "ALTER DATABASE \"$ODOO_DATABASE_NAME_PRD\" OWNER TO \"$ODOO_DATABASE_USER\"" --quiet -t -P pager=off 2> /dev/null > /dev/null || echo "[$(date +"%Y-%m-%d %H:%M:%S")] 🔴 Can't change the owner of the database $ODOO_DATABASE_NAME_PRD"
   sudo -u postgres psql --quiet -t -P pager=off -d "$ODOO_DATABASE_NAME_PRD" -c "
     -- Change the owner of all tables
     DO \$\$
@@ -125,7 +125,7 @@ function restoreOdooData() {
             EXECUTE 'ALTER VIEW ' || quote_ident(rec.table_name) || ' OWNER TO \"${ODOO_DATABASE_USER}\"';
         END LOOP;
     END \$\$;
-  " 2> /dev/null > /dev/null
+  " 2> /dev/null > /dev/null || echo "[$(date +"%Y-%m-%d %H:%M:%S")] 🔴 Can't change the owner of the tables, sequences, and views of the database $ODOO_DATABASE_NAME_PRD"
 }
 
 function main() {
@@ -139,8 +139,8 @@ function main() {
   cd "$PATH_TO_ODOO" || { echo "[$(date +"%Y-%m-%d %H:%M:%S")] 🔴 Can't change directory to $PATH_TO_ODOO"; exit 1; }
 
   echo "[$(date +"%Y-%m-%d %H:%M:%S")] Extract /tmp/$TAR_FILE_NAME to $TEMP_DIR"
-  mkdir "$TEMP_DIR"
-  tar -xaf "/tmp/$TAR_FILE_NAME" -C "/tmp/snapshot-$SERVICE_NAME"
+  mkdir "$TEMP_DIR" || { echo "[$(date +"%Y-%m-%d %H:%M:%S")] 🔴 Can't create $TEMP_DIR". Maybe the directory exist.; exit 1; }
+  tar -xaf "/tmp/$TAR_FILE_NAME" -C "/tmp/snapshot-$SERVICE_NAME" || { echo "[$(date +"%Y-%m-%d %H:%M:%S")] 🔴 Can't extract /tmp/$TAR_FILE_NAME"; exit 1; }
 
   echo "[$(date +"%Y-%m-%d %H:%M:%S")] Restore conf/odoo.conf"
   cp -f "$TEMP_DIR/conf/odoo.conf" "conf/odoo.conf" || { echo "[$(date +"%Y-%m-%d %H:%M:%S")] 🔴 Can't restore conf/odoo.conf"; }
@@ -197,7 +197,6 @@ function main() {
 
   echo -e "\n[$(date +"%Y-%m-%d %H:%M:%S")] git Odoo modules used by the previous snapshot."
   echo -e "[$(date +"%Y-%m-%d %H:%M:%S")] ⚠️ You need to clone these repositories manually into git directory. If you want to rebuild the image. ⚠️\n"
-
   cat "$TEMP_DIR/git/git_hashes.txt"
 
   echo -e "\n==========================================================================="

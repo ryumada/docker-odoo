@@ -7,11 +7,8 @@ ODOO_DATABASE_NAME_PRD=enter_production_database_name
 # you can leave as is to not backup your snapshot to Google Cloud Storage (GCS)
 GCS_BUCKET_NAME=enter_your_gcs_bucket_name
 
-CURRENT_DIRNAME=$(dirname "$(readlink -f "$0")")
-cd "$CURRENT_DIRNAME/.." || { echo "🔴 Can't change directory to $CURRENT_DIRNAME/.."; exit 1; }
-SERVICE_NAME=$(basename "$(pwd)")
-## ex. odoo-prd (replace with production database name)
-PATH_TO_ODOO="$(pwd)"
+PATH_TO_ODOO=$(git -C "$(dirname "$(readlink -f "$0")")" rev-parse --show-toplevel)
+SERVICE_NAME=$(basename "$PATH_TO_ODOO")
 
 ## This variable below to define the new variable (DON'T EDIT)
 FILES_DIRS_TO_TAR=""
@@ -55,16 +52,16 @@ if [ -f "/etc/logrotate.d/sudo-*" ]; then
   FILES_DIRS_TO_TAR="/etc/logrotate.d/sudo-* $FILES_DIRS_TO_TAR"
 fi
 
-if [ -f "scripts/snapshot-$SERVICE_NAME" ]; then
-  FILES_DIRS_TO_TAR="scripts/snapshot-$SERVICE_NAME $FILES_DIRS_TO_TAR"
+if [ -f "scripts/backupdata-$SERVICE_NAME" ]; then
+  FILES_DIRS_TO_TAR="scripts/backupdata-$SERVICE_NAME $FILES_DIRS_TO_TAR"
 fi
 
 if [ -f "scripts/databasecloner-$SERVICE_NAME" ]; then
   FILES_DIRS_TO_TAR="scripts/databasecloner-$SERVICE_NAME $FILES_DIRS_TO_TAR"
 fi
 
-if [ -f "scripts/backupdata-$SERVICE_NAME" ]; then
-  FILES_DIRS_TO_TAR="scripts/backupdata-$SERVICE_NAME $FILES_DIRS_TO_TAR"
+if [ -f "scripts/snapshot-$SERVICE_NAME" ]; then
+  FILES_DIRS_TO_TAR="scripts/snapshot-$SERVICE_NAME $FILES_DIRS_TO_TAR"
 fi
 
 if [ -f "/usr/local/sbin/sudo-*" ]; then
