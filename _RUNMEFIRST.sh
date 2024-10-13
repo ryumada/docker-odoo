@@ -232,7 +232,7 @@ EOF
 function isBuildOrPull() {
     while true; do
       read -rp "Do you want to build or pull images?
-      [Any] Build (default)
+      [1] Build (default)
       [2] Pull
 
       : " -e user_choice
@@ -248,8 +248,7 @@ function isBuildOrPull() {
           break
           ;;
         *)
-          choice=("1" "Build")
-          break
+          echo -e "\n[$(date +"%Y-%m-%d %H:%M:%S")] 🔴 Invalid Option.\n" >&2
           ;;
       esac
     done
