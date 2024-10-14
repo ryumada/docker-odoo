@@ -43,6 +43,9 @@ function main() {
       if git -C "$subdir" pull | grep -v "up to date" ;then
         pulledrepositories=$((pulledrepositories+1))
       fi
+    else
+      echo "[$(date +"%Y-%m-%d %H:%M:%S")] 🔴 $subdir is not a git repository."
+      echo "[$(date +"%Y-%m-%d %H:%M:%S")] 🔴 Please make sure you have added $subdir directory to your snapshot script to backup the addons manually."
     fi
   done
 

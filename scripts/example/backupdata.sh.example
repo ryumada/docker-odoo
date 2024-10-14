@@ -67,4 +67,4 @@ chown "$SUDO_USER":"$SUDO_USER" "/tmp/$ZIP_FILE_NAME"
 echo "[$(date +"%Y-%m-%d %H:%M:%S")] Remove temporary directory"
 rm -rf "/tmp/backupdata-$SERVICE_NAME"
 
-echo "[$(date +"%Y-%m-%d %H:%M:%S")] 🟢 Backup data for $SERVICE_NAME is completed"
+echo "[$(date +"%Y-%m-%d %H:%M:%S")] 🟢 Backup data for $SERVICE_NAME is completed. The backup file is located at /tmp/$ZIP_FILE_NAME."
