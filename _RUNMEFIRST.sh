@@ -232,7 +232,7 @@ EOF
 function isBuildOrPull() {
     while true; do
       read -rp "Do you want to build or pull images?
-      [1] Build (default)
+      [1] Build
       [2] Pull
 
       : " -e user_choice
