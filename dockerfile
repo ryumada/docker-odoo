@@ -1,7 +1,7 @@
-# use python3.7 as base image
-# FROM python:3.8-bookworm
-# FROM python:3.10-bookworm
-FROM python:3.7-bookworm
+# you can setup this variable to the version of python you want to use in .env file and build the image using docker-compose.yml file
+ARG PYTHON_VERSION=3.10-bookworm
+
+FROM python:$PYTHON_VERSION
 
 # install odoo dependencies
 RUN apt update

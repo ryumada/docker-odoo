@@ -2,20 +2,16 @@
 
 services:
   odoo:
-    # push the image to Container registry (enter and choose one)
-    ## Use the image from the GitHub Container Registry; (find this string 'enter github' to link the image to repoistory)
-    # image: ghcr.io/enter_username/enter_project_name:enter_version
-    ## Use the image from the Docker Hub
-    # image: enter_username/enter_project_name:enter_version
-    ## Use the image from the Gitlab Container Registry
-    # image: registry.gitlab.com/enter_username/enter_project_name:enter_version
+    image: ${ODOO_IMAGE_NAME:-$SERVICE_NAME:latest}
 
     build:
       context: .
       dockerfile: dockerfile
+      args:
+        - PYTHON_VERSION=${PYTHON_VERSION}
       # Add labels to connect to github repository (enter github)
-      # labels:
-        # - org.opencontainers.image.source=https://github.com/enter_username/enter_repository
+      labels:
+        - org.opencontainers.image.source=${ODOO_IMAGE_SOURCE:-"no source"}
     # Because we use host network, the port opened by your container will be automatically opened.
     # Please make sure there are no ports collide. (sudo netstat -tulpn)
     # Set the ports below the same as you have set in your .env file.
@@ -48,7 +44,10 @@ services:
      - DATA_DIR
      - SERVICE_NAME
      - ODOO_DATADIR_SERVICE
+     - ODOO_IMAGE_NAME
+     - ODOO_IMAGE_SOURCE
      - ODOO_LOG_DIR_SERVICE
+     - PYTHON_VERSION
     env_file:
       - .env
     secrets:
