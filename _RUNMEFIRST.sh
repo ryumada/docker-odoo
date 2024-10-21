@@ -232,7 +232,7 @@ EOF
 function isBuildOrPull() {
     while true; do
       read -rp "Do you want to build or pull images?
-      [1] Build (default)
+      [1] Build
       [2] Pull
 
       : " -e user_choice
@@ -420,9 +420,9 @@ function writeLogDirVariableOnEnvFile() {
   if ! grep -q "SERVICE_NAME" "$ENV_FILE"; then
     cat <<-EOF >> "$ENV_FILE"
 
-# # # # # # # # # # # # #
-# DIRECTORIES           #
-# # # # # # # # # # # # #
+# # # # # # # # # # # # # # # #
+# DIRECTORIES                 #
+# # # # # # # # # # # # # # # #
 SERVICE_NAME=$SERVICE_NAME
 ODOO_LOG_DIR_SERVICE=$ODOO_LOG_DIR_SERVICE
 EOF
