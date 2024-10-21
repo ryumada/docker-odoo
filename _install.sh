@@ -76,6 +76,36 @@ function createLogDir() {
   installOdooLogRotator
 }
 
+function generatePostgresPassword() {
+  # _inherit = generatePostgresSecrets
+
+  postgresusername=$1
+
+  echo "[$(date +"%Y-%m-%d %H:%M:%S")] 🟦 Regenerate Postgres password..."
+
+  POSTGRES_ODOO_PASSWORD=$(openssl rand -base64 64 | tr -d '\n')
+
+  sudo -u postgres psql -c "ALTER ROLE \"$postgresusername\" WITH PASSWORD '$POSTGRES_ODOO_PASSWORD';" > /dev/null 2>&1
+
+  writeTextFile "$POSTGRES_ODOO_PASSWORD" "$DB_PASSWORD_SECRET" "password"
+}
+
+function generatePostgresSecrets() {
+  echo "[$(date +"%Y-%m-%d %H:%M:%S")] 🟦 Generate Postgres secrets..."
+
+  POSTGRES_ODOO_USERNAME=$SERVICE_NAME
+
+  if sudo -u postgres psql -tAc "SELECT 1 FROM pg_roles WHERE rolname='$POSTGRES_ODOO_USERNAME'" 2>/dev/null | grep -q 1; then
+    echo "[$(date +"%Y-%m-%d %H:%M:%S")] ✅ User $POSTGRES_ODOO_USERNAME already exists."
+  else
+    echo "[$(date +"%Y-%m-%d %H:%M:%S")] 🟦 User $POSTGRES_ODOO_USERNAME doesn't exist. Creating the user..."
+    sudo -u postgres psql -c "CREATE ROLE \"$POSTGRES_ODOO_USERNAME\" LOGIN CREATEDB;" > /dev/null 2>&1
+    writeTextFile "$POSTGRES_ODOO_USERNAME" "$DB_USER_SECRET" "username"
+  fi
+
+  generatePostgresPassword "$POSTGRES_ODOO_USERNAME"
+}
+
 function getGitHash() {
   # _inherit = writeGitHash
 
@@ -429,6 +459,19 @@ EOF
   fi
 }
 
+function writeTextFile() {
+  password=$1
+  file=$2
+  type=$3
+
+  echo "[$(date +"%Y-%m-%d %H:%M:%S")] 🟦 Writing $type to $file..."
+
+  echo "$password" > "$file"
+
+  sudo chmod 400 "$file"
+  sudo chown -R $ODOO_LINUX_USER: "$file"
+}
+
 function main() {
   amIRoot
 
@@ -459,15 +502,7 @@ function main() {
   echo -e "[$(date +"%Y-%m-%d %H:%M:%S")] 🟦 Checking the necessary files and directories..."
   echo "==================================================================="
 
-  if isFileExists "$DB_USER_SECRET" "Please create a db_user file by following the db_user.example file."; then
-    sudo chmod 400 $DB_USER_SECRET
-    sudo chown -R $ODOO_LINUX_USER: $DB_USER_SECRET
-  fi
-
-  if isFileExists "$DB_PASSWORD_SECRET" "Please create a db_password file by following the db_password.example file."; then
-    sudo chmod 400 $DB_PASSWORD_SECRET
-    sudo chown -R $ODOO_LINUX_USER: $DB_PASSWORD_SECRET
-  fi
+  generatePostgresSecrets
 
   if isFileExists "$ENV_FILE" "Please create a .env file by folowing the .env.example file."; then
     createLogDir

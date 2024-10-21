@@ -14,9 +14,9 @@ A Dockerfile to create a custom Odoo docker image.
 
 There are some points you should know:
 
-- First, you need to execute `sudo ./_RUNMEFIRST.sh` script to check if all of your files and directories are ready to build image.
+- First, you need to execute `sudo ./_install.sh` script to check if all of your files and directories are ready to build image.
   ```bash
-  sudo ./_RUNMEFIRST.sh
+  sudo ./_install.sh
   ```
 
   > ⚠️ When you are asked to enter whether you want to build or pull container image, choose the `build` option.
@@ -33,7 +33,7 @@ There are some points you should know:
   > - `/opt/odoo/git/odoo-custom-modules/subdir-1`
   > - `/opt/odoo/git/odoo-custom-modules/subdir-2`
 
-- [`Odoo Static Data`] Odoo `datadir` is placed on `/var/lib/odoo` and Odoo `log` is placed on `/var/log/odoo`. These directories will be used by Odoo for static data storage and logging. It will be called in docker-compose (⚠️ These directories are automatically created on your host machine after you run `sudo ./_RUNMEFIRST.sh` ⚠️).
+- [`Odoo Static Data`] Odoo `datadir` is placed on `/var/lib/odoo` and Odoo `log` is placed on `/var/log/odoo`. These directories will be used by Odoo for static data storage and logging. It will be called in docker-compose (⚠️ These directories are automatically created on your host machine after you run `sudo ./_install.sh` ⚠️).
 
 - `Build and Run` your odoo deployment with docker compose.
 
@@ -142,7 +142,7 @@ There are some points you should know:
 
     > ⚠️ Before you pull the image from the container registry, make sure the image name is set on your docker compose file.
     
-    > ⚠️ You also need to run the `sudo ./_RUNMEFIRST.sh`. When the script asks you to enter whether you want to build or pull container image, choose the `pull` option.
+    > ⚠️ You also need to run the `sudo ./_install.sh`. When the script asks you to enter whether you want to build or pull container image, choose the `pull` option.
 
     1. Make sure the image name is set on your docker compose file.
 

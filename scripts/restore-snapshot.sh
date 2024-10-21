@@ -212,7 +212,7 @@ function main() {
   
   echo -e "[$(date +"%Y-%m-%d %H:%M:%S")] ⚠️ You need to run the following command then follow the instruction whether you want to rebuild or pull the Odoo image. ⚠️\n\
   The script is located at the root of this repository.\n"
-  echo -e "     'sudo ./_RUNMEFIRST.sh'\n"
+  echo -e "     'sudo ./_install.sh'\n"
 }
 
 main
