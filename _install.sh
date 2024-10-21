@@ -101,9 +101,11 @@ function generatePostgresSecrets() {
     echo "[$(date +"%Y-%m-%d %H:%M:%S")] 🟦 User $POSTGRES_ODOO_USERNAME doesn't exist. Creating the user..."
     sudo -u postgres psql -c "CREATE ROLE \"$POSTGRES_ODOO_USERNAME\" LOGIN CREATEDB;" > /dev/null 2>&1
     writeTextFile "$POSTGRES_ODOO_USERNAME" "$DB_USER_SECRET" "username"
+    setPermissionFileToReadOnlyAndOnlyTo "$ODOO_LINUX_USER" "$DB_USER_SECRET"
   fi
 
   generatePostgresPassword "$POSTGRES_ODOO_USERNAME"
+  setPermissionFileToReadOnlyAndOnlyTo "$ODOO_LINUX_USER" "$DB_PASSWORD_SECRET"
 }
 
 function getGitHash() {
@@ -414,6 +416,14 @@ function resetGitHashFile(){
 EOF
 }
 
+function setPermissionFileToReadOnlyAndOnlyTo() {
+  owner=$1
+  file=$2
+
+  sudo chmod 400 "$file"
+  sudo chown -R "$owner": "$file"
+}
+
 function writeGitHash() {
   dir=$1
   subdirs="$(getSubDirectories "$dir")"
@@ -467,9 +477,6 @@ function writeTextFile() {
   echo "[$(date +"%Y-%m-%d %H:%M:%S")] 🟦 Writing $type to $file..."
 
   echo "$password" > "$file"
-
-  sudo chmod 400 "$file"
-  sudo chown -R $ODOO_LINUX_USER: "$file"
 }
 
 function main() {
