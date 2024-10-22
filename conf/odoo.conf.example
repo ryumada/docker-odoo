@@ -45,7 +45,7 @@ proxy_mode = True
 # data_dir = /opt/odoo/datadir
 
 # If not correct, enter the correct file log name
-logfile = /var/log/odoo/odoo.log
+# logfile = /var/log/odoo/odoo.log
 
 # focus only on limit_time_real if you don't want some messy configuration of reusable worker
 # limit_time_cpu = 2100
