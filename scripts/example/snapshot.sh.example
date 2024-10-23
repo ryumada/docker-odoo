@@ -34,7 +34,7 @@ FILES_DIRS_TO_TAR="/var/lib/odoo/$SERVICE_NAME/filestore/$ODOO_DATABASE_NAME_PRD
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 function amIRoot() {
   if [ "$(id -u)" -ne 0 ]; then
-    echo "[$(date +"%Y-%m-%d %H:%M:%S")] 🔴 Please run this script as root or using sudo"
+    echo "$(getDate) 🔴 Please run this script as root or using sudo"
     exit 1
   fi
 }
@@ -49,15 +49,19 @@ function areYouReallySure() {
 
     case $CONFIRMATION in
       "yes I am sure")
-        echo "[$(date +"%Y-%m-%d %H:%M:%S")] 🔄 Overwriting the current snapshot file."
+        echo "$(getDate) 🔄 Overwriting the current snapshot file."
         rm -f "$tar_file_path"
         ;;
       *)
-        echo "[$(date +"%Y-%m-%d %H:%M:%S")] 🔴 You're not sure, okay. Now exitting the script."
+        echo "$(getDate) 🔴 You're not sure, okay. Now exitting the script."
         exit 1
         ;;
     esac
   fi
+}
+
+function getDate() {
+  echo "[$(date +"%Y-%m-%d %H:%M:%S")]"
 }
 
 amIRoot
@@ -120,29 +124,29 @@ if ! command -v zstd >/dev/null 2>&1; then
   exit 1
 fi
 
-echo "[$(date +"%Y-%m-%d %H:%M:%S")] Change WORKDIR to $PATH_TO_ODOO."
+echo "$(getDate) Change WORKDIR to $PATH_TO_ODOO."
 cd $PATH_TO_ODOO || { echo "🔴 Can't change directory to $PATH_TO_ODOO"; exit 1; }
 
-echo "[$(date +"%Y-%m-%d %H:%M:%S")] Dumping $ODOO_DATABASE_NAME_PRD database..."
+echo "$(getDate) Dumping $ODOO_DATABASE_NAME_PRD database..."
 sudo -u postgres pg_dump -f /tmp/"$ODOO_DATABASE_NAME_PRD.sql" $ODOO_DATABASE_NAME_PRD > /dev/null 2>&1
 
-echo "[$(date +"%Y-%m-%d %H:%M:%S")] ⏱️ Backing up cron jobs list..."
+echo "$(getDate) ⏱️ Backing up cron jobs list..."
 crontab -l > ./crontab
 
-echo "[$(date +"%Y-%m-%d %H:%M:%S")] 📦 Backing up the database and its datadir..."
+echo "$(getDate) 📦 Backing up the database and its datadir..."
 tar -cf $TAR_FILE_PATH -I "zstd -vT0 -7 --ultra" $FILES_DIRS_TO_TAR
 
-echo "[$(date +"%Y-%m-%d %H:%M:%S")] Changing the ownership of the snapshot file..."
+echo "$(getDate) Changing the ownership of the snapshot file..."
 chown odoo: $TAR_FILE_PATH
 
-echo "[$(date +"%Y-%m-%d %H:%M:%S")] 🧹 Cleaning up the SQL file."
+echo "$(getDate) 🧹 Cleaning up the SQL file."
 rm $TEMP_FILES_TO_REMOVE
 
 if [ "$GCS_BUCKET_NAME" != "enter_your_gcs_bucket_name" ] && [ "$GCS_BUCKET_NAME" != "" ]; then
-  echo "[$(date +"%Y-%m-%d %H:%M:%S")] ☁ Moving the snapshot file to tilabs-ctb-backup at Google Cloud Storage."
+  echo "$(getDate) ☁ Moving the snapshot file to tilabs-ctb-backup at Google Cloud Storage."
   $PRE_COMMAND gsutil -m mv $TAR_FILE_PATH gs://$GCS_BUCKET_NAME/$TAR_FILE_NAME
-  echo -e "[$(date +"%Y-%m-%d %H:%M:%S")] ✅ The snapshot File Created Successfully named $TAR_FILE_NAME. File Backupped at gs://$GCS_BUCKET_NAME/$TAR_FILE_NAME."
+  echo -e "$(getDate) ✅ The snapshot File Created Successfully named $TAR_FILE_NAME. File Backupped at gs://$GCS_BUCKET_NAME/$TAR_FILE_NAME."
 else
-  echo -e "[$(date +"%Y-%m-%d %H:%M:%S")] ✅ The snapshot File Created Successfully named $TAR_FILE_NAME. File Backupped at $TAR_FILE_PATH."
+  echo -e "$(getDate) ✅ The snapshot File Created Successfully named $TAR_FILE_NAME. File Backupped at $TAR_FILE_PATH."
 fi
 echo

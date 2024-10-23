@@ -8,6 +8,10 @@ SERVICE_NAME=$(basename "$(pwd)")
 DOCKER_COMPOSE_FILE="docker-compose.yml"
 GIT_PATH="./odoo-base"
 
+function getDate() {
+  echo "[$(date +"%Y-%m-%d %H:%M:%S")]"
+}
+
 function isDirectoryGitRepository() {
   dir=$1
 
@@ -29,42 +33,42 @@ function getSubDirectories() {
 }
 
 function main() {
-  echo "[$(date +"%Y-%m-%d %H:%M:%S")] Change Directory to $PATH_TO_ODOO"
+  echo "$(getDate) Change Directory to $PATH_TO_ODOO"
   cd "$PATH_TO_ODOO" || { echo "🔴 Can't change directory to $PATH_TO_ODOO"; exit 1; }
 
-  echo "[$(date +"%Y-%m-%d %H:%M:%S")] 🔵 Start checking git repositories"
+  echo "$(getDate) 🔵 Start checking git repositories"
   GIT_SUBDIRS=$(getSubDirectories "$GIT_PATH")
 
   if wc -l <<< "$GIT_SUBDIRS" | grep -q "0"; then
-    echo "[$(date +"%Y-%m-%d %H:%M:%S")] 🔴 No git repositories found in $GIT_PATH"
+    echo "$(getDate) 🔴 No git repositories found in $GIT_PATH"
     exit 1
   fi
 
   if ! wc -l <<< "$GIT_SUBDIRS" | grep -q "1"; then
-    echo "[$(date +"%Y-%m-%d %H:%M:%S")] 🟨 Please make sure there is only one git repository in $GIT_PATH"
+    echo "$(getDate) 🟨 Please make sure there is only one git repository in $GIT_PATH"
   fi
   
   pulledrepositories=0
   for subdir in $GIT_SUBDIRS; do
     if isDirectoryGitRepository "$subdir"; then
-      echo "[$(date +"%Y-%m-%d %H:%M:%S")] 🟦 Fetch and pull $subdir"
+      echo "$(getDate) 🟦 Fetch and pull $subdir"
       git -C "$subdir" fetch
       if git -C "$subdir" pull | grep -v "up to date" ;then
         pulledrepositories=$((pulledrepositories+1))
       fi
     else
-      echo "[$(date +"%Y-%m-%d %H:%M:%S")] 🔴 $subdir is not a git repository."
+      echo "$(getDate) 🔴 $subdir is not a git repository."
     fi
   done
 
   if [ $pulledrepositories -gt 0 ]; then
-    echo "[$(date +"%Y-%m-%d %H:%M:%S")] 🟦 Rebuilding the docker containers"
+    echo "$(getDate) 🟦 Rebuilding the docker containers"
     docker compose -f $PATH_TO_ODOO/$DOCKER_COMPOSE_FILE up -d --build
   else
-    echo "[$(date +"%Y-%m-%d %H:%M:%S")] ✅ No updates found"
+    echo "$(getDate) ✅ No updates found"
   fi
 
-  echo "[$(date +"%Y-%m-%d %H:%M:%S")] ✅ Finish checking updates for $SERVICE_NAME"
+  echo "$(getDate) ✅ Finish checking updates for $SERVICE_NAME"
 }
 
 main

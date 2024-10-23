@@ -136,7 +136,7 @@ function main() {
   mkdir -p "$TEMP_DIR"
 
   echo "$(getDate) 📦 Extract the zip backup file"
-  unzip -qqqq -d "$TEMP_DIR" "$BACKUPDATA_FILE_PATH"
+  unzip -qqqq -d "$TEMP_DIR" "$BACKUPDATA_FILE_PATH" > /dev/null2>&1
 
   echo "$(getDate) 🏗️ Create the filestore directory"
   mkdir "$FILESTORE_PATH"
