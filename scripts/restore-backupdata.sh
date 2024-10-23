@@ -139,7 +139,7 @@ function main() {
   unzip -qqqq -d "$TEMP_DIR" "$BACKUPDATA_FILE_PATH"
 
   echo "$(getDate) 🏗️ Create the filestore directory"
-  mkdir -p "$FILESTORE_PATH"
+  mkdir "$FILESTORE_PATH"
 
   echo "$(getDate) 📥 Restore the filestore"
   rsync -av "$TEMP_DIR/filestore/" "$FILESTORE_PATH"

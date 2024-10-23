@@ -52,6 +52,11 @@ function createDataDir() {
     sudo chown $ODOO_LINUX_USER: "$ODOO_DATADIR_SERVICE"
   fi
 
+  if [ ! -d "$ODOO_DATADIR_SERVICE/filestore" ]; then
+    sudo mkdir "$ODOO_DATADIR_SERVICE/filestore"
+    sudo chown $ODOO_LINUX_USER: "$ODOO_DATADIR_SERVICE/filestore"
+  fi
+
   writeDatadirVariableOnEnvFile
 }
 
