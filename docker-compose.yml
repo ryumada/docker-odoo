@@ -24,6 +24,11 @@ services:
     volumes:
      - ${ODOO_DATADIR_SERVICE}:${ODOO_DATADIR_SERVICE}
      - ${ODOO_LOG_DIR_SERVICE}:${ODOO_LOG_DIR_SERVICE}
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
     environment:
      - DB_USER
      - DB_NAME
