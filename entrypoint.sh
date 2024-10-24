@@ -11,6 +11,7 @@ error_handler() {
 trap 'error_handler $LINENO' ERR
 
 : "${SERVICE_NAME:=$(basename "$(pwd)")}"
+: "${ODOO_VERSION:=16}"
 
 : "${PORT:=8069}"
 : "${GEVENT_PORT:=8072}"
@@ -46,7 +47,12 @@ function add_arg() {
 }
 
 add_arg "http-port" "$PORT"
-add_arg "gevent-port" "$GEVENT_PORT"
+
+if [ "$ODOO_VERSION" -ge 16 ]; then
+  add_arg "gevent-port" "$GEVENT_PORT"
+else
+  add_arg "longpolling-port" "$GEVENT_PORT"
+fi
 
 add_arg "workers" "$WORKERS"
 add_arg "max-cron-threads" "$MAX_CRON_THREADS"

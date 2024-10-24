@@ -47,6 +47,7 @@ services:
      - ODOO_IMAGE_NAME
      - ODOO_IMAGE_SOURCE
      - ODOO_LOG_DIR_SERVICE
+     - ODOO_VERSION
      - PYTHON_VERSION
     env_file:
       - .env
