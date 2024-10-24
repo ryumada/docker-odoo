@@ -136,10 +136,10 @@ function main() {
   mkdir -p "$TEMP_DIR"
 
   echo "$(getDate) 📦 Extract the zip backup file"
-  unzip -qqqq -d "$TEMP_DIR" "$BACKUPDATA_FILE_PATH"
+  unzip -qqqq -d "$TEMP_DIR" "$BACKUPDATA_FILE_PATH" > /dev/null2>&1
 
   echo "$(getDate) 🏗️ Create the filestore directory"
-  mkdir -p "$FILESTORE_PATH"
+  mkdir "$FILESTORE_PATH"
 
   echo "$(getDate) 📥 Restore the filestore"
   rsync -av "$TEMP_DIR/filestore/" "$FILESTORE_PATH"

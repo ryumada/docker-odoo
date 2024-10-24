@@ -12,8 +12,12 @@ ODOO_DATABASE_NAME_PRD=enter_production_database_name
 PATH_TO_ODOO=$(git -C "$(dirname "$(readlink -f "$0")")" rev-parse --show-toplevel)
 SERVICE_NAME=$(basename "$PATH_TO_ODOO")
 
+function getDate() {
+  echo "[$(date +"%Y-%m-%d %H:%M:%S")]"
+}
+
 if [ "$(id -u)" -ne 0 ]; then
-  echo "[$(date +"%Y-%m-%d %H:%M:%S")] 🔴 Please run this script using sudo"
+  echo "$(getDate) 🔴 Please run this script using sudo"
   exit 1
 fi
 
@@ -41,13 +45,13 @@ case $ODOO_DEPLOYMENT_ENVIRONMENT in
     read -rp "Enter the environment name: " ODOO_DEPLOYMENT_ENVIRONMENT
     ;;
   *)
-    echo "[$(date +"%Y-%m-%d %H:%M:%S")] 🔴 Invalid option"
+    echo "$(getDate) 🔴 Invalid option"
     exit 1
     ;;
 esac
 
 if [ ! -d "$PATH_TO_ODOO/../$SERVICE_NAME-$ODOO_DEPLOYMENT_ENVIRONMENT" ]; then
-  echo "[$(date +"%Y-%m-%d %H:%M:%S")] 🔴 The deployment environment $SERVICE_NAME-$ODOO_DEPLOYMENT_ENVIRONMENT does not exist"
+  echo "$(getDate) 🔴 The deployment environment $SERVICE_NAME-$ODOO_DEPLOYMENT_ENVIRONMENT does not exist"
   exit 1
 fi
 
@@ -59,7 +63,7 @@ if [ "$USE_DATE_SUFFIX" == "Y" ] || [ "$USE_DATE_SUFFIX" == "y" ]; then
 elif [ "$USE_DATE_SUFFIX" == "N" ] || [ "$USE_DATE_SUFFIX" == "n" ]; then
   ODOO_DB_NAME_ENV="$ODOO_DATABASE_NAME_PRD-$ODOO_DEPLOYMENT_ENVIRONMENT"
 else
-  echo "[$(date +"%Y-%m-%d %H:%M:%S")] 🔴 Invalid option"
+  echo "$(getDate) 🔴 Invalid option"
   exit 1
 fi
 
@@ -75,43 +79,43 @@ DOCKER_COMPOSE_FILE="docker-compose.yml"
 DOCKER_COMPOSE_PATH_ENV="$PATH_TO_ODOO/../$SERVICE_NAME-$ODOO_DEPLOYMENT_ENVIRONMENT/$DOCKER_COMPOSE_FILE"
 
 function main() {
-  echo "[$(date +"%Y-%m-%d %H:%M:%S")] Change Directory to $PATH_TO_ODOO"
-  cd "$PATH_TO_ODOO" || { echo "[$(date +"%Y-%m-%d %H:%M:%S")] 🔴 Can't change directory to $PATH_TO_ODOO"; exit 1; }
+  echo "$(getDate) Change Directory to $PATH_TO_ODOO"
+  cd "$PATH_TO_ODOO" || { echo "$(getDate) 🔴 Can't change directory to $PATH_TO_ODOO"; exit 1; }
 
-  echo "[$(date +"%Y-%m-%d %H:%M:%S")] 🔵 Start cloning database from $ODOO_DATABASE_NAME_PRD to $ODOO_DB_NAME_ENV"
+  echo "$(getDate) 🔵 Start cloning database from $ODOO_DATABASE_NAME_PRD to $ODOO_DB_NAME_ENV"
 
-  echo "[$(date +"%Y-%m-%d %H:%M:%S")] 🛑 Stop the $ODOO_DEPLOYMENT_ENVIRONMENT environment"
-  docker compose -f "$DOCKER_COMPOSE_PATH_ENV" down > /dev/null 2>&1 || { echo "[$(date +"%Y-%m-%d %H:%M:%S")] 🔴 Error stopping $ODOO_DEPLOYMENT_ENVIRONMENT"; exit 1; }
+  echo "$(getDate) 🛑 Stop the $ODOO_DEPLOYMENT_ENVIRONMENT environment"
+  docker compose -f "$DOCKER_COMPOSE_PATH_ENV" down > /dev/null 2>&1 || { echo "$(getDate) 🔴 Error stopping $ODOO_DEPLOYMENT_ENVIRONMENT"; exit 1; }
   
-  echo "[$(date +"%Y-%m-%d %H:%M:%S")] 🥟 Dump $ODOO_DATABASE_NAME_PRD to temporary file"
-  sudo -u postgres pg_dump -d "$ODOO_DATABASE_NAME_PRD" -f "/tmp/$ODOO_DB_NAME_ENV.sql" > /dev/null 2>&1 || { echo "[$(date +"%Y-%m-%d %H:%M:%S")] 🔴 Error dumping $ODOO_DATABASE_NAME_PRD"; exit 1; }
+  echo "$(getDate) 🥟 Dump $ODOO_DATABASE_NAME_PRD to temporary file"
+  sudo -u postgres pg_dump -d "$ODOO_DATABASE_NAME_PRD" -f "/tmp/$ODOO_DB_NAME_ENV.sql" > /dev/null 2>&1 || { echo "$(getDate) 🔴 Error dumping $ODOO_DATABASE_NAME_PRD"; exit 1; }
 
   if [ -d "$ODOO_FILESTORE_PATH_ENV" ]; then
-    echo "[$(date +"%Y-%m-%d %H:%M:%S")] 🧹 Remove the old filestore of $ODOO_DB_NAME_ENV"
+    echo "$(getDate) 🧹 Remove the old filestore of $ODOO_DB_NAME_ENV"
     rm -rf "$ODOO_FILESTORE_PATH_ENV"
   fi
   
-  echo "[$(date +"%Y-%m-%d %H:%M:%S")] 📄 Copy the filestore to the $ODOO_DEPLOYMENT_ENVIRONMENT environment"
-  mkdir "$ODOO_FILESTORE_PATH_ENV" > /dev/null 2>&1 || { echo "[$(date +"%Y-%m-%d %H:%M:%S")] 🔴 Error creating $ODOO_FILESTORE_PATH_ENV. Maybe the directory exist."; }
+  echo "$(getDate) 📄 Copy the filestore to the $ODOO_DEPLOYMENT_ENVIRONMENT environment"
+  mkdir "$ODOO_FILESTORE_PATH_ENV" > /dev/null 2>&1 || { echo "$(getDate) 🔴 Error creating $ODOO_FILESTORE_PATH_ENV. Maybe the directory exist."; }
   cp -r "$ODOO_FILESTORE_PATH_PRD" "$ODOO_FILESTORE_PATH_ENV"
 
-  echo "[$(date +"%Y-%m-%d %H:%M:%S")] 👤 Change owner of $ODOO_FILESTORE_PATH_ENV to odoo"
+  echo "$(getDate) 👤 Change owner of $ODOO_FILESTORE_PATH_ENV to odoo"
   chown -R odoo: "$ODOO_FILESTORE_PATH_ENV"
   
   if [ "$ODOO_DB_NAME_ENV" == "$ODOO_DATABASE_NAME_PRD-$ODOO_DEPLOYMENT_ENVIRONMENT" ]; then
-    echo "[$(date +"%Y-%m-%d %H:%M:%S")] 🗑️ Drop the old database $ODOO_DB_NAME_ENV"
-    sudo -u postgres psql -d postgres -c "DROP DATABASE \"$ODOO_DB_NAME_ENV\"" > /dev/null 2>&1 || { echo "[$(date +"%Y-%m-%d %H:%M:%S")] 🔴 Error dropping $ODOO_DB_NAME_ENV"; exit 1; }
+    echo "$(getDate) 🗑️ Drop the old database $ODOO_DB_NAME_ENV"
+    sudo -u postgres psql -d postgres -c "DROP DATABASE \"$ODOO_DB_NAME_ENV\"" > /dev/null 2>&1 || { echo "$(getDate) 🔴 Error dropping $ODOO_DB_NAME_ENV"; exit 1; }
   fi
 
-  echo "[$(date +"%Y-%m-%d %H:%M:%S")] 🥢 Create new database $ODOO_DB_NAME_ENV"
-  sudo -u postgres psql -d postgres -c "CREATE DATABASE \"$ODOO_DB_NAME_ENV\"" > /dev/null 2>&1 || { echo "[$(date +"%Y-%m-%d %H:%M:%S")] 🔴 Error creating $ODOO_DB_NAME_ENV"; exit 1; }
+  echo "$(getDate) 🥢 Create new database $ODOO_DB_NAME_ENV"
+  sudo -u postgres psql -d postgres -c "CREATE DATABASE \"$ODOO_DB_NAME_ENV\"" > /dev/null 2>&1 || { echo "$(getDate) 🔴 Error creating $ODOO_DB_NAME_ENV"; exit 1; }
 
-  echo "[$(date +"%Y-%m-%d %H:%M:%S")] 🥢 Restore $ODOO_DB_NAME_ENV from $ODOO_DATABASE_NAME_PRD"
-  sudo -u postgres psql -d "$ODOO_DB_NAME_ENV" -f "/tmp/$ODOO_DB_NAME_ENV.sql" > /dev/null 2>&1 || { echo "[$(date +"%Y-%m-%d %H:%M:%S")] 🔴 Error restoring $ODOO_DB_NAME_ENV"; exit 1; }
+  echo "$(getDate) 🥢 Restore $ODOO_DB_NAME_ENV from $ODOO_DATABASE_NAME_PRD"
+  sudo -u postgres psql -d "$ODOO_DB_NAME_ENV" -f "/tmp/$ODOO_DB_NAME_ENV.sql" > /dev/null 2>&1 || { echo "$(getDate) 🔴 Error restoring $ODOO_DB_NAME_ENV"; exit 1; }
   rm "/tmp/$ODOO_DB_NAME_ENV.sql"
 
-  echo "[$(date +"%Y-%m-%d %H:%M:%S")] 🧹 Change owner of $ODOO_DB_NAME_ENV to $ODOO_DB_USER_ENV"
-  sudo -u postgres psql -d postgres -c "ALTER DATABASE \"$ODOO_DB_NAME_ENV\" OWNER TO \"$ODOO_DB_USER_ENV\"" > /dev/null 2>&1 || { echo "[$(date +"%Y-%m-%d %H:%M:%S")] 🔴 Error changing owner of $ODOO_DB_NAME_ENV"; exit 1; }
+  echo "$(getDate) 🧹 Change owner of $ODOO_DB_NAME_ENV to $ODOO_DB_USER_ENV"
+  sudo -u postgres psql -d postgres -c "ALTER DATABASE \"$ODOO_DB_NAME_ENV\" OWNER TO \"$ODOO_DB_USER_ENV\"" > /dev/null 2>&1 || { echo "$(getDate) 🔴 Error changing owner of $ODOO_DB_NAME_ENV"; exit 1; }
   sudo -u postgres psql -d "$ODOO_DB_NAME_ENV" -c "
     -- Change the owner of all tables
     DO \$\$
@@ -142,12 +146,12 @@ function main() {
             EXECUTE 'ALTER VIEW ' || quote_ident(rec.table_name) || ' OWNER TO \"${ODOO_DB_USER_ENV}\"';
         END LOOP;
     END \$\$;
-  " > /dev/null 2>&1 || { echo "[$(date +"%Y-%m-%d %H:%M:%S")] 🔴 Error changing owner of $ODOO_DB_NAME_ENV"; exit 1; }
+  " > /dev/null 2>&1 || { echo "$(getDate) 🔴 Error changing owner of $ODOO_DB_NAME_ENV"; exit 1; }
 
-  echo "[$(date +"%Y-%m-%d %H:%M:%S")] 🟢 Start the $ODOO_DEPLOYMENT_ENVIRONMENT environment"
-  docker compose -f "$DOCKER_COMPOSE_PATH_ENV" up -d > /dev/null 2>&1 || { echo "[$(date +"%Y-%m-%d %H:%M:%S")] 🔴 Error restarting $ODOO_DEPLOYMENT_ENVIRONMENT"; exit 1; }
+  echo "$(getDate) 🟢 Start the $ODOO_DEPLOYMENT_ENVIRONMENT environment"
+  docker compose -f "$DOCKER_COMPOSE_PATH_ENV" up -d > /dev/null 2>&1 || { echo "$(getDate) 🔴 Error restarting $ODOO_DEPLOYMENT_ENVIRONMENT"; exit 1; }
 
-  echo "[$(date +"%Y-%m-%d %H:%M:%S")] ✅ Finish cloning database from $ODOO_DATABASE_NAME_PRD"
+  echo "$(getDate) ✅ Finish cloning database from $ODOO_DATABASE_NAME_PRD"
 }
 
 main

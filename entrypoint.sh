@@ -11,6 +11,7 @@ error_handler() {
 trap 'error_handler $LINENO' ERR
 
 : "${SERVICE_NAME:=$(basename "$(pwd)")}"
+: "${ODOO_VERSION:=16}"
 
 : "${PORT:=8069}"
 : "${GEVENT_PORT:=8072}"
@@ -24,7 +25,6 @@ trap 'error_handler $LINENO' ERR
 : "${LIMIT_TIME_REAL:=2700}"
 : "${LIMIT_TIME_REAL_CRON:=3600}"
 : "${LIMIT_REQUEST:=8196}"
-: "${TRANSIENT_AGE_LIMIT:=1.0}"
 
 : "${ODOO_DATADIR_SERVICE:=/var/lib/odoo/$SERVICE_NAME}"
 ODOO_LOG_FILE=$ODOO_LOG_DIR_SERVICE/$SERVICE_NAME.log
@@ -46,7 +46,15 @@ function add_arg() {
 }
 
 add_arg "http-port" "$PORT"
-add_arg "gevent-port" "$GEVENT_PORT"
+
+if [ "$ODOO_VERSION" -ge 16 ]; then
+  : "${TRANSIENT_AGE_LIMIT:=1.0}"
+
+  add_arg "gevent-port" "$GEVENT_PORT"
+  add_arg "transient-age-limit" "$TRANSIENT_AGE_LIMIT"
+else
+  add_arg "longpolling-port" "$GEVENT_PORT"
+fi
 
 add_arg "workers" "$WORKERS"
 add_arg "max-cron-threads" "$MAX_CRON_THREADS"
@@ -57,7 +65,6 @@ add_arg "limit-time-cpu" "$LIMIT_TIME_CPU"
 add_arg "limit-time-real" "$LIMIT_TIME_REAL"
 add_arg "limit-time-real-cron" "$LIMIT_TIME_REAL_CRON"
 add_arg "limit-request" "$LIMIT_REQUEST"
-add_arg "transient-age-limit" "$TRANSIENT_AGE_LIMIT"
 
 add_arg "data-dir" "$ODOO_DATADIR_SERVICE"
 add_arg "logfile" "$ODOO_LOG_FILE"
