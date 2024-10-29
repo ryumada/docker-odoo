@@ -129,23 +129,22 @@ Before you run the restore snapshot script, you need to prepare [snapshot utilit
 
   6. Add a new crontab to run your script (You can skip this step and continue to step 7 if you don't want to use cron for automatic snapshot).
       ```bash
-      sudo crontab -e
-      ```
-
-      Then add this cron:
+      export SERVICE_NAME=$(basename "$PWD")
+      cat << EOF > ~/snapshot-$SERVICE_NAME
+      SHELL=/bin/bash
+      PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
       
-      ```bash
-      # run snapshot utility every 4 hour past 27 minutes in each day
-      27 */4 * * * /usr/local/sbin/snapshot-$SERVICE_NAME
+      27 */4 * * * root "/usr/local/sbin/snapshot-$SERVICE_NAME"
+
+      EOF
+
+      sudo mv ~/snapshot-$SERVICE_NAME /etc/cron.d/snapshot-$SERVICE_NAME
+      sudo chown root: /etc/cron.d/snapshot-$SERVICE_NAME
+      sudo chmod 644 /etc/cron.d/snapshot-$SERVICE_NAME
+      sudo systemctl restart cron
       ```
       
       > ⚠️ Replace `$SERVICE_NAME` to the value of your root repository name (`basename "$PWD"`).
-
-      Make sure that the crontab is added:
-
-      ```bash
-      sudo crontab -l
-      ```
 
   7. Rotate the logfile.
       > ⚠️ Make sure you are in the root repository.
