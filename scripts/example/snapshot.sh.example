@@ -144,7 +144,7 @@ rm $TEMP_FILES_TO_REMOVE
 
 if [ "$GCS_BUCKET_NAME" != "enter_your_gcs_bucket_name" ] && [ "$GCS_BUCKET_NAME" != "" ]; then
   echo "$(getDate) ☁ Moving the snapshot file to tilabs-ctb-backup at Google Cloud Storage."
-  $PRE_COMMAND gsutil -m mv $TAR_FILE_PATH gs://$GCS_BUCKET_NAME/$TAR_FILE_NAME
+  sudo -u devopsadmin gsutil -m mv $TAR_FILE_PATH gs://$GCS_BUCKET_NAME/$TAR_FILE_NAME
   echo -e "$(getDate) ✅ The snapshot File Created Successfully named $TAR_FILE_NAME. File Backupped at gs://$GCS_BUCKET_NAME/$TAR_FILE_NAME."
 else
   echo -e "$(getDate) ✅ The snapshot File Created Successfully named $TAR_FILE_NAME. File Backupped at $TAR_FILE_PATH."
