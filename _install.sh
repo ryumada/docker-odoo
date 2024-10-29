@@ -548,7 +548,6 @@ function main() {
   isDockerInstalled
   isLogRotateInstalled
   isUserExist "$ODOO_LINUX_USER" 8069
-  isUserExist "devopsadmin" 3366
 
   installPostgresRestartorScript
   installDockerServiceRestartorScript

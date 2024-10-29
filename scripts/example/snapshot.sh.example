@@ -9,6 +9,7 @@ GCS_BUCKET_NAME=enter_your_gcs_bucket_name
 
 PATH_TO_ODOO=$(git -C "$(dirname "$(readlink -f "$0")")" rev-parse --show-toplevel)
 SERVICE_NAME=$(basename "$PATH_TO_ODOO")
+REPOSITORY_OWNER=$(stat -c '%U' "$PATH_TO_ODOO")
 
 ## This variable below to define the new variable (DON'T EDIT)
 FILES_DIRS_TO_TAR=""
@@ -137,14 +138,14 @@ echo "$(getDate) 📦 Backing up the database and its datadir..."
 tar -cf $TAR_FILE_PATH -I "zstd -vT0 -7 --ultra" $FILES_DIRS_TO_TAR
 
 echo "$(getDate) Changing the ownership of the snapshot file..."
-chown odoo: $TAR_FILE_PATH
+chown $REPOSITORY_OWNER: $TAR_FILE_PATH
 
 echo "$(getDate) 🧹 Cleaning up the SQL file."
 rm $TEMP_FILES_TO_REMOVE
 
 if [ "$GCS_BUCKET_NAME" != "enter_your_gcs_bucket_name" ] && [ "$GCS_BUCKET_NAME" != "" ]; then
   echo "$(getDate) ☁ Moving the snapshot file to tilabs-ctb-backup at Google Cloud Storage."
-  sudo -u devopsadmin gsutil -m mv $TAR_FILE_PATH gs://$GCS_BUCKET_NAME/$TAR_FILE_NAME
+  sudo -u $REPOSITORY_OWNER gsutil -m mv $TAR_FILE_PATH gs://$GCS_BUCKET_NAME/$TAR_FILE_NAME
   echo -e "$(getDate) ✅ The snapshot File Created Successfully named $TAR_FILE_NAME. File Backupped at gs://$GCS_BUCKET_NAME/$TAR_FILE_NAME."
 else
   echo -e "$(getDate) ✅ The snapshot File Created Successfully named $TAR_FILE_NAME. File Backupped at $TAR_FILE_PATH."
