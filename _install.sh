@@ -400,21 +400,24 @@ function isFileExists() {
   fi
 }
 
-function isOdooUserExists() {
-  if ! id "odoo" &>/dev/null; then
-    echo "$(getDate) 🟦  Create a new Odoo user."
-    if sudo useradd -m -u 8069 -s /bin/bash odoo; then
-      echo "$(getDate) ✅ odoo user created."
+function isUserExist() {
+  user_name=$1
+  user_id=$2
+  
+  if ! id "$user_name" &>/dev/null; then
+    echo "$(getDate) 🟦  Create a new $user_name user."
+    if sudo useradd -m -u $user_id -s /bin/bash $user_name; then
+      echo "$(getDate) ✅ $user_name user created."
     else
-      echo "$(getDate) ❌ Failed to create odoo user."
+      echo "$(getDate) ❌ Failed to create $user_name user."
       exit 1
     fi
   else
-    if [ "$(id -u odoo)" -ne 8069 ]; then
-      echo "$(getDate) ❌ odoo user already exists but the user id is not 8069."
-      TODO+=("Please change the odoo user id to 8069 using the following command: 'sudo usermod -u 8069 odoo '")
+    if [ "$(id -u $user_name)" -ne $user_id ]; then
+      echo "$(getDate) ❌ $user_name user already exists but the user id is not $user_id."
+      TODO+=("Please change the $user_name user id to $user_id using the following command: 'sudo usermod -u $user_id $user_name '")
     else
-      echo "$(getDate) ✅ odoo user already exists."
+      echo "$(getDate) ✅ $user_name user already exists."
     fi
   fi
 }
@@ -544,7 +547,8 @@ function main() {
 
   isDockerInstalled
   isLogRotateInstalled
-  isOdooUserExists
+  isUserExist "$ODOO_LINUX_USER" 8069
+  isUserExist "devopsadmin" 3366
 
   installPostgresRestartorScript
   installDockerServiceRestartorScript
