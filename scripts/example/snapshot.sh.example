@@ -45,7 +45,7 @@ function amIRoot() {
 function areYouReallySure() {
   tar_file_path=$1
   if [ -f "$tar_file_path" ]; then
-    echo "current snapshot file already exists, do you want to overwrite it?"
+    echo "current snapshot file already exists, do you want to overwrite it? ($tar_file_path)"
     echo -e "type 'yes I am sure' to continue.\n"
 
     read -rp ": " CONFIRMATION
@@ -67,89 +67,93 @@ function getDate() {
   echo "[$(date +"%Y-%m-%d %H:%M:%S")]"
 }
 
-amIRoot
+function main() {
+  LOG_PATH=/var/log/odoo/_utilities/snapshot-$SERVICE_NAME.log
 
-# DATE_FOR_FILENAME="$(date +"%Y%m%d-%H%M%S")"
-# DATE_FOR_MESSAGE=$(date +"%Y-%m-%d %H:%M:%S")
-TAR_FILE_NAME=snapshot-$SERVICE_NAME.tar.zst
-TAR_FILE_PATH=/tmp/$TAR_FILE_NAME
+  # Redirect stdout and stderr to tee
+  exec > >(tee -a "$LOG_PATH") 2>&1
 
-areYouReallySure "$TAR_FILE_PATH"
+  amIRoot
 
-FILES_DIRS_TO_TAR=".secrets/db_user $FILES_DIRS_TO_TAR"
-FILES_DIRS_TO_TAR=".secrets/db_password $FILES_DIRS_TO_TAR"
-FILES_DIRS_TO_TAR="conf/odoo.conf $FILES_DIRS_TO_TAR"
-FILES_DIRS_TO_TAR=".env $FILES_DIRS_TO_TAR"
-FILES_DIRS_TO_TAR="requirements.txt $FILES_DIRS_TO_TAR"
+  # DATE_FOR_FILENAME="$(date +"%Y%m%d-%H%M%S")"
+  # DATE_FOR_MESSAGE=$(date +"%Y-%m-%d %H:%M:%S")
+  TAR_FILE_NAME=snapshot-$SERVICE_NAME.tar.zst
+  TAR_FILE_PATH=/tmp/$TAR_FILE_NAME
 
-FILES_DIRS_TO_TAR="/tmp/$ODOO_DATABASE_NAME_PRD.sql $FILES_DIRS_TO_TAR"
-FILES_DIRS_TO_TAR="crontab $FILES_DIRS_TO_TAR"
+  areYouReallySure "$TAR_FILE_PATH"
 
-FILES_DIRS_TO_TAR="/etc/nginx/sites-available $FILES_DIRS_TO_TAR"
-FILES_DIRS_TO_TAR="/etc/logrotate.d/$SERVICE_NAME* $FILES_DIRS_TO_TAR"
+  FILES_DIRS_TO_TAR=".secrets/db_user $FILES_DIRS_TO_TAR"
+  FILES_DIRS_TO_TAR=".secrets/db_password $FILES_DIRS_TO_TAR"
+  FILES_DIRS_TO_TAR="conf/odoo.conf $FILES_DIRS_TO_TAR"
+  FILES_DIRS_TO_TAR=".env $FILES_DIRS_TO_TAR"
+  FILES_DIRS_TO_TAR="requirements.txt $FILES_DIRS_TO_TAR"
 
-if [ -f "/etc/logrotate.d/sudo-*" ]; then
-  FILES_DIRS_TO_TAR="/etc/logrotate.d/sudo-* $FILES_DIRS_TO_TAR"
-fi
+  FILES_DIRS_TO_TAR="/tmp/$ODOO_DATABASE_NAME_PRD.sql $FILES_DIRS_TO_TAR"
+  FILES_DIRS_TO_TAR="crontab $FILES_DIRS_TO_TAR"
 
-if [ -f "scripts/backupdata-$SERVICE_NAME" ]; then
-  FILES_DIRS_TO_TAR="scripts/backupdata-$SERVICE_NAME $FILES_DIRS_TO_TAR"
-fi
+  FILES_DIRS_TO_TAR="/etc/nginx/sites-available $FILES_DIRS_TO_TAR"
+  FILES_DIRS_TO_TAR="/etc/logrotate.d/$SERVICE_NAME* $FILES_DIRS_TO_TAR"
 
-if [ -f "scripts/databasecloner-$SERVICE_NAME" ]; then
-  FILES_DIRS_TO_TAR="scripts/databasecloner-$SERVICE_NAME $FILES_DIRS_TO_TAR"
-fi
+  if [ -f "/etc/logrotate.d/sudo-*" ]; then
+    FILES_DIRS_TO_TAR="/etc/logrotate.d/sudo-* $FILES_DIRS_TO_TAR"
+  fi
 
-if [ -f "scripts/snapshot-$SERVICE_NAME" ]; then
-  FILES_DIRS_TO_TAR="scripts/snapshot-$SERVICE_NAME $FILES_DIRS_TO_TAR"
-fi
+  if [ -f "scripts/backupdata-$SERVICE_NAME" ]; then
+    FILES_DIRS_TO_TAR="scripts/backupdata-$SERVICE_NAME $FILES_DIRS_TO_TAR"
+  fi
 
-if [ -f "/usr/local/sbin/sudo-*" ]; then
-  FILES_DIRS_TO_TAR="/usr/local/sbin/sudo-* $FILES_DIRS_TO_TAR"
-fi
+  if [ -f "scripts/databasecloner-$SERVICE_NAME" ]; then
+    FILES_DIRS_TO_TAR="scripts/databasecloner-$SERVICE_NAME $FILES_DIRS_TO_TAR"
+  fi
 
-TEMP_FILES_TO_REMOVE="/tmp/$ODOO_DATABASE_NAME_PRD.sql"
-TEMP_FILES_TO_REMOVE="crontab $TEMP_FILES_TO_REMOVE"
+  if [ -f "scripts/snapshot-$SERVICE_NAME" ]; then
+    FILES_DIRS_TO_TAR="scripts/snapshot-$SERVICE_NAME $FILES_DIRS_TO_TAR"
+  fi
 
-LOG_PATH=/var/log/odoo/_utilities/snapshot-$SERVICE_NAME.log
+  if [ -f "/usr/local/sbin/sudo-*" ]; then
+    FILES_DIRS_TO_TAR="/usr/local/sbin/sudo-* $FILES_DIRS_TO_TAR"
+  fi
 
-# Redirect stdout and stderr to tee
-exec > >(tee -a "$LOG_PATH") 2>&1
+  TEMP_FILES_TO_REMOVE="/tmp/$ODOO_DATABASE_NAME_PRD.sql"
+  TEMP_FILES_TO_REMOVE="crontab $TEMP_FILES_TO_REMOVE"
 
-echo "-------------------------------------------------------------------------------"
-echo " DAILY SNAPSHOT FOR $SERVICE_NAME @ $(date +"%A, %d %B %Y %H:%M %Z")"
-echo "-------------------------------------------------------------------------------"
+  echo "-------------------------------------------------------------------------------"
+  echo " DAILY SNAPSHOT FOR $SERVICE_NAME @ $(date +"%A, %d %B %Y %H:%M %Z")"
+  echo "-------------------------------------------------------------------------------"
 
-if ! command -v zstd >/dev/null 2>&1; then
-  echo "🔴 zstd is not installed. Please install zstd first."
-  echo "For Ubuntu: sudo apt install zstd"
-  echo "For CentOS: sudo yum install zstd"
-  exit 1
-fi
+  if ! command -v zstd >/dev/null 2>&1; then
+    echo "🔴 zstd is not installed. Please install zstd first."
+    echo "For Ubuntu: sudo apt install zstd"
+    echo "For CentOS: sudo yum install zstd"
+    exit 1
+  fi
 
-echo "$(getDate) Change WORKDIR to $PATH_TO_ODOO."
-cd $PATH_TO_ODOO || { echo "🔴 Can't change directory to $PATH_TO_ODOO"; exit 1; }
+  echo "$(getDate) Change WORKDIR to $PATH_TO_ODOO."
+  cd $PATH_TO_ODOO || { echo "🔴 Can't change directory to $PATH_TO_ODOO"; exit 1; }
 
-echo "$(getDate) Dumping $ODOO_DATABASE_NAME_PRD database..."
-sudo -u postgres pg_dump -f /tmp/"$ODOO_DATABASE_NAME_PRD.sql" $ODOO_DATABASE_NAME_PRD > /dev/null 2>&1
+  echo "$(getDate) Dumping $ODOO_DATABASE_NAME_PRD database..."
+  sudo -u postgres pg_dump -f /tmp/"$ODOO_DATABASE_NAME_PRD.sql" $ODOO_DATABASE_NAME_PRD > /dev/null 2>&1
 
-echo "$(getDate) ⏱️ Backing up cron jobs list..."
-crontab -l > ./crontab
+  echo "$(getDate) ⏱️ Backing up cron jobs list..."
+  crontab -l > ./crontab
 
-echo "$(getDate) 📦 Backing up the database and its datadir..."
-tar -cf $TAR_FILE_PATH -I "zstd -vT0 -7 --ultra" $FILES_DIRS_TO_TAR
+  echo "$(getDate) 📦 Backing up the database and its datadir..."
+  tar -cf $TAR_FILE_PATH -I "zstd -vT0 -7 --ultra" $FILES_DIRS_TO_TAR
 
-echo "$(getDate) Changing the ownership of the snapshot file..."
-chown $REPOSITORY_OWNER: $TAR_FILE_PATH
+  echo "$(getDate) Changing the ownership of the snapshot file..."
+  chown $REPOSITORY_OWNER: $TAR_FILE_PATH
 
-echo "$(getDate) 🧹 Cleaning up the SQL file."
-rm $TEMP_FILES_TO_REMOVE
+  echo "$(getDate) 🧹 Cleaning up the SQL file."
+  rm $TEMP_FILES_TO_REMOVE
 
-if [ "$GCS_BUCKET_NAME" != "enter_your_gcs_bucket_name" ] && [ "$GCS_BUCKET_NAME" != "" ]; then
-  echo "$(getDate) ☁ Moving the snapshot file to tilabs-ctb-backup at Google Cloud Storage."
-  sudo -u $REPOSITORY_OWNER gsutil -m mv $TAR_FILE_PATH gs://$GCS_BUCKET_NAME/$TAR_FILE_NAME
-  echo -e "$(getDate) ✅ The snapshot File Created Successfully named $TAR_FILE_NAME. File Backupped at gs://$GCS_BUCKET_NAME/$TAR_FILE_NAME."
-else
-  echo -e "$(getDate) ✅ The snapshot File Created Successfully named $TAR_FILE_NAME. File Backupped at $TAR_FILE_PATH."
-fi
-echo
+  if [ "$GCS_BUCKET_NAME" != "enter_your_gcs_bucket_name" ] && [ "$GCS_BUCKET_NAME" != "" ]; then
+    echo "$(getDate) ☁ Moving the snapshot file to tilabs-ctb-backup at Google Cloud Storage."
+    sudo -u $REPOSITORY_OWNER gsutil -m mv $TAR_FILE_PATH gs://$GCS_BUCKET_NAME/$TAR_FILE_NAME
+    echo -e "$(getDate) ✅ The snapshot File Created Successfully named $TAR_FILE_NAME. File Backupped at gs://$GCS_BUCKET_NAME/$TAR_FILE_NAME."
+  else
+    echo -e "$(getDate) ✅ The snapshot File Created Successfully named $TAR_FILE_NAME. File Backupped at $TAR_FILE_PATH."
+  fi
+  echo
+}
+
+main
