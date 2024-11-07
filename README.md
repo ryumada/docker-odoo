@@ -177,21 +177,16 @@ docker compose exec $SERVICE_NAME getinfo-odoo_base
 ```
 
 <details>
-  <summary>You can get <code>$SERVICE_NAME</code> by looking at your <code>docker-compose.yml</code> file. </summary>
+  <summary>You can get <code>$SERVICE_NAME</code> by running <code>docker compose ps</code> in your root repository where docker compose file located. </summary>
 
-  ```dockerfile
-  ...
-  services:
-    # Enter the correct the service name, you can use company name (example: sudoerp)
-    enter_the_correct_service_name: <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
-      # Enter the correct image name below (format: username/repo:tag, example: odoo:16.0)
-      image: username/repo:tag
-      build:
-        context: .
-        dockerfile: dockerfile
-      # Because we use host ne
-  ...
+  This is the output of the command:
+
+  ```bash
+  NAME                 IMAGE                COMMAND                  SERVICE   CREATED         STATUS         PORTS
+  docker-odoo-odoo-1   docker-odoo:latest   "/opt/odoo/entrypoin…"   odoo      2 minutes ago   Up 2 minutes   
   ```
+
+  As you can see in the `SERVICE` column, the service name is `odoo`.
 </details>
 
 ## Check the git repository used by Docker Image
@@ -202,21 +197,16 @@ docker compose exec $SERVICE_NAME getinfo-odoo_git_addons
 ```
 
 <details>
-  <summary>You can get <code>$SERVICE_NAME</code> by looking at your <code>docker-compose.yml</code> file. </summary>
+  <summary>You can get <code>$SERVICE_NAME</code> by running <code>docker compose ps</code> in your root repository where docker compose file located. </summary>
 
-  ```dockerfile
-  ...
-  services:
-    # Enter the correct the service name, you can use company name (example: sudoerp)
-    enter_the_correct_service_name: <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
-      # Enter the correct image name below (format: username/repo:tag, example: odoo:16.0)
-      image: username/repo:tag
-      build:
-        context: .
-        dockerfile: dockerfile
-      # Because we use host ne
-  ...
+  This is the output of the command:
+
+  ```bash
+  NAME                 IMAGE                COMMAND                  SERVICE   CREATED         STATUS         PORTS
+  docker-odoo-odoo-1   docker-odoo:latest   "/opt/odoo/entrypoin…"   odoo      2 minutes ago   Up 2 minutes   
   ```
+
+  As you can see in the `SERVICE` column, the service name is `odoo`.
 </details>
 
 ---
