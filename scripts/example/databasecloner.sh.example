@@ -97,7 +97,7 @@ function main() {
   
   echo "$(getDate) 📄 Copy the filestore to the $ODOO_DEPLOYMENT_ENVIRONMENT environment"
   mkdir "$ODOO_FILESTORE_PATH_ENV" > /dev/null 2>&1 || { echo "$(getDate) 🔴 Error creating $ODOO_FILESTORE_PATH_ENV. Maybe the directory exist."; }
-  cp -r "$ODOO_FILESTORE_PATH_PRD" "$ODOO_FILESTORE_PATH_ENV"
+  cp -r "$ODOO_FILESTORE_PATH_PRD"/* "$ODOO_FILESTORE_PATH_ENV"
 
   echo "$(getDate) 👤 Change owner of $ODOO_FILESTORE_PATH_ENV to odoo"
   chown -R odoo: "$ODOO_FILESTORE_PATH_ENV"
