@@ -47,6 +47,10 @@ RUN pip install -r ./requirements.txt
 USER root
 
 COPY --chown=odoo:odoo ./conf/odoo.conf /etc/odoo/odoo.conf
+
+COPY --chown=odoo:odoo ./utilities/odoo-shell /usr/local/bin/odoo-shell
+RUN chmod 555 /usr/local/bin/odoo-shell
+
 COPY --chown=odoo:odoo ./odoo-base /opt/odoo/odoo-base
 
 COPY --chown=odoo:odoo ./entrypoint.sh /opt/odoo/entrypoint.sh

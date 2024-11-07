@@ -24,6 +24,11 @@ scripts/*
 !scripts/restore-backupdata.sh
 !scripts/restore-snapshot.sh
 
+utilities/*
+!utilities/README.md
+!utilities/getinfo-odoo_base.sh
+!utilities/getinfo-odoo_addons.sh
+
 .env
 
 crontab

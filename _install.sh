@@ -2,6 +2,7 @@
 
 REPOSITORY_DIRPATH="$(pwd)"
 REPOSITORY_DIRNAME="$(basename "$(pwd)")"
+REPOSITORY_OWNER=$(stat -c '%U' "$REPOSITORY_DIRPATH")
 SERVICE_NAME=$REPOSITORY_DIRNAME
 ODOO_LINUX_USER="odoo"
 
@@ -99,6 +100,42 @@ function createLogDir() {
 
   writeLogDirVariableOnEnvFile
   installOdooLogRotator
+}
+
+function createOdooShellCommandFromEntrypoint() {
+  echo "$(getDate) 🟦 Create odoo shell command from entrypoint.sh..."
+
+  entrypoint_file="$REPOSITORY_DIRPATH/entrypoint.sh"
+  odoo_shell_file="$REPOSITORY_DIRPATH/utilities/odoo-shell"
+
+  cp "$entrypoint_file" "$odoo_shell_file"
+
+  sed -i '1a PARAM=$1\
+shift\n\
+if [[ "$PARAM" == "help" || "$PARAM" == "-h" || "$PARAM" == "--help" ]]; then\
+  echo "Usage: odoo-shell [database_name|command]"\
+  echo "Parameters:"\
+  echo "database_name: The name of the database you want to connect to"\
+  echo ""\
+  echo "Commands:"\
+  echo "  help, -h, --help: Show this help message and exit"\
+  \
+  exit 1\
+fi\
+if [ -z "$PARAM" ]; then\
+  echo "Usage: odoo-shell [database_name|command]"\
+  exit 1\
+fi\
+DB_NAME=$PARAM\
+' "$odoo_shell_file"
+
+
+  sed -i 's/: "${PORT:=8069}"/PORT="$(shuf -i 55000-60000 -n 1)"/' "$odoo_shell_file"
+  sed -i 's/: "${GEVENT_PORT:=8072}"/GEVENT_PORT="$(shuf -i 50000-54999 -n 1)"/' "$odoo_shell_file"
+
+  sed -i 's|"/opt/odoo/odoo-base/$ODOO_BASE_DIRECTORY/odoo-bin"|"/opt/odoo/odoo-base/$ODOO_BASE_DIRECTORY/odoo-bin\" shell |' "$odoo_shell_file"
+
+  chown "$REPOSITORY_OWNER": "$odoo_shell_file"
 }
 
 function generatePostgresPassword() {
@@ -553,6 +590,10 @@ function main() {
   installPostgresRestartorScript
   installDockerServiceRestartorScript
 
+  read -rp "$(getDate) ❓ Do you want to renew odoo shell script? [y/N] : " response
+  if [[ "$response" =~ ^([yY][eE][sS]|[yY])+$ ]]; then
+    createOdooShellCommandFromEntrypoint
+  fi
 
   echo -e "\n==================================================================="
   echo -e "$(getDate) 🟦 This script will run in $is_build_or_pull Mode."

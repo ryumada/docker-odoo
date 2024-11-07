@@ -209,6 +209,26 @@ docker compose exec $SERVICE_NAME getinfo-odoo_git_addons
   As you can see in the `SERVICE` column, the service name is `odoo`.
 </details>
 
+## Run Odoo shell
+Odoo shell has been created automatically after you run `sudo ./_install.sh` script. The shell is copied when the image is built. You can run the Odoo shell by running this command:
+
+```bash
+docker compose exec $SERVICE_NAME odoo-shell
+```
+
+<details>
+  <summary>You can get <code>$SERVICE_NAME</code> by running <code>docker compose ps</code> in your root repository where docker compose file located. </summary>
+
+  This is the output of the command:
+
+  ```bash
+  NAME                 IMAGE                COMMAND                  SERVICE   CREATED         STATUS         PORTS
+  docker-odoo-odoo-1   docker-odoo:latest   "/opt/odoo/entrypoin…"   odoo      2 minutes ago   Up 2 minutes   
+  ```
+
+  As you can see in the `SERVICE` column, the service name is `odoo`.
+</details>
+
 ---
 
 Copyright © 2024 ryumada. All Rights Reserved.
