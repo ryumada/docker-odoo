@@ -110,30 +110,47 @@ function createOdooShellCommandFromEntrypoint() {
 
   cp "$entrypoint_file" "$odoo_shell_file"
 
-  sed -i '1a PARAM=$1\
-shift\n\
-if [[ "$PARAM" == "help" || "$PARAM" == "-h" || "$PARAM" == "--help" ]]; then\
-  echo "Usage: odoo-shell [database_name|command]"\
+sed -i '1a DATABASE_NAME_OR_HELP=$1\
+UPDATE_MODULES=$2\n\
+function show_help() {\
+  echo "Usage: odoo-shell [database_name|help] [--update=module1,module2,...]"\
   echo "Parameters:"\
-  echo "database_name: The name of the database you want to connect to"\
+  echo "  database_name: The name of the database you want to connect to"\
   echo ""\
-  echo "Commands:"\
-  echo "  help, -h, --help: Show this help message and exit"\
-  \
-  exit 1\
-fi\
-if [ -z "$PARAM" ]; then\
-  echo "Usage: odoo-shell [database_name|command]"\
-  exit 1\
-fi\
-DB_NAME=$PARAM\
+  echo "  help:"\
+  echo "    help, -h, --help: Show this help message and exit"\
+}\n\
+case "$DATABASE_NAME_OR_HELP" in\
+  help|-h|--help)\
+    show_help\
+    exit 1\
+    ;;\
+  "")\
+    echo "Usage: odoo-shell [database_name|help]"\
+    exit 1\
+    ;;\
+  *)\
+    DB_NAME=$DATABASE_NAME_OR_HELP\
+    ;;\
+esac\
 ' "$odoo_shell_file"
-
 
   sed -i 's/: "${PORT:=8069}"/PORT="$(shuf -i 55000-60000 -n 1)"/' "$odoo_shell_file"
   sed -i 's/: "${GEVENT_PORT:=8072}"/GEVENT_PORT="$(shuf -i 50000-54999 -n 1)"/' "$odoo_shell_file"
+  sed -i 's|"/opt/odoo/odoo-base/$ODOO_BASE_DIRECTORY/odoo-bin" "$@"|"/opt/odoo/odoo-base/$ODOO_BASE_DIRECTORY/odoo-bin\" shell |' "$odoo_shell_file"
 
-  sed -i 's|"/opt/odoo/odoo-base/$ODOO_BASE_DIRECTORY/odoo-bin"|"/opt/odoo/odoo-base/$ODOO_BASE_DIRECTORY/odoo-bin\" shell |' "$odoo_shell_file"
+  # delete line on pattern
+  sed -i '/ODOO_LOG_FILE=$ODOO_LOG_DIR_SERVICE\/$SERVICE_NAME.log/d' "$odoo_shell_file"
+  sed -i '/add_arg "logfile" "$ODOO_LOG_FILE"/d' "$odoo_shell_file"
+
+  # append line below the pattern with sed
+  sed -i '/ODOO_BASE_DIRECTORY=$(basename "$ODOO_BASE_DIRECTORY")/a \
+\
+add_arg "config" "/etc/odoo/odoo.conf"\n\
+if [[ "$UPDATE_MODULES" == "--update="* ]]; then\
+  UPDATE_MODULES="${UPDATE_MODULES#--update=}"\
+  add_arg "update" "$UPDATE_MODULES"\
+fi' "$odoo_shell_file"
 
   chown "$REPOSITORY_OWNER": "$odoo_shell_file"
 }

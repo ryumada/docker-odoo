@@ -189,7 +189,7 @@ docker compose exec $SERVICE_NAME getinfo-odoo_base
   As you can see in the `SERVICE` column, the service name is `odoo`.
 </details>
 
-## Check the git repository used by Docker Image
+## Check the git repository for custom addons used by Docker Image
 You can check the git repository information by running this command:
 
 ```bash
@@ -213,7 +213,19 @@ docker compose exec $SERVICE_NAME getinfo-odoo_git_addons
 Odoo shell has been created automatically after you run `sudo ./_install.sh` script. The shell is copied when the image is built. You can run the Odoo shell by running this command:
 
 ```bash
-docker compose exec $SERVICE_NAME odoo-shell
+# See help to see how to use the shell
+docker compose exec $SERVICE_NAME odoo-shell help
+
+# example command to run shell with service_name odoo
+docker compose exec odoo odoo-shell example_database_name
+
+# example command to update odoo modules
+## update single module
+docker compose exec odoo odoo-shell example_database_name --update=module_name
+## update multiple modules
+docker compose exec odoo odoo-shell example_database_name --update=module_name1,module_name2
+## update all modules (⚠️ This command is not recommended to use in production ⚠️)
+docker compose exec odoo odoo-shell example_database_name --update=all
 ```
 
 <details>
