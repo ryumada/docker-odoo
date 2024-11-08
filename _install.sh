@@ -401,6 +401,15 @@ function isDockerInstalled() {
   fi
 }
 
+function isPostgresInstalled() {
+  if ! command -v psql &>/dev/null; then
+    echo "$(getDate) ❌ psql command not found."
+    TODO+=("Please install postgresql by running the following command: 'sudo apt install postgresql'")
+  else
+    echo "$(getDate) ✅ psql command found"
+  fi
+}
+
 function isLogRotateInstalled() {
   if ! command -v logrotate &>/dev/null; then
     echo "$(getDate) ❌ logrotate command not found."
@@ -623,7 +632,15 @@ function main() {
   echo -e "$(getDate) 🟦 Checking the necessary files and directories..."
   echo "==================================================================="
 
-  generatePostgresSecrets
+  DB_HOST=$(grep 'DB_HOST' $ENV_FILE | grep -v '#' | grep -o 'DB_HOST=\([^)]*\)' | sed 's/DB_HOST=//')
+
+  if [ "$DB_HOST" == "" ]; then
+    isPostgresInstalled
+    generatePostgresSecrets
+  else
+    echo "$(getDate) 🟨 DB_HOST found on .env file. That means you have a separate postgresql server."
+    echo "$(getDate) 🟨 Please make sure that the postgresql server is running and the user and password are setup successfully. See '.secrets' directory to setup the username and password of your postgres user."
+  fi
 
   if isFileExists "$ENV_FILE" "Please create a .env file by folowing the .env.example file."; then
     createLogDir

@@ -4,7 +4,7 @@ Database secrets credentials should be automatically generated after you run the
 <details>
 <summary>
 
-## ✅ Automatic - Create a new role and credentials
+## Automatic - Create a new role and credentials [FOR LOCAL POSTGRESQL DATABASE]
 
 </summary>
 
