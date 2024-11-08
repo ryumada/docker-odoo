@@ -178,4 +178,95 @@ Before you run the restore snapshot script, you need to prepare [snapshot utilit
 
   8. You can setup Google Cloud Storage for automatic rotate snapshot file or use `logrotate` on Ubuntu.
 
+  <details>
+  <summary>
+
+  ## Setup Google Cloud Storage as the storage of your snapshot
+  
+  </summary>
+
+  Setup `google-cloud-cli` to run move your backup file to Google Cloud using `gsutil`
+  1. Prepare the key from service account for our server access to gcloud storage
+     <details>
+     <summary>
+     The steps to prepare the service account
+     </summary>
+
+     1. Go to this page to get `gcs-backupper` key: https://console.cloud.google.com/iam-admin/serviceaccounts
+     2. Then, click on your service account (example: gcs-backupper@ryumada.iam.gserviceaccount.com). You will be directed to the detail page of that service account.
+     3. Click on the `Keys` tab.
+     4. Create a new key by clicking `Add Key` button.
+     5. Then click `Create new key` menu.
+     6. Download the key as json file and move it to your server.
+     7. Move your key file to that directory and set the owner of the keyfile to the user.
+
+      </details>
+
+  2. Install `google-cloud-cli` from GCP Official docs   
+     <details>
+     <summary>
+     Follow this docs for the guide: 
+     </summary>
+
+     [Install the gcloud CLI  |  Google Cloud CLI Documentation](https://cloud.google.com/sdk/docs/install)
+     </details>
+
+  3. Activate the service account (auth using the json key)
+     <details>
+     <summary>
+      The steps to activate the service account
+     </summary>
+
+     1. Move the `json` key file to the server using `scp`
+
+         ```bash
+         scp -P $YOUR_SSH_PORT /path/to/your/gcloud_service_account.json odoo@your-server-ip:/opt/.keys/gcloud_service_account.json
+         ```
+
+     2. Create a `keys` directory in `/opt` and set up the least permission to the storage.
+
+        ```bash
+        sudo mkdir /opt/.keys
+
+        sudo chown $USER: /opt/.keys
+        # denied access for other user
+        sudo chmod 750 /opt/.keys
+
+        sudo chown $USER: /opt/.keys/gcloud_service_account.json
+        sudo chmod 440 /opt/.keys/gcloud_service_account.json
+        ```
+
+     3. Use Linux user that used for runnig the backup utility, normally the user is `odoo`
+
+        ```bash
+        sudo su odoo
+        ```
+
+     4. Activate the service account
+
+        ```bash
+        gcloud auth activate-service-account --key-file $JSON_KEY_FILE
+        ```
+
+        [gcloud auth activate-service-account  |  Google Cloud CLI Documentation](https://cloud.google.com/sdk/gcloud/reference/auth/activate-service-account)
+     </details>
+
+   4. Test your service account
+
+      ```bash
+      gsutil ls gs://$YOUR_GCS_BUCKET/
+      ```
+
+      The command will list objects available on `$YOUR_GCS_BUCKET` bucket.
+
+      If the command show the list of files, it means that your service account is successfully authenticated.
+
+   5. Setup object lifecycle and versioning to your bucket
+
+      See this documentation to know how it's works:
+      - https://cloud.google.com/storage/docs/lifecycle
+      - https://cloud.google.com/storage/docs/object-versioning
+
+  </details>
+
 </details>
