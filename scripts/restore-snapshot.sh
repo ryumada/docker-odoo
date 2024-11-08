@@ -23,6 +23,7 @@ function areYouReallySure() {
     return 0
     ;;
   *)
+    echo -e "\n$(getDate) 🔴 You are not sure. Exiting the script."
     echo -e "\n"
     exit 1;
     ;;
@@ -64,20 +65,6 @@ function restoreDBCredentials() {
   cp -f "$TEMP_DIR/.secrets/db_password" .secrets/db_password || { echo "$(getDate) 🔴 Can't restore .secrets/db_password"; }
   chown odoo: .secrets/db_password
   chmod 400 .secrets/db_password
-}
-
-function restoreNginxConfig() {
-  echo "$(getDate) Restore /etc/nginx/sites-available"
-  cp -rf "$TEMP_DIR/etc/nginx/sites-available" /etc/nginx/ || { echo "$(getDate) 🔴 Can't restore /etc/nginx/sites-available"; }
-
-  echo "$(getDate) Restore /etc/nginx/sites-enabled"
-  NGINX_SITES_AVAILABLE_LIST=$(ls /etc/nginx/sites-available)
-  for NGINX_SITES_AVAILABLE in $NGINX_SITES_AVAILABLE_LIST; do
-    if [ "$NGINX_SITES_AVAILABLE" = "default" ]; then
-      continue
-    fi
-    ln -s "/etc/nginx/sites-available/$NGINX_SITES_AVAILABLE" "/etc/nginx/sites-enabled/$NGINX_SITES_AVAILABLE" > /dev/null 2>&1 || echo "$(getDate) 🔴 Can't create symlink /etc/nginx/sites-enabled/$NGINX_SITES_AVAILABLE. Maybe the symlink is exists."
-  done
 }
 
 function restoreOdooData() {
@@ -155,30 +142,28 @@ function main() {
   cp -f "$TEMP_DIR/.env" .env || { echo "$(getDate) 🔴 Can't restore .env"; }
   chown "$REPOSITORY_OWNER": .env
 
-  restoreNginxConfig
-
-  echo "$(getDate) Restore /etc/logrotate.d/$SERVICE_NAME"
-  cp $TEMP_DIR/etc/logrotate.d/$SERVICE_NAME* /etc/logrotate.d/ || { echo "$(getDate) 🔴 Can't restore /etc/logrotate.d/$SERVICE_NAME"; }
-
-  if [ -f "/etc/logrotate.d/sudo-*" ]; then
-    echo "$(getDate) Restore /etc/logrotate.d/sudo-*"
-    cp -f $TEMP_DIR/etc/logrotate.d/sudo-* /etc/logrotate.d/ || { echo "$(getDate) 🔴 Can't restore /etc/logrotate.d/sudo-*"; }
-  fi
-
-  if [ -f "/usr/local/sbin/sudo-*" ]; then
-    echo "$(getDate) Restore sudo utilities /usr/local/sbin/sudo-*"
-    cp -f $TEMP_DIR/usr/local/sbin/sudo-* /usr/local/sbin/ || { echo "$(getDate) 🔴 Can't restore /usr/local/sbin/sudo-*"; }
-  fi
-
   restoreDBCredentials
 
   echo "$(getDate) Stop $SERVICE_NAME service"
   docker compose down > /dev/null 2>&1 || true
 
+  echo "$(getDate) Restore backupdata script scripts/backupdata-$SERVICE_NAME"
+  cp -f $TEMP_DIR/scripts/backupdata-$SERVICE_NAME "scripts/backupdata-$SERVICE_NAME" || { echo "$(getDate) 🔴 Can't restore scripts/backupdata-$SERVICE_NAME"; }
+  ln -s "$PATH_TO_ODOO/scripts/backupdata-$SERVICE_NAME" /usr/local/sbin/backupdata-$SERVICE_NAME > /dev/null 2>&1 || { echo "$(getDate) 🔴 Can't create symlink on /usr/local/sbin/backupdata-$SERVICE_NAME. Maybe the symlink is exist."; }
+  chown "$REPOSITORY_OWNER": "scripts/backupdata-$SERVICE_NAME"
+  chmod 755 "scripts/backupdata-$SERVICE_NAME"
+
+  echo "$(getDate) Restore databasecloner script scripts/databasecloner-$SERVICE_NAME"
+  cp -f $TEMP_DIR/scripts/databasecloner-$SERVICE_NAME "scripts/databasecloner-$SERVICE_NAME" || { echo "$(getDate) 🔴 Can't restore scripts/databasecloner-$SERVICE_NAME"; }
+  ln -s "$PATH_TO_ODOO/scripts/databasecloner-$SERVICE_NAME" /usr/local/sbin/databasecloner-$SERVICE_NAME > /dev/null 2>&1 || { echo "$(getDate) 🔴 Can't create symlink on /usr/local/sbin/databasecloner-$SERVICE_NAME. Maybe the symlink is exist."; }
+  chown "$REPOSITORY_OWNER": "scripts/databasecloner-$SERVICE_NAME"
+  chmod 755 "scripts/databasecloner-$SERVICE_NAME"
+
   echo "$(getDate) Restore the snapshot script scripts/snapshot-$SERVICE_NAME"
   cp -f $TEMP_DIR/scripts/snapshot-$SERVICE_NAME "scripts/snapshot-$SERVICE_NAME" || { echo "$(getDate) 🔴 Can't restore scripts/snapshot-$SERVICE_NAME"; }
   ln -s "$PATH_TO_ODOO/scripts/snapshot-$SERVICE_NAME" /usr/local/sbin/snapshot-$SERVICE_NAME > /dev/null 2>&1 || { echo "$(getDate) 🔴 Can't create symlink on /usr/local/sbin/snapshot-$SERVICE_NAME. Maybe the symlink is exist."; }
   chown "$REPOSITORY_OWNER": "scripts/snapshot-$SERVICE_NAME"
+  chmod 755 "scripts/snapshot-$SERVICE_NAME"
 
   echo "$(getDate) Restore requirements.txt"
   cp -f "$TEMP_DIR/requirements.txt" ./requirements.txt || { echo "$(getDate) 🔴 Can't restore requirements.txt"; }
@@ -191,14 +176,6 @@ function main() {
   chown -R "$REPOSITORY_OWNER": ./git/
 
   echo -e "\n==========================================================================="
-
-  echo -e "\n$(getDate) ⚠️ You need to restore the crontab manually. ⚠️"
-  echo "$(getDate) Copy the crontab to the $PATH_TO_ODOO directory."
-  cp -rf "$TEMP_DIR/crontab" ./ || { echo "$(getDate) 🔴 Can't restore crontab"; }
-  echo "$(getDate) You can do 'sudo crontab -e'  then paste content from crontab file"
-  echo -e "$(getDate) Then, you can 'sudo crontab -l' to make sure that your crontab is installed.\n"
-
-  echo "==========================================================================="
 
   echo -e "\n$(getDate) git Odoo modules used by the previous snapshot."
   echo -e "$(getDate) ⚠️ You need to clone these repositories manually into git directory. If you want to rebuild the image. ⚠️\n"

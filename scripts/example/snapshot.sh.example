@@ -89,14 +89,11 @@ function main() {
   FILES_DIRS_TO_TAR="requirements.txt $FILES_DIRS_TO_TAR"
 
   FILES_DIRS_TO_TAR="/tmp/$ODOO_DATABASE_NAME_PRD.sql $FILES_DIRS_TO_TAR"
-  FILES_DIRS_TO_TAR="crontab $FILES_DIRS_TO_TAR"
 
-  FILES_DIRS_TO_TAR="/etc/nginx/sites-available $FILES_DIRS_TO_TAR"
-  FILES_DIRS_TO_TAR="/etc/logrotate.d/$SERVICE_NAME* $FILES_DIRS_TO_TAR"
-
-  if [ -f "/etc/logrotate.d/sudo-*" ]; then
-    FILES_DIRS_TO_TAR="/etc/logrotate.d/sudo-* $FILES_DIRS_TO_TAR"
-  fi
+  # These files not backupped to the snapshot file
+  ## crontab or /etc.cron.d directory is the place where docker-odoo cron jobs are stored.
+  ## /etc/nginx/sites-available is the place where nginx configuration files are stored.
+  ## /etc/logrotate.d is the place where logrotate configuration files are stored.  
 
   if [ -f "scripts/backupdata-$SERVICE_NAME" ]; then
     FILES_DIRS_TO_TAR="scripts/backupdata-$SERVICE_NAME $FILES_DIRS_TO_TAR"
@@ -110,12 +107,8 @@ function main() {
     FILES_DIRS_TO_TAR="scripts/snapshot-$SERVICE_NAME $FILES_DIRS_TO_TAR"
   fi
 
-  if [ -f "/usr/local/sbin/sudo-*" ]; then
-    FILES_DIRS_TO_TAR="/usr/local/sbin/sudo-* $FILES_DIRS_TO_TAR"
-  fi
-
   TEMP_FILES_TO_REMOVE="/tmp/$ODOO_DATABASE_NAME_PRD.sql"
-  TEMP_FILES_TO_REMOVE="crontab $TEMP_FILES_TO_REMOVE"
+  # TEMP_FILES_TO_REMOVE="more_files_to_remove $TEMP_FILES_TO_REMOVE"
 
   echo "-------------------------------------------------------------------------------"
   echo " DAILY SNAPSHOT FOR $SERVICE_NAME @ $(date +"%A, %d %B %Y %H:%M %Z")"
@@ -133,9 +126,6 @@ function main() {
 
   echo "$(getDate) Dumping $ODOO_DATABASE_NAME_PRD database..."
   sudo -u postgres pg_dump -f /tmp/"$ODOO_DATABASE_NAME_PRD.sql" $ODOO_DATABASE_NAME_PRD > /dev/null 2>&1
-
-  echo "$(getDate) ⏱️ Backing up cron jobs list..."
-  crontab -l > ./crontab
 
   echo "$(getDate) 📦 Backing up the database and its datadir..."
   tar -cf $TAR_FILE_PATH -I "zstd -vT0 -7 --ultra" $FILES_DIRS_TO_TAR
