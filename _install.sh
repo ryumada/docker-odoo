@@ -174,6 +174,12 @@ function generatePostgresSecrets() {
 
   if sudo -u postgres psql -tAc "SELECT 1 FROM pg_roles WHERE rolname='$POSTGRES_ODOO_USERNAME'" 2>/dev/null | grep -q 1; then
     echo "$(getDate) ✅ User $POSTGRES_ODOO_USERNAME already exists."
+
+    if [ -f "$DB_USER_SECRET" ]; then
+      echo "$(getDate) ✅ $DB_USER_SECRET file exists."
+    else
+      writeTextFile "$POSTGRES_ODOO_USERNAME" "$DB_USER_SECRET" "username"
+    fi
   else
     echo "$(getDate) 🟦 User $POSTGRES_ODOO_USERNAME doesn't exist. Creating the user..."
     sudo -u postgres psql -c "CREATE ROLE \"$POSTGRES_ODOO_USERNAME\" LOGIN CREATEDB;" > /dev/null 2>&1
