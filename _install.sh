@@ -619,7 +619,6 @@ function main() {
   isLogRotateInstalled
   isUserExist "$ODOO_LINUX_USER" 8069
 
-  installPostgresRestartorScript
   installDockerServiceRestartorScript
 
   read -rp "$(getDate) ❓ Do you want to renew odoo shell script? [y/N] : " response
@@ -637,6 +636,7 @@ function main() {
   if [ "$DB_HOST" == "" ]; then
     isPostgresInstalled
     generatePostgresSecrets
+    installPostgresRestartorScript
   else
     echo "$(getDate) 🟨 DB_HOST found on .env file. That means you have a separate postgresql server."
     echo "$(getDate) 🟨 Please make sure that the postgresql server is running and the user and password are setup successfully. See '.secrets' directory to setup the username and password of your postgres user."
