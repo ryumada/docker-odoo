@@ -75,6 +75,9 @@ function main() {
 
   amIRoot
 
+  echo "$(getDate) Change WORKDIR to $PATH_TO_ODOO."
+  cd $PATH_TO_ODOO || { echo "🔴 Can't change directory to $PATH_TO_ODOO"; exit 1; }
+
   # DATE_FOR_FILENAME="$(date +"%Y%m%d-%H%M%S")"
   # DATE_FOR_MESSAGE=$(date +"%Y-%m-%d %H:%M:%S")
   TAR_FILE_NAME=snapshot-$SERVICE_NAME.tar.zst
@@ -120,9 +123,6 @@ function main() {
     echo "For CentOS: sudo yum install zstd"
     exit 1
   fi
-
-  echo "$(getDate) Change WORKDIR to $PATH_TO_ODOO."
-  cd $PATH_TO_ODOO || { echo "🔴 Can't change directory to $PATH_TO_ODOO"; exit 1; }
 
   echo "$(getDate) Dumping $ODOO_DATABASE_NAME_PRD database..."
   sudo -u postgres pg_dump -f /tmp/"$ODOO_DATABASE_NAME_PRD.sql" $ODOO_DATABASE_NAME_PRD > /dev/null 2>&1
