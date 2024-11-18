@@ -3,10 +3,11 @@ ARG PYTHON_VERSION=3.10-bookworm
 
 FROM python:$PYTHON_VERSION
 
+ARG POSTGRESQL_VERSION
+
 # install odoo dependencies
 RUN apt update
 RUN apt install -y wget software-properties-common build-essential libxslt-dev libzip-dev libldap2-dev libsasl2-dev node-less libpq-dev tmux xfonts-75dpi fontconfig libxrender1 xfonts-base libcups2-dev
-RUN apt install -y postgresql-client
 
 RUN wget https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6.1-3/wkhtmltox_0.12.6.1-3.bookworm_amd64.deb
 RUN dpkg -i ./wkhtmltox_0.12.6.1-3.bookworm_amd64.deb
@@ -49,6 +50,14 @@ USER root
 COPY --chown=odoo:odoo ./conf/odoo.conf /etc/odoo/odoo.conf
 
 COPY --chown=odoo:odoo ./odoo-base /opt/odoo/odoo-base
+
+RUN if [ -n "$POSTGRESQL_VERSION" ]; then \
+        apt install -y postgresql-common; \
+        bash /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y; \
+        apt install -y postgresql-client-$POSTGRESQL_VERSION; \
+    else \
+        apt install -y postgresql-client; \
+    fi
 
 COPY --chown=odoo:odoo ./utilities/odoo-shell /usr/local/bin/odoo-shell
 RUN chmod 555 /usr/local/bin/odoo-shell

@@ -8,7 +8,8 @@ services:
       context: .
       dockerfile: dockerfile
       args:
-        - PYTHON_VERSION=${PYTHON_VERSION}
+        - PYTHON_VERSION=${PYTHON_VERSION:-3.10-bookworm}
+        - POSTGRESQL_VERSION=${POSTGRESQL_VERSION}
       # Add labels to connect to github repository (enter github)
       labels:
         - org.opencontainers.image.source=${ODOO_IMAGE_SOURCE:-"no source"}
@@ -53,6 +54,7 @@ services:
      - ODOO_IMAGE_SOURCE
      - ODOO_LOG_DIR_SERVICE
      - ODOO_VERSION
+     - POSTGRESQL_VERSION
      - PYTHON_VERSION
     env_file:
       - .env
