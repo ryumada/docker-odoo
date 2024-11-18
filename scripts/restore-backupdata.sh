@@ -142,7 +142,7 @@ function main() {
   mkdir "$FILESTORE_PATH"
 
   echo "$(getDate) 📥 Restore the filestore"
-  rsync -av "$TEMP_DIR/filestore/" "$FILESTORE_PATH"
+  rsync -a "$TEMP_DIR/filestore/" "$FILESTORE_PATH"
 
   echo "$(getDate) 👤 Changing the ownership of $FILESTORE_PATH to odoo user"
   chown -R odoo: "$FILESTORE_PATH"
