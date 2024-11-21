@@ -1,9 +1,9 @@
 #!/bin/bash
 
-CURRENT_DIRNAME=$(dirname "$(readlink -f "$0")")
-cd "$CURRENT_DIRNAME/.." || { echo "🔴 Can't change directory to $CURRENT_DIRNAME/.."; exit 1; }
-PATH_TO_ODOO="$(pwd)"
-SERVICE_NAME=$(basename "$(pwd)")
+CURRENT_DIR=$(dirname "$(readlink -f "$0")")
+CURRENT_DIR_USER=$(stat -c '%U' "$CURRENT_DIR")
+PATH_TO_ODOO=$(sudo -u "$CURRENT_DIR_USER" git -C "$(dirname "$(readlink -f "$0")")" rev-parse --show-toplevel)
+SERVICE_NAME=$(basename "$PATH_TO_ODOO")
 
 DOCKER_COMPOSE_FILE="docker-compose.yml"
 GIT_PATH="./odoo-base"
