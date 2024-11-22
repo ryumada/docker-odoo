@@ -4,6 +4,7 @@ CURRENT_DIR=$(dirname "$(readlink -f "$0")")
 CURRENT_DIR_USER=$(stat -c '%U' "$CURRENT_DIR")
 PATH_TO_ODOO=$(sudo -u "$CURRENT_DIR_USER" git -C "$(dirname "$(readlink -f "$0")")" rev-parse --show-toplevel)
 SERVICE_NAME=$(basename "$PATH_TO_ODOO")
+REPOSITORY_OWNER=$(stat -c '%U' "$PATH_TO_ODOO")
 
 DOCKER_COMPOSE_FILE="docker-compose.yml"
 GIT_PATH="./git"
@@ -12,7 +13,7 @@ function isDirectoryGitRepository() {
   dir=$1
 
   if [ -d "$dir/.git" ]; then
-    if git rev-parse --is-inside-work-tree &>/dev/null; then
+    if sudo -u "$REPOSITORY_OWNER" git -C "$dir" rev-parse --is-inside-work-tree &>/dev/null; then
       return 0
     else
       return 1
@@ -43,8 +44,8 @@ function main() {
   for subdir in $GIT_SUBDIRS; do
     if isDirectoryGitRepository "$subdir"; then
       echo "$(getDate) 🟦 Fetch and pull $subdir"
-      git -C "$subdir" fetch
-      if git -C "$subdir" pull | grep -v "up to date" ;then
+      sudo -u "$REPOSITORY_OWNER" git -C "$subdir" fetch
+      if sudo -u "$REPOSITORY_OWNER" git -C "$subdir" pull | grep -v "up to date" ;then
         pulledrepositories=$((pulledrepositories+1))
       fi
     else
@@ -55,7 +56,7 @@ function main() {
 
   if [ $pulledrepositories -gt 0 ]; then
     echo "$(getDate) 🟦 Rebuilding the docker containers"
-    docker compose -f $PATH_TO_ODOO/$DOCKER_COMPOSE_FILE up -d --build
+    sudo -u "$REPOSITORY_OWNER" docker compose -f $PATH_TO_ODOO/$DOCKER_COMPOSE_FILE up -d --build
   else
     echo "$(getDate) ✅ No updates found"
   fi
