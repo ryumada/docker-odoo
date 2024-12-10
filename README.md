@@ -218,14 +218,35 @@ docker compose exec $SERVICE_NAME odoo-shell help
 
 # example command to run shell with service_name odoo
 docker compose exec odoo odoo-shell example_database_name
+```
+
+<details>
+  <summary>You can get <code>$SERVICE_NAME</code> by running <code>docker compose ps</code> in your root repository where docker compose file located. </summary>
+
+  This is the output of the command:
+
+  ```bash
+  NAME                 IMAGE                COMMAND                  SERVICE   CREATED         STATUS         PORTS
+  docker-odoo-odoo-1   docker-odoo:latest   "/opt/odoo/entrypoin…"   odoo      2 minutes ago   Up 2 minutes   
+  ```
+
+  As you can see in the `SERVICE` column, the service name is `odoo`.
+</details>
+
+## Run Odoo Module Upgrade tool
+Odoo Module Upgrade tool also has been created automatically after you run `sudo ./_install.sh`. The tool is copied when the image is built. You can run the tool by running one of these command examples:
+
+```bash
+# See help to see how to use the tool
+docker compose exec $SERVICE_NAME odoo-module-upgrade help
 
 # example command to update odoo modules
 ## update single module
-docker compose exec odoo odoo-shell example_database_name --update=module_name
-## update multiple modules
-docker compose exec odoo odoo-shell example_database_name --update=module_name1,module_name2
+docker compose exec odoo odoo-module-upgrade example_database_name --update=module_name
+## update multiple modules (Be careful with module that need to install in order)
+docker compose exec odoo odoo-module-upgrade example_database_name --update=module_name1,module_name2
 ## update all modules (⚠️ This command is not recommended to use in production ⚠️)
-docker compose exec odoo odoo-shell example_database_name --update=all
+docker compose exec odoo odoo-module-upgrade example_database_name --update=all
 ```
 
 <details>

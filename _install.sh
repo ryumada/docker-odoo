@@ -102,18 +102,23 @@ function createLogDir() {
   installOdooLogRotator
 }
 
-function createOdooShellCommandFromEntrypoint() {
+function createOdooUtilitiesFromEntrypoint() {
+  param=$1
+  
   echo "$(getDate) 🟦 Create odoo shell command from entrypoint.sh..."
 
   entrypoint_file="$REPOSITORY_DIRPATH/entrypoint.sh"
-  odoo_shell_file="$REPOSITORY_DIRPATH/utilities/odoo-shell"
+  odoo_utility_file="$REPOSITORY_DIRPATH/utilities/odoo-$param"
 
-  cp "$entrypoint_file" "$odoo_shell_file"
+  cp "$entrypoint_file" "$odoo_utility_file"
 
-sed -i '1a DATABASE_NAME_OR_HELP=$1\
-UPDATE_MODULES=$2\n\
+  sed -i 's/: "${PORT:=8069}"/PORT="$(shuf -i 55000-60000 -n 1)"/' "$odoo_utility_file"
+  sed -i 's/: "${GEVENT_PORT:=8072}"/GEVENT_PORT="$(shuf -i 50000-54999 -n 1)"/' "$odoo_utility_file"
+
+  sed -i '1a DATABASE_NAME_OR_HELP=$1\
+'"$(if [[ $param == "module-upgrade" ]]; then echo "UPDATE_MODULES=\$2\n"; fi)"'\
 function show_help() {\
-  echo "Usage: odoo-shell [database_name|help] [--update=module1,module2,...]"\
+  echo "Usage: odoo-'"$param"' [database_name|help] '"$(if [[ $param == "module-upgrade" ]]; then echo "[--update=module1,module2,...]"; fi)"'"\
   echo "Parameters:"\
   echo "  database_name: The name of the database you want to connect to"\
   echo ""\
@@ -126,33 +131,43 @@ case "$DATABASE_NAME_OR_HELP" in\
     exit 1\
     ;;\
   "")\
-    echo "Usage: odoo-shell [database_name|help]"\
+    echo "Usage: odoo-'"$param"' [database_name|help] '"$(if [[ $param == "module-upgrade" ]]; then echo "[--update=module1,module2,...]"; fi)"'"\
     exit 1\
     ;;\
   *)\
     DB_NAME=$DATABASE_NAME_OR_HELP\
     ;;\
 esac\
-' "$odoo_shell_file"
+' "$odoo_utility_file"
+  
+  if [[ "$param" == "shell" ]]; then 
 
-  sed -i 's/: "${PORT:=8069}"/PORT="$(shuf -i 55000-60000 -n 1)"/' "$odoo_shell_file"
-  sed -i 's/: "${GEVENT_PORT:=8072}"/GEVENT_PORT="$(shuf -i 50000-54999 -n 1)"/' "$odoo_shell_file"
-  sed -i 's|"/opt/odoo/odoo-base/$ODOO_BASE_DIRECTORY/odoo-bin" "$@"|"/opt/odoo/odoo-base/$ODOO_BASE_DIRECTORY/odoo-bin\" shell |' "$odoo_shell_file"
+    sed -i 's|"/opt/odoo/odoo-base/$ODOO_BASE_DIRECTORY/odoo-bin" "$@"|"/opt/odoo/odoo-base/$ODOO_BASE_DIRECTORY/odoo-bin\" shell|' "$odoo_utility_file"
+  
+  elif [[ "$param" == "module-upgrade" ]]; then
 
-  # delete line on pattern
-  sed -i '/ODOO_LOG_FILE=$ODOO_LOG_DIR_SERVICE\/$SERVICE_NAME.log/d' "$odoo_shell_file"
-  sed -i '/add_arg "logfile" "$ODOO_LOG_FILE"/d' "$odoo_shell_file"
-
-  # append line below the pattern with sed
-  sed -i '/ODOO_BASE_DIRECTORY=$(basename "$ODOO_BASE_DIRECTORY")/a \
+    # append line below the pattern with sed
+    sed -i '/ODOO_BASE_DIRECTORY=$(basename "$ODOO_BASE_DIRECTORY")/a \
 \
 add_arg "config" "/etc/odoo/odoo.conf"\n\
 if [[ "$UPDATE_MODULES" == "--update="* ]]; then\
   UPDATE_MODULES="${UPDATE_MODULES#--update=}"\
   add_arg "update" "$UPDATE_MODULES"\
-fi' "$odoo_shell_file"
+else\
+  echo "[$(date +"%Y-%m-%d %H:%M:%S")] 🔴 ERROR?! This script need --update parameter."\
+  echo "Usage: odoo-'"$param"' [database_name|help] [--update=module1,module2,...]"\
+  exit 1\
+fi' "$odoo_utility_file"
 
-  chown "$REPOSITORY_OWNER": "$odoo_shell_file"
+    sed -i 's|"/opt/odoo/odoo-base/$ODOO_BASE_DIRECTORY/odoo-bin" "$@"|"/opt/odoo/odoo-base/$ODOO_BASE_DIRECTORY/odoo-bin\"|' "$odoo_utility_file"
+
+  fi
+
+  # delete line on pattern
+  sed -i '/ODOO_LOG_FILE=$ODOO_LOG_DIR_SERVICE\/$SERVICE_NAME.log/d' "$odoo_utility_file"
+  sed -i '/add_arg "logfile" "$ODOO_LOG_FILE"/d' "$odoo_utility_file"
+
+  chown "$REPOSITORY_OWNER": "$odoo_utility_file"
 }
 
 function generatePostgresPassword() {
@@ -621,9 +636,10 @@ function main() {
 
   installDockerServiceRestartorScript
 
-  read -rp "$(getDate) ❓ Do you want to renew odoo shell script? [y/N] : " response
+  read -rp "$(getDate) ❓ Do you want to renew odoo-shell and odoo-module-upgrade scripts? [y/N] : " response
   if [[ "$response" =~ ^([yY][eE][sS]|[yY])+$ ]]; then
-    createOdooShellCommandFromEntrypoint
+    createOdooUtilitiesFromEntrypoint "shell"
+    createOdooUtilitiesFromEntrypoint "module-upgrade"
   fi
 
   echo -e "\n==================================================================="
