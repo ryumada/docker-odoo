@@ -26,7 +26,7 @@ fi
 
 # You need to choose whether there are multiple environments for your deployment
 read -rp "Which environment you wish to clone the data to?
-[1] Development (dev) [default]
+[1] Development (dev)
 [2] Staging (stg)
 [3] Testing (tst)
 [4] Other
@@ -86,9 +86,6 @@ function main() {
   cd "$PATH_TO_ODOO" || { echo "$(getDate) 🔴 Can't change directory to $PATH_TO_ODOO"; exit 1; }
 
   echo "$(getDate) 🔵 Start cloning database from $ODOO_DATABASE_NAME_PRD to $ODOO_DB_NAME_ENV"
-
-  echo "$(getDate) 🛑 Stop the $ODOO_DEPLOYMENT_ENVIRONMENT environment"
-  docker compose -f "$DOCKER_COMPOSE_PATH_ENV" down > /dev/null 2>&1 || { echo "$(getDate) 🔴 Error stopping $ODOO_DEPLOYMENT_ENVIRONMENT"; exit 1; }
   
   echo "$(getDate) 🥟 Dump $ODOO_DATABASE_NAME_PRD to temporary file"
   sudo -u postgres pg_dump -d "$ODOO_DATABASE_NAME_PRD" -f "/tmp/$ODOO_DB_NAME_ENV.sql" > /dev/null 2>&1 || { echo "$(getDate) 🔴 Error dumping $ODOO_DATABASE_NAME_PRD"; exit 1; }
@@ -107,7 +104,7 @@ function main() {
   
   if [ "$ODOO_DB_NAME_ENV" == "$ODOO_DATABASE_NAME_PRD-$ODOO_DEPLOYMENT_ENVIRONMENT" ]; then
     echo "$(getDate) 🗑️ Drop the old database $ODOO_DB_NAME_ENV"
-    sudo -u postgres psql -d postgres -c "DROP DATABASE \"$ODOO_DB_NAME_ENV\"" > /dev/null 2>&1 || { echo "$(getDate) 🔴 Error dropping $ODOO_DB_NAME_ENV"; exit 1; }
+    sudo -u postgres psql -d postgres -c "DROP DATABASE \"$ODOO_DB_NAME_ENV\"" > /dev/null 2>&1 || { true; }
   fi
 
   echo "$(getDate) 🥢 Create new database $ODOO_DB_NAME_ENV"
@@ -151,8 +148,8 @@ function main() {
     END \$\$;
   " > /dev/null 2>&1 || { echo "$(getDate) 🔴 Error changing owner of $ODOO_DB_NAME_ENV"; exit 1; }
 
-  echo "$(getDate) 🟢 Start the $ODOO_DEPLOYMENT_ENVIRONMENT environment"
-  docker compose -f "$DOCKER_COMPOSE_PATH_ENV" up -d > /dev/null 2>&1 || { echo "$(getDate) 🔴 Error restarting $ODOO_DEPLOYMENT_ENVIRONMENT"; exit 1; }
+  echo "$(getDate) 🟢 Restart the $ODOO_DEPLOYMENT_ENVIRONMENT environment"
+  docker compose restart > /dev/null 2>&1 || { echo "$(getDate) 🔴 Error restarting $ODOO_DEPLOYMENT_ENVIRONMENT"; exit 1; }
 
   echo "$(getDate) ✅ Finish cloning database from $ODOO_DATABASE_NAME_PRD"
 }
