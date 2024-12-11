@@ -60,6 +60,20 @@ function checkAddonsPathOnOdooConfFile() {
   done
 }
 
+function checkImportantEnvVariable() {
+  local param=$1
+  local env_file=$2
+
+  env_variable_value=$(grep "^$param=" "$env_file" | cut -d '=' -f 2)
+
+  if [ "$env_variable_value" == "" ]; then
+    echo "$(getDate) ❌ $param variable has empty value."
+    TODO+=("Please fill in the $param variable in your $env_file file.")
+  else
+    echo "$(getDate) ✅ $param is set to $env_variable_value"
+  fi
+}
+
 function createDataDir() {
   echo "$(getDate) 🟦 Create Odoo datadir... (path: $ODOO_DATADIR_SERVICE)"
 
@@ -658,6 +672,10 @@ function main() {
       echo "$(getDate) 🟨 DB_HOST found on .env file. That means you have a separate postgresql server."
       echo "$(getDate) 🟨 Please make sure that the postgresql server is running and the user and password are setup successfully. See '.secrets' directory to setup the username and password of your postgres user."
     fi
+
+    checkImportantEnvVariable "PYTHON_VERSION" $ENV_FILE
+    checkImportantEnvVariable "PORT" $ENV_FILE
+    checkImportantEnvVariable "GEVENT_PORT" $ENV_FILE
   fi
 
   isFileExists "$DOCKER_COMPOSE_FILE" "Please create a docker-compose.yml file by following the docker-compose.yml.example file." || true
