@@ -4,6 +4,7 @@
 
 ## ex. odoo-prd (replace with production database name)
 ODOO_DATABASE_NAME_PRD=enter_production_database_name
+# read -p "Enter the database name: " ODOO_DATABASE_NAME_PRD
 
 # # # # # # # # # # # # # # # # # # # # # # # # # #
 # Don't change anything below this line

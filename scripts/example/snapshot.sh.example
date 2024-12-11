@@ -4,7 +4,9 @@
 
 # enter the production database name this is required to backup the database
 ODOO_DATABASE_NAME_PRD=enter_production_database_name
-# you can leave as is to not backup your snapshot to Google Cloud Storage (GCS)
+# read -p "Enter the database name: " ODOO_DATABASE_NAME_PRD
+
+# you can leave it as is to back up to the /tmp directory instead of Google Cloud Storage (GCS)
 GCS_BUCKET_NAME=enter_your_gcs_bucket_name
 
 CURRENT_DIR=$(dirname "$(readlink -f "$0")")
