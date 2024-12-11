@@ -142,14 +142,13 @@ esac\
   
   if [[ "$param" == "shell" ]]; then 
 
-    sed -i 's|"/opt/odoo/odoo-base/$ODOO_BASE_DIRECTORY/odoo-bin" "$@"|"/opt/odoo/odoo-base/$ODOO_BASE_DIRECTORY/odoo-bin\" shell|' "$odoo_utility_file"
+    sed -i 's|"/opt/odoo/odoo-base/$ODOO_BASE_DIRECTORY/odoo-bin"|"/opt/odoo/odoo-base/$ODOO_BASE_DIRECTORY/odoo-bin\" shell|' "$odoo_utility_file"
   
   elif [[ "$param" == "module-upgrade" ]]; then
 
     # append line below the pattern with sed
     sed -i '/ODOO_BASE_DIRECTORY=$(basename "$ODOO_BASE_DIRECTORY")/a \
 \
-add_arg "config" "/etc/odoo/odoo.conf"\n\
 if [[ "$UPDATE_MODULES" == "--update="* ]]; then\
   UPDATE_MODULES="${UPDATE_MODULES#--update=}"\
   add_arg "update" "$UPDATE_MODULES"\
@@ -158,8 +157,6 @@ else\
   echo "Usage: odoo-'"$param"' [database_name|help] [--update=module1,module2,...]"\
   exit 1\
 fi' "$odoo_utility_file"
-
-    sed -i 's|"/opt/odoo/odoo-base/$ODOO_BASE_DIRECTORY/odoo-bin" "$@"|"/opt/odoo/odoo-base/$ODOO_BASE_DIRECTORY/odoo-bin\"|' "$odoo_utility_file"
 
   fi
 

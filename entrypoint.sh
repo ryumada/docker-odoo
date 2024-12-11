@@ -100,4 +100,4 @@ if [ -z "$ODOO_BASE_DIRECTORY" ]; then
 fi
 ODOO_BASE_DIRECTORY=$(basename "$ODOO_BASE_DIRECTORY")
 
-exec python "/opt/odoo/odoo-base/$ODOO_BASE_DIRECTORY/odoo-bin" "$@" "${ODOO_ARGS[@]}"
+exec python "/opt/odoo/odoo-base/$ODOO_BASE_DIRECTORY/odoo-bin" -c "/etc/odoo/odoo.conf" "${ODOO_ARGS[@]}"

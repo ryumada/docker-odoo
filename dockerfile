@@ -77,4 +77,3 @@ EXPOSE 8072
 
 # set the command to run odoo instance using entrypoint.sh
 ENTRYPOINT [ "/opt/odoo/entrypoint.sh" ]
-CMD [ "-c", "/etc/odoo/odoo.conf" ]
