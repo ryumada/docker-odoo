@@ -66,7 +66,7 @@ function main() {
   DATABASE_COUNT=$(sudo -u postgres psql -tAc "SELECT COUNT(*) FROM pg_database WHERE datdba=(SELECT usesysid FROM pg_user WHERE usename='$DB_USER');")
   if [ "$DATABASE_COUNT" -gt 1 ]; then
     echo "$(getDate) 🔴 The postgres user '$DB_USER' has multiple databases. Uninstallation is prohibited."
-    echo "$(getDate) 🔴 Please remove the databases manually and try again."
+    echo "$(getDate) 🔴 Please remove the databases manually and leave one, then try running this script again."
     exit 1
   fi
 
@@ -150,7 +150,7 @@ function main() {
   echo "      3. sudo docker system prune -a"
   echo "      4. sudo docker volume prune"
   echo "      5. sudo docker network prune"
-  
+
   echo "$(getDate) 🟨 You can delete this repository now, to delete data. Make sure the snapshot file has been moved to the safe location."
 }
 
