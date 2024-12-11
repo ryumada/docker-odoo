@@ -26,6 +26,7 @@ trap 'error_handler $LINENO' ERR
 : "${LIMIT_TIME_REAL_CRON:=3600}"
 : "${LIMIT_REQUEST:=8196}"
 
+: "${ODOO_DATABASE_MANAGER:=enable}"
 : "${ODOO_DATADIR_SERVICE:=/var/lib/odoo/$SERVICE_NAME}"
 ODOO_LOG_FILE=$ODOO_LOG_DIR_SERVICE/$SERVICE_NAME.log
 
@@ -90,7 +91,14 @@ fi
 if [ -n "$DB_NAME" ]; then
   add_arg "database" "$DB_NAME"
   add_arg "db-filter" "^$DB_NAME\$"
-  add_arg "no-database-list"
+  
+  if [ "$ODOO_DATABASE_MANAGER" == "disable" ]; then
+    add_arg "no-database-list"
+  fi
+
+  if [ -n "$ODOO_UPGRADE_MODULE" ]; then
+    add_arg "update" "$ODOO_UPGRADE_MODULE"
+  fi
 fi
 
 ODOO_BASE_DIRECTORY=$(find ./odoo-base -mindepth 1 -maxdepth 1 -type d -print -quit)
