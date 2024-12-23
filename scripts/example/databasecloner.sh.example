@@ -112,6 +112,9 @@ function main() {
   sudo -u postgres psql -d "$ODOO_DB_NAME_ENV" -f "/tmp/$ODOO_DB_NAME_ENV.sql" > /dev/null 2>&1 || { echo "$(getDate) 🔴 Error restoring $ODOO_DB_NAME_ENV"; exit 1; }
   rm "/tmp/$ODOO_DB_NAME_ENV.sql"
 
+  echo "$(getDate) 🎚️ Disable Odoo Cron"
+  sudo -u postgres psql -d "$ODOO_DB_NAME_ENV" -c " UPDATE ir_cron SET active=false;" > /dev/null 2>&1 || { echo "$(getDate) 🔴 Error Disable Odoo Cron"; exit 1; }
+
   echo "$(getDate) 🧹 Change owner of $ODOO_DB_NAME_ENV to $ODOO_DB_USER_ENV"
   sudo -u postgres psql -d postgres -c "ALTER DATABASE \"$ODOO_DB_NAME_ENV\" OWNER TO \"$ODOO_DB_USER_ENV\"" > /dev/null 2>&1 || { echo "$(getDate) 🔴 Error changing owner of $ODOO_DB_NAME_ENV"; exit 1; }
   sudo -u postgres psql -d "$ODOO_DB_NAME_ENV" -c "
