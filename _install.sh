@@ -5,6 +5,7 @@ REPOSITORY_DIRNAME="$(basename "$(pwd)")"
 REPOSITORY_OWNER=$(stat -c '%U' "$REPOSITORY_DIRPATH")
 SERVICE_NAME=$REPOSITORY_DIRNAME
 ODOO_LINUX_USER="odoo"
+DEVOPS_USER="devops"
 
 # Define the paths
 DB_USER_SECRET="./.secrets/db_user"
@@ -564,6 +565,32 @@ function setPermissionFileToReadOnlyAndOnlyTo() {
   sudo chown -R "$owner": "$file"
 }
 
+function setupAutoDevops() {
+  isUserExist "$DEVOPS_USER" 7689
+
+  cat <<EOF > ~/00-devops_as_devopsadmin
+devops ALL=(devopsadmin) NOPASSWD: \\
+/usr/bin/git, \\
+/usr/bin/docker compose *, \\
+/opt/$SERVICE_NAME/scripts/git_addons_updater.sh, \\
+/usr/bin/docker container prune -f, \\
+/usr/bin/docker image prune -f, \\
+/usr/bin/docker system prune -f
+
+EOF
+
+  cat <<EOF > ~/00-devops_as_root
+devops ALL=(root) NOPASSWD: \\
+/usr/bin/sync, \\
+/usr/bin/tee /proc/sys/vm/drop_caches
+
+EOF
+
+  sudo chmod 440 ~/00-devops_as_devopsadmin ~/00-devops_as_root
+  sudo chown root: ~/00-devops_as_devopsadmin ~/00-devops_as_root
+  sudo mv ~/00-devops_as_devopsadmin ~/00-devops_as_root /etc/sudoers.d/
+}
+
 function writeGitHash() {
   dir=$1
   subdirs="$(getSubDirectories "$dir")"
@@ -639,6 +666,8 @@ function main() {
   isDockerInstalled
   isLogRotateInstalled
   isUserExist "$ODOO_LINUX_USER" 8069
+
+  setupAutoDevops
 
   installDockerServiceRestartorScript
 

@@ -15,6 +15,11 @@ CURRENT_DIR_USER=$(stat -c %U "$CURRENT_DIR")
 PATH_TO_ODOO=$(sudo -u "$CURRENT_DIR_USER" git -C "$CURRENT_DIR" rev-parse --show-toplevel)
 SERVICE_NAME=$(basename "$PATH_TO_ODOO")
 
+FILEPATHS_TO_REMOVE=(
+  "/etc/sudoers.d/00-devops_as_devopsadmin" \
+  "/etc/sudoers.d/00-devops_as_root" \
+)
+
 function amIRoot() {
   if [ "$(id -u)" -ne 0 ]; then
     echo "$(getDate) 🔴 Please run this script as root." 1>&2
@@ -38,6 +43,15 @@ function areYouReallySure() {
 
 function getDate() {
   echo "[$(date +"%Y-%m-%d %H:%M:%S")]"
+}
+
+function removeWithPrompt() {
+  filepath=$1
+  read -rp "$(getDate) ❓ Do you want to remove $filepath? [y/N] : " response
+  if [[ "$response" =~ ^([yY][eE][sS]|[yY])+$ ]]; then
+    echo "$(getDate) 🗑️ remove $filepath"
+    rm "$filepath"
+  fi
 }
 
 function stopOdooDeployment() {
@@ -141,6 +155,10 @@ function main() {
     echo "$(getDate) 🗑️ Remove the Odoo logrotate file: $ODOO_LOG_ROTATOR_FILE"
     rm "$ODOO_LOG_ROTATOR_FILE"
   fi
+
+  for FILEPATH_TO_REMOVE in "${FILEPATHS_TO_REMOVE[@]}"; do
+    removeWithPrompt "$FILEPATH_TO_REMOVE"
+  done
 
   echo "$(getDate) ✅ Completed. $SERVICE_NAME deployment has been removed."
 
