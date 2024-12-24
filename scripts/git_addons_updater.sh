@@ -39,6 +39,11 @@ function main() {
 
   echo "$(getDate) 🔵 Start checking git repositories"
   GIT_SUBDIRS=$(getSubDirectories "$GIT_PATH")
+
+  if wc -l <<< "$GIT_SUBDIRS" | grep -q "0"; then
+    echo "$(getDate) 🔴 No git repositories found in $GIT_PATH"
+    exit 1
+  fi
   
   pulledrepositories=0
   for subdir in $GIT_SUBDIRS; do
@@ -57,9 +62,9 @@ function main() {
   if [ $pulledrepositories -gt 0 ]; then
     echo "$(getDate) 🟦 Rebuilding the docker containers"
     sudo -u "$REPOSITORY_OWNER" docker compose -f $PATH_TO_ODOO/$DOCKER_COMPOSE_FILE up -d --build
-    
+
     echo "$(getDate) 🟦 Cleaning Unused Docker caches..."
-    docker container prune -f; docker image prune -f; docker system prune -f; sudo sync && echo 3 | sudo tee /proc/sys/vm/drop_caches
+    sudo -u "$REPOSITORY_OWNER" docker container prune -f; sudo -u "$REPOSITORY_OWNER" docker image prune -f; sudo -u "$REPOSITORY_OWNER" docker system prune -f; sudo sync && echo 3 | sudo tee /proc/sys/vm/drop_caches
   else
     echo "$(getDate) ✅ No updates found"
   fi
