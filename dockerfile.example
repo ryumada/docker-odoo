@@ -4,6 +4,7 @@ ARG PYTHON_VERSION=3.10-bookworm
 FROM python:$PYTHON_VERSION
 
 ARG POSTGRESQL_VERSION
+ARG VSCODE_DIRECT_DOWNLOAD_URL
 
 # install odoo dependencies
 RUN apt update; \
@@ -27,6 +28,17 @@ RUN if [ -n "$POSTGRESQL_VERSION" ]; then \
         apt install -y postgresql-client-$POSTGRESQL_VERSION; \
     else \
         apt install -y postgresql-client; \
+    fi
+
+RUN if [ -n "$VSCODE_DIRECT_DOWNLOAD_URL" ] && { [ "$VSCODE_DIRECT_DOWNLOAD_URL" != "${VSCODE_DIRECT_DOWNLOAD_URL#[http://]}" ] || [ "$VSCODE_DIRECT_DOWNLOAD_URL" != "${VSCODE_DIRECT_DOWNLOAD_URL#[https://]}" ]; }; then \
+        filename="vscode_installer.deb"; \
+        wget -O "$filename" $VSCODE_DIRECT_DOWNLOAD_URL; \
+        if [ $? -ne 0 ]; then \
+            echo "Error downloading VS Code. Exiting." >&2; \
+            exit 1; \
+        fi; \
+        apt install -y "./$filename"; \
+        rm "$filename"; \
     fi
 
 RUN groupadd -g 8069 odoo; \

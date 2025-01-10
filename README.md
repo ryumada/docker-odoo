@@ -262,6 +262,46 @@ docker compose exec odoo odoo-module-upgrade example_database_name --update=all
   As you can see in the `SERVICE` column, the service name is `odoo`.
 </details>
 
+## Run VSCode on container
+If you setup this variable in .env:
+
+```env
+...
+# # # # # # # # # # # # # # # #
+# VSCODE ON Container         #
+# # # # # # # # # # # # # # # #
+# Set the direct download URL of vscode for debian to install vscode inside your odoo container
+# possible values
+VSCODE_DIRECT_DOWNLOAD_URL=
+...
+```
+
+Then, vscode will be installed inside the container when you build the image. Here how to activate vscode from your container:
+
+```bash
+# This will open the vscode web on http://localhost:8000
+docker compose exec $SERVICE_NAME code serve-web
+
+# You can change the port of vscode if port 8000 is already in use
+docker compose exec $SERVICE_NAME code serve-web --port
+
+# See help of code cli
+docker compose exec $SERVICE_NAME code serve-web --help
+```
+
+<details>
+  <summary>You can get <code>$SERVICE_NAME</code> by running <code>docker compose ps</code> in your root repository where docker compose file located. </summary>
+
+  This is the output of the command:
+
+  ```bash
+  NAME                 IMAGE                COMMAND                  SERVICE   CREATED         STATUS         PORTS
+  docker-odoo-odoo-1   docker-odoo:latest   "/opt/odoo/entrypoin…"   odoo      2 minutes ago   Up 2 minutes   
+  ```
+
+  As you can see in the `SERVICE` column, the service name is `odoo`.
+</details>
+
 ---
 
 Copyright © 2024 ryumada. All Rights Reserved.
