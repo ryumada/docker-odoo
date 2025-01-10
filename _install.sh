@@ -172,7 +172,6 @@ else\
   echo "Usage: odoo-'"$param"' [database_name|help] [--update=module1,module2,...]"\
   exit 1\
 fi' "$odoo_utility_file"
-
   fi
 
   # delete line on pattern
@@ -181,6 +180,50 @@ fi' "$odoo_utility_file"
 
   chown "$REPOSITORY_OWNER": "$odoo_utility_file"
 }
+
+function generateDockerComposeAndDockerfile() {
+  echo "$(getDate) 🟦 Create docker-compose.yml file..."
+  
+  echo -e "\n$(getDate) ❓ Do you want to use:\n"
+  echo "1. bind mount (faster buiding image)"
+  echo -e "2. copy the addons and odoo-base directories to the container image (slower building image but more stable in changes)\n"
+  read -rp "Choose 1 or 2: " mount_or_copy
+  echo
+
+  cp docker-compose.yml.example docker-compose.yml
+  chown "$REPOSITORY_OWNER": docker-compose.yml
+
+  if [ "$mount_or_copy" -eq 1 ]; then
+    echo "$(getDate) 🟦 You have chosen to use bind mount."
+    sed -i '/volumes/a \
+     - ./git:/opt/odoo/git\
+     - ./odoo-base:/opt/odoo/odoo-base' docker-compose.yml
+
+    generateDockerFile "mount"
+  elif [ "$mount_or_copy" -eq 2 ]; then
+    echo "$(getDate) 🟦 You have chosen to copy the addons and odoo-base directory to the image."
+    generateDockerFile "copy"
+  else
+    echo "$(getDate) 🔴 Invalid Option."
+    generateDockerComposeAndDockerfile
+  fi
+}
+
+function generateDockerFile() {
+  # _inherit = generateDockerComposeFile
+
+  mount_or_copy=$1
+
+  echo "$(getDate) 🟦 Create dockerfile..."
+  cp dockerfile.example dockerfile
+  chown "$REPOSITORY_OWNER": dockerfile
+
+  echo "$(getDate) 🟦 Setting up how odoo modules and odoo base read by container [$mount_or_copy]..."
+  if [ "$mount_or_copy" == "mount" ]; then
+    sed -i '/COPY --chown=odoo:odoo .\/odoo-base \/opt\/odoo\/odoo-base/d' dockerfile
+    sed -i '/COPY --chown=odoo:odoo .\/git \/opt\/odoo\/git/d' dockerfile
+  fi
+}   
 
 function generatePostgresPassword() {
   # _inherit = generatePostgresSecrets
@@ -681,6 +724,8 @@ function main() {
   echo -e "$(getDate) 🟦 This script will run in $is_build_or_pull Mode."
   echo -e "$(getDate) 🟦 Checking the necessary files and directories..."
   echo "==================================================================="
+
+  generateDockerComposeAndDockerfile
 
   if isFileExists "$ENV_FILE" "Please create a .env file by folowing the .env.example file."; then
     createLogDir

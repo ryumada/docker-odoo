@@ -34,5 +34,7 @@ utilities/*
 
 crontab
 requirements.txt
+dockerfile
+docker-compose.yml
 
 **.tar**
