@@ -102,7 +102,7 @@ function main() {
     docker compose stop > /dev/null 2>&1 || { echo "$(getDate) 🔴 Error stopping $ODOO_DEPLOYMENT_ENVIRONMENT"; exit 1; }
   
     echo "$(getDate) 🗑️ Drop the old database $ODOO_DB_NAME_ENV"
-    sudo -u postgres psql -d postgres -c "DROP DATABASE \"$ODOO_DB_NAME_ENV\"" > /dev/null 2>&1 || { echo "$(getDate) 🔴 Error dropping database: $(cat /dev/stderr)"; exit 1; }
+    sudo -u postgres psql -d postgres -c "DROP DATABASE \"$ODOO_DB_NAME_ENV\" WITH (FORCE)" > /dev/null 2>&1 || { echo "$(getDate) 🔴 Error dropping database: $(cat /dev/stderr)"; exit 1; }
   fi
 
   echo "$(getDate) 🥢 Create new database $ODOO_DB_NAME_ENV"
