@@ -61,7 +61,7 @@ function main() {
 
   if [ $pulledrepositories -gt 0 ]; then
     echo "$(getDate) 🟦 Rebuilding the docker containers"
-    sudo -u "$REPOSITORY_OWNER" docker compose -f $PATH_TO_ODOO/$DOCKER_COMPOSE_FILE build
+    sudo -u "$REPOSITORY_OWNER" docker compose -f $PATH_TO_ODOO/$DOCKER_COMPOSE_FILE up -d --build
     sudo -u "$REPOSITORY_OWNER" docker compose -f $PATH_TO_ODOO/$DOCKER_COMPOSE_FILE restart
 
     echo "$(getDate) 🟦 Cleaning Unused Docker caches..."
