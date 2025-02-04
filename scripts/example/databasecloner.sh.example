@@ -147,14 +147,14 @@ function main() {
   
   echo "$(getDate) 📄 Copy the filestore to the $ODOO_DEPLOYMENT_ENVIRONMENT environment"
   mkdir "$ODOO_FILESTORE_PATH_ENV" > /dev/null 2>&1 || { echo "$(getDate) 🔴 Error creating $ODOO_FILESTORE_PATH_ENV. Maybe the directory exist."; }
-  rsync -av "$ODOO_FILESTORE_PATH_PRD/" "$ODOO_FILESTORE_PATH_ENV"
+  rsync -a "$ODOO_FILESTORE_PATH_PRD/" "$ODOO_FILESTORE_PATH_ENV" > /dev/null 2>&1 || { echo "$(getDate) 🔴 Error copying filestore"; exit 1; }
 
   echo "$(getDate) 👤 Change owner of $ODOO_FILESTORE_PATH_ENV to odoo"
   chown -R odoo: "$ODOO_FILESTORE_PATH_ENV"
   
   if [ "$ODOO_DB_NAME_ENV" == "$ODOO_DATABASE_NAME_PRD-$ODOO_DEPLOYMENT_ENVIRONMENT" ]; then
     echo "$(getDate) 🛑 Stop the $ODOO_DEPLOYMENT_ENVIRONMENT environment"
-    docker compose -f "$PATH_TO_ODOO_ENV/docker-compose/.yml" stop > /dev/null 2>&1 || { echo "$(getDate) 🔴 Error stopping $ODOO_DEPLOYMENT_ENVIRONMENT"; exit 1; }
+    docker compose -f "$PATH_TO_ODOO_ENV/docker-compose.yml" stop > /dev/null 2>&1 || { echo "$(getDate) 🔴 Error stopping $ODOO_DEPLOYMENT_ENVIRONMENT"; exit 1; }
   
     echo "$(getDate) 🗑️ Drop the old database $ODOO_DB_NAME_ENV"
     sudo -u postgres psql -d postgres -c "DROP DATABASE IF EXISTS \"$ODOO_DB_NAME_ENV\" WITH (FORCE)" > /dev/null 2>&1 || { echo "$(getDate) 🔴 Error dropping database: $(cat /dev/stderr)"; exit 1; }
@@ -205,7 +205,7 @@ function main() {
   " > /dev/null 2>&1 || { echo "$(getDate) 🔴 Error changing owner of $ODOO_DB_NAME_ENV"; exit 1; }
 
   echo "$(getDate) 🟢 Restart the $ODOO_DEPLOYMENT_ENVIRONMENT environment"
-  docker compose -f "$PATH_TO_ODOO_ENV/docker-compose/.yml" restart > /dev/null 2>&1 || { echo "$(getDate) 🔴 Error restarting $ODOO_DEPLOYMENT_ENVIRONMENT"; exit 1; }
+  docker compose -f "$PATH_TO_ODOO_ENV/docker-compose.yml" restart > /dev/null 2>&1 || { echo "$(getDate) 🔴 Error restarting $ODOO_DEPLOYMENT_ENVIRONMENT"; exit 1; }
 
   echo "$(getDate) ✅ Finish cloning database $ODOO_DB_NAME_ENV from $ODOO_DATABASE_NAME_PRD"
 }
