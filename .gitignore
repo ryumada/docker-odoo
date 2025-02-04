@@ -18,6 +18,7 @@ odoo-base/*
 scripts/*
 !scripts/example
 !scripts/change_mode_to_git.sh
+!scripts/dataodoo-remover.sh
 !scripts/git_addons_updater.sh
 !scripts/git_odoo-base_updater.sh
 !scripts/README.md
