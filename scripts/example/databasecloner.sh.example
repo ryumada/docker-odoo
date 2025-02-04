@@ -3,8 +3,16 @@
 # Press ctrl + F then type enter to see the highlight of variables should be added
 
 ## ex. odoo-prd (replace with production database name)
+# The name of the production database to be cloned
 ODOO_DATABASE_NAME_PRD=enter_production_database_name
 # read -p "Enter the database name: " ODOO_DATABASE_NAME_PRD
+
+## The environment to which the database will be cloned (leave empty to prompt)
+CLONED_ENV=""
+
+## ex. Y (replace with Y if you want to use a date suffix for the new database name)
+# This variable determines whether to use a date suffix for the new database name
+shouldPromptToUseDateSuffixOnDBName=""
 
 # # # # # # # # # # # # # # # # # # # # # # # # # #
 # Don't change anything below this line
@@ -19,75 +27,111 @@ function getDate() {
   echo "[$(date +"%Y-%m-%d %H:%M:%S")]"
 }
 
-if [ "$(id -u)" -ne 0 ]; then
-  echo "$(getDate) 🔴 Please run this script using sudo"
-  exit 1
-fi
+function isRoot() {
+  if [ "$(id -u)" -ne 0 ]; then
+    echo "$(getDate) 🔴 Please run this script using sudo"
+    exit 1
+  fi
+}
 
-# You need to choose whether there are multiple environments for your deployment
-while true; do
-  read -rp "Which environment you wish to clone the data to?
-[1] Development (dev)
-[2] Staging (stg)
-[3] Testing (tst)
-[4] Other
+function promptWhichEnvironment() {
+  local environment="$1"
+  local ODOO_DEPLOYMENT_ENVIRONMENT
 
-Enter the number 1 - 4: " ODOO_DEPLOYMENT_ENVIRONMENT
+  if [ "$environment" == "" ]; then
+    # You need to choose whether there are multiple environments for your deployment
+    while true; do
+      read -rp "Which environment you wish to clone the data to?
+      [1] Development (dev)
+      [2] Staging (stg)
+      [3] Testing (tst)
+      [4] Other
 
-  if [[ ! "$ODOO_DEPLOYMENT_ENVIRONMENT" =~ ^[1-9]+$ ]]; then
-    echo "$(getDate) 🔴 Invalid input. Please enter a number base on the menu above."
-    continue
+      Enter the number 1 - 4: " ODOO_DEPLOYMENT_ENVIRONMENT
+
+      if [[ ! "$ODOO_DEPLOYMENT_ENVIRONMENT" =~ ^[1-9]+$ ]]; then
+        echo "$(getDate) 🔴 Invalid input. Please enter a number base on the menu above."
+        continue
+      fi
+
+      case $ODOO_DEPLOYMENT_ENVIRONMENT in
+        1)
+          ODOO_DEPLOYMENT_ENVIRONMENT=dev
+          break
+          ;;
+        2)
+          ODOO_DEPLOYMENT_ENVIRONMENT=stg
+          break
+          ;;
+        3)
+          ODOO_DEPLOYMENT_ENVIRONMENT=tst
+          break
+          ;;
+        4)
+          read -rp "Enter the environment name: " ODOO_DEPLOYMENT_ENVIRONMENT
+          break
+          ;;
+        *)
+          echo "$(getDate) 🔴 Invalid option"
+          ;;
+      esac
+    done
+  else
+    ODOO_DEPLOYMENT_ENVIRONMENT=$environment
   fi
 
-  case $ODOO_DEPLOYMENT_ENVIRONMENT in
-    1)
-      ODOO_DEPLOYMENT_ENVIRONMENT=dev
-      break
-      ;;
-    2)
-      ODOO_DEPLOYMENT_ENVIRONMENT=stg
-      break
-      ;;
-    3)
-      ODOO_DEPLOYMENT_ENVIRONMENT=tst
-      break
-      ;;
-    4)
-      read -rp "Enter the environment name: " ODOO_DEPLOYMENT_ENVIRONMENT
-      break
+  echo "$ODOO_DEPLOYMENT_ENVIRONMENT"
+}
+
+function promptDBNameSuffix() {
+  local promptDBNameSuffix="$1"
+  local ODOO_DEPLOYMENT_ENVIRONMENT="$2"
+
+  local ODOO_DB_NAME_ENV
+
+  case "$promptDBNameSuffix" in
+    Y|y)
+      while true; do
+        read -rp "Do you want to use a date suffix for the new database name? [Y/n]: " USE_DATE_SUFFIX
+
+        case "$USE_DATE_SUFFIX" in
+          Y|y)
+            ODOO_DB_NAME_ENV="$ODOO_DATABASE_NAME_PRD-$ODOO_DEPLOYMENT_ENVIRONMENT-$(date +"%Y%m%d_%H%M")"; break ;;
+          N|n)
+            ODOO_DB_NAME_ENV="$ODOO_DATABASE_NAME_PRD-$ODOO_DEPLOYMENT_ENVIRONMENT"; break ;;
+          *)
+            echo "$(getDate) 🔴 Invalid option" ;;
+        esac
+      done
       ;;
     *)
-      echo "$(getDate) 🔴 Invalid option"
+      ODOO_DB_NAME_ENV="$ODOO_DATABASE_NAME_PRD-$ODOO_DEPLOYMENT_ENVIRONMENT"
       ;;
   esac
-done
 
-PATH_TO_ODOO_ENV="$PATH_TO_ODOO/../$SERVICE_NAME-$ODOO_DEPLOYMENT_ENVIRONMENT"
-
-if [ ! -d "$PATH_TO_ODOO_ENV" ]; then
-  echo "$(getDate) 🔴 The deployment environment $SERVICE_NAME-$ODOO_DEPLOYMENT_ENVIRONMENT does not exist"
-  exit 1
-fi
-
-read -rp "Do you want to use date suffix for the new database name? [Y/n]: " USE_DATE_SUFFIX
-
-ODOO_DB_NAME_ENV=""
-if [ "$USE_DATE_SUFFIX" == "Y" ] || [ "$USE_DATE_SUFFIX" == "y" ]; then
-  ODOO_DB_NAME_ENV="$ODOO_DATABASE_NAME_PRD-$ODOO_DEPLOYMENT_ENVIRONMENT-$(date +"%Y%m%d_%H%M")"
-elif [ "$USE_DATE_SUFFIX" == "N" ] || [ "$USE_DATE_SUFFIX" == "n" ]; then
-  ODOO_DB_NAME_ENV="$ODOO_DATABASE_NAME_PRD-$ODOO_DEPLOYMENT_ENVIRONMENT"
-else
-  echo "$(getDate) 🔴 Invalid option"
-  exit 1
-fi
-
-ODOO_FILESTORE_PATH_PRD="/var/lib/odoo/$SERVICE_NAME/filestore/$ODOO_DATABASE_NAME_PRD"
-ODOO_FILESTORE_PATH_ENV="/var/lib/odoo/$SERVICE_NAME-$ODOO_DEPLOYMENT_ENVIRONMENT/filestore/$ODOO_DB_NAME_ENV"
-
-# ODOO_DB_USER_PRD=$(cat ./secrets/db_user)
-ODOO_DB_USER_ENV=$(cat "$PATH_TO_ODOO_ENV/.secrets/db_user")
+  echo "$ODOO_DB_NAME_ENV"
+}
 
 function main() {
+  isRoot
+
+  ODOO_DEPLOYMENT_ENVIRONMENT=$(promptWhichEnvironment "$CLONED_ENV")
+
+  PATH_TO_ODOO_ENV="$PATH_TO_ODOO/../$SERVICE_NAME-$ODOO_DEPLOYMENT_ENVIRONMENT"
+
+  if [ ! -d "$PATH_TO_ODOO_ENV" ]; then
+    echo "$(getDate) 🔴 The deployment environment $SERVICE_NAME-$ODOO_DEPLOYMENT_ENVIRONMENT does not exist"
+    exit 1
+  fi
+
+  ODOO_DB_NAME_ENV=$(promptDBNameSuffix "$shouldPromptToUseDateSuffixOnDBName" "$ODOO_DEPLOYMENT_ENVIRONMENT")
+
+  ODOO_FILESTORE_PATH_PRD="/var/lib/odoo/$SERVICE_NAME/filestore/$ODOO_DATABASE_NAME_PRD"
+  ODOO_FILESTORE_PATH_ENV="/var/lib/odoo/$SERVICE_NAME-$ODOO_DEPLOYMENT_ENVIRONMENT/filestore/$ODOO_DB_NAME_ENV"
+
+  # ODOO_DB_USER_PRD=$(cat ./secrets/db_user)
+  ODOO_DB_USER_ENV=$(cat "$PATH_TO_ODOO_ENV/.secrets/db_user")
+
   echo "$(getDate) Change Directory to $PATH_TO_ODOO"
   cd "$PATH_TO_ODOO" || { echo "$(getDate) 🔴 Can't change directory to $PATH_TO_ODOO"; exit 1; }
 
@@ -103,7 +147,7 @@ function main() {
   
   echo "$(getDate) 📄 Copy the filestore to the $ODOO_DEPLOYMENT_ENVIRONMENT environment"
   mkdir "$ODOO_FILESTORE_PATH_ENV" > /dev/null 2>&1 || { echo "$(getDate) 🔴 Error creating $ODOO_FILESTORE_PATH_ENV. Maybe the directory exist."; }
-  cp -r "$ODOO_FILESTORE_PATH_PRD"/* "$ODOO_FILESTORE_PATH_ENV"
+  rsync -av "$ODOO_FILESTORE_PATH_PRD/" "$ODOO_FILESTORE_PATH_ENV"
 
   echo "$(getDate) 👤 Change owner of $ODOO_FILESTORE_PATH_ENV to odoo"
   chown -R odoo: "$ODOO_FILESTORE_PATH_ENV"
@@ -161,7 +205,7 @@ function main() {
   " > /dev/null 2>&1 || { echo "$(getDate) 🔴 Error changing owner of $ODOO_DB_NAME_ENV"; exit 1; }
 
   echo "$(getDate) 🟢 Restart the $ODOO_DEPLOYMENT_ENVIRONMENT environment"
-  docker compose -f -f "$PATH_TO_ODOO_ENV/docker-compose/.yml" restart > /dev/null 2>&1 || { echo "$(getDate) 🔴 Error restarting $ODOO_DEPLOYMENT_ENVIRONMENT"; exit 1; }
+  docker compose -f "$PATH_TO_ODOO_ENV/docker-compose/.yml" restart > /dev/null 2>&1 || { echo "$(getDate) 🔴 Error restarting $ODOO_DEPLOYMENT_ENVIRONMENT"; exit 1; }
 
   echo "$(getDate) ✅ Finish cloning database $ODOO_DB_NAME_ENV from $ODOO_DATABASE_NAME_PRD"
 }
