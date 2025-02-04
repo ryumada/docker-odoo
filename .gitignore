@@ -39,3 +39,4 @@ dockerfile
 docker-compose.yml
 
 **.tar**
+**.swp
