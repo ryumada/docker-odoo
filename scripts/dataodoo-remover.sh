@@ -60,7 +60,7 @@ function main() {
     echo "$(getDate) 🟦 Removing Odoo Filestore: $ODOO_FILESTORE_PATH/$DB"
     sudo rm -rf "$ODOO_FILESTORE_PATH/$DB"
     
-    echo "$(getDate) Odoo Database: $DB has been removed"
+    echo "$(getDate) ✅ Odoo Database: $DB has been removed"
   done
 }
 
