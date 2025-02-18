@@ -5,6 +5,7 @@ FROM python:$PYTHON_VERSION
 
 ARG POSTGRESQL_VERSION
 ARG VSCODE_DIRECT_DOWNLOAD_URL
+ARG INSTALL_LIBREOFFICE
 
 # install odoo dependencies
 RUN apt update; \
@@ -19,8 +20,9 @@ RUN apt install -y cabextract; \
     dpkg -i ./ttf-mscorefonts-installer_3.8.1_all.deb; \
     rm ./ttf-mscorefonts-installer_3.8.1_all.deb
 
-# install libreoffice only be needed if there is a module need to use libreoffice featrue
-# RUN apt --no-install-recommends -y install libreoffice
+RUN if [ "$INSTALL_LIBREOFFICE" = "Y" ]; then \
+        apt --no-install-recommends -y install libreoffice; \
+    fi
 
 RUN if [ -n "$POSTGRESQL_VERSION" ]; then \
         apt install -y postgresql-common; \

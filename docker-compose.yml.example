@@ -11,6 +11,7 @@ services:
         - PYTHON_VERSION=${PYTHON_VERSION:-3.10-bookworm}
         - POSTGRESQL_VERSION=${POSTGRESQL_VERSION}
         - VSCODE_DIRECT_DOWNLOAD_URL=${VSCODE_DIRECT_DOWNLOAD_URL}
+        - INSTALL_LIBREOFFICE=${INSTALL_LIBREOFFICE}
       # Add labels to connect to github repository (enter github)
       labels:
         - org.opencontainers.image.source=${ODOO_IMAGE_SOURCE:-"no source"}
@@ -31,34 +32,35 @@ services:
         max-size: "10m"
         max-file: "3"
     environment:
-     - DB_USER
-     - DB_NAME
-     - DB_HOST
-     - DB_PORT
-     - DB_MAXCONN
-     - PORT
-     - GEVENT_PORT
-     - WORKERS
-     - MAX_CRON_THREADS
-     - LIMIT_MEMORY_SOFT
-     - LIMIT_MEMORY_HARD
-     - LIMIT_TIME_CPU
-     - LIMIT_TIME_REAL
-     - LIMIT_TIME_REAL_CRON
-     - LIMIT_REQUEST
-     - TRANSIENT_AGE_LIMIT
-     - DATA_DIR
-     - SERVICE_NAME
-     - ODOO_DATABASE_MANAGER
-     - ODOO_DATADIR_SERVICE
-     - ODOO_IMAGE_NAME
-     - ODOO_IMAGE_SOURCE
-     - ODOO_LOG_DIR_SERVICE
-     - ODOO_UPGRADE_MODULE
-     - ODOO_VERSION
-     - POSTGRESQL_VERSION
-     - PYTHON_VERSION
-     - VSCODE_DIRECT_DOWNLOAD_URL
+      - DATA_DIR
+      - DB_HOST
+      - DB_MAXCONN
+      - DB_NAME
+      - DB_PORT
+      - DB_USER
+      - GEVENT_PORT
+      - INSTALL_LIBREOFFICE
+      - LIMIT_MEMORY_HARD
+      - LIMIT_MEMORY_SOFT
+      - LIMIT_REQUEST
+      - LIMIT_TIME_CPU
+      - LIMIT_TIME_REAL
+      - LIMIT_TIME_REAL_CRON
+      - MAX_CRON_THREADS
+      - ODOO_DATABASE_MANAGER
+      - ODOO_DATADIR_SERVICE
+      - ODOO_IMAGE_NAME
+      - ODOO_IMAGE_SOURCE
+      - ODOO_LOG_DIR_SERVICE
+      - ODOO_UPGRADE_MODULE
+      - ODOO_VERSION
+      - PORT
+      - POSTGRESQL_VERSION
+      - PYTHON_VERSION
+      - SERVICE_NAME
+      - TRANSIENT_AGE_LIMIT
+      - VSCODE_DIRECT_DOWNLOAD_URL
+      - WORKERS
     env_file:
       - .env
     secrets:
