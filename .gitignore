@@ -25,6 +25,7 @@ scripts/*
 !scripts/restore-backupdata.sh
 !scripts/restore-snapshot.sh
 !scripts/.uninstall-odoo.sh
+!scripts/update-env-file.sh
 
 utilities/*
 !utilities/README.md
