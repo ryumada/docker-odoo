@@ -32,12 +32,10 @@ services:
         max-size: "10m"
         max-file: "3"
     environment:
-      - DATA_DIR
       - DB_HOST
       - DB_MAXCONN
       - DB_NAME
       - DB_PORT
-      - DB_USER
       - GEVENT_PORT
       - INSTALL_LIBREOFFICE
       - LIMIT_MEMORY_HARD
