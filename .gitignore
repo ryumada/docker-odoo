@@ -21,6 +21,7 @@ scripts/*
 !scripts/dataodoo-remover.sh
 !scripts/git_addons_updater.sh
 !scripts/git_odoo-base_updater.sh
+!scripts/installer
 !scripts/README.md
 !scripts/restore-backupdata.sh
 !scripts/restore-snapshot.sh

@@ -1,42 +1,10 @@
 #!/bin/bash
 
-# Press ctrl + F then type enter to see the highlight of variables should be added
-
-# enter the production database name this is required to backup the database
-ODOO_DATABASE_NAME_PRD=enter_production_database_name
-# read -p "Enter the database name: " ODOO_DATABASE_NAME_PRD
-
-# you can leave it as is to back up to the /tmp directory instead of Google Cloud Storage (GCS)
-GCS_BUCKET_NAME=enter_your_gcs_bucket_name
-
-# ask to replace the existing snapshot file
-# enter "Y" to add question to replace the existing snapshot file
-ASK_TO_REPLACE_EXISTING_FILE=
-
 CURRENT_DIR=$(dirname "$(readlink -f "$0")")
 CURRENT_DIR_USER=$(stat -c '%U' "$CURRENT_DIR")
 PATH_TO_ODOO=$(sudo -u "$CURRENT_DIR_USER" git -C "$(dirname "$(readlink -f "$0")")" rev-parse --show-toplevel)
 SERVICE_NAME=$(basename "$PATH_TO_ODOO")
 REPOSITORY_OWNER=$(stat -c '%U' "$PATH_TO_ODOO")
-
-## This variable below to define the new variable (DON'T EDIT)
-FILES_DIRS_TO_TAR=""
-
-## Add Directory (ADD MORE VARIABLE TO ADD NEW DIRECTORY for the archive by uncomment this line and add the path of the directory.)
-# FILES_DIRS_TO_TAR="enter_path_to_directory $FILES_DIRS_TO_TAR"
-# FILES_DIRS_TO_TAR="enter_path_to_directory $FILES_DIRS_TO_TAR"
-
-## Make sure that the git directory and odoo base directory has git_hashes.txt file.
-## If not, you need to change this to the directory of odoo modules and odoo-base instead of git_hashes.txt. 
-## enter the correct path
-FILES_DIRS_TO_TAR="git/git_hashes.txt $FILES_DIRS_TO_TAR"
-FILES_DIRS_TO_TAR="odoo-base/git_hashes.txt $FILES_DIRS_TO_TAR"
-
-## Add the additional odoo module directory that don't use git (uncomment and add the path of the directory)
-# FILES_DIRS_TO_TAR="git/enter_additional_git_odoo_module_directory $FILES_DIRS_TO_TAR"
-
-## Make sure that the datadir location is correct (enter the correct one)
-FILES_DIRS_TO_TAR="/var/lib/odoo/$SERVICE_NAME/filestore/$ODOO_DATABASE_NAME_PRD $FILES_DIRS_TO_TAR"
 
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 # DON'T change these codes below
@@ -50,8 +18,9 @@ function amIRoot() {
 
 function areYouReallySure() {
   tar_file_path=$1
+  ASK_TO_REPLACE_EXISTING_SNAPSHOT=$2
   if [ -f "$tar_file_path" ]; then
-    if [ "$ASK_TO_REPLACE_EXISTING_FILE" == "Y" ]; then
+    if [ "$ASK_TO_REPLACE_EXISTING_SNAPSHOT" == "Y" ]; then
       echo "current snapshot file already exists, do you want to overwrite it? ($tar_file_path)"
       echo -e "type 'yes I am sure' to continue.\n"
 
@@ -78,6 +47,27 @@ function getDate() {
   echo "[$(date +"%Y-%m-%d %H:%M:%S")]"
 }
 
+function moveSnapshotFileToTempDir() {
+  local tar_file_path=$1
+  local tar_file_name=$2
+
+  echo "$(getDate) 🟦 Create the temporary directory"
+  local temp_dir
+  temp_dir=$(mktemp -d)
+  
+  local temp_tar_file_path="$temp_dir/$tar_file_name"
+
+  echo "$(getDate) 📦 Moving the snapshot file to the temporary directory."
+  mv "$tar_file_path" "$temp_tar_file_path"
+
+  echo "$(getDate) 👤 change the permission and owner of the temporary directory"
+  chmod 755 "$temp_dir"
+  chmod 644 "$temp_tar_file_path"
+  chown -R "$REPOSITORY_OWNER": "$temp_dir"
+
+  echo -e "$(getDate) ✅ The snapshot File Created Successfully named $tar_file_name. File Backupped at $temp_tar_file_path."
+}
+
 function main() {
   LOG_PATH=/var/log/odoo/_utilities/snapshot-$SERVICE_NAME.log
 
@@ -90,6 +80,43 @@ function main() {
   echo " DAILY SNAPSHOT FOR $SERVICE_NAME @ $(date +"%A, %d %B %Y %H:%M %Z")"
   echo "-------------------------------------------------------------------------------"
 
+  # enter the production database name this is required to backup the database
+  ODOO_DATABASE_NAME_PRD=$(grep "^DB_NAME=" "$PATH_TO_ODOO/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
+  # ODOO_DATABASE_NAME_PRD=enter_production_database_name
+  # read -p "Enter the database name: " ODOO_DATABASE_NAME_PRD
+  if [ -z "$ODOO_DATABASE_NAME_PRD" ]; then
+    echo "$(getDate) 🔴 Please setup DB_NAME in your .env file!"
+    exit 1
+  fi
+
+  # ask to replace the existing snapshot file
+  # enter "Y" to add question to replace the existing snapshot file
+  ASK_TO_REPLACE_EXISTING_SNAPSHOT=$(grep "^ASK_TO_REPLACE_EXISTING_SNAPSHOT=" "$PATH_TO_ODOO/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
+
+  # you can leave it as is to back up to the /tmp directory instead of Google Cloud Storage (GCS)
+  GCS_BUCKET_NAME=$(grep "^GCS_BUCKET_NAME=" "$PATH_TO_ODOO/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
+  # GCS_BUCKET_NAME=enter_gcs_bucket_name
+  # read -p "Enter the GCS bucket name: " GCS_BUCKET_NAME
+
+  ## This variable below to define the new variable (DON'T EDIT)
+  FILES_DIRS_TO_TAR=""
+
+  ## Add Directory (ADD MORE VARIABLE TO ADD NEW DIRECTORY for the archive by uncomment this line and add the path of the directory.)
+  # FILES_DIRS_TO_TAR="enter_path_to_directory $FILES_DIRS_TO_TAR"
+  # FILES_DIRS_TO_TAR="enter_path_to_directory $FILES_DIRS_TO_TAR"
+
+  ## Make sure that the git directory and odoo base directory has git_hashes.txt file.
+  ## If not, you need to change this to the directory of odoo modules and odoo-base instead of git_hashes.txt. 
+  ## enter the correct path
+  FILES_DIRS_TO_TAR="git/git_hashes.txt $FILES_DIRS_TO_TAR"
+  FILES_DIRS_TO_TAR="odoo-base/git_hashes.txt $FILES_DIRS_TO_TAR"
+
+  ## Add the additional odoo module directory that don't use git (uncomment and add the path of the directory)
+  # FILES_DIRS_TO_TAR="git/enter_additional_git_odoo_module_directory $FILES_DIRS_TO_TAR"
+
+  ## Make sure that the datadir location is correct (enter the correct one)
+  FILES_DIRS_TO_TAR="/var/lib/odoo/$SERVICE_NAME/filestore/$ODOO_DATABASE_NAME_PRD $FILES_DIRS_TO_TAR"
+
   echo "$(getDate) Change WORKDIR to $PATH_TO_ODOO."
   cd "$PATH_TO_ODOO" || { echo "🔴 Can't change directory to $PATH_TO_ODOO"; exit 1; }
 
@@ -98,7 +125,7 @@ function main() {
   TAR_FILE_NAME=snapshot-$SERVICE_NAME.tar.zst
   TAR_FILE_PATH=/tmp/$TAR_FILE_NAME
 
-  areYouReallySure "$TAR_FILE_PATH"
+  areYouReallySure "$TAR_FILE_PATH" "$ASK_TO_REPLACE_EXISTING_SNAPSHOT"
 
   FILES_DIRS_TO_TAR=".secrets/db_user $FILES_DIRS_TO_TAR"
   FILES_DIRS_TO_TAR=".secrets/db_password $FILES_DIRS_TO_TAR"
@@ -160,12 +187,22 @@ function main() {
   echo "$(getDate) 🧹 Removing temporary files."
   rm $TEMP_FILES_TO_REMOVE
 
-  if [ "$GCS_BUCKET_NAME" != "enter_your_gcs_bucket_name" ] && [ "$GCS_BUCKET_NAME" != "" ]; then
-    echo "$(getDate) ☁ Moving the snapshot file to tilabs-ctb-backup at Google Cloud Storage."
-    sudo -u "$REPOSITORY_OWNER" gsutil -m mv "$TAR_FILE_PATH" "gs://$GCS_BUCKET_NAME/$TAR_FILE_NAME"
-    echo -e "$(getDate) ✅ The snapshot File Created Successfully named $TAR_FILE_NAME. File Backupped at gs://$GCS_BUCKET_NAME/$TAR_FILE_NAME."
+  if [ "$GCS_BUCKET_NAME" != "" ]; then
+    if sudo -u "$REPOSITORY_OWNER" gsutil ls "gs://$GCS_BUCKET_NAME" > /dev/null 2>&1; then
+      echo "$(getDate) ☁ Moving the snapshot file to Google Cloud Storage bucket: gs://$GCS_BUCKET_NAME."
+      if sudo -u "$REPOSITORY_OWNER" gsutil -m mv "$TAR_FILE_PATH" "gs://$GCS_BUCKET_NAME/$TAR_FILE_NAME"; then
+        echo -e "$(getDate) ✅ The snapshot File Created Successfully named $TAR_FILE_NAME. File Backupped at gs://$GCS_BUCKET_NAME/$TAR_FILE_NAME."
+      else
+        echo "$(getDate) 🔴 Error can't move the snapshot file to gs://$GCS_BUCKET_NAME. Exit code: $?"
+        moveSnapshotFileToTempDir "$TAR_FILE_PATH" "$TAR_FILE_NAME"
+      fi
+    else
+      echo "$(getDate) 🔴 Error cannot move the snapshot file to Google Cloud Storage (GCS). Exit code: $?"
+      echo "$(getDate) 🔴 Please make sure the GCS_BUCKET_NAME on your .env file is the valid GCS Bucket Name."
+      moveSnapshotFileToTempDir "$TAR_FILE_PATH" "$TAR_FILE_NAME"
+    fi
   else
-    echo -e "$(getDate) ✅ The snapshot File Created Successfully named $TAR_FILE_NAME. File Backupped at $TAR_FILE_PATH."
+    moveSnapshotFileToTempDir "$TAR_FILE_PATH" "$TAR_FILE_NAME"
   fi
   echo
 }
