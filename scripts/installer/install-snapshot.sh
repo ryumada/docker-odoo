@@ -39,9 +39,9 @@ function main() {
 
   echo "$(getDate) 📎 Copying the latest script from the example"
   rsync -acz ./scripts/example/snapshot.sh.example "./scripts/snapshot-$SERVICE_NAME" > /dev/null  && {
-    echo "$(getDate) ✅ Copy the latest script from the example"
+    echo "$(getDate) ✅ Copy the latest script from the example script."
   } || {
-    echo "$(getDate) ❌ Failed to copy the latest script from the example"
+    echo "$(getDate) ❌ Failed to copy the latest script from the example script."
     exit 1
   }
 
@@ -74,6 +74,17 @@ EOF
     sudo systemctl restart cron
   fi
 
+  if zstd --version > /dev/null 2>&1; then
+    echo "$(getDate) ✅ zstd is already installed"
+  else
+    echo "$(getDate) 📦 Install zstd"
+    sudo apt install zstd -y && {
+      echo "$(getDate) ✅ zstd is installed"
+    } || {
+      echo "$(getDate) 🔴 Failed to install zstd"
+      exit 1
+    }
+  fi
 
   echo "$(getDate) ⚒️ Install the logrotate utility"
   sudo cat << EOF > ~/snapshot-$SERVICE_NAME
@@ -88,8 +99,8 @@ EOF
     createolddir 775 odoo root
     renamecopy
     compress
-    compresscmd /usr/bin/xz
-    compressoptions -ze -T 0
+    compresscmd /usr/bin/zstd
+    compressoptions -7T0
     delaycompress
     dateext
     dateformat -%Y%m%d-%H%M%S
