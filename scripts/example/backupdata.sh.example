@@ -1,7 +1,5 @@
 #!/bin/bash
 
-# Press ctrl + F then type enter to see the highlight of variables should be added
-
 CURRENT_DIR=$(dirname "$(readlink -f "$0")")
 CURRENT_DIR_USER=$(stat -c '%U' "$CURRENT_DIR")
 PATH_TO_ODOO=$(sudo -u "$CURRENT_DIR_USER" git -C "$(dirname "$(readlink -f "$0")")" rev-parse --show-toplevel)
@@ -9,10 +7,11 @@ SERVICE_NAME=$(basename "$PATH_TO_ODOO")
 
 ## ex. odoo-prd (replace with production database name or use read command to input the database name)
 ## Use only one of this command below
-ODOO_DATABASE_NAME_PRD=enter_production_database_name
-# read -p "Enter the database name: " ODOO_DATABASE_NAME_PRD
+ODOO_DATABASE_NAME_PRD=$(grep "^DB_NAME=" "$PATH_TO_ODOO/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
+if [ -z "$ODOO_DATABASE_NAME_PRD" ]; then
+  read -rp "Enter the database name: " ODOO_DATABASE_NAME_PRD
+fi
 
-## Make sure that the datadir location is correct (enter the correct one)
 ODOO_FILESTORE_PATH="/var/lib/odoo/$SERVICE_NAME/filestore/$ODOO_DATABASE_NAME_PRD"
 
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
