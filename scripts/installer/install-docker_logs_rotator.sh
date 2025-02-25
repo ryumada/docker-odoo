@@ -26,11 +26,10 @@ function installLogrotator() {
     missingok
     #notifempty
     nocreate
-    createolddir 755 $LINUX_ODOO_USER $LINUX_ODOO_GROUP
     copytruncate
     compress
     compresscmd /usr/bin/zstd
-    compressoptions -7T0 
+    compressoptions -7T0
     delaycompress
     dateext
     dateformat -%Y%m%d-%H%M%S
