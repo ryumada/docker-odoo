@@ -35,13 +35,16 @@ function main() {
 
   echo "$(getDate) 🚀 Installing backupdata utility"
 
-  echo "$(getDate) 📎 Copying the latest script from the example"
+  echo "$(getDate) 📎 Copying the latest script from the example script"
   OUTPUT_RSYNC_COMMAND=$(rsync -acz ./scripts/example/backupdata.sh.example "./scripts/backupdata-$SERVICE_NAME" 2>&1) && {
     echo "$(getDate) ✅ Copy the latest script from the example script."
   } || {
     echo "$(getDate) ❌ Failed to copy the latest script from the example script ➡️ $OUTPUT_RSYNC_COMMAND"
     exit 1
   }
+
+  echo "$(getDate) 👤 Changing the permission of the script"
+  chmod 755 "./scripts/backupdata-$SERVICE_NAME"
 
   echo "$(getDate) 🖇️ Create a softlink to /usr/local/sbin"
   OUTPUT_LN_COMMAND=$(ln -s "$PATH_TO_ODOO/scripts/backupdata-$SERVICE_NAME" /usr/local/sbin/backupdata-"$SERVICE_NAME" 2>&1) && {

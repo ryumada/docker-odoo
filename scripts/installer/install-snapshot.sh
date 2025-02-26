@@ -37,19 +37,22 @@ function main() {
 
   echo "$(getDate) 🚀 Installing snapshot utility"
 
-  echo "$(getDate) 📎 Copying the latest script from the example"
-  rsync -acz ./scripts/example/snapshot.sh.example "./scripts/snapshot-$SERVICE_NAME" > /dev/null  && {
+  echo "$(getDate) 📎 Copying the latest script from the example script"
+  OUTPUT_RSYNC_COMMAND=$(rsync -acz ./scripts/example/snapshot.sh.example "./scripts/snapshot-$SERVICE_NAME" 2>&1) && {
     echo "$(getDate) ✅ Copy the latest script from the example script."
   } || {
-    echo "$(getDate) ❌ Failed to copy the latest script from the example script."
+    echo "$(getDate) ❌ Failed to copy the latest script from the example script ➡️ $OUTPUT_RSYNC_COMMAND"
     exit 1
   }
 
+  echo "$(getDate) 👤 Changing the permission of the script"
+  chmod 755 "./scripts/snapshot-$SERVICE_NAME"
+
   echo "$(getDate) 🖇️ Create a softlink to /usr/local/sbin"
-  ln -s "$PATH_TO_ODOO/scripts/snapshot-$SERVICE_NAME" /usr/local/sbin/snapshot-"$SERVICE_NAME" && {
+  OUTPUT_LN_COMMAND=$(ln -s "$PATH_TO_ODOO/scripts/snapshot-$SERVICE_NAME" /usr/local/sbin/snapshot-"$SERVICE_NAME" 2>&1) && {
     echo "$(getDate) ✅ Create a symbolic link to /usr/local/sbin/snapshot-$SERVICE_NAME"
   } || {
-    echo "$(getDate) ⚠️ Failed to create a symbolic link to /usr/local/sbin/snapshot-$SERVICE_NAME. It may be already exists."
+    echo "$(getDate) ⚠️ Failed to create a symbolic link to /usr/local/sbin/snapshot-$SERVICE_NAME ➡️ $OUTPUT_LN_COMMAND"
   }
 
   if [ -z "$GCS_BUCKET_NAME" ]; then
