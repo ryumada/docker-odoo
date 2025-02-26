@@ -1,27 +1,14 @@
 #!/bin/bash
 
-# Press ctrl + F then type enter to see the highlight of variables should be added
+# Exit immediately if a command exits with a non-zero status
+set -e
 
-## ex. odoo-prd (replace with production database name)
-# The name of the production database to be cloned
-ODOO_DATABASE_NAME_PRD=enter_production_database_name
-# read -p "Enter the database name: " ODOO_DATABASE_NAME_PRD
+error_handler() {
+  echo "An error occurred on line $1. Exiting..."
+  exit 1
+}
 
-## The environment to which the database will be cloned (leave empty to prompt)
-CLONED_ENV=""
-
-## ex. Y (replace with Y if you want to use a date suffix for the new database name)
-# This variable determines whether to use a date suffix for the new database name
-shouldPromptToUseDateSuffixOnDBName=""
-
-# # # # # # # # # # # # # # # # # # # # # # # # # #
-# Don't change anything below this line
-# # # # # # # # # # # # # # # # # # # # # # # # # #
-
-CURRENT_DIR=$(dirname "$(readlink -f "$0")")
-CURRENT_DIR_USER=$(stat -c '%U' "$CURRENT_DIR")
-PATH_TO_ODOO=$(sudo -u "$CURRENT_DIR_USER" git -C "$(dirname "$(readlink -f "$0")")" rev-parse --show-toplevel)
-SERVICE_NAME=$(basename "$PATH_TO_ODOO")
+trap 'error_handler $LINENO' ERR
 
 function getDate() {
   echo "[$(date +"%Y-%m-%d %H:%M:%S")]"
@@ -91,6 +78,9 @@ function promptDBNameSuffix() {
 
   case "$promptDBNameSuffix" in
     Y|y)
+      ODOO_DB_NAME_ENV="$ODOO_DATABASE_NAME_PRD-$ODOO_DEPLOYMENT_ENVIRONMENT-$(date +"%Y%m%d_%H%M")"
+      ;;
+    prompt)
       while true; do
         read -rp "Do you want to use a date suffix for the new database name? [Y/n]: " USE_DATE_SUFFIX
 
@@ -113,6 +103,23 @@ function promptDBNameSuffix() {
 }
 
 function main() {
+  CURRENT_DIR=$(dirname "$(readlink -f "$0")")
+  CURRENT_DIR_USER=$(stat -c '%U' "$CURRENT_DIR")
+  PATH_TO_ODOO=$(sudo -u "$CURRENT_DIR_USER" git -C "$(dirname "$(readlink -f "$0")")" rev-parse --show-toplevel)
+  SERVICE_NAME=$(basename "$PATH_TO_ODOO")
+
+  ODOO_DATABASE_NAME_PRD=$(grep "^DB_NAME=" "$PATH_TO_ODOO/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
+  if [ -z "$ODOO_DATABASE_NAME_PRD" ]; then
+    read -rp "Enter the database name: " ODOO_DATABASE_NAME_PRD
+  fi
+
+  ## The environment to which the database will be cloned (leave empty to prompt)
+  CLONED_ENV=$(grep "^CLONED_ENV=" "$PATH_TO_ODOO/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
+
+  ## ex. Y (replace with Y if you want to use a date suffix for the new database name)
+  # This variable determines whether to use a date suffix for the new database name
+  USE_DATE_SUFFIX=$(grep "^USE_DATE_SUFFIX=" "$PATH_TO_ODOO/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
+
   isRoot
 
   ODOO_DEPLOYMENT_ENVIRONMENT=$(promptWhichEnvironment "$CLONED_ENV")
@@ -124,7 +131,7 @@ function main() {
     exit 1
   fi
 
-  ODOO_DB_NAME_ENV=$(promptDBNameSuffix "$shouldPromptToUseDateSuffixOnDBName" "$ODOO_DEPLOYMENT_ENVIRONMENT")
+  ODOO_DB_NAME_ENV=$(promptDBNameSuffix "$USE_DATE_SUFFIX" "$ODOO_DEPLOYMENT_ENVIRONMENT")
 
   ODOO_FILESTORE_PATH_PRD="/var/lib/odoo/$SERVICE_NAME/filestore/$ODOO_DATABASE_NAME_PRD"
   ODOO_FILESTORE_PATH_ENV="/var/lib/odoo/$SERVICE_NAME-$ODOO_DEPLOYMENT_ENVIRONMENT/filestore/$ODOO_DB_NAME_ENV"
