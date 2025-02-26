@@ -42,7 +42,7 @@ function main() {
         variable_name=$(echo "$line" | cut -d'=' -f1)
         variable_value=$(echo "$line" | cut -d'=' -f2-)
         
-        if grep -q "^$variable_name=" .env; then
+        if grep -q "^$variable_name=" .env && [ -n "$variable_value" ]; then
           echo "$(getDate) 🟦 Update $variable_name"
           sed -i "s/^$variable_name=.*/$variable_name=$variable_value/" .env
         fi
