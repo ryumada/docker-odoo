@@ -51,21 +51,24 @@ function moveSnapshotFileToTempDir() {
   local tar_file_path=$1
   local tar_file_name=$2
 
-  echo "$(getDate) 🟦 Create the temporary directory"
   local temp_dir
-  temp_dir=$(mktemp -d)
-  
-  local temp_tar_file_path="$temp_dir/$tar_file_name"
+  temp_dir="$tar_file_path-$(date +"%Y%m%d-%H%M%S")"
+  OUTPUT_mkdir=$(mkdir "$temp_dir" 2>&1) && {
+    echo "$(getDate) ✅ Create the temporary directory"
+  } || {
+    echo "$(getDate) 🔴 Can't create the temporary directory: $OUTPUT_mkdir"
+    exit 1
+  }
 
   echo "$(getDate) 📦 Moving the snapshot file to the temporary directory."
-  mv "$tar_file_path" "$temp_tar_file_path"
+  mv "$tar_file_path" "$temp_dir/"
 
   echo "$(getDate) 👤 change the permission and owner of the temporary directory"
   chmod 755 "$temp_dir"
-  chmod 644 "$temp_tar_file_path"
+  chmod 644 "$temp_dir/$tar_file_name"
   chown -R "$REPOSITORY_OWNER": "$temp_dir"
 
-  echo -e "$(getDate) ✅ The snapshot File Created Successfully named $tar_file_name. File Backupped at $temp_tar_file_path."
+  echo -e "$(getDate) ✅ The snapshot File Created Successfully named $tar_file_name. File Backupped at $temp_dir/$tar_file_name"
 }
 
 function main() {

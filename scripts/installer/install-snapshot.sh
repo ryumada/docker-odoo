@@ -33,7 +33,7 @@ function main() {
   amIRoot
   cd "$PATH_TO_ODOO" || exit 1
 
-  GCS_BUCKET_NAME=$(awk -F "=" '/GCS_BUCKET_NAME/ {gsub(/^ +/, "", $2); print $2}' "$PATH_TO_ODOO/.env")
+  GCS_BUCKET_NAME=$(grep "^GCS_BUCKET_NAME=" "$PATH_TO_ODOO/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
 
   echo "$(getDate) 🚀 Installing snapshot utility"
 
