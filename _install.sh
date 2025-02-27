@@ -1,9 +1,8 @@
 #!/bin/bash
 
 REPOSITORY_DIRPATH="$(pwd)"
-REPOSITORY_DIRNAME="$(basename "$(pwd)")"
 REPOSITORY_OWNER=$(stat -c '%U' "$REPOSITORY_DIRPATH")
-SERVICE_NAME=$REPOSITORY_DIRNAME
+SERVICE_NAME="$(basename "$(pwd)")"
 ODOO_LINUX_USER="odoo"
 DEVOPS_USER="devops"
 
@@ -771,6 +770,19 @@ function main() {
     else
       echo "$(getDate) ✅ Image name found in docker-compose.yml file."
     fi
+  fi
+
+  "$REPOSITORY_DIRPATH/scripts/installer/install-backupdata.sh"
+
+  CLONED_ENV=$(grep "^CLONED_ENV=" "$REPOSITORY_DIRPATH/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
+  if [ -n "$CLONED_ENV" ]; then
+    "$REPOSITORY_DIRPATH/scripts/installer/install-databasecloner.sh"
+  fi
+
+  ENABLE_SNAPSHOT=$(grep "^ENABLE_SNAPSHOT=" "$REPOSITORY_DIRPATH/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
+  ODOO_DB_NAME=$(grep "^DB_NAME=" "$REPOSITORY_DIRPATH/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
+  if [ -n "$ENABLE_SNAPSHOT" ] && [ -n "$ODOO_DB_NAME" ]; then
+    "$REPOSITORY_DIRPATH/scripts/installer/install-snapshot.sh"
   fi
 
   if printTodo; then
