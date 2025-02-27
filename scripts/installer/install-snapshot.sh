@@ -23,6 +23,67 @@ function getDate() {
   echo "[$(date +"%Y-%m-%d %H:%M:%S")]"
 }
 
+function installCronJob() {
+  local GCS_BUCKET_NAME="$1"
+  local SNAPSHOT_TIME_LIST="$2"
+
+  if [ -z "$GCS_BUCKET_NAME" ]; then
+    echo "$(getDate) ⚠️ GCS_BUCKET_NAME is not set in the .env file. The snapshot will not run automatically."
+  else
+    echo "$(getDate) ⏱️ Create a cron to run automatically the snapshot script."
+    cat << EOF > ~/snapshot-$SERVICE_NAME
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
+
+EOF
+
+    # Why on minute 27? I just want to avoid the cron from the application run altogether with this snapshot cron
+    if [ -z "$SNAPSHOT_TIME_LIST" ]; then
+      cat << EOF >> ~/snapshot-$SERVICE_NAME
+# Run the snapshot script every 4 hours
+27 */4 * * * root "/usr/local/sbin/snapshot-$SERVICE_NAME"
+
+EOF
+    else
+      for SNAPSHOT_TIME in $(echo "$SNAPSHOT_TIME_LIST" | tr "," "\n"); do
+        cat << EOF >> ~/snapshot-$SERVICE_NAME
+# Run the snapshot script at $SNAPSHOT_TIME
+27 $SNAPSHOT_TIME * * * root "/usr/local/sbin/snapshot-$SERVICE_NAME"
+
+EOF
+      done
+    fi
+
+    echo "$(getDate) 📝 Move the cron file to /etc/cron.d"
+    sudo mv ~/snapshot-$SERVICE_NAME /etc/cron.d/snapshot-$SERVICE_NAME
+    echo "$(getDate) 👤 Change the ownership of the snapshot file"
+    sudo chown root: /etc/cron.d/snapshot-$SERVICE_NAME
+    echo "$(getDate) 🔒 Change the permission of the snapshot file"
+    sudo chmod 644 /etc/cron.d/snapshot-$SERVICE_NAME
+    echo "$(getDate) 🔄️ Restart the cron service"
+    sudo systemctl restart cron
+  fi
+}
+
+validateSnapshotTimeList() {
+  local snapshot_times="$1"
+
+  if [ -z "$snapshot_times" ]; then
+    echo "$(getDate) ⚠️ SNAPSHOT_TIME_LIST is empty. No validation needed."
+    return 0
+  fi
+
+  IFS=',' read -ra times <<< "$snapshot_times"
+  for time in "${times[@]}"; do
+    if ! [[ "$time" =~ ^[0-9]+$ ]] || [ "$time" -lt 0 ] || [ "$time" -gt 23 ]; then
+      echo "$(getDate) ❌ Invalid snapshot time: $time. It must be an integer between 0 and 23."
+      return 1
+    fi
+  done
+
+  return 0
+}
+
 function main() {
   CURRENT_DIR=$(dirname "$(readlink -f "$0")")
   CURRENT_DIR_USER=$(stat -c '%U' "$CURRENT_DIR")
@@ -34,6 +95,12 @@ function main() {
   cd "$PATH_TO_ODOO" || exit 1
 
   GCS_BUCKET_NAME=$(grep "^GCS_BUCKET_NAME=" "$PATH_TO_ODOO/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
+  SNAPSHOT_TIME_LIST=$(grep "^SNAPSHOT_TIME=" "$PATH_TO_ODOO/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
+
+  validateSnapshotTimeList "$SNAPSHOT_TIME_LIST" || {
+    echo "$(getDate) 🔴 the SNAPSHOT_TIME is not correct. Please revise it in your .env file."
+    exit 1
+  }
 
   echo "$(getDate) 🚀 Installing snapshot utility"
 
@@ -55,27 +122,7 @@ function main() {
     echo "$(getDate) ⚠️ Failed to create a symbolic link to /usr/local/sbin/snapshot-$SERVICE_NAME ➡️ $OUTPUT_LN_COMMAND"
   }
 
-  if [ -z "$GCS_BUCKET_NAME" ]; then
-    echo "$(getDate) ⚠️ GCS_BUCKET_NAME is not set in the .env file. The snapshot will not run automatically."
-  else
-    echo "$(getDate) ⏱️ Create a cron to run automatically the snapshot script."
-    cat << EOF > ~/snapshot-$SERVICE_NAME
-SHELL=/bin/bash
-PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
-
-27 */4 * * * root "/usr/local/sbin/snapshot-$SERVICE_NAME"
-
-EOF
-
-    echo "$(getDate) 📝 Move the cron file to /etc/cron.d"
-    sudo mv ~/snapshot-$SERVICE_NAME /etc/cron.d/snapshot-$SERVICE_NAME
-    echo "$(getDate) 👤 Change the ownership of the snapshot file"
-    sudo chown root: /etc/cron.d/snapshot-$SERVICE_NAME
-    echo "$(getDate) 🔒 Change the permission of the snapshot file"
-    sudo chmod 644 /etc/cron.d/snapshot-$SERVICE_NAME
-    echo "$(getDate) 🔄️ Restart the cron service"
-    sudo systemctl restart cron
-  fi
+  installCronJob "$GCS_BUCKET_NAME" "$SNAPSHOT_TIME_LIST"
 
   if zstd --version > /dev/null 2>&1; then
     echo "$(getDate) ✅ zstd is already installed"
