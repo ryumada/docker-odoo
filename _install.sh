@@ -724,6 +724,8 @@ function main() {
   echo -e "$(getDate) 🟦 Checking the necessary files and directories..."
   echo "==================================================================="
 
+  "$REPOSITORY_DIRPATH/scripts/update-env-file.sh"
+
   generateDockerComposeAndDockerfile
 
   if isFileExists "$ENV_FILE" "Please create a .env file by folowing the .env.example file."; then
