@@ -48,9 +48,9 @@ function main() {
 
   echo "$(getDate) 🖇️ Create a softlink to /usr/local/sbin"
   OUTPUT_LN_COMMAND=$(ln -s "$PATH_TO_ODOO/scripts/backupdata-$SERVICE_NAME" /usr/local/sbin/backupdata-"$SERVICE_NAME" 2>&1) && {
-    echo "$(date '+%Y-%m-%d %H:%M:%S') ✅ Create a symbolic link to /usr/local/sbin/backupdata-$SERVICE_NAME"
+    echo "$(getDate) ✅ Create a symbolic link to /usr/local/sbin/backupdata-$SERVICE_NAME"
   } || {
-    echo "$(date '+%Y-%m-%d %H:%M:%S') ⚠️ Failed to create a symbolic link to /usr/local/sbin/backupdata-$SERVICE_NAME ➡️ $OUTPUT_LN_COMMAND"
+    echo "$(getDate) ⚠️ Failed to create a symbolic link to /usr/local/sbin/backupdata-$SERVICE_NAME ➡️ $OUTPUT_LN_COMMAND"
   }
 }
 
