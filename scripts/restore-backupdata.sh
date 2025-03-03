@@ -123,12 +123,11 @@ function main() {
 
     ODOO_DATABASE_NAME_PRD=$(grep "^DB_NAME=" "$PATH_TO_ODOO/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
     if [ -z "$ODOO_DATABASE_NAME_PRD" ]; then
-      echo -e "\n$(getDate) Enter database name to restore your data.\n"
-      read -rp ": " RESTORED_DB_NAME
+      RESTORED_DB_NAME="$SERVICE_NAME-$(date +"%Y%m%d-%H%M%S")"
     else
       RESTORED_DB_NAME="$ODOO_DATABASE_NAME_PRD-$(date +"%Y%m%d-%H%M%S")"
-      echo "$(getDate) 📝 Database name would be $RESTORED_DB_NAME"
     fi
+    echo "$(getDate) 📝 Database name would be $RESTORED_DB_NAME"
 
     echo "$(getDate) Checking if the database exists"
     if sudo -u postgres psql -c '\l' | grep -wq "$RESTORED_DB_NAME"; then
@@ -138,7 +137,7 @@ function main() {
       break
     fi
   done
-  
+
   FILESTORE_PATH="/var/lib/odoo/$SERVICE_NAME/filestore/$RESTORED_DB_NAME"
   
   echo "$(getDate) 🛝 Create a temporary directory"
