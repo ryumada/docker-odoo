@@ -22,7 +22,7 @@ function isRoot() {
 function areYouReallySure() {
   prompt=$1
 
-  echo "Are you really sure you want to uninstall $SERVICE_NAME deployment?"
+  echo "Are you sure want to delete data on $SERVICE_NAME deployment?"
   echo -e "Type '$prompt'\n"
   read -r -p ": " RESPONSE
   
