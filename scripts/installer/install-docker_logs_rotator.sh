@@ -30,6 +30,7 @@ function installLogrotator() {
     compress
     compresscmd /usr/bin/zstd
     compressoptions -7T0
+    createolddir 750 root root
     delaycompress
     dateext
     dateformat -%Y%m%d-%H%M%S
