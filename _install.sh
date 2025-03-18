@@ -469,8 +469,10 @@ function isPostgresInstalled() {
   if ! command -v psql &>/dev/null; then
     echo "$(getDate) ❌ psql command not found."
     TODO+=("Please install postgresql by running the following command: 'sudo apt install postgresql'")
+    return 1
   else
     echo "$(getDate) ✅ psql command found"
+    return 0
   fi
 }
 
@@ -735,9 +737,10 @@ function main() {
     DB_HOST=$(grep 'DB_HOST' $ENV_FILE | grep -v '#' | grep -o 'DB_HOST=\([^)]*\)' | sed 's/DB_HOST=//')
 
     if [ "$DB_HOST" == "" ]; then
-      isPostgresInstalled
-      generatePostgresSecrets
-      installPostgresRestartorScript
+      isPostgresInstalled && {
+        generatePostgresSecrets
+        installPostgresRestartorScript
+      }
     else
       echo "$(getDate) 🟨 DB_HOST found on .env file. That means you have a separate postgresql server."
       echo "$(getDate) 🟨 Please make sure that the postgresql server is running and the user and password are setup successfully. See '.secrets' directory to setup the username and password of your postgres user."
