@@ -50,7 +50,6 @@ function main() {
     done < .env.bak
   else
     echo "$(getDate) 🔴 .env.bak file not found. Import skipped."
-    exit 1
   fi
 
   echo "$(getDate) Update .env file with current user and group."
