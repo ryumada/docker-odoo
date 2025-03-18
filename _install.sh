@@ -783,7 +783,7 @@ function main() {
   if [ -n "$CLONED_ENV" ]; then
     "$REPOSITORY_DIRPATH/scripts/installer/install-databasecloner.sh"
   else
-    echo "$(getDate) ⚠️ databasecloner utility is not installed. Please enter your CLONED_ENV variable in your .env file, then re-run this install script to install databasecloner utility."
+    echo "$(getDate) ⚠️ databasecloner utility is not installed. Please fill your CLONED_ENV variable in your .env file, then re-run this install script to install databasecloner utility."
   fi
 
   ENABLE_SNAPSHOT=$(grep "^ENABLE_SNAPSHOT=" "$REPOSITORY_DIRPATH/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
@@ -791,7 +791,7 @@ function main() {
   if [ -n "$ENABLE_SNAPSHOT" ] && [ -n "$ODOO_DB_NAME" ]; then
     "$REPOSITORY_DIRPATH/scripts/installer/install-snapshot.sh"
   else
-    echo "$(getDate) ⚠️ snapshot utility is not installed. Please enter fill ENABLE_SNAPSHOT and DB_NAME variable in you .env file, then re-run this install script to install snapshot utility."
+    echo "$(getDate) ⚠️ snapshot utility is not installed. Please fill ENABLE_SNAPSHOT and DB_NAME variable in you .env file, then re-run this install script to install snapshot utility."
   fi
 
   if printTodo; then
