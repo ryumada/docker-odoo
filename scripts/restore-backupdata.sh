@@ -121,12 +121,18 @@ function main() {
 
   while true; do
 
-    ODOO_DATABASE_NAME_PRD=$(grep "^DB_NAME=" "$PATH_TO_ODOO/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
-    if [ -z "$ODOO_DATABASE_NAME_PRD" ]; then
-      RESTORED_DB_NAME="$SERVICE_NAME-$(date +"%Y%m%d-%H%M%S")"
+    PROMPT_FOR_DATABASE_NAME=$(grep "^PROMPT_FOR_DATABASE_NAME=" "$PATH_TO_ODOO/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
+    if [ -z "$PROMPT_FOR_DATABASE_NAME" ]; then
+      ODOO_DATABASE_NAME_PRD=$(grep "^DB_NAME=" "$PATH_TO_ODOO/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
+      if [ -z "$ODOO_DATABASE_NAME_PRD" ]; then
+        RESTORED_DB_NAME="$SERVICE_NAME-$(date +"%Y%m%d-%H%M%S")"
+      else
+        RESTORED_DB_NAME="$ODOO_DATABASE_NAME_PRD-$(date +"%Y%m%d-%H%M%S")"
+      fi
     else
-      RESTORED_DB_NAME="$ODOO_DATABASE_NAME_PRD-$(date +"%Y%m%d-%H%M%S")"
+      read -rp "$(getDate) 📝 Enter the new database name: " RESTORED_DB_NAME
     fi
+
     echo "$(getDate) 📝 Database name would be $RESTORED_DB_NAME"
 
     echo "$(getDate) Checking if the database exists"
@@ -139,7 +145,7 @@ function main() {
   done
 
   FILESTORE_PATH="/var/lib/odoo/$SERVICE_NAME/filestore/$RESTORED_DB_NAME"
-  
+
   echo "$(getDate) 🛝 Create a temporary directory"
   mkdir -p "$TEMP_DIR"
 
