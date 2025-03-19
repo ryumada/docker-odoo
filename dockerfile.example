@@ -44,6 +44,10 @@ RUN if [ -n "$VSCODE_DIRECT_DOWNLOAD_URL" ] && { [ "$VSCODE_DIRECT_DOWNLOAD_URL"
         rm "$filename"; \
     fi
 
+RUN if [ -n "$APT_ADDITIONAL_PACKAGES" ]; then \
+        apt install -y $APT_ADDITIONAL_PACKAGES; \
+    fi
+
 RUN groupadd -g 8069 odoo; \
     useradd -r -u 8069 -g 8069 -m -s /bin/bash odoo
 
@@ -83,10 +87,6 @@ COPY --chown=odoo:odoo ./entrypoint.sh /opt/odoo/entrypoint.sh
 RUN chmod 550 /opt/odoo/entrypoint.sh
 
 COPY --chown=odoo:odoo ./git /opt/odoo/git
-
-RUN if [ -n "$APT_ADDITIONAL_PACKAGES" ]; then \
-        apt install -y $APT_ADDITIONAL_PACKAGES; \
-    fi
 
 USER odoo
 
