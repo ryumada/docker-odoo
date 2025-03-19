@@ -8,10 +8,11 @@ services:
       context: .
       dockerfile: dockerfile
       args:
+        - APT_ADDITIONAL_PACKAGES=${APT_ADDITIONAL_PACKAGES}
+        - INSTALL_LIBREOFFICE=${INSTALL_LIBREOFFICE}
         - PYTHON_VERSION=${PYTHON_VERSION:-3.10-bookworm}
         - POSTGRESQL_VERSION=${POSTGRESQL_VERSION}
         - VSCODE_DIRECT_DOWNLOAD_URL=${VSCODE_DIRECT_DOWNLOAD_URL}
-        - INSTALL_LIBREOFFICE=${INSTALL_LIBREOFFICE}
       # Add labels to connect to github repository (enter github)
       labels:
         - org.opencontainers.image.source=${ODOO_IMAGE_SOURCE:-"no source"}
@@ -32,6 +33,7 @@ services:
         max-size: "10m"
         max-file: "3"
     environment:
+      - APT_ADDITIONAL_PACKAGES
       - DB_HOST
       - DB_MAXCONN
       - DB_NAME

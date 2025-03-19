@@ -3,9 +3,10 @@ ARG PYTHON_VERSION=3.10-bookworm
 
 FROM python:$PYTHON_VERSION
 
+ARG APT_ADDITIONAL_PACKAGES
+ARG INSTALL_LIBREOFFICE
 ARG POSTGRESQL_VERSION
 ARG VSCODE_DIRECT_DOWNLOAD_URL
-ARG INSTALL_LIBREOFFICE
 
 # install odoo dependencies
 RUN apt update; \
@@ -82,6 +83,10 @@ COPY --chown=odoo:odoo ./entrypoint.sh /opt/odoo/entrypoint.sh
 RUN chmod 550 /opt/odoo/entrypoint.sh
 
 COPY --chown=odoo:odoo ./git /opt/odoo/git
+
+RUN if [ -n "$APT_ADDITIONAL_PACKAGES" ]; then \
+        apt install -y $APT_ADDITIONAL_PACKAGES; \
+    fi
 
 USER odoo
 
