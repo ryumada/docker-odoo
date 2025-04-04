@@ -42,7 +42,7 @@ function amIRoot() {
 
 function checkAddonsPathOnOdooConfFile() {
   addons_string="$(grep 'addons_path' $ODOO_CONF_FILE | grep -v '#' | grep -o 'addons_path = \([^)]*\)' | sed 's/addons_path = //')"
-  
+
   echo "$(getDate) 🟦 You have defined this addons_path on $ODOO_CONF_FILE: $addons_string"
 
   addons_array=(${addons_string//,/ })
@@ -118,7 +118,7 @@ function createLogDir() {
 
 function createOdooUtilitiesFromEntrypoint() {
   param=$1
-  
+
   echo "$(getDate) 🟦 Create odoo shell command from entrypoint.sh..."
 
   entrypoint_file="$REPOSITORY_DIRPATH/entrypoint.sh"
@@ -153,11 +153,11 @@ case "$DATABASE_NAME_OR_HELP" in\
     ;;\
 esac\
 ' "$odoo_utility_file"
-  
-  if [[ "$param" == "shell" ]]; then 
+
+  if [[ "$param" == "shell" ]]; then
 
     sed -i 's|"/opt/odoo/odoo-base/$ODOO_BASE_DIRECTORY/odoo-bin"|"/opt/odoo/odoo-base/$ODOO_BASE_DIRECTORY/odoo-bin\" shell|' "$odoo_utility_file"
-  
+
   elif [[ "$param" == "module-upgrade" ]]; then
 
     # append line below the pattern with sed
@@ -182,7 +182,7 @@ fi' "$odoo_utility_file"
 
 function generateDockerComposeAndDockerfile() {
   echo "$(getDate) 🟦 Create docker-compose.yml file..."
-  
+
   echo -e "\n$(getDate) ❓ Do you want to use:\n"
   echo "1. bind mount (faster buiding image)"
   echo -e "2. copy the addons and odoo-base directories to the container image (slower building image but more stable in changes)\n"
@@ -222,7 +222,7 @@ function generateDockerFile() {
     sed -i '/COPY --chown=odoo:odoo .\/odoo-base \/opt\/odoo\/odoo-base/d' dockerfile
     sed -i '/COPY --chown=odoo:odoo .\/git \/opt\/odoo\/git/d' dockerfile
   fi
-}   
+}
 
 function generatePostgresPassword() {
   # _inherit = generatePostgresSecrets
@@ -254,7 +254,7 @@ function generatePostgresSecrets() {
   if [[ "$response" =~ ^([yY][eE][sS]|[yY])+$ ]]; then
     generatePostgresPassword "$POSTGRES_ODOO_USERNAME"
   fi
-  
+
   setPermissionFileToReadOnlyAndOnlyTo "$ODOO_LINUX_USER" "$DB_USER_SECRET"
   setPermissionFileToReadOnlyAndOnlyTo "$ODOO_LINUX_USER" "$DB_PASSWORD_SECRET"
 }
@@ -275,7 +275,7 @@ function getGitHash() {
   OUTPUT_GIT_HASHES_FILE="$git_path/../git_hashes.txt"
 
   cat <<EOF >> "$OUTPUT_GIT_HASHES_FILE"
-  Updated at$(getDate)  
+  Updated at$(getDate)
   Git Directory: $git_path
   Git Remote: $(git -C "$git_path" remote get-url origin)
   Git Branch: $(git -C "$git_path" branch --show-current)
@@ -293,7 +293,7 @@ function getSubDirectories() {
 
 function installDockerServiceRestartorScript() {
   echo "$(getDate) 🟦 Install Docker service restartor script and cron job..."
-  
+
   # create a script that restarts the docker service
   cat <<-EOF > "/usr/local/sbin/restart_$SERVICE_NAME"
 #!/bin/bash
@@ -312,7 +312,7 @@ PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
 
 5 3 * * * root "/usr/local/sbin/restart_$SERVICE_NAME"
 EOF
-  
+
   chmod 644 "/etc/cron.d/restart_$SERVICE_NAME"
 
   #install logrotation for restart_$SERVICE_NAME.log
@@ -341,7 +341,7 @@ function installOdooLogRotator() {
   # _inherit = createLogDir
 
   log_filename="$ODOO_LOG_DIR_SERVICE/$SERVICE_NAME.log"
-  
+
   cat <<-EOF > ~/"$SERVICE_NAME"
 $log_filename {
     rotate 14
@@ -453,7 +453,7 @@ function isDirectoryGitRepository() {
     fi
   else
     return 1
-  fi  
+  fi
 }
 
 function isDockerInstalled() {
@@ -539,7 +539,7 @@ function isFileExists() {
 function isUserExist() {
   user_name=$1
   user_id=$2
-  
+
   if ! id "$user_name" &>/dev/null; then
     echo "$(getDate) 🟦  Create a new $user_name user."
     if sudo useradd -m -u $user_id -s /bin/bash $user_name; then
@@ -573,7 +573,7 @@ function printTodo() {
     echo
 
     printTodoMessage "${#TODO[@]}"
-    
+
     return 1
   else
     return 0
@@ -597,7 +597,7 @@ function resetGitHashFile(){
   OUTPUT_GIT_HASHES_FILE="$git_path/../git_hashes.txt"
 
   cat <<EOF > "$OUTPUT_GIT_HASHES_FILE"
-  
+
 EOF
 }
 
@@ -641,7 +641,7 @@ function writeGitHash() {
 
   flag=0
   for dir in $subdirs; do
-    
+
     if [ $flag -eq 0 ]; then
       resetGitHashFile "$dir"
       flag=1
@@ -650,7 +650,7 @@ function writeGitHash() {
     if isDirectoryGitRepository "$dir"; then
       getGitHash "$dir"
     else
-      echo "$(getDate) 🟨 $dir is not a git repository. You need to backup this directory by adding it to your snapshot utilities."      
+      echo "$(getDate) 🟨 $dir is not a git repository. You need to backup this directory by adding it to your snapshot utilities."
     fi
   done
 }
