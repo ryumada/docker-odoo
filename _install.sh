@@ -183,29 +183,42 @@ fi' "$odoo_utility_file"
 function generateDockerComposeAndDockerfile() {
   echo "$(getDate) 🟦 Create docker-compose.yml file..."
 
-  echo -e "\n$(getDate) ❓ Do you want to use:\n"
-  echo "1. bind mount (faster buiding image)"
-  echo -e "2. copy the addons and odoo-base directories to the container image (slower building image but more stable in changes)\n"
-  read -rp "Choose 1 or 2: " mount_or_copy
-  echo
-
   cp docker-compose.yml.example docker-compose.yml
   chown "$REPOSITORY_OWNER": docker-compose.yml
 
-  if [ "$mount_or_copy" -eq 1 ]; then
-    echo "$(getDate) 🟦 You have chosen to use bind mount."
-    sed -i '/volumes/a \
-     - ./git:/opt/odoo/git\
-     - ./odoo-base:/opt/odoo/odoo-base' docker-compose.yml
+  local mount_or_copy
+  mount_or_copy=$(grep "^ODOO_ADDONS_MOUNT_OR_COPY=" "$PATH_TO_ODOO/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
 
-    generateDockerFile "mount"
-  elif [ "$mount_or_copy" -eq 2 ]; then
-    echo "$(getDate) 🟦 You have chosen to copy the addons and odoo-base directory to the image."
-    generateDockerFile "copy"
-  else
-    echo "$(getDate) 🔴 Invalid Option."
-    generateDockerComposeAndDockerfile
-  fi
+  while true; do
+    if [ -z "$mount_or_copy" ]; then
+      echo -e "\n$(getDate) ❓ Do you want to use:\n"
+      echo "1. bind mount (faster buiding image)"
+      echo -e "2. copy the addons and odoo-base directories to the container image (slower building image but more stable in changes)\n"
+      read -rp "Choose 1 or 2: " mount_or_copy
+      echo
+    fi
+
+    case $mount_or_copy in
+      1)
+        echo "$(getDate) 🟦 You have chosen to use bind mount."
+        sed -i '/volumes/a \
+        - ./git:/opt/odoo/git\
+        - ./odoo-base:/opt/odoo/odoo-base' docker-compose.yml
+
+        generateDockerFile "mount"
+        break
+        ;;
+      2)
+        echo "$(getDate) 🟦 You have chosen to copy the addons and odoo-base directory to the image."
+        generateDockerFile "copy"
+        break
+        ;;
+      *)
+        echo "$(getDate) 🔴 Invalid Option."
+        mount_or_copy=""
+        ;;
+    esac
+  done
 }
 
 function generateDockerFile() {
