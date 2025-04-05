@@ -762,6 +762,7 @@ function main() {
     checkImportantEnvVariable "PYTHON_VERSION" $ENV_FILE
     checkImportantEnvVariable "PORT" $ENV_FILE
     checkImportantEnvVariable "GEVENT_PORT" $ENV_FILE
+    checkImportantEnvVariable "WKHTMLTOPDF_DIRECT_DOWNLOAD_URL" $ENV_FILE
   fi
 
   isFileExists "$DOCKER_COMPOSE_FILE" "Please create a docker-compose.yml file by following the docker-compose.yml.example file." || true

@@ -13,6 +13,7 @@ services:
         - PYTHON_VERSION=${PYTHON_VERSION:-3.10-bookworm}
         - POSTGRESQL_VERSION=${POSTGRESQL_VERSION}
         - VSCODE_DIRECT_DOWNLOAD_URL=${VSCODE_DIRECT_DOWNLOAD_URL}
+        - WKHTMLTOPDF_DIRECT_DOWNLOAD_URL=${WKHTMLTOPDF_DIRECT_DOWNLOAD_URL}
       # Add labels to connect to github repository (enter github)
       labels:
         - org.opencontainers.image.source=${ODOO_IMAGE_SOURCE:-"no source"}
@@ -60,6 +61,7 @@ services:
       - SERVICE_NAME
       - TRANSIENT_AGE_LIMIT
       - VSCODE_DIRECT_DOWNLOAD_URL
+      - WKHTMLTOPDF_DIRECT_DOWNLOAD_URL
       - WORKERS
     env_file:
       - .env
