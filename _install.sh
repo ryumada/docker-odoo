@@ -187,7 +187,7 @@ function generateDockerComposeAndDockerfile() {
   chown "$REPOSITORY_OWNER": docker-compose.yml
 
   local mount_or_copy
-  mount_or_copy=$(grep "^ODOO_ADDONS_MOUNT_OR_COPY=" "$PATH_TO_ODOO/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
+  mount_or_copy=$(grep "^ODOO_ADDONS_MOUNT_OR_COPY=" "$REPOSITORY_DIRPATH/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
 
   while true; do
     if [ -z "$mount_or_copy" ]; then
@@ -202,8 +202,8 @@ function generateDockerComposeAndDockerfile() {
       1)
         echo "$(getDate) 🟦 You have chosen to use bind mount."
         sed -i '/volumes/a \
-        - ./git:/opt/odoo/git\
-        - ./odoo-base:/opt/odoo/odoo-base' docker-compose.yml
+     - ./git:/opt/odoo/git\
+     - ./odoo-base:/opt/odoo/odoo-base' docker-compose.yml
 
         generateDockerFile "mount"
         break
