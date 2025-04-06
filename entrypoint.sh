@@ -38,7 +38,7 @@ ODOO_ARGS=()
 function add_arg() {
   param=$1
   value=$2
-  
+
   if [ -z "$value" ]; then
     ODOO_ARGS+=("--$param")
   else
@@ -46,7 +46,11 @@ function add_arg() {
   fi
 }
 
-add_arg "http-port" "$PORT"
+if [ "$ODOO_VERSION" -ge 11 ]; then
+  add_arg "http-port" "$PORT"
+else
+  add_arg "xmlrpc-port" "$PORT"
+fi
 
 if [ "$ODOO_VERSION" -ge 16 ]; then
   : "${TRANSIENT_AGE_LIMIT:=1.0}"
@@ -91,7 +95,7 @@ fi
 if [ -n "$DB_NAME" ]; then
   add_arg "database" "$DB_NAME"
   add_arg "db-filter" "^$DB_NAME\$"
-  
+
   if [ "$ODOO_DATABASE_MANAGER" == "disable" ]; then
     add_arg "no-database-list"
   fi
