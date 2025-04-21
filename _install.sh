@@ -805,7 +805,7 @@ function main() {
   if [ -n "$ENABLE_SNAPSHOT" ] && [ -n "$ODOO_DB_NAME" ]; then
     "$REPOSITORY_DIRPATH/scripts/installer/install-snapshot.sh"
   else
-    echo "$(getDate) ⚠️ snapshot utility is not installed. Please fill ENABLE_SNAPSHOT and DB_NAME variable in you .env file, then re-run this install script to install snapshot utility."
+    echo "$(getDate) ⚠️ snapshot utility is not installed. Please fill ENABLE_SNAPSHOT and DB_NAME variable in your .env file, then re-run this install script to install snapshot utility."
   fi
 
   if printTodo; then
