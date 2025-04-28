@@ -39,6 +39,7 @@ services:
       - DB_MAXCONN
       - DB_NAME
       - DB_PORT
+      - DEBUG
       - GEVENT_PORT
       - INSTALL_LIBREOFFICE
       - LIMIT_MEMORY_HARD

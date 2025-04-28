@@ -3,7 +3,8 @@
 !.secrets/db_user.example
 !.secrets/README.md
 
-.vscode/
+.vscode/*
+!.vscode/launch.json
 
 conf/*
 !conf/odoo.conf.example
@@ -40,7 +41,8 @@ utilities/*
 crontab
 requirements.txt
 dockerfile
-docker-compose.yml
+docker-compose*
+!docker-compose.yml.example
 
 **.tar**
 **.swp
