@@ -49,13 +49,18 @@ function checkAddonsPathOnOdooConfFile() {
 
   for addons_path in "${addons_array[@]}"; do
 
-    addons_path_onhost=$(sed "s|/opt/odoo|$REPOSITORY_DIRPATH|" <<< "$addons_path")
-
-    if [ ! -d "$addons_path_onhost" ]; then
-      echo "$(getDate) ❌ $addons_path on your conf file is not valid."
-      TODO+=("Please check this directory: $addons_path_onhost. Make sure it exists and contains your odoo addons. The addons_path defined in your $ODOO_CONF_FILE: $addons_path.")
+    if ! echo "$addons_path" | grep -q "/opt/odoo/"; then
+      echo "$(getDate) ❌ The addons_path ($addons_path) should be started with /opt/odoo/."
+      TODO+=("Please check your odoo.conf file. The addons_path ($addons_path) should be started with /opt/odoo.")
     else
-      echo "$(getDate) ✅ This addons_path is valid: $addons_path"
+      addons_path_onhost=$(sed "s|/opt/odoo|$REPOSITORY_DIRPATH|" <<< "$addons_path")
+
+      if [ ! -d "$addons_path_onhost" ]; then
+        echo "$(getDate) ❌ $addons_path on your conf file is not valid."
+        TODO+=("Please check this directory: $addons_path_onhost. Make sure it exists and contains your odoo addons. The addons_path defined in your $ODOO_CONF_FILE: $addons_path.")
+      else
+        echo "$(getDate) ✅ This addons_path is valid: $addons_path"
+      fi
     fi
   done
 }
