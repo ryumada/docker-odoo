@@ -805,12 +805,13 @@ function main() {
 
     isFileExists "$REQUIREMENTS_FILE" "Please create a requirements.txt file by following the requirements.txt.example file." || true
   elif [ "$build_or_pull" -eq 2 ]; then
-    # check if docker-compose file has image name
-    if ! grep -q "^[^#]*image:" "$DOCKER_COMPOSE_FILE"; then
-      echo "$(getDate) ❌ Please add the image name to your docker-compose.yml file."
-      TODO+=("Please add the image name to your docker-compose.yml file.")
+    local ODOO_IMAGE_NAME
+    ODOO_IMAGE_NAME=$(grep "^ODOO_IMAGE_NAME=" "$ENV_FILE" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
+    if [ -z "$ODOO_IMAGE_NAME" ]; then
+      echo "$(getDate) ❌ ODOO_IMAGE_NAME variable is not set in your .env file."
+      TODO+=("Please set the ODOO_IMAGE_NAME variable in your .env file.")
     else
-      echo "$(getDate) ✅ Image name found in docker-compose.yml file."
+      echo "$(getDate) ✅ ODOO_IMAGE_NAME variable is set to $ODOO_IMAGE_NAME"
     fi
   fi
 
