@@ -1,0 +1,2 @@
+# To be used by vscode to include all directories when searching the files and directories ignored by .gitignore
+!*
