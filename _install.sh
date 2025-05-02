@@ -268,10 +268,28 @@ function generatePostgresSecrets() {
 
   writeTextFile "$POSTGRES_ODOO_USERNAME" "$DB_USER_SECRET" "username"
 
-  read -r -p "$(getDate) ❓ Do you want to regenerate the password for $POSTGRES_ODOO_USERNAME? [y/N] : " response
+
   if [[ "$response" =~ ^([yY][eE][sS]|[yY])+$ ]]; then
     generatePostgresPassword "$POSTGRES_ODOO_USERNAME"
   fi
+
+  while true; do
+    read -r -p "$(getDate) ❓ Do you want to regenerate the password for $POSTGRES_ODOO_USERNAME? [yes/no][y/N] : " response
+
+    case $response in
+      [yY][eE][sS]|[yY])
+        generatePostgresPassword "$POSTGRES_ODOO_USERNAME"
+        break
+        ;;
+      [nN][oO]|[nN])
+        echo "$(getDate) 👍 Okay, You don't want to regenerate password."
+        break
+        ;;
+      *)
+        echo "$(getDate) 🔴 Invalid option"
+        ;;
+    esac
+  done
 
   setPermissionFileToReadOnlyAndOnlyTo "$ODOO_LINUX_USER" "$DB_USER_SECRET"
   setPermissionFileToReadOnlyAndOnlyTo "$ODOO_LINUX_USER" "$DB_PASSWORD_SECRET"
