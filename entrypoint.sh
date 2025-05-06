@@ -115,13 +115,15 @@ function main() {
   ODOO_BASE_DIRECTORY=$(basename "$ODOO_BASE_DIRECTORY")
 
   if [ "$DEBUG" == "Y" ]; then
-    echo "$(getDate) Starting Odoo in debugging mode (with debugpy)..."
+    echo "$(getDate) Starting Odoo in debugging mode (with debugpy)"
 
-    echo "$(getDate) setup workers and max-cron-threads to 1 and 2 respectively"
+    # echo "$(getDate) setup workers and max-cron-threads to 1 and 2 respectively"
     # add_arg "workers" "1"
     # add_arg "max-cron-threads" "2"
 
+    echo "$(getDate) Setting up debugpy..."
     pip install debugpy -t /tmp
+    echo "$(getDate) Debugpy installed, waiting for client to connect on port 5678..."
     exec python /tmp/debugpy --wait-for-client --listen 0.0.0.0:5678 "/opt/odoo/odoo-base/$ODOO_BASE_DIRECTORY/odoo-bin" -c "/etc/odoo/odoo.conf" "${ODOO_ARGS[@]}"
   else
     echo "$(getDate) Starting Odoo without debugging..."
