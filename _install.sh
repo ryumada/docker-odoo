@@ -803,7 +803,7 @@ function main() {
       writeGitHash "$ODOO_BASE_DIR"
     fi
 
-    isFileExists "$REQUIREMENTS_FILE" "Please create a requirements.txt file by following the requirements.txt.example file." || true
+    isFileExists "$REQUIREMENTS_FILE" "Please copy your requirements.txt file from your 'odoo-base' or create the file by following the requirements.txt.example file." || true
   elif [ "$build_or_pull" -eq 2 ]; then
     local ODOO_IMAGE_NAME
     ODOO_IMAGE_NAME=$(grep "^ODOO_IMAGE_NAME=" "$ENV_FILE" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
