@@ -801,8 +801,10 @@ function main() {
 
     if isSubDirectoryExists "$ODOO_BASE_DIR" "Please clone your odoo-base repository inside the odoo-base directory" "" "only-one"; then
       writeGitHash "$ODOO_BASE_DIR"
+
+      ODOO_BASE_DIRECTORY=$(find ./odoo-base -mindepth 1 -maxdepth 1 -type d -print -quit)
       echo "$(getDate) 🟦 Add execute permission to odoo-bin binary"
-      chmod +x "$ODOO_BASE_DIR"/odoo-bin
+      chmod +x "$ODOO_BASE_DIR"/"$ODOO_BASE_DIRECTORY"/odoo-bin
     fi
 
     isFileExists "$REQUIREMENTS_FILE" "Please copy your requirements.txt file from your 'odoo-base' or create the file by following the requirements.txt.example file." || true
