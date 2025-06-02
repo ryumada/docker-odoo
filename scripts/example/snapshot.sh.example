@@ -47,6 +47,50 @@ function getDate() {
   echo "[$(date +"%Y-%m-%d %H:%M:%S")]"
 }
 
+function getGitHash() {
+  # _inherit = writeGitHash
+
+  git_path=$1
+  git_real_owner=$(stat -c '%U' "$git_path")
+  repository_owner=$(stat -c '%U' "$PATH_TO_ODOO")
+
+  chown -R "$repository_owner": "$git_path"
+
+  OUTPUT_GIT_HASHES_FILE="$git_path/../git_hashes.txt"
+
+  cat <<EOF >> "$OUTPUT_GIT_HASHES_FILE"
+  Updated at$(getDate)
+  Git Directory: $git_path
+  Git Remote: $(git -C "$git_path" remote get-url origin)
+  Git Branch: $(git -C "$git_path" branch --show-current)
+  Git Hashes: $(git -C "$git_path" rev-parse HEAD)
+EOF
+
+  chown -R "$git_real_owner": "$git_path"
+}
+
+function getSubDirectories() {
+  dir=$1
+  subdirs="$(ls -d "$dir"/*/)"
+  echo "$subdirs"
+}
+
+function isDirectoryGitRepository() {
+  # _inherit = writeGitHash
+
+  dir=$1
+
+  if [ -d "$dir/.git" ]; then
+    if git rev-parse --is-inside-work-tree &>/dev/null; then
+      return 0
+    else
+      return 1
+    fi
+  else
+    return 1
+  fi
+}
+
 function moveSnapshotFileToTempDir() {
   local tar_file_path=$1
   local tar_file_name=$2
@@ -69,6 +113,37 @@ function moveSnapshotFileToTempDir() {
   chown -R "$REPOSITORY_OWNER": "$temp_dir"
 
   echo -e "$(getDate) ✅ The snapshot File Created Successfully named $tar_file_name. File Backupped at $temp_dir/$tar_file_name"
+}
+
+function resetGitHashFile(){
+  # _inherit = writeGitHash
+
+  git_path=$1
+  OUTPUT_GIT_HASHES_FILE="$git_path/../git_hashes.txt"
+
+  cat <<EOF > "$OUTPUT_GIT_HASHES_FILE"
+
+EOF
+}
+
+function writeGitHash() {
+  dir=$1
+  subdirs="$(getSubDirectories "$dir")"
+
+  flag=0
+  for dir in $subdirs; do
+
+    if [ $flag -eq 0 ]; then
+      resetGitHashFile "$dir"
+      flag=1
+    fi
+
+    if isDirectoryGitRepository "$dir"; then
+      getGitHash "$dir"
+    else
+      echo "$(getDate) 🟨 $dir is not a git repository. You need to backup this directory by adding it to your snapshot utilities."
+    fi
+  done
 }
 
 function main() {
@@ -109,7 +184,7 @@ function main() {
   # FILES_DIRS_TO_TAR="enter_path_to_directory $FILES_DIRS_TO_TAR"
 
   ## Make sure that the git directory and odoo base directory has git_hashes.txt file.
-  ## If not, you need to change this to the directory of odoo modules and odoo-base instead of git_hashes.txt. 
+  ## If not, you need to change this to the directory of odoo modules and odoo-base instead of git_hashes.txt.
   ## enter the correct path
   FILES_DIRS_TO_TAR="git/git_hashes.txt $FILES_DIRS_TO_TAR"
   FILES_DIRS_TO_TAR="odoo-base/git_hashes.txt $FILES_DIRS_TO_TAR"
@@ -141,7 +216,7 @@ function main() {
   # These files not backupped to the snapshot file
   ## crontab or /etc.cron.d directory is the place where docker-odoo cron jobs are stored.
   ## /etc/nginx/sites-available is the place where nginx configuration files are stored.
-  ## /etc/logrotate.d is the place where logrotate configuration files are stored.  
+  ## /etc/logrotate.d is the place where logrotate configuration files are stored.
 
   if [ -f "scripts/backupdata-$SERVICE_NAME" ]; then
     FILES_DIRS_TO_TAR="scripts/backupdata-$SERVICE_NAME $FILES_DIRS_TO_TAR"
@@ -164,6 +239,9 @@ function main() {
     echo "For CentOS: sudo yum install zstd"
     exit 1
   fi
+
+  writeGitHash "$PATH_TO_ODOO/git"
+  writeGitHash "$PATH_TO_ODOO/odoo-base"
 
   echo "$(getDate) Dumping $ODOO_DATABASE_NAME_PRD database..."
   sudo -u postgres pg_dump -f /tmp/"$ODOO_DATABASE_NAME_PRD.sql" $ODOO_DATABASE_NAME_PRD > /dev/null 2>&1
