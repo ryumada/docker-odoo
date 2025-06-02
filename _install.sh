@@ -821,11 +821,11 @@ function main() {
 
   "$REPOSITORY_DIRPATH/scripts/installer/install-backupdata.sh"
 
-  CLONED_ENV=$(grep "^CLONED_ENV=" "$REPOSITORY_DIRPATH/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
-  if [ -n "$CLONED_ENV" ]; then
+  ENABLE_DATABASE_CLONER=$(grep "^ENABLE_DATABASE_CLONER=" "$REPOSITORY_DIRPATH/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
+  if [ -n "$ENABLE_DATABASE_CLONER" ]; then
     "$REPOSITORY_DIRPATH/scripts/installer/install-databasecloner.sh"
   else
-    echo "$(getDate) ⚠️ databasecloner utility is not installed. Please fill your CLONED_ENV variable in your .env file, then re-run this install script to install databasecloner utility."
+    echo "$(getDate) ⚠️ databasecloner utility is not installed. Please fill ENABLE_DATABASE_CLONER variable in your .env file, then re-run this install script to install databasecloner utility."
   fi
 
   ENABLE_SNAPSHOT=$(grep "^ENABLE_SNAPSHOT=" "$REPOSITORY_DIRPATH/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
