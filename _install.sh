@@ -652,27 +652,23 @@ function setPermissionFileToReadOnlyAndOnlyTo() {
 function setupAutoDevops() {
   isUserExist "$DEVOPS_USER" 7689
 
-  cat <<EOF > ~/00-devops_as_devopsadmin
+  cat <<EOF > ~/00-devops_permissions
 devops ALL=(devopsadmin) NOPASSWD: \\
-/usr/bin/git, \\
-/usr/bin/docker compose *, \\
-/opt/$SERVICE_NAME/scripts/git_addons_updater.sh, \\
-/usr/bin/docker container prune -f, \\
-/usr/bin/docker image prune -f, \\
-/usr/bin/docker system prune -f
+  /usr/bin/git, \\
+  /usr/bin/docker compose *, \\
+  /usr/bin/docker container prune -f, \\
+  /usr/bin/docker image prune -f, \\
+  /usr/bin/docker system prune -f
 
-EOF
-
-  cat <<EOF > ~/00-devops_as_root
 devops ALL=(root) NOPASSWD: \\
-/usr/bin/sync, \\
-/usr/bin/tee /proc/sys/vm/drop_caches
+  /usr/bin/sync, \\
+  /usr/bin/tee /proc/sys/vm/drop_caches
 
 EOF
 
-  sudo chmod 440 ~/00-devops_as_devopsadmin ~/00-devops_as_root
-  sudo chown root: ~/00-devops_as_devopsadmin ~/00-devops_as_root
-  sudo mv ~/00-devops_as_devopsadmin ~/00-devops_as_root /etc/sudoers.d/
+  sudo chmod 440 ~/00-devops_permissions
+  sudo chown root: ~/00-devops_permissions
+  sudo mv ~/00-devops_permissions /etc/sudoers.d/
 }
 
 function writeGitHash() {
