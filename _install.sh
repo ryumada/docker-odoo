@@ -322,6 +322,8 @@ EOF
 }
 
 function getSubDirectories() {
+  # _inherit = writeGitHash
+
   dir=$1
   subdirs="$(ls -d "$dir"/*/)"
   echo "$subdirs"
@@ -479,6 +481,8 @@ function isBuildOrPull() {
 }
 
 function isDirectoryGitRepository() {
+  # _inherit = writeGitHash
+
   dir=$1
 
   if [ -d "$dir/.git" ]; then
