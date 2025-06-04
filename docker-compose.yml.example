@@ -9,6 +9,7 @@ services:
       dockerfile: dockerfile
       args:
         - APT_ADDITIONAL_PACKAGES=${APT_ADDITIONAL_PACKAGES}
+        - FAKETIME=${FAKETIME}
         - INSTALL_LIBREOFFICE=${INSTALL_LIBREOFFICE}
         - PYTHON_VERSION=${PYTHON_VERSION:-3.10-bookworm}
         - POSTGRESQL_VERSION=${POSTGRESQL_VERSION}
@@ -40,6 +41,7 @@ services:
       - DB_NAME
       - DB_PORT
       - DEBUG
+      - FAKETIME
       - GEVENT_PORT
       - INSTALL_LIBREOFFICE
       - LIMIT_MEMORY_HARD

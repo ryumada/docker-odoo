@@ -240,6 +240,14 @@ function generateDockerFile() {
     sed -i '/COPY --chown=odoo:odoo .\/odoo-base \/opt\/odoo\/odoo-base/d' dockerfile
     sed -i '/COPY --chown=odoo:odoo .\/git \/opt\/odoo\/git/d' dockerfile
   fi
+
+  FAKETIME=$(grep "^FAKETIME=" "$REPOSITORY_DIRPATH/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
+  [ -n "$FAKETIME" ] && validateDatetimeFormat "$FAKETIME" " FAKETIME on .env file" && {
+    echo "$(getDate) 🟦 Setting up faketime..."
+    sed -i '/USER root/a \
+RUN apt install -y libfaketime\
+ENV LD_PRELOAD=/usr/lib/x86_64-linux-gnu/faketime/libfaketime.so.1' dockerfile
+  } || true
 }
 
 function generatePostgresPassword() {
@@ -516,6 +524,11 @@ function isPostgresInstalled() {
   fi
 }
 
+function isInteger() {
+  # _inherit = validateDatetimeFormat
+  [[ "$1" =~ ^[0-9]+$ ]]
+}
+
 function isLogRotateInstalled() {
   if ! command -v logrotate &>/dev/null; then
     echo "$(getDate) ❌ logrotate command not found."
@@ -669,6 +682,105 @@ EOF
   sudo chmod 440 ~/00-devops_permissions
   sudo chown root: ~/00-devops_permissions
   sudo mv ~/00-devops_permissions /etc/sudoers.d/
+}
+
+function validateDatetimeFormat() {
+  local datetime_string="$1"
+  local varmsg="$2"
+  local regex="^([0-9]{4})-([0-9]{2})-([0-9]{2}) ([0-9]{2}):([0-9]{2}):([0-9]{2})$"
+
+  # 1. Check overall format using regex
+  if [[ ! "$datetime_string" =~ $regex ]]; then
+    echo "$(getDate) 🔴 Error$varmsg: Format does not match YYYY-MM-DD HH:MM:SS."
+    TODO+=("Error$varmsg: Format does not match YYYY-MM-DD HH:MM:SS.")
+    return 1
+  fi
+
+  # Extract components using BASH_REMATCH array
+  local year="${BASH_REMATCH[1]}"
+  local month="${BASH_REMATCH[2]}"
+  local day="${BASH_REMATCH[3]}"
+  local hour="${BASH_REMATCH[4]}"
+  local minute="${BASH_REMATCH[5]}"
+  local second="${BASH_REMATCH[6]}"
+
+  # 2. Validate numerical ranges and basic date logic
+
+  # Year: Simple check for 4 digits (regex already handles this)
+  # For more advanced checks, you might check against a reasonable range (e.g., 1900-2100)
+  # if (( year < 1900 || year > 2100 )); then
+  #   echo "$(getDate) 🔴 Error$varmsg: Year ($year) is out of a reasonable range (e.g., 1900-2100)."
+  # TODO+=("Error$varmsg: Year ($year) is out of a reasonable range (e.g., 1900-2100).")
+  #   return 1
+  # fi
+
+  # Month (01-12)
+  if ! isInteger "$month" || (( 10#$month < 1 || 10#$month > 12 )); then
+    echo "$(getDate) 🔴 Error$varmsg: Month ($month) is invalid. Must be between 01 and 12."
+    TODO+=("Error$varmsg: Month ($month) is invalid. Must be between 01 and 12.")
+    return 1
+  fi
+
+  # Day (01-31, with consideration for month and leap year)
+  if ! isInteger "$day" || (( 10#$day < 1 || 10#$day > 31 )); then
+    echo "$(getDate) 🔴 Error$varmsg: Day ($day) is invalid. Must be between 01 and 31."
+    TODO+=("Error$varmsg: Day ($day) is invalid. Must be between 01 and 31.")
+    return 1
+  fi
+
+  # Basic day-of-month validation (more robust check below)
+  case "$month" in
+    02) # February
+      if (( year % 4 == 0 && (year % 100 != 0 || year % 400 == 0) )); then
+        # Leap year
+        if (( 10#$day > 29 )); then
+          echo "$(getDate) 🔴 Error$varmsg: Day ($day) is invalid for February in a leap year ($year)."
+          TODO+=("Error$varmsg: Day ($day) is invalid for February in a leap year ($year).")
+          return 1
+        fi
+      else
+        # Non-leap year
+        if (( 10#$day > 28 )); then
+          echo "$(getDate) 🔴 Error$varmsg: Day ($day) is invalid for February in a non-leap year ($year)."
+          TODO+=("Error$varmsg: Day ($day) is invalid for February in a non-leap year ($year).")
+          return 1
+        fi
+      fi
+      ;;
+    04|06|09|11) # April, June, September, November (30 days)
+      if (( 10#$day > 30 )); then
+        echo "$(getDate) 🔴 Error$varmsg: Day ($day) is invalid for month $month. Must be 30 or less."
+        TODO+=("Error$varmsg: Day ($day) is invalid for month $month. Must be 30 or less.")
+        return 1
+      fi
+      ;;
+    *) # All other months (31 days) - regex already checked for 31 max
+      ;;
+  esac
+
+  # Hour (00-23)
+  if ! isInteger "$hour" || (( 10#$hour < 0 || 10#$hour > 23 )); then
+    echo "$(getDate) 🔴 Error$varmsg: Hour ($hour) is invalid. Must be between 00 and 23."
+    TODO+=("Error$varmsg: Hour ($hour) is invalid. Must be between 00 and 23.")
+    return 1
+  fi
+
+  # Minute (00-59)
+  if ! isInteger "$minute" || (( 10#$minute < 0 || 10#$minute > 59 )); then
+    echo "$(getDate) 🔴 Error$varmsg: Minute ($minute) is invalid. Must be between 00 and 59."
+    TODO+=("Error$varmsg: Minute ($minute) is invalid. Must be between 00 and 59.")
+    return 1
+  fi
+
+  # Second (00-59)
+  if ! isInteger "$second" || (( 10#$second < 0 || 10#$second > 59 )); then
+    echo "$(getDate) 🔴 Error$varmsg: Second ($second) is invalid. Must be between 00 and 59."
+    TODO+=("Error$varmsg: Second ($second) is invalid. Must be between 00 and 59.")
+    return 1
+  fi
+
+  echo "$(getDate) ✅ Success validate$varmsg: '$datetime_string' is a valid YYYY-MM-DD HH:MM:SS format."
+  return 0
 }
 
 function writeGitHash() {
