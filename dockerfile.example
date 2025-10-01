@@ -27,7 +27,7 @@ RUN if [ -n "$WKHTMLTOPDF_DIRECT_DOWNLOAD_URL" ] && { [ "$WKHTMLTOPDF_DIRECT_DOW
     fi
 
 RUN apt install -y cabextract; \
-    wget http://ftp.jp.debian.org/debian/pool/contrib/m/msttcorefonts/ttf-mscorefonts-installer_3.8.1_all.deb; \
+    curl -O http://ftp.cn.debian.org/debian/pool/contrib/m/msttcorefonts/ttf-mscorefonts-installer_3.8.1_all.deb; \
     dpkg -i ./ttf-mscorefonts-installer_3.8.1_all.deb; \
     rm ./ttf-mscorefonts-installer_3.8.1_all.deb
 
