@@ -897,7 +897,18 @@ function main() {
     checkImportantEnvVariable "PYTHON_VERSION" $ENV_FILE
     checkImportantEnvVariable "PORT" $ENV_FILE
     checkImportantEnvVariable "GEVENT_PORT" $ENV_FILE
-    checkImportantEnvVariable "WKHTMLTOPDF_DIRECT_DOWNLOAD_URL" $ENV_FILE
+    checkImportantEnvVariable "ADMIN_PASSWD" $ENV_FILE
+    checkImportantEnvVariable "ADDONS_PATH" $ENV_FILE
+  fi
+
+  ODOO_ADMIN_PASSWD=$(grep "^ADMIN_PASSWD=" "$REPOSITORY_DIRPATH/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
+  ODOO_ADDONS_PATH=$(grep "^ADDONS_PATH=" "$REPOSITORY_DIRPATH/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
+
+  if [ -n "$ODOO_ADMIN_PASSWD" ] && [ -n "$ODOO_ADDONS_PATH" ]; then
+    echo "$(getDate) 🟦 Updating odoo.conf file..."
+    "$REPOSITORY_DIRPATH/scripts/update-odoo-config.sh"
+  else
+    echo "$(getDate) 🔴 You need to fill ADMIN_PASSWD and ADDONS_PATH variables in your .env file."
   fi
 
   isFileExists "$DOCKER_COMPOSE_FILE" "Please create a docker-compose.yml file by following the docker-compose.yml.example file." || true

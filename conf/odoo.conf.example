@@ -3,9 +3,11 @@
 # Find "enter" word to hightlight what should to setup
 
 # This is the password that allows database operations on database manager
+# This value is now configurable from the .env file (ADMIN_PASSWD)
 admin_passwd = enter_random_password_string
 
 # Specify your odoo addons path, the app dir would be in /opt/odoo.
+# This value is now configurable from the .env file (ADDONS_PATH)
 ## example:
 ## addons_path = /opt/odoo/odoo-base/odoo/odoo/addons,/opt/odoo/odoo-base/odoo/addons
 addons_path = enter_addons_paths
@@ -13,7 +15,7 @@ addons_path = enter_addons_paths
 # proxy_mode should be true because we will use nginx as reverse proxy for odoo docker deployment
 proxy_mode = True
 
-# # # # # # # # # # # # # # # # # # # # # # # # # # 
+# # # # # # # # # # # # # # # # # # # # # # # # # #
 # THESE VARIABLE HAS BEEN SETUP IN ENV FILE       #
 # # # # # # # # # # # # # # # # # # # # # # # # # #
 
