@@ -25,6 +25,7 @@ scripts/*
 !scripts/git_addons_updater.sh
 !scripts/git_odoo-base_updater.sh
 !scripts/installer
+!scripts/install_sudoers.sh
 !scripts/README.md
 !scripts/restore-backupdata.sh
 !scripts/restore-snapshot.sh
