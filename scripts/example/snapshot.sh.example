@@ -6,16 +6,6 @@ PATH_TO_ODOO=$(sudo -u "$CURRENT_DIR_USER" git -C "$(dirname "$(readlink -f "$0"
 SERVICE_NAME=$(basename "$PATH_TO_ODOO")
 REPOSITORY_OWNER=$(stat -c '%U' "$PATH_TO_ODOO")
 
-# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
-# DON'T change these codes below
-# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
-function amIRoot() {
-  if [ "$(id -u)" -ne 0 ]; then
-    echo "$(getDate) 🔴 Please run this script as root or using sudo"
-    exit 1
-  fi
-}
-
 function areYouReallySure() {
   tar_file_path=$1
   ASK_TO_REPLACE_EXISTING_SNAPSHOT=$2
@@ -152,7 +142,13 @@ function main() {
   # Redirect stdout and stderr to tee
   exec > >(tee -a "$LOG_PATH") 2>&1
 
-  amIRoot
+  # Self-elevate to root if not already
+  if [ "$(id -u)" -ne 0 ]; then
+      log_info "Elevating permissions to root..."
+      exec sudo "$0" "$@"
+      log_error "Failed to elevate to root. Please run with sudo." # This will only run if exec fails
+      exit 1
+  fi
 
   echo "-------------------------------------------------------------------------------"
   echo " DAILY SNAPSHOT FOR $SERVICE_NAME @ $(date +"%A, %d %B %Y %H:%M %Z")"
@@ -288,4 +284,4 @@ function main() {
   echo
 }
 
-main
+main "@"

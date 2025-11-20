@@ -55,13 +55,6 @@ trap 'error_handler $LINENO' ERR
 # Global Variable
 TODO=()
 
-function amIRoot() {
-  if [ "$EUID" -ne 0 ]; then
-    log_error "Please run this script using sudo."
-    exit 1
-  fi
-}
-
 function checkAddonsPathOnOdooConfFile() {
   addons_string="$(grep 'addons_path' $ODOO_CONF_FILE | grep -v '#' | grep -o 'addons_path = \([^)]*\)' | sed 's/addons_path = //')"
 
@@ -857,7 +850,14 @@ function writeTextFile() {
 }
 
 function main() {
-  amIRoot
+  # Self-elevate to root if not already
+  if [ "$(id -u)" -ne 0 ]; then
+      log_info "Elevating permissions to root..."
+      # shellcheck disable=SC2068
+      exec sudo "$0" ${@}
+      log_error "Failed to elevate to root. Please run with sudo." # This will only run if exec fails
+      exit 1
+  fi
 
   echo -e "\n==================================================================="
   echo "Path for working directory : $REPOSITORY_DIRPATH"
@@ -990,4 +990,4 @@ function main() {
   fi
 }
 
-main
+main "@"

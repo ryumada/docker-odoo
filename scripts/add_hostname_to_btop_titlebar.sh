@@ -51,30 +51,38 @@ log_error() { log "${COLOR_ERROR}" "❌" "$1"; }
 # ------------------------------------
 
 function main() {
-    for user_dir in /home/*; do
-        [[ -d "$user_dir" ]] || {
-            log_warning "$user's dir not found."
-        } && {
-            user=$(basename "$user_dir")
-            config_file="$user_dir/.config/btop/btop.conf"
+  # Self-elevate to root if not already
+  if [ "$(id -u)" -ne 0 ]; then
+      log_info "Elevating permissions to root..."
+      exec sudo "$0" "$@"
+      log_error "Failed to elevate to root. Please run with sudo." # This will only run if exec fails
+      exit 1
+  fi
 
-            log_info "Checking for $user's btop.conf at $config_file..."
+  for user_dir in /home/*; do
+      [[ -d "$user_dir" ]] || {
+          log_warning "$user's dir not found."
+      } && {
+          user=$(basename "$user_dir")
+          config_file="$user_dir/.config/btop/btop.conf"
 
-            [[ -f "$config_file" ]] || {
-                log_warning "$user's btop.conf file is not exist."
-            } && {
-                log_info "$user's btop.conf exists. Attempting modification..."
+          log_info "Checking for $user's btop.conf at $config_file..."
 
-                sudo sed -i '/^clock_format *= *".*"$/ s/"$/ - \/host"/' "$config_file" || {
-                    log_error "An unexpected error occurred while modifying $user's btop.conf."
-                } && {
-                    log_success "Successfully modified clock_format for user $user."
-                }
-            }
-        }
-    done
+          [[ -f "$config_file" ]] || {
+              log_warning "$user's btop.conf file is not exist."
+          } && {
+              log_info "$user's btop.conf exists. Attempting modification..."
 
-    log_success "Finished attempting to modify btop.conf for all users in /home."
+              sudo sed -i '/^clock_format *= *".*"$/ s/"$/ - \/host"/' "$config_file" || {
+                  log_error "An unexpected error occurred while modifying $user's btop.conf."
+              } && {
+                  log_success "Successfully modified clock_format for user $user."
+              }
+          }
+      }
+  done
+
+  log_success "Finished attempting to modify btop.conf for all users in /home."
 }
 
-main
+main "@"

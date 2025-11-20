@@ -31,13 +31,6 @@ log_warn() { log "${COLOR_WARN}" "⚠️" "$1"; }
 log_error() { log "${COLOR_ERROR}" "❌" "$1"; }
 # ------------------------------------
 
-function amIRoot() {
-  if [ "$(id -u)" -ne 0 ]; then
-    log_error "This script must be run as root."
-    exit 1
-  fi
-}
-
 function areYouReallySure() {
   echo -e "\nAre you sure?\n⚠️ This script will replace your current Odoo data and deployment files. ⚠️\nType 'yes I am sure' and press enter to continue.\n"
   read -rp ": " response
@@ -143,7 +136,14 @@ function restoreOdooData() {
 function main() {
   log_info "Start restore utility for $SERVICE_NAME"
 
-  amIRoot
+  # Self-elevate to root if not already
+  if [ "$(id -u)" -ne 0 ]; then
+      log_info "Elevating permissions to root..."
+      exec sudo "$0" "$@"
+      log_error "Failed to elevate to root. Please run with sudo." # This will only run if exec fails
+      exit 1
+  fi
+
   areYouReallySure
   isZstdInstalled
   isSnapshotFileExist
@@ -210,15 +210,10 @@ function main() {
   echo -e "\n==========================================================================="
 
   cleanup
-  
+
   log_warn "You need to run the following command then follow the instruction whether you want to rebuild or pull the Odoo image."
   echo -e "The script is located at the root of this repository.\n"
   echo -e "     'sudo ./_install.sh'\n"
 }
 
-main
-  The script is located at the root of this repository.\n"
-  echo -e "     'sudo ./_install.sh'\n"
-}
-
-main
+main "@"

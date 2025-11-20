@@ -27,13 +27,6 @@ function error_handler() {
   exit 1
 }
 
-function amIRoot() {
-  if [ "$EUID" -ne 0 ]; then
-    log_error "Please run as root"
-    exit 1
-  fi
-}
-
 function isBackupDataExists() {
   backupdata_file_path="$1"
   if [ ! -f "$backupdata_file_path" ]; then
@@ -81,7 +74,14 @@ function main() {
       exit 1
   fi
 
-  amIRoot
+    # Self-elevate to root if not already
+  if [ "$(id -u)" -ne 0 ]; then
+      log_info "Elevating permissions to root..."
+      exec sudo "$0" "$@"
+      log_error "Failed to elevate to root. Please run with sudo." # This will only run if exec fails
+      exit 1
+  fi
+
   isBackupDataExists "$BACKUPDATA_FILE_PATH"
   isCurlInstalled
 
@@ -117,4 +117,4 @@ function main() {
   log_success "Finish restoring backup data for $SERVICE_NAME"
 }
 
-main
+main "@"

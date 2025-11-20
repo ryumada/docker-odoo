@@ -22,20 +22,13 @@ log_warn() { log "${COLOR_WARN}" "⚠️" "$1"; }
 log_error() { log "${COLOR_ERROR}" "❌" "$1"; }
 # ------------------------------------
 
-function amIRoot() {
-  if [ "$EUID" -ne 0 ]; then
-    log_error "Please run this script using sudo."
-    exit 1
-  fi
-}
-
 function installLogrotator() {
   containers=$(docker ps --format '{{.ID}}')
   container_ids=$(docker inspect --format '{{.Id}}' $containers)
 
   for container_id in $container_ids; do
     log_info "Create logrotate file for container: $container_id"
-    
+
     cat << EOF > ~/docker_$container_id
 /var/lib/docker/containers/$container_id/$container_id-json.log {
     rotate 14
@@ -66,7 +59,13 @@ EOF
 }
 
 function main() {
-  amIRoot
+  # Self-elevate to root if not already
+  if [ "$(id -u)" -ne 0 ]; then
+      log_info "Elevating permissions to root..."
+      exec sudo "$0" "$@"
+      log_error "Failed to elevate to root. Please run with sudo." # This will only run if exec fails
+      exit 1
+  fi
 
   logrotate --version > /dev/null 2>&1 && {
     log_success "logrotate is already installed"
@@ -90,4 +89,4 @@ function main() {
   fi
 }
 
-main
+main "@"

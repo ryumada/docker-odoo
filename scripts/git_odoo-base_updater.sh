@@ -42,7 +42,7 @@ function isDirectoryGitRepository() {
     fi
   else
     return 1
-  fi  
+  fi
 }
 
 function getSubDirectories() {
@@ -52,6 +52,14 @@ function getSubDirectories() {
 }
 
 function main() {
+  # Self-elevate to root if not already
+  if [ "$(id -u)" -ne 0 ]; then
+      log_info "Elevating permissions to root..."
+      exec sudo "$0" "$@"
+      log_error "Failed to elevate to root. Please run with sudo." # This will only run if exec fails
+      exit 1
+  fi
+
   log_info "Change Directory to $PATH_TO_ODOO"
   cd "$PATH_TO_ODOO" || { log_error "Can't change directory to $PATH_TO_ODOO"; exit 1; }
 
@@ -67,7 +75,7 @@ function main() {
     log_warn "Please make sure there is only one git repository in $GIT_PATH"
     exit 1
   fi
-  
+
   pulledrepositories=0
   for subdir in $GIT_SUBDIRS; do
     if isDirectoryGitRepository "$subdir"; then
@@ -96,4 +104,4 @@ function main() {
   log_success "Finish checking updates for $SERVICE_NAME"
 }
 
-main
+main "@"

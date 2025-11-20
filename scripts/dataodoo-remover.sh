@@ -28,13 +28,6 @@ log_warn() { log "${COLOR_WARN}" "⚠️" "$1"; }
 log_error() { log "${COLOR_ERROR}" "❌" "$1"; }
 # ------------------------------------
 
-function isRoot() {
-  if [ "$(id -u)" -ne 0 ]; then
-    log_error "Please run this script as root"
-    exit 1
-  fi
-}
-
 function areYouReallySure() {
   prompt=$1
 
@@ -63,7 +56,14 @@ function whichData() {
 }
 
 function main() {
-  isRoot
+  # Self-elevate to root if not already
+  if [ "$(id -u)" -ne 0 ]; then
+      log_info "Elevating permissions to root..."
+      # shellcheck disable=SC2068
+      exec sudo "$0" ${@}
+      log_error "Failed to elevate to root. Please run with sudo." # This will only run if exec fails
+      exit 1
+  fi
 
   areYouReallySure "yes"
 
@@ -80,4 +80,4 @@ function main() {
   done
 }
 
-main
+main "@"

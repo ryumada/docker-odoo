@@ -34,13 +34,6 @@ error_handler() {
 
 trap 'error_handler $LINENO' ERR
 
-function amIRoot() {
-  if [ "$EUID" -ne 0 ]; then
-    log_error "Please run this script using sudo."
-    exit 1
-  fi
-}
-
 function main() {
   CURRENT_DIR=$(dirname "$(readlink -f "$0")")
   CURRENT_DIR_USER=$(stat -c '%U' "$CURRENT_DIR")
@@ -48,7 +41,14 @@ function main() {
   SERVICE_NAME=$(basename "$PATH_TO_ODOO")
   # REPOSITORY_OWNER=$(stat -c '%U' "$PATH_TO_ODOO")
 
-  amIRoot
+  # Self-elevate to root if not already
+  if [ "$(id -u)" -ne 0 ]; then
+      log_info "Elevating permissions to root..."
+      exec sudo "$0" "$@"
+      log_error "Failed to elevate to root. Please run with sudo." # This will only run if exec fails
+      exit 1
+  fi
+
   cd "$PATH_TO_ODOO" || exit 1
 
   log_info "Installing backupdata utility"
@@ -72,4 +72,4 @@ function main() {
   }
 }
 
-main
+main "@"

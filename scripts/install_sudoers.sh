@@ -29,15 +29,14 @@ CURRENT_DIR=$(dirname "$(readlink -f "$0")")
 PATH_TO_ROOT_REPOSITORY=$(git -C "$CURRENT_DIR" rev-parse --show-toplevel)
 DOCKER_ODOO_APP_NAME=$(basename "$PATH_TO_ROOT_REPOSITORY")
 
-function amIRoot() {
-  if [ "$(id -u)" -ne 0 ]; then
-    log_error "This script must be run as root."
-    exit 1
-  fi
-}
-
 function main() {
-  amIRoot
+  # Self-elevate to root if not already
+  if [ "$(id -u)" -ne 0 ]; then
+      log_info "Elevating permissions to root..."
+      exec sudo "$0" "$@"
+      log_error "Failed to elevate to root. Please run with sudo." # This will only run if exec fails
+      exit 1
+  fi
 
   log_info "Detected Odoo App Name: $DOCKER_ODOO_APP_NAME"
 
@@ -72,4 +71,4 @@ EOF
   log_info "devops user can now run git_addons_updater.sh with root privileges without a password."
 }
 
-main
+main "@"

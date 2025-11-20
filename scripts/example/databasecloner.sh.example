@@ -32,13 +32,6 @@ log_warn() { log "${COLOR_WARN}" "⚠️" "$1"; }
 log_error() { log "${COLOR_ERROR}" "❌" "$1"; }
 # ------------------------------------
 
-function isRoot() {
-  if [ "$(id -u)" -ne 0 ]; then
-    log_error "Please run this script using sudo"
-    exit 1
-  fi
-}
-
 function promptWhichEnvironment() {
   local environment="$1"
   local ODOO_DEPLOYMENT_ENVIRONMENT
@@ -121,6 +114,14 @@ function promptDBNameSuffix() {
 }
 
 function main() {
+  # Self-elevate to root if not already
+  if [ "$(id -u)" -ne 0 ]; then
+      log_info "Elevating permissions to root..."
+      exec sudo "$0" "$@"
+      log_error "Failed to elevate to root. Please run with sudo." # This will only run if exec fails
+      exit 1
+  fi
+
   CURRENT_DIR=$(dirname "$(readlink -f "$0")")
   CURRENT_DIR_USER=$(stat -c '%U' "$CURRENT_DIR")
   PATH_TO_ODOO=$(sudo -u "$CURRENT_DIR_USER" git -C "$(dirname "$(readlink -f "$0")")" rev-parse --show-toplevel)
@@ -142,8 +143,6 @@ function main() {
   ## ex. Y (replace with Y if you want to use a date suffix for the new database name)
   # This variable determines whether to use a date suffix for the new database name
   USE_DATE_SUFFIX=$(grep "^USE_DATE_SUFFIX=" "$PATH_TO_ODOO/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
-
-  isRoot
 
   ODOO_DEPLOYMENT_ENVIRONMENT=$(promptWhichEnvironment "$CLONED_ENV")
 
@@ -213,4 +212,4 @@ function main() {
   log_success "Finish cloning database '$ODOO_DB_NAME_ENV' from '$ODOO_DATABASE_NAME_PRD'"
 }
 
-main
+main "@"

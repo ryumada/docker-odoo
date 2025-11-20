@@ -58,12 +58,6 @@ have() {
   command -v "$1" >/dev/null 2>&1
 }
 
-function amIRoot() {
-  if [ "$(id -u)" -ne 0 ]; then
-    die "Please run this script as root."
-  fi
-}
-
 function areYouReallySure() {
   local prompt=${1:-yes}
 
@@ -103,7 +97,12 @@ function stopOdooDeployment() {
 }
 
 function main() {
-  amIRoot
+  # Self-elevate to root if not already
+  if [ "$(id -u)" -ne 0 ]; then
+      log_info "Elevating permissions to root..."
+      exec sudo "$0" "$@"
+      die "Failed to elevate to root. Please run with sudo." # This will only run if exec fails
+  fi
 
   BACKUPDATA_SCRIPT_FILE="$PATH_TO_ODOO/scripts/backupdata-$SERVICE_NAME"
   DATABASECLONER_SCRIPT_FILE="$PATH_TO_ODOO/scripts/databasecloner-$SERVICE_NAME"
@@ -245,4 +244,4 @@ function main() {
   log_warn "You can delete this repository now, to delete data. Make sure the snapshot file has been moved to the safe location."
 }
 
-main
+main "@"
