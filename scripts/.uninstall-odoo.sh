@@ -100,7 +100,8 @@ function main() {
   # Self-elevate to root if not already
   if [ "$(id -u)" -ne 0 ]; then
       log_info "Elevating permissions to root..."
-      exec sudo "$0" "$@"
+      # shellcheck disable=SC2093
+      exec sudo "$0" "$@" # Re-run the script with sudo
       die "Failed to elevate to root. Please run with sudo." # This will only run if exec fails
   fi
 

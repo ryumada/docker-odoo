@@ -55,7 +55,8 @@ function main() {
   # Self-elevate to root if not already
   if [ "$(id -u)" -ne 0 ]; then
       log_info "Elevating permissions to root..."
-      exec sudo "$0" "$@"
+      # shellcheck disable=SC2093
+      exec sudo "$0" "$@" # Re-run the script with sudo
       log_error "Failed to elevate to root. Please run with sudo." # This will only run if exec fails
       exit 1
   fi
@@ -92,7 +93,7 @@ function main() {
 
   if [ $pulledrepositories -gt 0 ]; then
     log_info "Rebuilding the docker containers"
-    sudo -u "$REPOSITORY_OWNER" docker compose -f $PATH_TO_ODOO/$DOCKER_COMPOSE_FILE up -d --build
+    # sudo -u "$REPOSITORY_OWNER" docker compose -f $PATH_TO_ODOO/$DOCKER_COMPOSE_FILE up -d --build
     sudo -u "$REPOSITORY_OWNER" docker compose -f $PATH_TO_ODOO/$DOCKER_COMPOSE_FILE restart
 
     log_info "Cleaning Unused Docker caches..."
