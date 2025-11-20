@@ -3,8 +3,30 @@
 # Exit immediately if a command exits with a non-zero status
 set -e
 
+# --- Logging Functions & Colors ---
+# Define colors for log messages
+readonly COLOR_RESET="\033[0m"
+readonly COLOR_INFO="\033[0;34m"
+readonly COLOR_SUCCESS="\033[0;32m"
+readonly COLOR_WARN="\033[0;33m"
+readonly COLOR_ERROR="\033[0;31m"
+
+# Function to log messages with a specific color and emoji
+log() {
+  local color="$1"
+  local emoji="$2"
+  local message="$3"
+  echo -e "${color}[$(date +"%Y-%m-%d %H:%M:%S")] ${emoji} ${message}${COLOR_RESET}"
+}
+
+log_info() { log "${COLOR_INFO}" "ℹ️" "$1"; }
+log_success() { log "${COLOR_SUCCESS}" "✅" "$1"; }
+log_warn() { log "${COLOR_WARN}" "⚠️" "$1"; }
+log_error() { log "${COLOR_ERROR}" "❌" "$1"; }
+# ------------------------------------
+
 error_handler() {
-  echo "An error occurred on line $1. Exiting..."
+  log_error "An error occurred on line $1. Exiting..."
   exit 1
 }
 
@@ -46,10 +68,6 @@ function add_arg() {
   fi
 }
 
-function getDate() {
-  echo "[$(date +"%Y-%m-%d %H:%M:%S")]"
-}
-
 function main() {
   if [ "$ODOO_VERSION" -ge 11 ]; then
     add_arg "http-port" "$PORT"
@@ -83,14 +101,14 @@ function main() {
   if [ -f /run/secrets/db_user ]; then
     add_arg "db_user" "$(cat /run/secrets/db_user)"
   else
-    echo "No secret found at /run/secrets/db_user. Exiting..."
+    log_error "No secret found at /run/secrets/db_user. Exiting..."
     exit 1
   fi
 
   if [ -f /run/secrets/db_password ]; then
     add_arg "db_password" "$(cat /run/secrets/db_password)"
   else
-    echo "No secret found at /run/secrets/db_password. Exiting..."
+    log_error "No secret found at /run/secrets/db_password. Exiting..."
     exit 1
   fi
 
@@ -114,28 +132,21 @@ function main() {
 
   ODOO_BASE_DIRECTORY=$(find ./odoo-base -mindepth 1 -maxdepth 1 -type d -print -quit)
   if [ -z "$ODOO_BASE_DIRECTORY" ]; then
-    echo "No directory found inside ./odoo-base. Exiting..."
+    log_error "No directory found inside ./odoo-base. Exiting..."
     exit 1
   fi
   ODOO_BASE_DIRECTORY=$(basename "$ODOO_BASE_DIRECTORY")
 
   if [ "$DEBUG" == "Y" ]; then
-    echo "$(getDate) Starting Odoo in debugging mode (with debugpy)"
-
-    # echo "$(getDate) setup workers and max-cron-threads to 1 and 2 respectively"
-    # add_arg "workers" "1"
-    # add_arg "max-cron-threads" "2"
-
-    echo "$(getDate) Setting up debugpy..."
+    log_info "Starting Odoo in debugging mode (with debugpy)"
+    log_info "Setting up debugpy..."
     pip install debugpy -t /tmp
-    echo "$(getDate) Debugpy installed, waiting for client to connect on port 5678..."
+    log_info "Debugpy installed, waiting for client to connect on port 5678..."
     exec python /tmp/debugpy --wait-for-client --listen 0.0.0.0:5678 "/opt/odoo/odoo-base/$ODOO_BASE_DIRECTORY/odoo-bin" -c "/etc/odoo/odoo.conf" "${ODOO_ARGS[@]}"
   else
-    echo "$(getDate) Starting Odoo without debugging..."
-
+    log_info "Starting Odoo without debugging..."
     add_arg "workers" "$WORKERS"
     add_arg "max-cron-threads" "$MAX_CRON_THREADS"
-
     exec python "/opt/odoo/odoo-base/$ODOO_BASE_DIRECTORY/odoo-bin" -c "/etc/odoo/odoo.conf" "${ODOO_ARGS[@]}"
   fi
 }

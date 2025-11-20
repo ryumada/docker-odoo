@@ -23,8 +23,30 @@ REQUIREMENTS_FILE="./requirements.txt"
 # Exit immediately if a command exits with a non-zero status
 set -e
 
+# --- Logging Functions & Colors ---
+# Define colors for log messages
+readonly COLOR_RESET="\033[0m"
+readonly COLOR_INFO="\033[0;34m"
+readonly COLOR_SUCCESS="\033[0;32m"
+readonly COLOR_WARN="\033[0;33m"
+readonly COLOR_ERROR="\033[0;31m"
+
+# Function to log messages with a specific color and emoji
+log() {
+  local color="$1"
+  local emoji="$2"
+  local message="$3"
+  echo -e "${color}[$(date +"%Y-%m-%d %H:%M:%S")] ${emoji} ${message}${COLOR_RESET}"
+}
+
+log_info() { log "${COLOR_INFO}" "ℹ️" "$1"; }
+log_success() { log "${COLOR_SUCCESS}" "✅" "$1"; }
+log_warn() { log "${COLOR_WARN}" "⚠️" "$1"; }
+log_error() { log "${COLOR_ERROR}" "❌" "$1"; }
+# ------------------------------------
+
 error_handler() {
-  echo "An error occurred on line $1. Exiting..."
+  log_error "An error occurred on line $1. Exiting..."
   exit 1
 }
 
@@ -35,7 +57,7 @@ TODO=()
 
 function amIRoot() {
   if [ "$EUID" -ne 0 ]; then
-    echo "$(getDate) ❌ Please run this script using sudo."
+    log_error "Please run this script using sudo."
     exit 1
   fi
 }
@@ -43,23 +65,23 @@ function amIRoot() {
 function checkAddonsPathOnOdooConfFile() {
   addons_string="$(grep 'addons_path' $ODOO_CONF_FILE | grep -v '#' | grep -o 'addons_path = \([^)]*\)' | sed 's/addons_path = //')"
 
-  echo "$(getDate) 🟦 You have defined this addons_path on $ODOO_CONF_FILE: $addons_string"
+  log_info "You have defined this addons_path on $ODOO_CONF_FILE: $addons_string"
 
   addons_array=(${addons_string//,/ })
 
   for addons_path in "${addons_array[@]}"; do
 
     if ! echo "$addons_path" | grep -q "/opt/odoo/"; then
-      echo "$(getDate) ❌ The addons_path ($addons_path) should be started with /opt/odoo/."
+      log_error "The addons_path ($addons_path) should be started with /opt/odoo/."
       TODO+=("Please check your odoo.conf file. The addons_path ($addons_path) should be started with /opt/odoo.")
     else
       addons_path_onhost=$(sed "s|/opt/odoo|$REPOSITORY_DIRPATH|" <<< "$addons_path")
 
       if [ ! -d "$addons_path_onhost" ]; then
-        echo "$(getDate) ❌ $addons_path on your conf file is not valid."
+        log_error "$addons_path on your conf file is not valid."
         TODO+=("Please check this directory: $addons_path_onhost. Make sure it exists and contains your odoo addons. The addons_path defined in your $ODOO_CONF_FILE: $addons_path.")
       else
-        echo "$(getDate) ✅ This addons_path is valid: $addons_path"
+        log_success "This addons_path is valid: $addons_path"
       fi
     fi
   done
@@ -72,15 +94,15 @@ function checkImportantEnvVariable() {
   env_variable_value=$(grep "^$param=" "$env_file" | cut -d '=' -f 2)
 
   if [ "$env_variable_value" == "" ]; then
-    echo "$(getDate) ❌ $param variable has empty value."
+    log_error "$param variable has empty value."
     TODO+=("Please fill in the $param variable in your $env_file file.")
   else
-    echo "$(getDate) ✅ $param is set to $env_variable_value"
+    log_success "$param is set to $env_variable_value"
   fi
 }
 
 function createDataDir() {
-  echo "$(getDate) 🟦 Create Odoo datadir... (path: $ODOO_DATADIR_SERVICE)"
+  log_info "Create Odoo datadir... (path: $ODOO_DATADIR_SERVICE)"
 
   if [ ! -d "$ODOO_DATADIR" ]; then
     sudo mkdir "$ODOO_DATADIR"
@@ -101,7 +123,7 @@ function createDataDir() {
 }
 
 function createLogDir() {
-  echo "$(getDate) 🟦 Create log directory... (path: $ODOO_LOG_DIR_SERVICE)"
+  log_info "Create log directory... (path: $ODOO_LOG_DIR_SERVICE)"
 
   if [ ! -d "$ODOO_LOG_DIR" ]; then
     sudo mkdir $ODOO_LOG_DIR
@@ -124,7 +146,7 @@ function createLogDir() {
 function createOdooUtilitiesFromEntrypoint() {
   param=$1
 
-  echo "$(getDate) 🟦 Create odoo shell command from entrypoint.sh..."
+  log_info "Create odoo shell command from entrypoint.sh..."
 
   entrypoint_file="$REPOSITORY_DIRPATH/entrypoint.sh"
   odoo_utility_file="$REPOSITORY_DIRPATH/utilities/odoo-$param"
@@ -186,7 +208,7 @@ fi' "$odoo_utility_file"
 }
 
 function generateDockerComposeAndDockerfile() {
-  echo "$(getDate) 🟦 Create docker-compose.yml file..."
+  log_info "Create docker-compose.yml file..."
 
   cp docker-compose.yml.example docker-compose.yml
   chown "$REPOSITORY_OWNER": docker-compose.yml
@@ -196,7 +218,7 @@ function generateDockerComposeAndDockerfile() {
 
   while true; do
     if [ -z "$mount_or_copy" ]; then
-      echo -e "\n$(getDate) ❓ Do you want to use:\n"
+      echo -e "\n❓ Do you want to use:\n"
       echo "1. bind mount (faster buiding image)"
       echo -e "2. copy the addons and odoo-base directories to the container image (slower building image but more stable in changes)\n"
       read -rp "Choose 1 or 2: " mount_or_copy
@@ -205,7 +227,7 @@ function generateDockerComposeAndDockerfile() {
 
     case $mount_or_copy in
       1)
-        echo "$(getDate) 🟦 You have chosen to use bind mount."
+        log_info "You have chosen to use bind mount."
         sed -i '/volumes/a \
      - ./git:/opt/odoo/git\
      - ./odoo-base:/opt/odoo/odoo-base' docker-compose.yml
@@ -214,12 +236,12 @@ function generateDockerComposeAndDockerfile() {
         break
         ;;
       2)
-        echo "$(getDate) 🟦 You have chosen to copy the addons and odoo-base directory to the image."
+        log_info "You have chosen to copy the addons and odoo-base directory to the image."
         generateDockerFile "copy"
         break
         ;;
       *)
-        echo "$(getDate) 🔴 Invalid Option."
+        log_error "Invalid Option."
         mount_or_copy=""
         ;;
     esac
@@ -231,11 +253,11 @@ function generateDockerFile() {
 
   mount_or_copy=$1
 
-  echo "$(getDate) 🟦 Create dockerfile..."
+  log_info "Create dockerfile..."
   cp dockerfile.example dockerfile
   chown "$REPOSITORY_OWNER": dockerfile
 
-  echo "$(getDate) 🟦 Setting up how odoo modules and odoo base read by container [$mount_or_copy]..."
+  log_info "Setting up how odoo modules and odoo base read by container [$mount_or_copy]..."
   if [ "$mount_or_copy" == "mount" ]; then
     sed -i '/COPY --chown=odoo:odoo .\/odoo-base \/opt\/odoo\/odoo-base/d' dockerfile
     sed -i '/COPY --chown=odoo:odoo .\/git \/opt\/odoo\/git/d' dockerfile
@@ -243,7 +265,7 @@ function generateDockerFile() {
 
   FAKETIME=$(grep "^FAKETIME=" "$REPOSITORY_DIRPATH/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
   [ -n "$FAKETIME" ] && validateDatetimeFormat "$FAKETIME" " FAKETIME on .env file" && {
-    echo "$(getDate) 🟦 Setting up faketime..."
+    log_info "Setting up faketime..."
     sed -i '/USER root/a \
 RUN apt install -y libfaketime\
 ENV LD_PRELOAD=/usr/lib/x86_64-linux-gnu/faketime/libfaketime.so.1' dockerfile
@@ -255,7 +277,7 @@ function generatePostgresPassword() {
 
   postgresusername=$1
 
-  echo "$(getDate) 🟦 Regenerate Postgres password..."
+  log_info "Regenerate Postgres password..."
 
   POSTGRES_ODOO_PASSWORD=$(openssl rand -base64 64 | tr -d '\n')
 
@@ -268,9 +290,9 @@ function generatePostgresSecrets() {
   POSTGRES_ODOO_USERNAME=$SERVICE_NAME
 
   if sudo -u postgres psql -tAc "SELECT 1 FROM pg_roles WHERE rolname='$POSTGRES_ODOO_USERNAME'" 2>/dev/null | grep -q 1; then
-    echo "$(getDate) ✅ User $POSTGRES_ODOO_USERNAME already exists."
+    log_success "User $POSTGRES_ODOO_USERNAME already exists."
   else
-    echo "$(getDate) 🟦 User $POSTGRES_ODOO_USERNAME doesn't exist. Creating the user..."
+    log_info "User $POSTGRES_ODOO_USERNAME doesn't exist. Creating the user..."
     sudo -u postgres psql -c "CREATE ROLE \"$POSTGRES_ODOO_USERNAME\" LOGIN CREATEDB;" > /dev/null 2>&1
   fi
 
@@ -282,7 +304,7 @@ function generatePostgresSecrets() {
   fi
 
   while true; do
-    read -r -p "$(getDate) ❓ Do you want to regenerate the password for $POSTGRES_ODOO_USERNAME? [yes/no][y/N] : " response
+    read -r -p "❓ Do you want to regenerate the password for $POSTGRES_ODOO_USERNAME? [yes/no][y/N] : " response
 
     case $response in
       [yY][eE][sS]|[yY])
@@ -290,21 +312,17 @@ function generatePostgresSecrets() {
         break
         ;;
       [nN][oO]|[nN])
-        echo "$(getDate) 👍 Okay, You don't want to regenerate password."
+        log_info "Okay, You don't want to regenerate password."
         break
         ;;
       *)
-        echo "$(getDate) 🔴 Invalid option"
+        log_error "Invalid option"
         ;;
     esac
   done
 
   setPermissionFileToReadOnlyAndOnlyTo "$ODOO_LINUX_USER" "$DB_USER_SECRET"
   setPermissionFileToReadOnlyAndOnlyTo "$ODOO_LINUX_USER" "$DB_PASSWORD_SECRET"
-}
-
-function getDate() {
-  echo "[$(date +"%Y-%m-%d %H:%M:%S")]"
 }
 
 function getGitHash() {
@@ -319,7 +337,7 @@ function getGitHash() {
   OUTPUT_GIT_HASHES_FILE="$git_path/../git_hashes.txt"
 
   cat <<EOF >> "$OUTPUT_GIT_HASHES_FILE"
-  Updated at$(getDate)
+  Updated at [$(date +"%Y-%m-%d %H:%M:%S")]
   Git Directory: $git_path
   Git Remote: $(git -C "$git_path" remote get-url origin)
   Git Branch: $(git -C "$git_path" branch --show-current)
@@ -338,7 +356,7 @@ function getSubDirectories() {
 }
 
 function installDockerServiceRestartorScript() {
-  echo "$(getDate) 🟦 Install Docker service restartor script and cron job..."
+  log_info "Install Docker service restartor script and cron job..."
 
   # create a script that restarts the docker service
   cat <<-EOF > "/usr/local/sbin/restart_$SERVICE_NAME"
@@ -415,14 +433,14 @@ EOF
 }
 
 function installPostgresRestartorScript() {
-  echo "$(getDate) 🟦 Install Postgresql restartor script and cron job..."
+  log_info "Install Postgresql restartor script and cron job..."
   # create a script that restarts the postgresql service
   cat <<-EOF > /usr/local/sbin/restart_postgres
 #!/bin/bash
 
 exec > >(tee -a /var/log/odoo/_utilities/restart_postgres.log) 2>&1
 
-echo "$(getDate) 🟦 Restarting Postgresql service..."
+echo "[$(date +"%Y-%m-%d %H:%M:%S")] 🟦 Restarting Postgresql service..."
 sudo systemctl restart postgresql
 
 EOF
@@ -480,7 +498,7 @@ function isBuildOrPull() {
           break
           ;;
         *)
-          echo -e "\n$(getDate) 🔴 Invalid Option.\n" >&2
+          echo -e "\nInvalid Option.\n" >&2
           ;;
       esac
     done
@@ -506,20 +524,20 @@ function isDirectoryGitRepository() {
 
 function isDockerInstalled() {
   if ! command -v docker &>/dev/null; then
-    echo "$(getDate) ❌ docker command not found."
+    log_error "docker command not found."
     TODO+=("Please install docker engine by following this docs: https://docs.docker.com/engine/install/")
   else
-    echo "$(getDate) ✅ docker command found"
+    log_success "docker command found"
   fi
 }
 
 function isPostgresInstalled() {
   if ! command -v psql &>/dev/null; then
-    echo "$(getDate) ❌ psql command not found."
+    log_error "psql command not found."
     TODO+=("Please install postgresql by running the following command: 'sudo apt install postgresql'")
     return 1
   else
-    echo "$(getDate) ✅ psql command found"
+    log_success "psql command found"
     return 0
   fi
 }
@@ -531,10 +549,10 @@ function isInteger() {
 
 function isLogRotateInstalled() {
   if ! command -v logrotate &>/dev/null; then
-    echo "$(getDate) ❌ logrotate command not found."
+    log_error "logrotate command not found."
     TODO+=("Please install logrotate by running the following command: 'sudo apt install logrotate'")
   else
-    echo "$(getDate) ✅ logrotate command found"
+    log_success "logrotate command found"
   fi
 }
 
@@ -547,16 +565,16 @@ function isSubDirectoryExists() {
   if ls -d "$dir"/*/ >/dev/null 2>&1; then
     if [ -n "$only_one" ]; then
       if [ "$(find "$dir" -mindepth 1 -maxdepth 1 -type d | wc -l)" -ne 1 ]; then
-        echo "$(getDate) ❌ There are more than one directories found inside $dir. Please keep only one directory."
+        log_error "There are more than one directories found inside $dir. Please keep only one directory."
 
         TODO+=("Please remove the unnecessary directories inside $dir. Only keep one directory that contains your Odoo base.")
         return 1
       else
-        echo "$(getDate) ✅ A directory exists inside $dir"
+        log_success "A directory exists inside $dir"
         return 0
       fi
     else
-      echo "$(getDate) ✅ Directories exists inside $dir"
+      log_success "Directories exists inside $dir"
       return 0
     fi
   else
@@ -565,9 +583,9 @@ function isSubDirectoryExists() {
     fi
 
     if [ -n "$additional_info" ]; then
-      echo "$(getDate) 🟦  $additional_info"
+      log_info "$additional_info"
     else
-      echo "$(getDate) ❌ No directory found inside $dir"
+      log_error "No directory found inside $dir"
     fi
 
     return 1
@@ -579,12 +597,12 @@ function isFileExists() {
   todo=$2
 
   if [ -f "$file" ]; then
-    echo "$(getDate) ✅ $file file exists"
+    log_success "$file file exists"
     return 0
   else
     TODO+=("$todo")
 
-    echo "$(getDate) ❌ $file file does not exist"
+    log_error "$file file does not exist"
     return 1
   fi
 }
@@ -594,19 +612,19 @@ function isUserExist() {
   user_id=$2
 
   if ! id "$user_name" &>/dev/null; then
-    echo "$(getDate) 🟦  Create a new $user_name user."
+    log_info "Create a new $user_name user."
     if sudo useradd -m -u $user_id -s /bin/bash $user_name; then
-      echo "$(getDate) ✅ $user_name user created."
+      log_success "$user_name user created."
     else
-      echo "$(getDate) ❌ Failed to create $user_name user."
+      log_error "Failed to create $user_name user."
       exit 1
     fi
   else
     if [ "$(id -u $user_name)" -ne $user_id ]; then
-      echo "$(getDate) ❌ $user_name user already exists but the user id is not $user_id."
+      log_error "$user_name user already exists but the user id is not $user_id."
       TODO+=("Please change the $user_name user id to $user_id using the following command: 'sudo usermod -u $user_id $user_name '")
     else
-      echo "$(getDate) ✅ $user_name user already exists."
+      log_success "$user_name user already exists."
     fi
   fi
 }
@@ -637,9 +655,9 @@ function printTodoMessage() {
   todo_count=$1
 
   if [ "$todo_count" -eq 1 ]; then
-    echo "$(getDate) ❌ There is 1 thing that needs to be done before you can create your docker image."
+    log_error "There is 1 thing that needs to be done before you can create your docker image."
   else
-    echo "$(getDate) ❌ There are $todo_count things that need to be done before you can create your docker image."
+    log_error "There are $todo_count things that need to be done before you can create your docker image."
   fi
 }
 
@@ -691,7 +709,7 @@ function validateDatetimeFormat() {
 
   # 1. Check overall format using regex
   if [[ ! "$datetime_string" =~ $regex ]]; then
-    echo "$(getDate) 🔴 Error$varmsg: Format does not match YYYY-MM-DD HH:MM:SS."
+    log_error "Error$varmsg: Format does not match YYYY-MM-DD HH:MM:SS."
     TODO+=("Error$varmsg: Format does not match YYYY-MM-DD HH:MM:SS.")
     return 1
   fi
@@ -708,7 +726,7 @@ function validateDatetimeFormat() {
 
   # Year: Simple check for 4 digits (regex already handles this)
   # For more advanced checks, you might check against a reasonable range (e.g., 1900-2100)
-  # if (( year < 1900 || year > 2100 )); then
+  # if (( year < 1900 || year > 2100 )); then #
   #   echo "$(getDate) 🔴 Error$varmsg: Year ($year) is out of a reasonable range (e.g., 1900-2100)."
   # TODO+=("Error$varmsg: Year ($year) is out of a reasonable range (e.g., 1900-2100).")
   #   return 1
@@ -716,14 +734,14 @@ function validateDatetimeFormat() {
 
   # Month (01-12)
   if ! isInteger "$month" || (( 10#$month < 1 || 10#$month > 12 )); then
-    echo "$(getDate) 🔴 Error$varmsg: Month ($month) is invalid. Must be between 01 and 12."
+    log_error "Error$varmsg: Month ($month) is invalid. Must be between 01 and 12."
     TODO+=("Error$varmsg: Month ($month) is invalid. Must be between 01 and 12.")
     return 1
   fi
 
   # Day (01-31, with consideration for month and leap year)
   if ! isInteger "$day" || (( 10#$day < 1 || 10#$day > 31 )); then
-    echo "$(getDate) 🔴 Error$varmsg: Day ($day) is invalid. Must be between 01 and 31."
+    log_error "Error$varmsg: Day ($day) is invalid. Must be between 01 and 31."
     TODO+=("Error$varmsg: Day ($day) is invalid. Must be between 01 and 31.")
     return 1
   fi
@@ -734,14 +752,14 @@ function validateDatetimeFormat() {
       if (( year % 4 == 0 && (year % 100 != 0 || year % 400 == 0) )); then
         # Leap year
         if (( 10#$day > 29 )); then
-          echo "$(getDate) 🔴 Error$varmsg: Day ($day) is invalid for February in a leap year ($year)."
+          log_error "Error$varmsg: Day ($day) is invalid for February in a leap year ($year)."
           TODO+=("Error$varmsg: Day ($day) is invalid for February in a leap year ($year).")
           return 1
         fi
       else
         # Non-leap year
         if (( 10#$day > 28 )); then
-          echo "$(getDate) 🔴 Error$varmsg: Day ($day) is invalid for February in a non-leap year ($year)."
+          log_error "Error$varmsg: Day ($day) is invalid for February in a non-leap year ($year)."
           TODO+=("Error$varmsg: Day ($day) is invalid for February in a non-leap year ($year).")
           return 1
         fi
@@ -749,7 +767,7 @@ function validateDatetimeFormat() {
       ;;
     04|06|09|11) # April, June, September, November (30 days)
       if (( 10#$day > 30 )); then
-        echo "$(getDate) 🔴 Error$varmsg: Day ($day) is invalid for month $month. Must be 30 or less."
+        log_error "Error$varmsg: Day ($day) is invalid for month $month. Must be 30 or less."
         TODO+=("Error$varmsg: Day ($day) is invalid for month $month. Must be 30 or less.")
         return 1
       fi
@@ -760,26 +778,26 @@ function validateDatetimeFormat() {
 
   # Hour (00-23)
   if ! isInteger "$hour" || (( 10#$hour < 0 || 10#$hour > 23 )); then
-    echo "$(getDate) 🔴 Error$varmsg: Hour ($hour) is invalid. Must be between 00 and 23."
+    log_error "Error$varmsg: Hour ($hour) is invalid. Must be between 00 and 23."
     TODO+=("Error$varmsg: Hour ($hour) is invalid. Must be between 00 and 23.")
     return 1
   fi
 
   # Minute (00-59)
   if ! isInteger "$minute" || (( 10#$minute < 0 || 10#$minute > 59 )); then
-    echo "$(getDate) 🔴 Error$varmsg: Minute ($minute) is invalid. Must be between 00 and 59."
+    log_error "Error$varmsg: Minute ($minute) is invalid. Must be between 00 and 59."
     TODO+=("Error$varmsg: Minute ($minute) is invalid. Must be between 00 and 59.")
     return 1
   fi
 
   # Second (00-59)
   if ! isInteger "$second" || (( 10#$second < 0 || 10#$second > 59 )); then
-    echo "$(getDate) 🔴 Error$varmsg: Second ($second) is invalid. Must be between 00 and 59."
+    log_error "Error$varmsg: Second ($second) is invalid. Must be between 00 and 59."
     TODO+=("Error$varmsg: Second ($second) is invalid. Must be between 00 and 59.")
     return 1
   fi
 
-  echo "$(getDate) ✅ Success validate$varmsg: '$datetime_string' is a valid YYYY-MM-DD HH:MM:SS format."
+  log_success "Success validate$varmsg: '$datetime_string' is a valid YYYY-MM-DD HH:MM:SS format."
   return 0
 }
 
@@ -798,7 +816,7 @@ function writeGitHash() {
     if isDirectoryGitRepository "$dir"; then
       getGitHash "$dir"
     else
-      echo "$(getDate) 🟨 $dir is not a git repository. You need to backup this directory by adding it to your snapshot utilities."
+      log_warn "$dir is not a git repository. You need to backup this directory by adding it to your snapshot utilities."
     fi
   done
 }
@@ -833,7 +851,7 @@ function writeTextFile() {
   file=$2
   type=$3
 
-  echo "$(getDate) 🟦 Writing $type to $file..."
+  log_info "Writing $type to $file..."
 
   echo "$password" > "$file"
 }
@@ -863,15 +881,15 @@ function main() {
 
   installDockerServiceRestartorScript
 
-  read -rp "$(getDate) ❓ Do you want to renew odoo-shell and odoo-module-upgrade scripts? [y/N] : " response
+  read -rp "❓ Do you want to renew odoo-shell and odoo-module-upgrade scripts? [y/N] : " response
   if [[ "$response" =~ ^([yY][eE][sS]|[yY])+$ ]]; then
     createOdooUtilitiesFromEntrypoint "shell"
     createOdooUtilitiesFromEntrypoint "module-upgrade"
   fi
 
   echo -e "\n==================================================================="
-  echo -e "$(getDate) 🟦 This script will run in $is_build_or_pull Mode."
-  echo -e "$(getDate) 🟦 Checking the necessary files and directories..."
+  log_info "This script will run in $is_build_or_pull Mode."
+  log_info "Checking the necessary files and directories..."
   echo "==================================================================="
 
   "$REPOSITORY_DIRPATH/scripts/update-env-file.sh"
@@ -890,8 +908,8 @@ function main() {
         installPostgresRestartorScript
       }
     else
-      echo "$(getDate) 🟨 DB_HOST found on .env file. That means you have a separate postgresql server."
-      echo "$(getDate) 🟨 Please make sure that the postgresql server is running and the user and password are setup successfully. See '.secrets' directory to setup the username and password of your postgres user."
+      log_warn "DB_HOST found on .env file. That means you have a separate postgresql server."
+      log_warn "Please make sure that the postgresql server is running and the user and password are setup successfully. See '.secrets' directory to setup the username and password of your postgres user."
     fi
 
     checkImportantEnvVariable "PYTHON_VERSION" $ENV_FILE
@@ -905,10 +923,10 @@ function main() {
   ODOO_ADDONS_PATH=$(grep "^ADDONS_PATH=" "$REPOSITORY_DIRPATH/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
 
   if [ -n "$ODOO_ADMIN_PASSWD" ] && [ -n "$ODOO_ADDONS_PATH" ]; then
-    echo "$(getDate) 🟦 Updating odoo.conf file..."
+    log_info "Updating odoo.conf file..."
     "$REPOSITORY_DIRPATH/scripts/update-odoo-config.sh"
   else
-    echo "$(getDate) 🔴 You need to fill ADMIN_PASSWD and ADDONS_PATH variables in your .env file."
+    log_error "You need to fill ADMIN_PASSWD and ADDONS_PATH variables in your .env file."
   fi
 
   isFileExists "$DOCKER_COMPOSE_FILE" "Please create a docker-compose.yml file by following the docker-compose.yml.example file." || true
@@ -926,7 +944,7 @@ function main() {
       writeGitHash "$ODOO_BASE_DIR"
 
       ODOO_BASE_DIRECTORY=$(find $ODOO_BASE_DIR -mindepth 1 -maxdepth 1 -type d -print -quit)
-      echo "$(getDate) 🟦 Add execute permission to odoo-bin binary"
+      log_info "Add execute permission to odoo-bin binary"
       chmod +x "$ODOO_BASE_DIRECTORY"/odoo-bin
     fi
 
@@ -935,10 +953,10 @@ function main() {
     local ODOO_IMAGE_NAME
     ODOO_IMAGE_NAME=$(grep "^ODOO_IMAGE_NAME=" "$ENV_FILE" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
     if [ -z "$ODOO_IMAGE_NAME" ]; then
-      echo "$(getDate) ❌ ODOO_IMAGE_NAME variable is not set in your .env file."
+      log_error "ODOO_IMAGE_NAME variable is not set in your .env file."
       TODO+=("Please set the ODOO_IMAGE_NAME variable in your .env file.")
     else
-      echo "$(getDate) ✅ ODOO_IMAGE_NAME variable is set to $ODOO_IMAGE_NAME"
+      log_success "ODOO_IMAGE_NAME variable is set to $ODOO_IMAGE_NAME"
     fi
   fi
 
@@ -948,7 +966,7 @@ function main() {
   if [ -n "$ENABLE_DATABASE_CLONER" ]; then
     "$REPOSITORY_DIRPATH/scripts/installer/install-databasecloner.sh"
   else
-    echo "$(getDate) ⚠️ databasecloner utility is not installed. Please fill ENABLE_DATABASE_CLONER variable in your .env file, then re-run this install script to install databasecloner utility."
+    log_warn "databasecloner utility is not installed. Please fill ENABLE_DATABASE_CLONER variable in your .env file, then re-run this install script to install databasecloner utility."
   fi
 
   ENABLE_SNAPSHOT=$(grep "^ENABLE_SNAPSHOT=" "$REPOSITORY_DIRPATH/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
@@ -956,16 +974,16 @@ function main() {
   if [ -n "$ENABLE_SNAPSHOT" ] && [ -n "$ODOO_DB_NAME" ]; then
     "$REPOSITORY_DIRPATH/scripts/installer/install-snapshot.sh"
   else
-    echo "$(getDate) ⚠️ snapshot utility is not installed. Please fill ENABLE_SNAPSHOT and DB_NAME variables in your .env file, then re-run this install script to install snapshot utility."
+    log_warn "snapshot utility is not installed. Please fill ENABLE_SNAPSHOT and DB_NAME variables in your .env file, then re-run this install script to install snapshot utility."
   fi
 
   if printTodo; then
     echo
     echo
-    echo "$(getDate) ✅ Everything is ready to build your docker image."
-    echo "$(getDate) 🟦 Please run the following command to build your docker image: 'docker compose build'"
-    echo "$(getDate) 🟦 Then, you can run the compose using this command: 'docker compose up -d'"
-    echo "$(getDate) 🟦 You can combine the command using: 'docker compose up --build -d'."
+    log_success "Everything is ready to build your docker image."
+    log_info "Please run the following command to build your docker image: 'docker compose build'"
+    log_info "Then, you can run the compose using this command: 'docker compose up -d'"
+    log_info "You can combine the command using: 'docker compose up --build -d'."
     exit 0
   else
     exit 1

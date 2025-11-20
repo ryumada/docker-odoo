@@ -5,8 +5,30 @@
 # Exit immediately if a command exits with a non-zero status
 set -e
 
+# --- Logging Functions & Colors ---
+# Define colors for log messages
+readonly COLOR_RESET="\033[0m"
+readonly COLOR_INFO="\033[0;34m"
+readonly COLOR_SUCCESS="\033[0;32m"
+readonly COLOR_WARN="\033[0;33m"
+readonly COLOR_ERROR="\033[0;31m"
+
+# Function to log messages with a specific color and emoji
+log() {
+  local color="$1"
+  local emoji="$2"
+  local message="$3"
+  echo -e "${color}[$(date +"%Y-%m-%d %H:%M:%S")] ${emoji} ${message}${COLOR_RESET}"
+}
+
+log_info() { log "${COLOR_INFO}" "ℹ️" "$1"; }
+log_success() { log "${COLOR_SUCCESS}" "✅" "$1"; }
+log_warn() { log "${COLOR_WARN}" "⚠️" "$1"; }
+log_error() { log "${COLOR_ERROR}" "❌" "$1"; }
+# ------------------------------------
+
 error_handler() {
-  echo "An error occurred on line $1. Exiting..."
+  log_error "An error occurred on line $1. Exiting..."
   exit 1
 }
 
@@ -14,13 +36,9 @@ trap 'error_handler $LINENO' ERR
 
 function amIRoot() {
   if [ "$EUID" -ne 0 ]; then
-    echo "$(getDate) ❌ Please run this script using sudo."
+    log_error "Please run this script using sudo."
     exit 1
   fi
-}
-
-function getDate() {
-  echo "[$(date +"%Y-%m-%d %H:%M:%S")]"
 }
 
 function main() {
@@ -33,24 +51,24 @@ function main() {
   amIRoot
   cd "$PATH_TO_ODOO" || exit 1
 
-  echo "$(getDate) 🚀 Installing backupdata utility"
+  log_info "Installing backupdata utility"
 
-  echo "$(getDate) 📎 Copying the latest script from the example script"
+  log_info "Copying the latest script from the example script"
   OUTPUT_RSYNC_COMMAND=$(rsync -acz ./scripts/example/backupdata.sh.example "./scripts/backupdata-$SERVICE_NAME" 2>&1) && {
-    echo "$(getDate) ✅ Copy the latest script from the example script."
+    log_success "Copied the latest script from the example script."
   } || {
-    echo "$(getDate) ❌ Failed to copy the latest script from the example script ➡️ $OUTPUT_RSYNC_COMMAND"
+    log_error "Failed to copy the latest script from the example script ➡️ $OUTPUT_RSYNC_COMMAND"
     exit 1
   }
 
-  echo "$(getDate) 👤 Changing the permission of the script"
+  log_info "Changing the permission of the script"
   chmod 755 "./scripts/backupdata-$SERVICE_NAME"
 
-  echo "$(getDate) 🖇️ Create a softlink to /usr/local/sbin"
+  log_info "Create a softlink to /usr/local/sbin"
   OUTPUT_LN_COMMAND=$(ln -s "$PATH_TO_ODOO/scripts/backupdata-$SERVICE_NAME" /usr/local/sbin/backupdata-"$SERVICE_NAME" 2>&1) && {
-    echo "$(getDate) ✅ Create a symbolic link to /usr/local/sbin/backupdata-$SERVICE_NAME"
+    log_success "Created a symbolic link to /usr/local/sbin/backupdata-$SERVICE_NAME"
   } || {
-    echo "$(getDate) ⚠️ Failed to create a symbolic link to /usr/local/sbin/backupdata-$SERVICE_NAME ➡️ $OUTPUT_LN_COMMAND"
+    log_warn "Failed to create a symbolic link to /usr/local/sbin/backupdata-$SERVICE_NAME ➡️ $OUTPUT_LN_COMMAND"
   }
 }
 

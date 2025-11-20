@@ -28,23 +28,27 @@
 
 set -euo pipefail
 
-# --- Simple Logging Functions (Optional - you can use your getDate if preferred) ---
-log_info() {
-  echo "[$(date +"%Y-%m-%d %H:%M:%S")] 🟦 $1"
+# --- Logging Functions & Colors ---
+# Define colors for log messages
+readonly COLOR_RESET="\033[0m"
+readonly COLOR_INFO="\033[0;34m"
+readonly COLOR_SUCCESS="\033[0;32m"
+readonly COLOR_WARN="\033[0;33m"
+readonly COLOR_ERROR="\033[0;31m"
+
+# Function to log messages with a specific color and emoji
+log() {
+  local color="$1"
+  local emoji="$2"
+  local message="$3"
+  echo -e "${color}[$(date +"%Y-%m-%d %H:%M:%S")] ${emoji} ${message}${COLOR_RESET}"
 }
 
-log_success() {
-  echo "[$(date +"%Y-%m-%d %H:%M:%S")] ✅ $1"
-}
-
-log_warning() {
-  echo "[$(date +"%Y-%m-%d %H:%M:%S")] ⚠️ $1"
-}
-
-log_error() {
-  >&2 echo "[$(date +"%Y-%m-%d %H:%M:%S")] 🔴 $1"
-}
-# --- End Logging Functions ---
+log_info() { log "${COLOR_INFO}" "ℹ️" "$1"; }
+log_success() { log "${COLOR_SUCCESS}" "✅" "$1"; }
+log_warn() { log "${COLOR_WARN}" "⚠️" "$1"; }
+log_error() { log "${COLOR_ERROR}" "❌" "$1"; }
+# ------------------------------------
 
 function main() {
     for user_dir in /home/*; do

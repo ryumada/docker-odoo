@@ -6,15 +6,31 @@ PATH_TO_ODOO=$(sudo -u "$CURRENT_DIR_USER" git -C "$(dirname "$(readlink -f "$0"
 SERVICE_NAME=$(basename "$PATH_TO_ODOO")
 ODOO_FILESTORE_PATH="/var/lib/odoo/$SERVICE_NAME/filestore"
 
-function getDate() {
-  echo "[$(date +"%Y-%m-%d %H:%M:%S")]"
+# --- Logging Functions & Colors ---
+# Define colors for log messages
+readonly COLOR_RESET="\033[0m"
+readonly COLOR_INFO="\033[0;34m"
+readonly COLOR_SUCCESS="\033[0;32m"
+readonly COLOR_WARN="\033[0;33m"
+readonly COLOR_ERROR="\033[0;31m"
+
+# Function to log messages with a specific color and emoji
+log() {
+  local color="$1"
+  local emoji="$2"
+  local message="$3"
+  echo -e "${color}[$(date +"%Y-%m-%d %H:%M:%S")] ${emoji} ${message}${COLOR_RESET}"
 }
 
+log_info() { log "${COLOR_INFO}" "ℹ️" "$1"; }
+log_success() { log "${COLOR_SUCCESS}" "✅" "$1"; }
+log_warn() { log "${COLOR_WARN}" "⚠️" "$1"; }
+log_error() { log "${COLOR_ERROR}" "❌" "$1"; }
+# ------------------------------------
+
 function isRoot() {
-  if sudo -n true 2>/dev/null; then
-    echo "$(getDate) 🟦 Running as root"
-  else
-    echo "$(getDate) 🔴 Please run this script as root"
+  if [ "$(id -u)" -ne 0 ]; then
+    log_error "Please run this script as root"
     exit 1
   fi
 }
@@ -25,10 +41,10 @@ function areYouReallySure() {
   echo "Are you sure want to delete data on $SERVICE_NAME deployment?"
   echo -e "Type '$prompt'\n"
   read -r -p ": " RESPONSE
-  
+
   if [ "$RESPONSE" != "$prompt" ]; then
-    echo -e "\n$(getDate) 🔴 You don't write the correct phrase. Exiting..."
-    echo "$(getDate) 🆗 Uninstallation aborted."
+    log_error "You don't write the correct phrase. Exiting..."
+    log_info "Deletion aborted."
     exit 1
   fi
 }
@@ -54,13 +70,13 @@ function main() {
   DB_LIST="$(whichData)"
 
   for DB in $(echo "$DB_LIST" | tr "," "\n"); do
-    echo "$(getDate) 🟦 Removing Odoo Database: $DB"
-    sudo -u postgres psql -d postgres -c "DROP DATABASE IF EXISTS \"$DB\" WITH (FORCE)" > /dev/null 2>&1 || { echo "$(getDate) 🔴 Error dropping database: $(cat /dev/stderr)"; exit 1; }
-    
-    echo "$(getDate) 🟦 Removing Odoo Filestore: $ODOO_FILESTORE_PATH/$DB"
+    log_info "Removing Odoo Database: $DB"
+    sudo -u postgres psql -d postgres -c "DROP DATABASE IF EXISTS \"$DB\" WITH (FORCE)" > /dev/null 2>&1 || { log_error "Error dropping database: $(cat /dev/stderr)"; exit 1; }
+
+    log_info "Removing Odoo Filestore: $ODOO_FILESTORE_PATH/$DB"
     sudo rm -rf "$ODOO_FILESTORE_PATH/$DB"
-    
-    echo "$(getDate) ✅ Odoo Database: $DB has been removed"
+
+    log_success "Odoo Database: $DB has been removed"
   done
 }
 

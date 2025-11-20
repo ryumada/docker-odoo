@@ -9,6 +9,28 @@ REPOSITORY_OWNER=$(stat -c '%U' "$PATH_TO_ODOO")
 DOCKER_COMPOSE_FILE="docker-compose.yml"
 GIT_PATH="./odoo-base"
 
+# --- Logging Functions & Colors ---
+# Define colors for log messages
+readonly COLOR_RESET="\033[0m"
+readonly COLOR_INFO="\033[0;34m"
+readonly COLOR_SUCCESS="\033[0;32m"
+readonly COLOR_WARN="\033[0;33m"
+readonly COLOR_ERROR="\033[0;31m"
+
+# Function to log messages with a specific color and emoji
+log() {
+  local color="$1"
+  local emoji="$2"
+  local message="$3"
+  echo -e "${color}[$(date +"%Y-%m-%d %H:%M:%S")] ${emoji} ${message}${COLOR_RESET}"
+}
+
+log_info() { log "${COLOR_INFO}" "ℹ️" "$1"; }
+log_success() { log "${COLOR_SUCCESS}" "✅" "$1"; }
+log_warn() { log "${COLOR_WARN}" "⚠️" "$1"; }
+log_error() { log "${COLOR_ERROR}" "❌" "$1"; }
+# ------------------------------------
+
 function isDirectoryGitRepository() {
   dir=$1
 
@@ -23,10 +45,6 @@ function isDirectoryGitRepository() {
   fi  
 }
 
-function getDate() {
-  echo "[$(date +"%Y-%m-%d %H:%M:%S")]"
-}
-
 function getSubDirectories() {
   dir=$1
   subdirs="$(ls -d "$dir"/*/)"
@@ -34,48 +52,48 @@ function getSubDirectories() {
 }
 
 function main() {
-  echo "$(getDate) Change Directory to $PATH_TO_ODOO"
-  cd "$PATH_TO_ODOO" || { echo "🔴 Can't change directory to $PATH_TO_ODOO"; exit 1; }
+  log_info "Change Directory to $PATH_TO_ODOO"
+  cd "$PATH_TO_ODOO" || { log_error "Can't change directory to $PATH_TO_ODOO"; exit 1; }
 
-  echo "$(getDate) 🔵 Start checking git repositories"
+  log_info "Start checking git repositories"
   GIT_SUBDIRS=$(getSubDirectories "$GIT_PATH")
 
   if wc -l <<< "$GIT_SUBDIRS" | grep -q "0"; then
-    echo "$(getDate) 🔴 No git repositories found in $GIT_PATH"
+    log_error "No git repositories found in $GIT_PATH"
     exit 1
   fi
 
   if ! wc -l <<< "$GIT_SUBDIRS" | grep -q "1"; then
-    echo "$(getDate) 🟨 Please make sure there is only one git repository in $GIT_PATH"
+    log_warn "Please make sure there is only one git repository in $GIT_PATH"
     exit 1
   fi
   
   pulledrepositories=0
   for subdir in $GIT_SUBDIRS; do
     if isDirectoryGitRepository "$subdir"; then
-      echo "$(getDate) 🟦 Fetch and pull $subdir"
+      log_info "Fetch and pull $subdir"
       sudo -u "$REPOSITORY_OWNER" git -C "$subdir" fetch
       if sudo -u "$REPOSITORY_OWNER" git -C "$subdir" pull | grep -v "up to date" ;then
         pulledrepositories=$((pulledrepositories+1))
       fi
     else
-      echo "$(getDate) 🔴 $subdir is not a git repository."
-      echo "$(getDate) 🔴 Please make sure you have added $subdir directory to your snapshot script to backup the addons manually."
+      log_error "$subdir is not a git repository."
+      log_error "Please make sure you have added $subdir directory to your snapshot script to backup the addons manually."
     fi
   done
 
   if [ $pulledrepositories -gt 0 ]; then
-    echo "$(getDate) 🟦 Rebuilding the docker containers"
+    log_info "Rebuilding the docker containers"
     sudo -u "$REPOSITORY_OWNER" docker compose -f $PATH_TO_ODOO/$DOCKER_COMPOSE_FILE up -d --build
     sudo -u "$REPOSITORY_OWNER" docker compose -f $PATH_TO_ODOO/$DOCKER_COMPOSE_FILE restart
 
-    echo "$(getDate) 🟦 Cleaning Unused Docker caches..."
+    log_info "Cleaning Unused Docker caches..."
     sudo -u "$REPOSITORY_OWNER" docker container prune -f; sudo -u "$REPOSITORY_OWNER" docker image prune -f; sudo -u "$REPOSITORY_OWNER" docker system prune -f; sudo sync && echo 3 | sudo tee /proc/sys/vm/drop_caches
   else
-    echo "$(getDate) ✅ No updates found"
+    log_success "No updates found"
   fi
 
-  echo "$(getDate) ✅ Finish checking updates for $SERVICE_NAME"
+  log_success "Finish checking updates for $SERVICE_NAME"
 }
 
 main
