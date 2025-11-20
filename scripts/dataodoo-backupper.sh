@@ -4,17 +4,41 @@ CURRENT_DIR=$(dirname "$(readlink -f "$0")")
 CURRENT_DIR_USER=$(stat -c '%U' "$CURRENT_DIR")
 PATH_TO_ODOO=$(sudo -u "$CURRENT_DIR_USER" git -C "$(dirname "$(readlink -f "$0")")" rev-parse --show-toplevel)
 SERVICE_NAME=$(basename "$PATH_TO_ODOO")
-ODOO_FILESTORE_PATH="/var/lib/odoo/$SERVICE_NAME/filestore"
 
-function getDate() {
-  echo "[$(date +"%Y-%m-%d %H:%M:%S")]"
+# --- Logging Functions & Colors ---
+# Define colors for log messages
+readonly COLOR_RESET="\033[0m"
+readonly COLOR_INFO="\033[0;34m"
+readonly COLOR_SUCCESS="\033[0;32m"
+readonly COLOR_WARN="\033[0;33m"
+readonly COLOR_ERROR="\033[0;31m"
+
+# Function to log messages with a specific color and emoji
+log() {
+  local color="$1"
+  local emoji="$2"
+  local message="$3"
+  echo -e "${color}[$(date +"%Y-%m-%d %H:%M:%S")] ${emoji} ${message}${COLOR_RESET}"
 }
 
+log_info() { log "${COLOR_INFO}" "ℹ️" "$1"; }
+log_success() { log "${COLOR_SUCCESS}" "✅" "$1"; }
+log_warn() { log "${COLOR_WARN}" "⚠️" "$1"; }
+log_error() { log "${COLOR_ERROR}" "❌" "$1"; }
+# ------------------------------------
+
 function isRoot() {
-  if sudo -n true 2>/dev/null; then
-    echo "$(getDate) 🟦 Running as root"
-  else
-    echo "$(getDate) 🔴 Please run this script as root"
+  if [ "$(id -u)" -ne 0 ]; then
+    log_error "Please run this script as root"
+    exit 1
+  fi
+}
+
+function isCurlInstalled() {
+  if ! command -v curl &>/dev/null; then
+    log_error "curl is not installed. Please install curl."
+    echo "Ubuntu: sudo apt install curl"
+    echo "CentOS: sudo yum install curl"
     exit 1
   fi
 }
@@ -25,10 +49,10 @@ function areYouReallySure() {
   echo "Are you sure want to backup odoo datas on $SERVICE_NAME deployment?"
   echo -e "Type '$prompt'\n"
   read -r -p ": " RESPONSE
-  
+
   if [ "$RESPONSE" != "$prompt" ]; then
-    echo -e "\n$(getDate) 🔴 You don't write the correct phrase. Exiting..."
-    echo "$(getDate) 🆗 Uninstallation aborted."
+    log_error "You don't write the correct phrase. Exiting..."
+    log_info "Backup aborted."
     exit 1
   fi
 }
@@ -48,59 +72,54 @@ function whichData() {
 
 function main() {
   isRoot
+  isCurlInstalled
 
   areYouReallySure "yes"
 
   DB_LIST="$(whichData)"
 
+  ADMIN_PASSWD=$(grep "^ADMIN_PASSWD=" "$PATH_TO_ODOO/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
+  PORT=$(grep "^PORT=" "$PATH_TO_ODOO/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
+
+  if [ -z "$ADMIN_PASSWD" ] || [ -z "$PORT" ]; then
+    log_error "ADMIN_PASSWD and/or PORT not set in .env file. Cannot proceed with backup."
+    exit 1
+  fi
+
   temporary_directory="/tmp/$(date +"%Y%m%d-%H%M%S")-dataodoo-backupper"
-  output_mkdir=$(mkdir -p "$temporary_directory" 2>&1) && {
-    echo "$(getDate) ✅ Create temporary directory: $temporary_directory"
-  } || {
-    echo "$(getDate) 🔴 Error creating temporary directory: $output_mkdir"
+  if mkdir -p "$temporary_directory"; then
+    log_success "Created temporary directory: $temporary_directory"
+  else
+    log_error "Error creating temporary directory: $temporary_directory"
     exit 1
-  }
-
-  output_chmod=$(chmod 777 "$temporary_directory" 2>&1) && {
-    echo "$(getDate) ✅ Change the permission of $temporary_directory to 777"
-  } || {
-    echo "$(getDate) 🔴 Error changing the $temporary_directory directory: $output_chmod"
-  }
-
-  cd "$temporary_directory" || {
-    echo "🔴 Error change directory to $temporary_directory"
-    exit 1
-  }
+  fi
 
   for DB in $(echo "$DB_LIST" | tr "," "\n"); do
-    echo "$(getDate) 🟦 Synchronize the filestore of: $DB"
-    output_rsync=$(rsync -avzc "$ODOO_FILESTORE_PATH/$DB" ./filestore/) && {
-      echo "$(getDate) ✅ Filestore is synchronized"
-    } || {
-      echo "$(getDate) 🔴 Error synchronize filestore: $output_rsync"
-    }
+    log_info "Backing up Odoo Database: $DB"
+    BACKUP_FILE_PATH="$temporary_directory/$DB.zip"
 
-    echo "$(getDate) 🟦 Backup Odoo Database: $DB"
-    output_pg_dump=$(sudo -u postgres pg_dump -d "$DB" -f "./dump.sql" 2>&1) || {
-      echo "$(getDate) 🔴 Error dump database: $output_pg_dump"
-    }
+    curl -s -X POST \
+      -F "master_pwd=$ADMIN_PASSWD" \
+      -F "name=$DB" \
+      -F "backup_format=zip" \
+      -o "$BACKUP_FILE_PATH" \
+      "http://localhost:$PORT/web/database/backup"
 
-    echo "$(getDate) 📦 Archiving the backupdata..."
-    output_zip=$(zip -r "./$DB.zip" ./dump.sql ./filestore 2>&1) && {
-      echo "$(getDate) ✅ Backup data created: $temporary_directory/$DB.zip"
-    } || {
-      echo "$(getDate) 🔴 Error archiving the backupdata: $output_zip"
-    }
-    
-    echo "$(getDate) 🧹 Removing the temporary backup files"
-    output_rm=$(rm -rf "$temporary_directory/filestore" "$temporary_directory/dump.sql" 2>&1) && {
-      echo "$(getDate) ✅ The temporary backup files is removed"
-    } || {
-      echo "$(getDate) 🔴 Cannot remove the temporary backup files: $output_rm"
-    }
-    
-    echo "$(getDate) ✅ Odoo Database: $DB has been backupped"
+    if [ -s "$BACKUP_FILE_PATH" ]; then
+      log_success "Odoo Database '$DB' has been backed up to: $BACKUP_FILE_PATH"
+    else
+      log_error "Backup failed for database '$DB'. The output file is empty. Check Odoo logs."
+      # Clean up the empty file
+      rm -f "$BACKUP_FILE_PATH"
+    fi
   done
+
+  # Set ownership of the backup directory to the user who ran the script with sudo
+  if [ -n "$SUDO_USER" ]; then
+    chown -R "$SUDO_USER":"$SUDO_USER" "$temporary_directory"
+  fi
+
+  log_success "All backup operations are complete. Files are located in: $temporary_directory"
 }
 
 main
