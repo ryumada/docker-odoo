@@ -62,7 +62,10 @@ function main() {
   fi
 
   log_info "Change Directory to $PATH_TO_ODOO"
-  cd "$PATH_TO_ODOO" || { log_error "Can't change directory to $PATH_TO_ODOO"; exit 1; }
+  if ! cd "$PATH_TO_ODOO"; then
+    log_error "Can't change directory to $PATH_TO_ODOO"
+    exit 1
+  fi
 
   log_info "Start checking git repositories"
   GIT_SUBDIRS=$(getSubDirectories "$GIT_PATH")
@@ -88,8 +91,8 @@ function main() {
 
   if [ $pulledrepositories -gt 0 ]; then
     log_info "Rebuilding the docker containers"
-    # sudo -u "$REPOSITORY_OWNER" docker compose -f $PATH_TO_ODOO/$DOCKER_COMPOSE_FILE up -d --build
-    sudo -u "$REPOSITORY_OWNER" docker compose -f $PATH_TO_ODOO/$DOCKER_COMPOSE_FILE restart
+    # sudo -u "$REPOSITORY_OWNER" docker compose -f "$PATH_TO_ODOO/$DOCKER_COMPOSE_FILE" up -d --build
+    sudo -u "$REPOSITORY_OWNER" docker compose -f "$PATH_TO_ODOO/$DOCKER_COMPOSE_FILE" restart
 
     log_info "Cleaning Unused Docker caches..."
     sudo -u "$REPOSITORY_OWNER" docker container prune -f; sudo -u "$REPOSITORY_OWNER" docker image prune -f; sudo -u "$REPOSITORY_OWNER" docker system prune -f; sudo sync && echo 3 | sudo tee /proc/sys/vm/drop_caches

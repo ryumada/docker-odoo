@@ -115,7 +115,9 @@ function main() {
   if [ -n "$DB_NAME" ]; then
     add_arg "database" "$DB_NAME"
     add_arg "db-filter" "^$DB_NAME\$"
-    [ -n "$WITHOUT_DEMO" ] && add_arg "without-demo" "$WITHOUT_DEMO"
+    if [ -n "$WITHOUT_DEMO" ]; then
+      add_arg "without-demo" "$WITHOUT_DEMO"
+    fi
 
     if [ -n "$INIT_INSTALL_MODULES" ]; then
       add_arg "init" "$INIT_INSTALL_MODULES"

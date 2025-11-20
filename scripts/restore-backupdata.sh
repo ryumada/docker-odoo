@@ -105,7 +105,7 @@ function main() {
     log_info "Database name would be $RESTORED_DB_NAME"
 
     log_info "Checking if the database exists"
-    if sudo -u postgres psql -c '\l' | grep -wq "$RESTORED_DB_NAME"; then
+    if sudo -u postgres psql -lqt | cut -d \| -f 1 | grep -qw "$RESTORED_DB_NAME"; then
       log_error "Database $RESTORED_DB_NAME exists. You need to enter the new database name"
     else
       log_success "Database $RESTORED_DB_NAME does not exist"

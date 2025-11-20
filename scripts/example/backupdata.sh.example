@@ -75,7 +75,7 @@ curl -s -X POST \
      "http://localhost:$PORT/web/database/backup"
 
 if [ -s "$BACKUP_FILE_PATH" ]; then
-    chown "$SUDO_USER":"$SUDO_USER" "$BACKUP_FILE_PATH"
+    chown "$SUDO_USER:$SUDO_USER" "$BACKUP_FILE_PATH"
     log_success "Backup for '$ODOO_DATABASE_NAME_PRD' is completed. The backup file is located at $BACKUP_FILE_PATH."
 else
     log_error "Backup failed. The output file is empty. Check Odoo logs for details. Is the master password correct?"

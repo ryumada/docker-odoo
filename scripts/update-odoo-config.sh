@@ -43,7 +43,11 @@ fi
 # Check if the .env file exists
 if [ -f "$ENV_FILE" ]; then
   # Read the .env file and export the variables
-  export $(grep -v '^#' "$ENV_FILE" | xargs)
+  while IFS= read -r line; do
+    [[ -z "$line" || "$line" =~ ^# ]] && continue
+    # shellcheck disable=SC2163
+    export "$line"
+  done < "$ENV_FILE"
 
   # Check if the ADMIN_PASSWD variable is set in the .env file
   if [ -n "$ADMIN_PASSWD" ]; then

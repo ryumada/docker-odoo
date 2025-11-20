@@ -61,26 +61,26 @@ function main() {
   fi
 
   for user_dir in /home/*; do
-      [[ -d "$user_dir" ]] || {
-          log_warning "$user's dir not found."
-      } && {
-          user=$(basename "$user_dir")
-          config_file="$user_dir/.config/btop/btop.conf"
+    if [ -d "$user_dir" ]; then
+      user=$(basename "$user_dir")
+      config_file="$user_dir/.config/btop/btop.conf"
 
-          log_info "Checking for $user's btop.conf at $config_file..."
+      log_info "Checking for $user's btop.conf at $config_file..."
 
-          [[ -f "$config_file" ]] || {
-              log_warning "$user's btop.conf file is not exist."
-          } && {
-              log_info "$user's btop.conf exists. Attempting modification..."
+      if [ -f "$config_file" ]; then
+        log_info "$user's btop.conf exists. Attempting modification..."
 
-              sudo sed -i '/^clock_format *= *".*"$/ s/"$/ - \/host"/' "$config_file" || {
-                  log_error "An unexpected error occurred while modifying $user's btop.conf."
-              } && {
-                  log_success "Successfully modified clock_format for user $user."
-              }
-          }
-      }
+        if sudo sed -i '/^clock_format *= *".*"$/ s/"$/ - \/host"/' "$config_file"; then
+          log_success "Successfully modified clock_format for user $user."
+        else
+          log_error "An unexpected error occurred while modifying $user's btop.conf."
+        fi
+      else
+        log_warn "$user's btop.conf file is not exist."
+      fi
+    else
+      log_warning "$user's dir not found."
+    fi
   done
 
   log_success "Finished attempting to modify btop.conf for all users in /home."

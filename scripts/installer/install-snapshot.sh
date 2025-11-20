@@ -42,7 +42,7 @@ function installCronJob() {
     log_warn "GCS_BUCKET_NAME is not set in the .env file. The snapshot will not run automatically."
   else
     log_info "Create a cron to run automatically the snapshot script."
-    cat << EOF > ~/snapshot-$SERVICE_NAME
+    cat << EOF > "$HOME/snapshot-$SERVICE_NAME"
 SHELL=/bin/bash
 PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
 
@@ -50,14 +50,14 @@ EOF
 
     # Why on minute 27? I just want to avoid the cron from the application run altogether with this snapshot cron
     if [ -z "$SNAPSHOT_TIME_LIST" ]; then
-      cat << EOF >> ~/snapshot-$SERVICE_NAME
+      cat << EOF >> "$HOME/snapshot-$SERVICE_NAME"
 # Run the snapshot script every 4 hours
 27 */4 * * * root "/usr/local/sbin/snapshot-$SERVICE_NAME"
 
 EOF
     else
       for SNAPSHOT_TIME in $(echo "$SNAPSHOT_TIME_LIST" | tr "," "\n"); do
-        cat << EOF >> ~/snapshot-$SERVICE_NAME
+        cat << EOF >> "$HOME/snapshot-$SERVICE_NAME"
 # Run the snapshot script at $SNAPSHOT_TIME
 27 $SNAPSHOT_TIME * * * root "/usr/local/sbin/snapshot-$SERVICE_NAME"
 
@@ -66,11 +66,11 @@ EOF
     fi
 
     log_info "Move the cron file to /etc/cron.d"
-    sudo mv ~/snapshot-$SERVICE_NAME /etc/cron.d/snapshot-$SERVICE_NAME
+    sudo mv "$HOME/snapshot-$SERVICE_NAME" "/etc/cron.d/snapshot-$SERVICE_NAME"
     log_info "Change the ownership of the snapshot file"
-    sudo chown root: /etc/cron.d/snapshot-$SERVICE_NAME
+    sudo chown root: "/etc/cron.d/snapshot-$SERVICE_NAME"
     log_info "Change the permission of the snapshot file"
-    sudo chmod 644 /etc/cron.d/snapshot-$SERVICE_NAME
+    sudo chmod 644 "/etc/cron.d/snapshot-$SERVICE_NAME"
     log_info "Restart the cron service"
     sudo systemctl restart cron
   fi
@@ -110,7 +110,10 @@ function main() {
       log_error "Failed to elevate to root. Please run with sudo." # This will only run if exec fails
       exit 1
   fi
-  cd "$PATH_TO_ODOO" || exit 1
+  if ! cd "$PATH_TO_ODOO"; then
+    log_error "Failed to change directory to $PATH_TO_ODOO"
+    exit 1
+  fi
 
   GCS_BUCKET_NAME=$(grep "^GCS_BUCKET_NAME=" "$PATH_TO_ODOO/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
   SNAPSHOT_TIME_LIST=$(grep "^SNAPSHOT_TIME=" "$PATH_TO_ODOO/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
@@ -123,22 +126,22 @@ function main() {
   log_info "Installing snapshot utility"
 
   log_info "Copying the latest script from the example script"
-  OUTPUT_RSYNC_COMMAND=$(rsync -acz ./scripts/example/snapshot.sh.example "./scripts/snapshot-$SERVICE_NAME" 2>&1) && {
+  if OUTPUT_RSYNC_COMMAND=$(rsync -acz ./scripts/example/snapshot.sh.example "./scripts/snapshot-$SERVICE_NAME" 2>&1); then
     log_success "Copied the latest script from the example script."
-  } || {
+  else
     log_error "Failed to copy the latest script from the example script ➡️ $OUTPUT_RSYNC_COMMAND"
     exit 1
-  }
+  fi
 
   log_info "Changing the permission of the script"
   chmod 755 "./scripts/snapshot-$SERVICE_NAME"
 
   log_info "Create a softlink to /usr/local/sbin"
-  OUTPUT_LN_COMMAND=$(ln -s "$PATH_TO_ODOO/scripts/snapshot-$SERVICE_NAME" /usr/local/sbin/snapshot-"$SERVICE_NAME" 2>&1) && {
+  if OUTPUT_LN_COMMAND=$(ln -s "$PATH_TO_ODOO/scripts/snapshot-$SERVICE_NAME" /usr/local/sbin/snapshot-"$SERVICE_NAME" 2>&1); then
     log_success "Created a symbolic link to /usr/local/sbin/snapshot-$SERVICE_NAME"
-  } || {
+  else
     log_warn "Failed to create a symbolic link to /usr/local/sbin/snapshot-$SERVICE_NAME ➡️ $OUTPUT_LN_COMMAND"
-  }
+  fi
 
   installCronJob "$GCS_BUCKET_NAME" "$SNAPSHOT_TIME_LIST"
 
@@ -146,16 +149,16 @@ function main() {
     log_success "zstd is already installed"
   else
     log_info "Install zstd"
-    sudo apt install zstd -y && {
+    if sudo apt install zstd -y; then
       log_success "zstd is installed"
-    } || {
+    else
       log_error "Failed to install zstd"
       exit 1
-    }
+    fi
   fi
 
   log_info "Install the logrotate utility"
-  sudo cat << EOF > ~/snapshot-$SERVICE_NAME
+  cat << EOF | sudo tee "$HOME/snapshot-$SERVICE_NAME" > /dev/null
 /var/log/odoo/_utilities/snapshot-$SERVICE_NAME.log {
     rotate 4
     su root syslog
@@ -177,11 +180,11 @@ function main() {
 EOF
 
   log_info "Change the ownership of the logrotate file"
-  sudo chown root: ~/snapshot-$SERVICE_NAME
+  sudo chown root: "$HOME/snapshot-$SERVICE_NAME"
   log_info "Change the permission of the logrotate file"
-  sudo chmod 644 ~/snapshot-$SERVICE_NAME
+  sudo chmod 644 "$HOME/snapshot-$SERVICE_NAME"
   log_info "Move the logrotate file to /etc/logrotate.d"
-  sudo mv ~/snapshot-$SERVICE_NAME /etc/logrotate.d/snapshot-$SERVICE_NAME
+  sudo mv "$HOME/snapshot-$SERVICE_NAME" "/etc/logrotate.d/snapshot-$SERVICE_NAME"
 
   log_success "Installation finished"
 }

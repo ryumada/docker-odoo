@@ -7,7 +7,6 @@
 readonly COLOR_RESET="\033[0m"
 readonly COLOR_INFO="\033[0;34m"
 readonly COLOR_SUCCESS="\033[0;32m"
-readonly COLOR_WARN="\033[0;33m"
 readonly COLOR_ERROR="\033[0;31m"
 
 # Function to log messages with a specific color and emoji
@@ -35,7 +34,10 @@ function main() {
   echo "-------------------------------------------------------------------------------"
 
   log_info "Path to Odoo: $PATH_TO_ODOO"
-  cd "$PATH_TO_ODOO" || exit 1
+  if ! cd "$PATH_TO_ODOO"; then
+    log_error "Failed to change directory to $PATH_TO_ODOO"
+    exit 1
+  fi
 
   if [ -f "$PATH_TO_ODOO/.env" ]; then
     log_info "Backup current .env file"

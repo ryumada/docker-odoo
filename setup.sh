@@ -45,11 +45,6 @@ log_warn() { log "${COLOR_WARN}" "⚠️" "$1"; }
 log_error() { log "${COLOR_ERROR}" "❌" "$1"; }
 # ------------------------------------
 
-error_handler() {
-  log_error "An error occurred on line $1. Exiting..."
-  exit 1
-}
-
 trap 'error_handler $LINENO' ERR
 
 # Global Variable
@@ -60,7 +55,8 @@ function checkAddonsPathOnOdooConfFile() {
 
   log_info "You have defined this addons_path on $ODOO_CONF_FILE: $addons_string"
 
-  addons_array=(${addons_string//,/ })
+  # shellcheck disable=SC2206
+  addons_array=(${addons_string//,/ }) # Intentionally splitting string into array
 
   for addons_path in "${addons_array[@]}"; do
 
@@ -68,7 +64,7 @@ function checkAddonsPathOnOdooConfFile() {
       log_error "The addons_path ($addons_path) should be started with /opt/odoo/."
       TODO+=("Please check your odoo.conf file. The addons_path ($addons_path) should be started with /opt/odoo.")
     else
-      addons_path_onhost=$(sed "s|/opt/odoo|$REPOSITORY_DIRPATH|" <<< "$addons_path")
+      addons_path_onhost="${addons_path/\/opt\/odoo/$REPOSITORY_DIRPATH}"
 
       if [ ! -d "$addons_path_onhost" ]; then
         log_error "$addons_path on your conf file is not valid."
@@ -146,55 +142,73 @@ function createOdooUtilitiesFromEntrypoint() {
 
   cp "$entrypoint_file" "$odoo_utility_file"
 
+  # shellcheck disable=SC2016
   sed -i 's/: "${PORT:=8069}"/PORT="$(shuf -i 55000-60000 -n 1)"/' "$odoo_utility_file"
+  # shellcheck disable=SC2016
   sed -i 's/: "${GEVENT_PORT:=8072}"/GEVENT_PORT="$(shuf -i 50000-54999 -n 1)"/' "$odoo_utility_file"
 
-  sed -i '1a DATABASE_NAME_OR_HELP=$1\
-'"$(if [[ $param == "module-upgrade" ]]; then echo "UPDATE_MODULES=\$2\n"; fi)"'\
-function show_help() {\
-  echo "Usage: odoo-'"$param"' [database_name|help] '"$(if [[ $param == "module-upgrade" ]]; then echo "[--update=module1,module2,...]"; fi)"'"\
-  echo "Parameters:"\
-  echo "  database_name: The name of the database you want to connect to"\
-  echo ""\
-  echo "  help:"\
-  echo "    help, -h, --help: Show this help message and exit"\
-}\n\
-case "$DATABASE_NAME_OR_HELP" in\
-  help|-h|--help)\
-    show_help\
-    exit 1\
-    ;;\
-  "")\
-    echo "Usage: odoo-'"$param"' [database_name|help] '"$(if [[ $param == "module-upgrade" ]]; then echo "[--update=module1,module2,...]"; fi)"'"\
-    exit 1\
-    ;;\
-  *)\
-    DB_NAME=$DATABASE_NAME_OR_HELP\
-    ;;\
-esac\
-' "$odoo_utility_file"
+  # Use a temporary file and a "Here Document" to avoid complex sed escaping
+  temp_header_file=$(mktemp)
+
+  # The 'EOF' is quoted to prevent any variable expansion within the block.
+  # This is crucial because variables like $1 need to be interpreted by the
+  # generated script, not by this setup script.
+  cat <<'EOF' > "$temp_header_file"
+DATABASE_NAME_OR_HELP=$1
+UPDATE_MODULES=$2
+
+function show_help() {
+  echo "Usage: odoo-PARAM [database_name|help] [--update=module1,module2,...]"
+  echo "Parameters:"
+  echo "  database_name: The name of the database you want to connect to"
+  echo ""
+  echo "  help:"
+  echo "    help, -h, --help: Show this help message and exit"
+}
+
+case "$DATABASE_NAME_OR_HELP" in
+  help|-h|--help) show_help; exit 1 ;;
+  "") show_help; exit 1 ;;
+  *) DB_NAME=$DATABASE_NAME_OR_HELP ;;
+esac
+EOF
+
+  # Replace the PARAM placeholder with the actual script name (e.g., "shell")
+  sed -i "s/PARAM/$param/g" "$temp_header_file"
+  # Inject the content of the temp file after line 1 of the utility script
+  sed -i '1r '"$temp_header_file" "$odoo_utility_file"
+  # Clean up the temporary file
+  rm "$temp_header_file"
 
   if [[ "$param" == "shell" ]]; then
 
+    # shellcheck disable=SC2016
     sed -i 's|"/opt/odoo/odoo-base/$ODOO_BASE_DIRECTORY/odoo-bin"|"/opt/odoo/odoo-base/$ODOO_BASE_DIRECTORY/odoo-bin\" shell|' "$odoo_utility_file"
 
   elif [[ "$param" == "module-upgrade" ]]; then
+    # Use a temporary file for the module upgrade logic to keep it readable
+    temp_upgrade_logic=$(mktemp)
+    cat <<'EOF' > "$temp_upgrade_logic"
 
-    # append line below the pattern with sed
-    sed -i '/ODOO_BASE_DIRECTORY=$(basename "$ODOO_BASE_DIRECTORY")/a \
-\
-if [[ "$UPDATE_MODULES" == "--update="* ]]; then\
-  UPDATE_MODULES="${UPDATE_MODULES#--update=}"\
-  add_arg "update" "$UPDATE_MODULES"\
-else\
-  echo "[$(date +"%Y-%m-%d %H:%M:%S")] 🔴 ERROR?! This script need --update parameter."\
-  echo "Usage: odoo-'"$param"' [database_name|help] [--update=module1,module2,...]"\
-  exit 1\
-fi' "$odoo_utility_file"
+if [[ "$UPDATE_MODULES" != "--update="* ]]; then
+  echo "[$$(date +'%Y-%m-%d %H:%M:%S')] 🔴 ERROR?! This script needs the --update parameter."
+  echo "Usage: odoo-PARAM [database_name|help] --update=module1,module2,..."
+  exit 1;
+fi
+UPDATE_MODULES="${UPDATE_MODULES#--update=}"
+add_arg "update" "$UPDATE_MODULES"
+EOF
+    sed -i "s/PARAM/$param/g" "$temp_upgrade_logic"
+    # Use sed 'r' to read the temp file and insert it after the matching line
+    # shellcheck disable=SC2016
+    sed -i '/ODOO_BASE_DIRECTORY=\$(basename "\$ODOO_BASE_DIRECTORY")/r '"$temp_upgrade_logic" "$odoo_utility_file"
+    rm "$temp_upgrade_logic"
   fi
 
   # delete line on pattern
+  # shellcheck disable=SC2016
   sed -i '/ODOO_LOG_FILE=$ODOO_LOG_DIR_SERVICE\/$SERVICE_NAME.log/d' "$odoo_utility_file"
+  # shellcheck disable=SC2016
   sed -i '/add_arg "logfile" "$ODOO_LOG_FILE"/d' "$odoo_utility_file"
 
   chown "$REPOSITORY_OWNER": "$odoo_utility_file"
@@ -606,14 +620,14 @@ function isUserExist() {
 
   if ! id "$user_name" &>/dev/null; then
     log_info "Create a new $user_name user."
-    if sudo useradd -m -u $user_id -s /bin/bash $user_name; then
+    if sudo useradd -m -u "$user_id" -s /bin/bash "$user_name"; then
       log_success "$user_name user created."
     else
       log_error "Failed to create $user_name user."
       exit 1
     fi
   else
-    if [ "$(id -u $user_name)" -ne $user_id ]; then
+    if [ "$(id -u "$user_name")" -ne "$user_id" ]; then
       log_error "$user_name user already exists but the user id is not $user_id."
       TODO+=("Please change the $user_name user id to $user_id using the following command: 'sudo usermod -u $user_id $user_name '")
     else
@@ -867,7 +881,7 @@ function main() {
   read -rp "Press enter key to continue..."
   echo
 
-  isbuildorpull=($(isBuildOrPull))
+  read -r -a isbuildorpull <<< "$(isBuildOrPull)"
   is_build_or_pull="${isbuildorpull[1]}"
   build_or_pull="${isbuildorpull[0]}"
 
@@ -903,10 +917,10 @@ function main() {
     DB_HOST=$(grep 'DB_HOST' $ENV_FILE | grep -v '#' | grep -o 'DB_HOST=\([^)]*\)' | sed 's/DB_HOST=//')
 
     if [ "$DB_HOST" == "" ]; then
-      isPostgresInstalled && {
+      if isPostgresInstalled; then
         generatePostgresSecrets
         installPostgresRestartorScript
-      }
+      fi
     else
       log_warn "DB_HOST found on .env file. That means you have a separate postgresql server."
       log_warn "Please make sure that the postgresql server is running and the user and password are setup successfully. See '.secrets' directory to setup the username and password of your postgres user."

@@ -159,7 +159,9 @@ function main() {
   echo
 
   if [ -x "$SNAPSHOT_SCRIPT_FILE" ]; then
-    "$SNAPSHOT_SCRIPT_FILE" || die "The snapshot script failed. Uninstallation is prohibited. Please create the snapshot script first"
+    if ! "$SNAPSHOT_SCRIPT_FILE"; then
+      die "The snapshot script failed. Uninstallation is prohibited. Please create the snapshot script first"
+    fi
   else
     log_error "The snapshot script is missing or not executable: $SNAPSHOT_SCRIPT_FILE"
     die "Uninstallation is prohibited. Please ensure snapshot is created."

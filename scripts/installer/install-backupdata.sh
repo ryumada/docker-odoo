@@ -50,27 +50,30 @@ function main() {
       exit 1
   fi
 
-  cd "$PATH_TO_ODOO" || exit 1
+  if ! cd "$PATH_TO_ODOO"; then
+    log_error "Failed to change directory to $PATH_TO_ODOO"
+    exit 1
+  fi
 
   log_info "Installing backupdata utility"
 
   log_info "Copying the latest script from the example script"
-  OUTPUT_RSYNC_COMMAND=$(rsync -acz ./scripts/example/backupdata.sh.example "./scripts/backupdata-$SERVICE_NAME" 2>&1) && {
+  if OUTPUT_RSYNC_COMMAND=$(rsync -acz ./scripts/example/backupdata.sh.example "./scripts/backupdata-$SERVICE_NAME" 2>&1); then
     log_success "Copied the latest script from the example script."
-  } || {
+  else
     log_error "Failed to copy the latest script from the example script ➡️ $OUTPUT_RSYNC_COMMAND"
     exit 1
-  }
+  fi
 
   log_info "Changing the permission of the script"
   chmod 755 "./scripts/backupdata-$SERVICE_NAME"
 
   log_info "Create a softlink to /usr/local/sbin"
-  OUTPUT_LN_COMMAND=$(ln -s "$PATH_TO_ODOO/scripts/backupdata-$SERVICE_NAME" /usr/local/sbin/backupdata-"$SERVICE_NAME" 2>&1) && {
+  if OUTPUT_LN_COMMAND=$(ln -s "$PATH_TO_ODOO/scripts/backupdata-$SERVICE_NAME" /usr/local/sbin/backupdata-"$SERVICE_NAME" 2>&1); then
     log_success "Created a symbolic link to /usr/local/sbin/backupdata-$SERVICE_NAME"
-  } || {
+  else
     log_warn "Failed to create a symbolic link to /usr/local/sbin/backupdata-$SERVICE_NAME ➡️ $OUTPUT_LN_COMMAND"
-  }
+  fi
 }
 
 main "@"

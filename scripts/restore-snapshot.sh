@@ -149,51 +149,82 @@ function main() {
   isZstdInstalled
   isSnapshotFileExist
 
-  cd "$PATH_TO_ODOO" || { log_error "Can't change directory to $PATH_TO_ODOO"; exit 1; }
+  if ! cd "$PATH_TO_ODOO"; then
+    log_error "Can't change directory to $PATH_TO_ODOO"
+    exit 1
+  fi
 
   log_info "Extract /tmp/$TAR_FILE_NAME to $TEMP_DIR"
-  mkdir "$TEMP_DIR" || { log_error "Can't create $TEMP_DIR. Maybe the directory exist."; exit 1; }
-  tar -xaf "/tmp/$TAR_FILE_NAME" -C "/tmp/snapshot-$SERVICE_NAME" || { log_error "Can't extract /tmp/$TAR_FILE_NAME"; exit 1; }
+  if ! mkdir "$TEMP_DIR"; then
+    log_error "Can't create $TEMP_DIR. Maybe the directory already exists."
+    exit 1
+  fi
+  if ! tar -xaf "/tmp/$TAR_FILE_NAME" -C "/tmp/snapshot-$SERVICE_NAME"; then
+    log_error "Can't extract /tmp/$TAR_FILE_NAME"
+    exit 1
+  fi
 
   log_info "Restore conf/odoo.conf"
-  cp -f "$TEMP_DIR/conf/odoo.conf" "conf/odoo.conf" || { log_error "Can't restore conf/odoo.conf"; }
+  if ! cp -f "$TEMP_DIR/conf/odoo.conf" "conf/odoo.conf"; then
+    log_error "Can't restore conf/odoo.conf"
+  fi
   chown "$REPOSITORY_OWNER": "conf/odoo.conf"
 
   log_info "Restore environment file (.env)"
-  cp -f "$TEMP_DIR/.env" .env || { log_error "Can't restore .env"; }
+  if ! cp -f "$TEMP_DIR/.env" .env; then
+    log_error "Can't restore .env"
+  fi
   chown "$REPOSITORY_OWNER": .env
 
   restoreDBCredentials
 
   log_info "Stop $SERVICE_NAME service"
-  docker compose down > /dev/null 2>&1 || true
+  if ! docker compose down > /dev/null 2>&1; then
+    log_warn "Failed to stop docker compose service. It might not be running."
+  fi
 
   log_info "Restore backupdata script scripts/backupdata-$SERVICE_NAME"
-  cp -f $TEMP_DIR/scripts/backupdata-$SERVICE_NAME "scripts/backupdata-$SERVICE_NAME" || { log_error "Can't restore scripts/backupdata-$SERVICE_NAME"; }
-  ln -s "$PATH_TO_ODOO/scripts/backupdata-$SERVICE_NAME" /usr/local/sbin/backupdata-$SERVICE_NAME > /dev/null 2>&1 || { log_warn "Can't create symlink on /usr/local/sbin/backupdata-$SERVICE_NAME. Maybe the symlink is exist."; }
+  if ! cp -f "$TEMP_DIR/scripts/backupdata-$SERVICE_NAME" "scripts/backupdata-$SERVICE_NAME"; then
+    log_error "Can't restore scripts/backupdata-$SERVICE_NAME"
+  fi
+  if ! ln -s "$PATH_TO_ODOO/scripts/backupdata-$SERVICE_NAME" /usr/local/sbin/backupdata-"$SERVICE_NAME" > /dev/null 2>&1; then
+    log_warn "Can't create symlink on /usr/local/sbin/backupdata-$SERVICE_NAME. Maybe the symlink already exists."
+  fi
   chown "$REPOSITORY_OWNER": "scripts/backupdata-$SERVICE_NAME"
   chmod 755 "scripts/backupdata-$SERVICE_NAME"
 
   log_info "Restore databasecloner script scripts/databasecloner-$SERVICE_NAME"
-  cp -f $TEMP_DIR/scripts/databasecloner-$SERVICE_NAME "scripts/databasecloner-$SERVICE_NAME" || { log_error "Can't restore scripts/databasecloner-$SERVICE_NAME"; }
-  ln -s "$PATH_TO_ODOO/scripts/databasecloner-$SERVICE_NAME" /usr/local/sbin/databasecloner-$SERVICE_NAME > /dev/null 2>&1 || { log_warn "Can't create symlink on /usr/local/sbin/databasecloner-$SERVICE_NAME. Maybe the symlink is exist."; }
+  if ! cp -f "$TEMP_DIR/scripts/databasecloner-$SERVICE_NAME" "scripts/databasecloner-$SERVICE_NAME"; then
+    log_error "Can't restore scripts/databasecloner-$SERVICE_NAME"
+  fi
+  if ! ln -s "$PATH_TO_ODOO/scripts/databasecloner-$SERVICE_NAME" /usr/local/sbin/databasecloner-"$SERVICE_NAME" > /dev/null 2>&1; then
+    log_warn "Can't create symlink on /usr/local/sbin/databasecloner-$SERVICE_NAME. Maybe the symlink already exists."
+  fi
   chown "$REPOSITORY_OWNER": "scripts/databasecloner-$SERVICE_NAME"
   chmod 755 "scripts/databasecloner-$SERVICE_NAME"
 
   log_info "Restore the snapshot script scripts/snapshot-$SERVICE_NAME"
-  cp -f $TEMP_DIR/scripts/snapshot-$SERVICE_NAME "scripts/snapshot-$SERVICE_NAME" || { log_error "Can't restore scripts/snapshot-$SERVICE_NAME"; }
-  ln -s "$PATH_TO_ODOO/scripts/snapshot-$SERVICE_NAME" /usr/local/sbin/snapshot-$SERVICE_NAME > /dev/null 2>&1 || { log_warn "Can't create symlink on /usr/local/sbin/snapshot-$SERVICE_NAME. Maybe the symlink is exist."; }
+  if ! cp -f "$TEMP_DIR/scripts/snapshot-$SERVICE_NAME" "scripts/snapshot-$SERVICE_NAME"; then
+    log_error "Can't restore scripts/snapshot-$SERVICE_NAME"
+  fi
+  if ! ln -s "$PATH_TO_ODOO/scripts/snapshot-$SERVICE_NAME" /usr/local/sbin/snapshot-"$SERVICE_NAME" > /dev/null 2>&1; then
+    log_warn "Can't create symlink on /usr/local/sbin/snapshot-$SERVICE_NAME. Maybe the symlink already exists."
+  fi
   chown "$REPOSITORY_OWNER": "scripts/snapshot-$SERVICE_NAME"
   chmod 755 "scripts/snapshot-$SERVICE_NAME"
 
   log_info "Restore requirements.txt"
-  cp -f "$TEMP_DIR/requirements.txt" ./requirements.txt || { log_error "Can't restore requirements.txt"; }
+  if ! cp -f "$TEMP_DIR/requirements.txt" ./requirements.txt; then
+    log_error "Can't restore requirements.txt"
+  fi
   chown "$REPOSITORY_OWNER": ./requirements.txt
 
   restoreOdooData
 
   log_info "Restore Odoo modules without git."
-  find "$TEMP_DIR/git/" -mindepth 1 -maxdepth 1 -type d -exec cp -r {} ./git/ \; || { log_error "Can't restore Odoo modules without git."; }
+  if ! find "$TEMP_DIR/git/" -mindepth 1 -maxdepth 1 -type d -exec cp -r {} ./git/ \;; then
+    log_error "Can't restore Odoo modules without git."
+  fi
   chown -R "$REPOSITORY_OWNER": ./git/
 
   echo -e "\n==========================================================================="

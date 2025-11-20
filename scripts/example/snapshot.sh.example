@@ -87,12 +87,12 @@ function moveSnapshotFileToTempDir() {
 
   local temp_dir
   temp_dir="$tar_file_path-$(date +"%Y%m%d-%H%M%S")"
-  OUTPUT_mkdir=$(mkdir "$temp_dir" 2>&1) && {
-    echo "$(getDate) ✅ Create the temporary directory"
-  } || {
+  if ! OUTPUT_mkdir=$(mkdir "$temp_dir" 2>&1); then
     echo "$(getDate) 🔴 Can't create the temporary directory: $OUTPUT_mkdir"
     exit 1
-  }
+  else
+    echo "$(getDate) ✅ Create the temporary directory"
+  fi
 
   echo "$(getDate) 📦 Moving the snapshot file to the temporary directory."
   mv "$tar_file_path" "$temp_dir/"
@@ -193,7 +193,10 @@ function main() {
   FILES_DIRS_TO_TAR="/var/lib/odoo/$SERVICE_NAME/filestore/$ODOO_DATABASE_NAME_PRD $FILES_DIRS_TO_TAR"
 
   echo "$(getDate) Change WORKDIR to $PATH_TO_ODOO."
-  cd "$PATH_TO_ODOO" || { echo "🔴 Can't change directory to $PATH_TO_ODOO"; exit 1; }
+  if ! cd "$PATH_TO_ODOO"; then
+    echo "🔴 Can't change directory to $PATH_TO_ODOO"
+    exit 1
+  fi
 
   # DATE_FOR_FILENAME="$(date +"%Y%m%d-%H%M%S")"
   # DATE_FOR_MESSAGE=$(date +"%Y-%m-%d %H:%M:%S")
@@ -231,7 +234,7 @@ function main() {
   # TEMP_FILES_TO_REMOVE="more_files_to_remove $TEMP_FILES_TO_REMOVE"
 
   if ! command -v zstd >/dev/null 2>&1; then
-    echo "🔴 zstd is not installed. Please install zstd first."
+    echo "$(getDate) 🔴 zstd is not installed. Please install zstd first."
     echo "For Ubuntu: sudo apt install zstd"
     echo "For CentOS: sudo yum install zstd"
     exit 1
@@ -241,7 +244,7 @@ function main() {
   writeGitHash "$PATH_TO_ODOO/odoo-base"
 
   echo "$(getDate) Dumping $ODOO_DATABASE_NAME_PRD database..."
-  sudo -u postgres pg_dump -f /tmp/"$ODOO_DATABASE_NAME_PRD.sql" $ODOO_DATABASE_NAME_PRD > /dev/null 2>&1
+  sudo -u postgres pg_dump -f /tmp/"$ODOO_DATABASE_NAME_PRD.sql" "$ODOO_DATABASE_NAME_PRD" > /dev/null 2>&1
   PG_DUMP_EXIT_CODE=$?
   if [ $PG_DUMP_EXIT_CODE -ne 0 ]; then
     echo "$(getDate) 🔴 pg_dump failed to dump the database. Exit code: $PG_DUMP_EXIT_CODE"
@@ -249,11 +252,11 @@ function main() {
   fi
 
   echo "$(getDate) 📦 Backing up the database and its datadir..."
-  tar -cf "$TAR_FILE_PATH" -I "zstd -vT0 -7 --ultra" $FILES_DIRS_TO_TAR > /dev/null 2>&1
+  tar -cf "$TAR_FILE_PATH" -I "zstd -vT0 -7 --ultra" "$FILES_DIRS_TO_TAR" > /dev/null 2>&1
   TAR_EXIT_CODE=$?
   if [ $TAR_EXIT_CODE -ne 0 ]; then
     echo "$(getDate) 🧹 Removing temporary files."
-    rm $TEMP_FILES_TO_REMOVE
+    rm "$TEMP_FILES_TO_REMOVE"
 
     echo "$(getDate) 🔴 tar failed to backup the database and its datadir. Exit code: $TAR_EXIT_CODE"
     exit 1
@@ -263,7 +266,7 @@ function main() {
   chown "$REPOSITORY_OWNER": "$TAR_FILE_PATH"
 
   echo "$(getDate) 🧹 Removing temporary files."
-  rm $TEMP_FILES_TO_REMOVE
+  rm "$TEMP_FILES_TO_REMOVE"
 
   if [ "$GCS_BUCKET_NAME" != "" ]; then
     if sudo -u "$REPOSITORY_OWNER" gsutil ls "gs://$GCS_BUCKET_NAME" > /dev/null 2>&1; then

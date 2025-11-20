@@ -24,13 +24,15 @@ log_error() { log "${COLOR_ERROR}" "❌" "$1"; }
 
 function installLogrotator() {
   containers=$(docker ps --format '{{.ID}}')
-  container_ids=$(docker inspect --format '{{.Id}}' $containers)
+  container_ids=$(docker inspect --format '{{.Id}}' "$containers")
 
-  for container_id in $container_ids; do
-    log_info "Create logrotate file for container: $container_id"
+  for container_id in $container_ids; do # This is intentionally unquoted to loop over IDs.
+    local temp_logrotate_file="/tmp/docker_$container_id"
+    log_info "Create logrotate file for container: \"$container_id\""
 
-    cat << EOF > ~/docker_$container_id
-/var/lib/docker/containers/$container_id/$container_id-json.log {
+
+    cat << EOF > "$HOME/docker_$container_id"
+/var/lib/docker/containers/"$container_id"/"$container_id"-json.log {
     rotate 14
     olddir /var/lib/docker/containers/$container_id/$container_id-json.log-old
     daily
@@ -49,11 +51,11 @@ function installLogrotator() {
 
 EOF
 
-    sudo chown root: ~/docker_$container_id
-    sudo chmod 644 ~/docker_$container_id
-    sudo mv ~/docker_$container_id /etc/logrotate.d/docker_$container_id
+    sudo chown root: "$temp_logrotate_file"
+    sudo chmod 644 "$temp_logrotate_file"
+    sudo mv "$temp_logrotate_file" "/etc/logrotate.d/docker_$container_id"
 
-    log_success "Created the logrotate file: /etc/logrotate.d/docker_$container_id"
+    log_success "Created the logrotate file: /etc/logrotate.d/docker_\"$container_id\""
   done
 
 }
@@ -68,25 +70,25 @@ function main() {
       exit 1
   fi
 
-  logrotate --version > /dev/null 2>&1 && {
+  if logrotate --version > /dev/null 2>&1; then
     log_success "logrotate is already installed"
-  } || {
+  else
     log_error "Logrotate is not available. Please install it first to use this utility"
     exit 1
-  }
+  fi
 
   if zstd --version > /dev/null 2>&1; then
     log_success "zstd is already installed"
     installLogrotator
   else
     log_info "Install zstd"
-    sudo apt install zstd -y && {
+    if sudo apt install zstd -y; then
       log_success "zstd is installed"
       installLogrotator
-    } || {
+    else
       log_error "Failed to install zstd"
       exit 1
-    }
+    fi
   fi
 }
 

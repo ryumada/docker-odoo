@@ -71,7 +71,9 @@ function main() {
 
   for DB in $(echo "$DB_LIST" | tr "," "\n"); do
     log_info "Removing Odoo Database: $DB"
-    sudo -u postgres psql -d postgres -c "DROP DATABASE IF EXISTS \"$DB\" WITH (FORCE)" > /dev/null 2>&1 || { log_error "Error dropping database: $(cat /dev/stderr)"; exit 1; }
+    if ! sudo -u postgres psql -d postgres -c "DROP DATABASE IF EXISTS \"$DB\" WITH (FORCE)" > /dev/null 2>&1; then
+      log_error "Error dropping database '$DB'. Please check logs."
+    fi
 
     log_info "Removing Odoo Filestore: $ODOO_FILESTORE_PATH/$DB"
     sudo rm -rf "$ODOO_FILESTORE_PATH/$DB"
