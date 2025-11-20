@@ -14,9 +14,9 @@ A Dockerfile to create a custom Odoo docker image.
 
 There are some points you should know:
 
-- First, you need to execute `sudo ./_install.sh` script to check if all of your files and directories are ready to build image.
+- First, you need to execute `sudo ./setup.sh` script to check if all of your files and directories are ready to build the image. This script will guide you through the setup process.
   ```bash
-  sudo ./_install.sh
+  sudo ./setup.sh
   ```
 
   > ⚠️ When you are asked to enter whether you want to build or pull container image, choose the `build` option.

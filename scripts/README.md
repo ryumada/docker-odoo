@@ -1,5 +1,7 @@
 This directory contains utilities to help docker-odoo deployment.
 
+> Most of these utilities are installed automatically when you run the main `setup.sh` script from the root of the repository. The instructions below are for manual installation or for understanding how they work.
+
 <details>
 <summary>
 
@@ -69,7 +71,7 @@ See the example file to create the database cloner utility (`./scripts/example/d
       ```bash
       sudo chmod 755 ./scripts/databasecloner-$SERVICE_NAME
       ```
-  
+
   5. Create a soft-link to system-wide bin
       ```bash
       sudo ln -s $PWD/scripts/databasecloner-$SERVICE_NAME /usr/local/sbin/databasecloner-$SERVICE_NAME
@@ -133,7 +135,7 @@ Before you run the restore snapshot script, you need to prepare [snapshot utilit
       cat << EOF > ~/snapshot-$SERVICE_NAME
       SHELL=/bin/bash
       PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
-      
+
       27 */4 * * * root "/usr/local/sbin/snapshot-$SERVICE_NAME"
 
       EOF
@@ -143,7 +145,7 @@ Before you run the restore snapshot script, you need to prepare [snapshot utilit
       sudo chmod 644 /etc/cron.d/snapshot-$SERVICE_NAME
       sudo systemctl restart cron
       ```
-      
+
       > ⚠️ Replace `$SERVICE_NAME` to the value of your root repository name (`basename "$PWD"`).
 
   7. Rotate the logfile.
@@ -182,7 +184,7 @@ Before you run the restore snapshot script, you need to prepare [snapshot utilit
   <summary>
 
   ## Setup Google Cloud Storage as the storage of your snapshot
-  
+
   </summary>
 
   Setup `google-cloud-cli` to run move your backup file to Google Cloud using `gsutil`
@@ -202,10 +204,10 @@ Before you run the restore snapshot script, you need to prepare [snapshot utilit
 
       </details>
 
-  2. Install `google-cloud-cli` from GCP Official docs   
+  2. Install `google-cloud-cli` from GCP Official docs
      <details>
      <summary>
-     Follow this docs for the guide: 
+     Follow this docs for the guide:
      </summary>
 
      [Install the gcloud CLI  |  Google Cloud CLI Documentation](https://cloud.google.com/sdk/docs/install)
