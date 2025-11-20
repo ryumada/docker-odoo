@@ -6,6 +6,28 @@ PATH_TO_ODOO=$(sudo -u "$CURRENT_DIR_USER" git -C "$(dirname "$(readlink -f "$0"
 SERVICE_NAME=$(basename "$PATH_TO_ODOO")
 REPOSITORY_OWNER=$(stat -c '%U' "$PATH_TO_ODOO")
 
+# --- Logging Functions & Colors ---
+# Define colors for log messages
+readonly COLOR_RESET="\033[0m"
+readonly COLOR_INFO="\033[0;34m"
+readonly COLOR_SUCCESS="\033[0;32m"
+readonly COLOR_WARN="\033[0;33m"
+readonly COLOR_ERROR="\033[0;31m"
+
+# Function to log messages with a specific color and emoji
+log() {
+  local color="$1"
+  local emoji="$2"
+  local message="$3"
+  echo -e "${color}[$(date +"%Y-%m-%d %H:%M:%S")] ${emoji} ${message}${COLOR_RESET}"
+}
+
+log_info() { log "${COLOR_INFO}" "ℹ️" "$1"; }
+log_success() { log "${COLOR_SUCCESS}" "✅" "$1"; }
+log_warn() { log "${COLOR_WARN}" "⚠️" "$1"; }
+log_error() { log "${COLOR_ERROR}" "❌" "$1"; }
+# ------------------------------------
+
 function areYouReallySure() {
   tar_file_path=$1
   ASK_TO_REPLACE_EXISTING_SNAPSHOT=$2
@@ -18,23 +40,19 @@ function areYouReallySure() {
 
       case $CONFIRMATION in
         "yes I am sure")
-          echo "$(getDate) 🔄 Overwriting the current snapshot file."
+          log_info "Overwriting the current snapshot file."
           rm -f "$tar_file_path"
           ;;
         *)
-          echo "$(getDate) 🔴 You're not sure, okay. Now exitting the script."
+          log_error "You're not sure, okay. Now exitting the script."
           exit 1
           ;;
       esac
     else
-      echo "$(getDate) 🔄 Removing the existing snapshot file."
+      log_info "Removing the existing snapshot file."
       rm -f "$tar_file_path"
     fi
   fi
-}
-
-function getDate() {
-  echo "[$(date +"%Y-%m-%d %H:%M:%S")]"
 }
 
 function getGitHash() {
@@ -49,7 +67,7 @@ function getGitHash() {
   OUTPUT_GIT_HASHES_FILE="$git_path/../git_hashes.txt"
 
   cat <<EOF >> "$OUTPUT_GIT_HASHES_FILE"
-  Updated at$(getDate)
+  Updated at [$(date +"%Y-%m-%d %H:%M:%S")]
   Git Directory: $git_path
   Git Remote: $(git -C "$git_path" remote get-url origin)
   Git Branch: $(git -C "$git_path" branch --show-current)
@@ -88,21 +106,21 @@ function moveSnapshotFileToTempDir() {
   local temp_dir
   temp_dir="$tar_file_path-$(date +"%Y%m%d-%H%M%S")"
   if ! OUTPUT_mkdir=$(mkdir "$temp_dir" 2>&1); then
-    echo "$(getDate) 🔴 Can't create the temporary directory: $OUTPUT_mkdir"
+    log_error "Can't create the temporary directory: $OUTPUT_mkdir"
     exit 1
   else
-    echo "$(getDate) ✅ Create the temporary directory"
+    log_success "Create the temporary directory"
   fi
 
-  echo "$(getDate) 📦 Moving the snapshot file to the temporary directory."
+  log_info "Moving the snapshot file to the temporary directory."
   mv "$tar_file_path" "$temp_dir/"
 
-  echo "$(getDate) 👤 change the permission and owner of the temporary directory"
+  log_info "change the permission and owner of the temporary directory"
   chmod 755 "$temp_dir"
   chmod 644 "$temp_dir/$tar_file_name"
   chown -R "$REPOSITORY_OWNER": "$temp_dir"
 
-  echo -e "$(getDate) ✅ The snapshot File Created Successfully named $tar_file_name. File Backupped at $temp_dir/$tar_file_name"
+  log_success "The snapshot File Created Successfully named $tar_file_name. File Backupped at $temp_dir/$tar_file_name"
 }
 
 function resetGitHashFile(){
@@ -131,7 +149,7 @@ function writeGitHash() {
     if isDirectoryGitRepository "$dir"; then
       getGitHash "$dir"
     else
-      echo "$(getDate) 🟨 $dir is not a git repository. You need to backup this directory by adding it to your snapshot utilities."
+      log_warn "$dir is not a git repository. You need to backup this directory by adding it to your snapshot utilities."
     fi
   done
 }
@@ -160,7 +178,7 @@ function main() {
   # ODOO_DATABASE_NAME_PRD=enter_production_database_name
   # read -p "Enter the database name: " ODOO_DATABASE_NAME_PRD
   if [ -z "$ODOO_DATABASE_NAME_PRD" ]; then
-    echo "$(getDate) 🔴 Please setup DB_NAME in your .env file!"
+    log_error "Please setup DB_NAME in your .env file!"
     exit 1
   fi
 
@@ -192,9 +210,9 @@ function main() {
   ## Make sure that the datadir location is correct (enter the correct one)
   FILES_DIRS_TO_TAR="/var/lib/odoo/$SERVICE_NAME/filestore/$ODOO_DATABASE_NAME_PRD $FILES_DIRS_TO_TAR"
 
-  echo "$(getDate) Change WORKDIR to $PATH_TO_ODOO."
+  log_info "Change WORKDIR to $PATH_TO_ODOO."
   if ! cd "$PATH_TO_ODOO"; then
-    echo "🔴 Can't change directory to $PATH_TO_ODOO"
+    log_error "Can't change directory to $PATH_TO_ODOO"
     exit 1
   fi
 
@@ -234,7 +252,7 @@ function main() {
   # TEMP_FILES_TO_REMOVE="more_files_to_remove $TEMP_FILES_TO_REMOVE"
 
   if ! command -v zstd >/dev/null 2>&1; then
-    echo "$(getDate) 🔴 zstd is not installed. Please install zstd first."
+    log_error "zstd is not installed. Please install zstd first."
     echo "For Ubuntu: sudo apt install zstd"
     echo "For CentOS: sudo yum install zstd"
     exit 1
@@ -243,43 +261,43 @@ function main() {
   writeGitHash "$PATH_TO_ODOO/git"
   writeGitHash "$PATH_TO_ODOO/odoo-base"
 
-  echo "$(getDate) Dumping $ODOO_DATABASE_NAME_PRD database..."
+  log_info "Dumping $ODOO_DATABASE_NAME_PRD database..."
   sudo -u postgres pg_dump -f /tmp/"$ODOO_DATABASE_NAME_PRD.sql" "$ODOO_DATABASE_NAME_PRD" > /dev/null 2>&1
   PG_DUMP_EXIT_CODE=$?
   if [ $PG_DUMP_EXIT_CODE -ne 0 ]; then
-    echo "$(getDate) 🔴 pg_dump failed to dump the database. Exit code: $PG_DUMP_EXIT_CODE"
+    log_error "pg_dump failed to dump the database. Exit code: $PG_DUMP_EXIT_CODE"
     exit 1
   fi
 
-  echo "$(getDate) 📦 Backing up the database and its datadir..."
+  log_info "Backing up the database and its datadir..."
   tar -cf "$TAR_FILE_PATH" -I "zstd -vT0 -7 --ultra" "$FILES_DIRS_TO_TAR" > /dev/null 2>&1
   TAR_EXIT_CODE=$?
   if [ $TAR_EXIT_CODE -ne 0 ]; then
-    echo "$(getDate) 🧹 Removing temporary files."
+    log_info "Removing temporary files."
     rm "$TEMP_FILES_TO_REMOVE"
 
-    echo "$(getDate) 🔴 tar failed to backup the database and its datadir. Exit code: $TAR_EXIT_CODE"
+    log_error "tar failed to backup the database and its datadir. Exit code: $TAR_EXIT_CODE"
     exit 1
   fi
 
-  echo "$(getDate) Changing the ownership of the snapshot file..."
+  log_info "Changing the ownership of the snapshot file..."
   chown "$REPOSITORY_OWNER": "$TAR_FILE_PATH"
 
-  echo "$(getDate) 🧹 Removing temporary files."
+  log_info "Removing temporary files."
   rm "$TEMP_FILES_TO_REMOVE"
 
   if [ "$GCS_BUCKET_NAME" != "" ]; then
     if sudo -u "$REPOSITORY_OWNER" gsutil ls "gs://$GCS_BUCKET_NAME" > /dev/null 2>&1; then
-      echo "$(getDate) ☁ Moving the snapshot file to Google Cloud Storage bucket: gs://$GCS_BUCKET_NAME."
+      log_info "Moving the snapshot file to Google Cloud Storage bucket: gs://$GCS_BUCKET_NAME."
       if sudo -u "$REPOSITORY_OWNER" gsutil -m mv "$TAR_FILE_PATH" "gs://$GCS_BUCKET_NAME/$TAR_FILE_NAME"; then
-        echo -e "$(getDate) ✅ The snapshot File Created Successfully named $TAR_FILE_NAME. File Backupped at gs://$GCS_BUCKET_NAME/$TAR_FILE_NAME."
+        log_success "The snapshot File Created Successfully named $TAR_FILE_NAME. File Backupped at gs://$GCS_BUCKET_NAME/$TAR_FILE_NAME."
       else
-        echo "$(getDate) 🔴 Error can't move the snapshot file to gs://$GCS_BUCKET_NAME. Exit code: $?"
+        log_error "Error can't move the snapshot file to gs://$GCS_BUCKET_NAME. Exit code: $?"
         moveSnapshotFileToTempDir "$TAR_FILE_PATH" "$TAR_FILE_NAME"
       fi
     else
-      echo "$(getDate) 🔴 Error cannot move the snapshot file to Google Cloud Storage (GCS). Exit code: $?"
-      echo "$(getDate) 🔴 Please make sure the GCS_BUCKET_NAME on your .env file is the valid GCS Bucket Name."
+      log_error "Error cannot move the snapshot file to Google Cloud Storage (GCS). Exit code: $?"
+      log_error "Please make sure the GCS_BUCKET_NAME on your .env file is the valid GCS Bucket Name."
       moveSnapshotFileToTempDir "$TAR_FILE_PATH" "$TAR_FILE_NAME"
     fi
   else

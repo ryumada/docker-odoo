@@ -79,7 +79,7 @@ function main() {
         log_warn "$user's btop.conf file is not exist."
       fi
     else
-      log_warning "$user's dir not found."
+      log_warn "$user's dir not found."
     fi
   done
 
