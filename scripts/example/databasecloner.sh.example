@@ -1,22 +1,40 @@
 #!/bin/bash
 
 # Exit immediately if a command exits with a non-zero status
-set -e
+set -Eeuo pipefail
 
 error_handler() {
-  echo "An error occurred on line $1. Exiting..."
+  log_error "An error occurred on line $1. Exiting..."
   exit 1
 }
 
 trap 'error_handler $LINENO' ERR
 
-function getDate() {
-  echo "[$(date +"%Y-%m-%d %H:%M:%S")]"
+# --- Logging Functions & Colors ---
+# Define colors for log messages
+readonly COLOR_RESET="\033[0m"
+readonly COLOR_INFO="\033[0;34m"
+readonly COLOR_SUCCESS="\033[0;32m"
+readonly COLOR_WARN="\033[0;33m"
+readonly COLOR_ERROR="\033[0;31m"
+
+# Function to log messages with a specific color and emoji
+log() {
+  local color="$1"
+  local emoji="$2"
+  local message="$3"
+  echo -e "${color}[$(date +"%Y-%m-%d %H:%M:%S")] ${emoji} ${message}${COLOR_RESET}"
 }
+
+log_info() { log "${COLOR_INFO}" "ℹ️" "$1"; }
+log_success() { log "${COLOR_SUCCESS}" "✅" "$1"; }
+log_warn() { log "${COLOR_WARN}" "⚠️" "$1"; }
+log_error() { log "${COLOR_ERROR}" "❌" "$1"; }
+# ------------------------------------
 
 function isRoot() {
   if [ "$(id -u)" -ne 0 ]; then
-    echo "$(getDate) 🔴 Please run this script using sudo"
+    log_error "Please run this script using sudo"
     exit 1
   fi
 }
@@ -37,7 +55,7 @@ function promptWhichEnvironment() {
       Enter the number 1 - 4: " ODOO_DEPLOYMENT_ENVIRONMENT
 
       if [[ ! "$ODOO_DEPLOYMENT_ENVIRONMENT" =~ ^[1-9]+$ ]]; then
-        echo "$(getDate) 🔴 Invalid input. Please enter a number base on the menu above."
+        log_error "Invalid input. Please enter a number base on the menu above."
         continue
       fi
 
@@ -59,7 +77,7 @@ function promptWhichEnvironment() {
           break
           ;;
         *)
-          echo "$(getDate) 🔴 Invalid option"
+          log_error "Invalid option"
           ;;
       esac
     done
@@ -90,7 +108,7 @@ function promptDBNameSuffix() {
           N|n)
             ODOO_DB_NAME_ENV="$ODOO_DATABASE_NAME_PRD-$ODOO_DEPLOYMENT_ENVIRONMENT"; break ;;
           *)
-            echo "$(getDate) 🔴 Invalid option" ;;
+            log_error "Invalid option" ;;
         esac
       done
       ;;
@@ -107,6 +125,11 @@ function main() {
   CURRENT_DIR_USER=$(stat -c '%U' "$CURRENT_DIR")
   PATH_TO_ODOO=$(sudo -u "$CURRENT_DIR_USER" git -C "$(dirname "$(readlink -f "$0")")" rev-parse --show-toplevel)
   SERVICE_NAME=$(basename "$PATH_TO_ODOO")
+  TEMP_BACKUP_FILE="/tmp/cloner_backup-$SERVICE_NAME.zip"
+
+  # Source environment details
+  SOURCE_ADMIN_PASSWD=$(grep "^ADMIN_PASSWD=" "$PATH_TO_ODOO/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
+  SOURCE_PORT=$(grep "^PORT=" "$PATH_TO_ODOO/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
 
   ODOO_DATABASE_NAME_PRD=$(grep "^DB_NAME=" "$PATH_TO_ODOO/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
   if [ -z "$ODOO_DATABASE_NAME_PRD" ]; then
@@ -127,94 +150,67 @@ function main() {
   PATH_TO_ODOO_ENV="$PATH_TO_ODOO/../$SERVICE_NAME-$ODOO_DEPLOYMENT_ENVIRONMENT"
 
   if [ ! -d "$PATH_TO_ODOO_ENV" ]; then
-    echo "$(getDate) 🔴 The deployment environment $SERVICE_NAME-$ODOO_DEPLOYMENT_ENVIRONMENT does not exist"
+    log_error "The destination deployment environment '$SERVICE_NAME-$ODOO_DEPLOYMENT_ENVIRONMENT' does not exist at '$PATH_TO_ODOO_ENV'"
+    exit 1
+  fi
+
+  # Destination environment details
+  DEST_ADMIN_PASSWD=$(grep "^ADMIN_PASSWD=" "$PATH_TO_ODOO_ENV/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
+  DEST_PORT=$(grep "^PORT=" "$PATH_TO_ODOO_ENV/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
+
+  if [ -z "$SOURCE_ADMIN_PASSWD" ] || [ -z "$SOURCE_PORT" ] || [ -z "$DEST_ADMIN_PASSWD" ] || [ -z "$DEST_PORT" ]; then
+    log_error "ADMIN_PASSWD and/or PORT not set in the .env file of the source or destination environment."
     exit 1
   fi
 
   ODOO_DB_NAME_ENV=$(promptDBNameSuffix "$USE_DATE_SUFFIX" "$ODOO_DEPLOYMENT_ENVIRONMENT")
 
-  ODOO_FILESTORE_PATH_PRD="/var/lib/odoo/$SERVICE_NAME/filestore/$ODOO_DATABASE_NAME_PRD"
-  ODOO_FILESTORE_PATH_ENV="/var/lib/odoo/$SERVICE_NAME-$ODOO_DEPLOYMENT_ENVIRONMENT/filestore/$ODOO_DB_NAME_ENV"
+  log_info "Start cloning database from '$ODOO_DATABASE_NAME_PRD' to '$ODOO_DB_NAME_ENV'"
 
-  # ODOO_DB_USER_PRD=$(cat ./secrets/db_user)
-  ODOO_DB_USER_ENV=$(cat "$PATH_TO_ODOO_ENV/.secrets/db_user")
+  # 1. Backup source database using curl
+  log_info "Requesting backup from source Odoo instance..."
+  curl -s -X POST \
+       -F "master_pwd=$SOURCE_ADMIN_PASSWD" \
+       -F "name=$ODOO_DATABASE_NAME_PRD" \
+       -F "backup_format=zip" \
+       -o "$TEMP_BACKUP_FILE" \
+       "http://localhost:$SOURCE_PORT/web/database/backup"
 
-  echo "$(getDate) Change Directory to $PATH_TO_ODOO"
-  cd "$PATH_TO_ODOO" || { echo "$(getDate) 🔴 Can't change directory to $PATH_TO_ODOO"; exit 1; }
-
-  echo "$(getDate) 🔵 Start cloning database from $ODOO_DATABASE_NAME_PRD to $ODOO_DB_NAME_ENV"
-  
-  echo "$(getDate) 🥟 Dump $ODOO_DATABASE_NAME_PRD to temporary file"
-  sudo -u postgres pg_dump -d "$ODOO_DATABASE_NAME_PRD" -f "/tmp/$ODOO_DB_NAME_ENV.sql" > /dev/null 2>&1 || { echo "$(getDate) 🔴 Error dumping $ODOO_DATABASE_NAME_PRD"; exit 1; }
-
-  if [ -d "$ODOO_FILESTORE_PATH_ENV" ]; then
-    echo "$(getDate) 🧹 Remove the old filestore of $ODOO_DB_NAME_ENV"
-    rm -rf "$ODOO_FILESTORE_PATH_ENV"
+  if [ ! -s "$TEMP_BACKUP_FILE" ]; then
+      log_error "Backup failed. The output file is empty or was not created. Check source Odoo logs."
+      exit 1
   fi
-  
-  echo "$(getDate) 📄 Copy the filestore to the $ODOO_DEPLOYMENT_ENVIRONMENT environment"
-  mkdir "$ODOO_FILESTORE_PATH_ENV" > /dev/null 2>&1 || { echo "$(getDate) 🔴 Error creating $ODOO_FILESTORE_PATH_ENV. Maybe the directory exist."; }
-  rsync -a "$ODOO_FILESTORE_PATH_PRD/" "$ODOO_FILESTORE_PATH_ENV" > /dev/null 2>&1 || { echo "$(getDate) 🔴 Error copying filestore"; exit 1; }
+  log_success "Backup of '$ODOO_DATABASE_NAME_PRD' completed successfully to $TEMP_BACKUP_FILE"
 
-  echo "$(getDate) 👤 Change owner of $ODOO_FILESTORE_PATH_ENV to odoo"
-  chown -R odoo: "$ODOO_FILESTORE_PATH_ENV"
-  
-  if [ "$ODOO_DB_NAME_ENV" == "$ODOO_DATABASE_NAME_PRD-$ODOO_DEPLOYMENT_ENVIRONMENT" ]; then
-    echo "$(getDate) 🛑 Stop the $ODOO_DEPLOYMENT_ENVIRONMENT environment"
-    docker compose -f "$PATH_TO_ODOO_ENV/docker-compose.yml" stop > /dev/null 2>&1 || { echo "$(getDate) 🔴 Error stopping $ODOO_DEPLOYMENT_ENVIRONMENT"; exit 1; }
-  
-    echo "$(getDate) 🗑️ Drop the old database $ODOO_DB_NAME_ENV"
-    sudo -u postgres psql -d postgres -c "DROP DATABASE IF EXISTS \"$ODOO_DB_NAME_ENV\" WITH (FORCE)" > /dev/null 2>&1 || { echo "$(getDate) 🔴 Error dropping database: $(cat /dev/stderr)"; exit 1; }
+  # 2. Restore to destination database using curl
+  log_info "Stopping the destination environment '$ODOO_DEPLOYMENT_ENVIRONMENT' before restore..."
+  docker compose -f "$PATH_TO_ODOO_ENV/docker-compose.yml" stop > /dev/null 2>&1 || log_warn "Could not stop destination environment. It might not be running."
+
+  log_info "Dropping old database '$ODOO_DB_NAME_ENV' if it exists..."
+  sudo -u postgres psql -c "DROP DATABASE IF EXISTS \"$ODOO_DB_NAME_ENV\" WITH (FORCE);" > /dev/null 2>&1
+
+  log_info "Requesting restore to destination Odoo instance..."
+  response=$(curl -s -X POST \
+    -F "master_pwd=$DEST_ADMIN_PASSWD" \
+    -F "name=$ODOO_DB_NAME_ENV" \
+    -F "backup_file=@$TEMP_BACKUP_FILE" \
+    -F "copy=true" \
+    "http://localhost:$DEST_PORT/web/database/restore")
+
+  if [[ "$response" == *"error"* ]] || [[ "$response" == *"incorrect master password"* ]]; then
+    log_error "Failed to restore database to destination. Response: $response"
+    rm -f "$TEMP_BACKUP_FILE"
+    exit 1
   fi
+  log_success "Database restore command sent successfully to destination."
 
-  echo "$(getDate) 🥢 Create new database $ODOO_DB_NAME_ENV"
-  sudo -u postgres psql -d postgres -c "CREATE DATABASE \"$ODOO_DB_NAME_ENV\"" > /dev/null 2>&1 || { echo "$(getDate) 🔴 Error creating $ODOO_DB_NAME_ENV"; exit 1; }
+  log_info "Cleaning up temporary backup file..."
+  rm -f "$TEMP_BACKUP_FILE"
 
-  echo "$(getDate) 🥢 Restore $ODOO_DB_NAME_ENV from $ODOO_DATABASE_NAME_PRD"
-  sudo -u postgres psql -d "$ODOO_DB_NAME_ENV" -f "/tmp/$ODOO_DB_NAME_ENV.sql" > /dev/null 2>&1 || { echo "$(getDate) 🔴 Error restoring $ODOO_DB_NAME_ENV"; exit 1; }
-  rm "/tmp/$ODOO_DB_NAME_ENV.sql"
+  log_info "Restarting the destination environment '$ODOO_DEPLOYMENT_ENVIRONMENT'..."
+  docker compose -f "$PATH_TO_ODOO_ENV/docker-compose.yml" up -d > /dev/null 2>&1 || { log_error "Error restarting $ODOO_DEPLOYMENT_ENVIRONMENT"; exit 1; }
 
-  echo "$(getDate) 🎚️ Disable Odoo Cron"
-  sudo -u postgres psql -d "$ODOO_DB_NAME_ENV" -c " UPDATE ir_cron SET active=false;" > /dev/null 2>&1 || { echo "$(getDate) 🔴 Error Disable Odoo Cron"; exit 1; }
-
-  echo "$(getDate) 🧹 Change owner of $ODOO_DB_NAME_ENV to $ODOO_DB_USER_ENV"
-  sudo -u postgres psql -d postgres -c "ALTER DATABASE \"$ODOO_DB_NAME_ENV\" OWNER TO \"$ODOO_DB_USER_ENV\"" > /dev/null 2>&1 || { echo "$(getDate) 🔴 Error changing owner of $ODOO_DB_NAME_ENV"; exit 1; }
-  sudo -u postgres psql -d "$ODOO_DB_NAME_ENV" -c "
-    -- Change the owner of all tables
-    DO \$\$
-    DECLARE
-        rec RECORD;
-    BEGIN
-        FOR rec IN (SELECT tablename FROM pg_tables WHERE schemaname = 'public') LOOP
-            EXECUTE 'ALTER TABLE ' || quote_ident(rec.tablename) || ' OWNER TO \"${ODOO_DB_USER_ENV}\"';
-        END LOOP;
-    END \$\$;
-
-    -- Change the owner of all sequences
-    DO \$\$
-    DECLARE
-        rec RECORD;
-    BEGIN
-        FOR rec IN (SELECT sequence_name FROM information_schema.sequences WHERE sequence_schema = 'public') LOOP
-            EXECUTE 'ALTER SEQUENCE ' || quote_ident(rec.sequence_name) || ' OWNER TO \"${ODOO_DB_USER_ENV}\"';
-        END LOOP;
-    END \$\$;
-
-    -- Change the owner of all views
-    DO \$\$
-    DECLARE
-        rec RECORD;
-    BEGIN
-        FOR rec IN (SELECT table_name FROM information_schema.views WHERE table_schema = 'public') LOOP
-            EXECUTE 'ALTER VIEW ' || quote_ident(rec.table_name) || ' OWNER TO \"${ODOO_DB_USER_ENV}\"';
-        END LOOP;
-    END \$\$;
-  " > /dev/null 2>&1 || { echo "$(getDate) 🔴 Error changing owner of $ODOO_DB_NAME_ENV"; exit 1; }
-
-  echo "$(getDate) 🟢 Restart the $ODOO_DEPLOYMENT_ENVIRONMENT environment"
-  docker compose -f "$PATH_TO_ODOO_ENV/docker-compose.yml" restart > /dev/null 2>&1 || { echo "$(getDate) 🔴 Error restarting $ODOO_DEPLOYMENT_ENVIRONMENT"; exit 1; }
-
-  echo "$(getDate) ✅ Finish cloning database $ODOO_DB_NAME_ENV from $ODOO_DATABASE_NAME_PRD"
+  log_success "Finish cloning database '$ODOO_DB_NAME_ENV' from '$ODOO_DATABASE_NAME_PRD'"
 }
 
 main

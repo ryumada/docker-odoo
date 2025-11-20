@@ -8,68 +8,73 @@ SERVICE_NAME=$(basename "$PATH_TO_ODOO")
 ## ex. odoo-prd (replace with production database name or use read command to input the database name)
 ## Use only one of this command below
 ODOO_DATABASE_NAME_PRD=$(grep "^DB_NAME=" "$PATH_TO_ODOO/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
+ADMIN_PASSWD=$(grep "^ADMIN_PASSWD=" "$PATH_TO_ODOO/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
+PORT=$(grep "^PORT=" "$PATH_TO_ODOO/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
+
 if [ -z "$ODOO_DATABASE_NAME_PRD" ]; then
   read -rp "Enter the database name: " ODOO_DATABASE_NAME_PRD
 fi
 
-ODOO_FILESTORE_PATH="/var/lib/odoo/$SERVICE_NAME/filestore/$ODOO_DATABASE_NAME_PRD"
-
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 # DON'T change these codes below
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
-# DATE_FOR_FILENAME="$(date +"%Y%m%d-%H%M%S")"
-# DATE_FOR_MESSAGE=$(date +"%Y-%m-%d %H:%M:%S")
 ZIP_FILE_NAME=backupdata-$SERVICE_NAME.zip
+BACKUP_FILE_PATH="/tmp/$ZIP_FILE_NAME"
 
-function getDate() {
-  echo "[$(date +"%Y-%m-%d %H:%M:%S")]"
+# --- Logging Functions & Colors ---
+# Define colors for log messages
+readonly COLOR_RESET="\033[0m"
+readonly COLOR_INFO="\033[0;34m"
+readonly COLOR_SUCCESS="\033[0;32m"
+readonly COLOR_WARN="\033[0;33m"
+readonly COLOR_ERROR="\033[0;31m"
+
+# Function to log messages with a specific color and emoji
+log() {
+  local color="$1"
+  local emoji="$2"
+  local message="$3"
+  echo -e "${color}[$(date +"%Y-%m-%d %H:%M:%S")] ${emoji} ${message}${COLOR_RESET}"
 }
 
-echo "$(getDate) 🔵 Start backup data for $SERVICE_NAME"
+log_info() { log "${COLOR_INFO}" "ℹ️" "$1"; }
+log_success() { log "${COLOR_SUCCESS}" "✅" "$1"; }
+log_warn() { log "${COLOR_WARN}" "⚠️" "$1"; }
+log_error() { log "${COLOR_ERROR}" "❌" "$1"; }
+# ------------------------------------
 
-if ! command -v zip &> /dev/null; then
-  echo "$(getDate) 🔴 zip command could not be found. Please install zip first."
-  echo "For Ubuntu: sudo apt install zip"
-  echo "For CentOS: sudo yum install zip"
+if ! command -v curl &> /dev/null; then
+  log_error "curl command could not be found. Please install curl first."
+  echo "For Ubuntu: sudo apt install curl"
+  echo "For CentOS: sudo yum install curl"
   exit 1
 fi
 
 if [ "$(id -u)" -ne 0 ]; then
-  echo "$(getDate) 🔴 Please run this script as root or using sudo"
+  log_error "Please run this script as root or using sudo."
   exit 1
 fi
 
-echo "$(getDate) Change Directory to $PATH_TO_ODOO"
-cd "$PATH_TO_ODOO" > /dev/null 2>&1 || { echo "$(getDate) 🔴 Can't change directory to $PATH_TO_ODOO"; exit 1; }
-
-echo "$(getDate) Create temporary directory"
-mkdir -p "/tmp/backupdata-$SERVICE_NAME" > /dev/null 2>&1 || { echo "$(getDate) 🔴 /tmp/backupdata-$SERVICE_NAME may be exist."; true; }
-
-echo "$(getDate) Backup database $ODOO_DATABASE_NAME_PRD"
-sudo -u postgres pg_dump -f "/tmp/dump.sql" "$ODOO_DATABASE_NAME_PRD" > /dev/null 2>&1 || { echo "$(getDate) 🔴 Error backup database $ODOO_DATABASE_NAME_PRD"; exit 1; }
-mv /tmp/dump.sql "/tmp/backupdata-$SERVICE_NAME/dump.sql" > /dev/null 2>&1 || { echo "$(getDate) 🔴 Error moving dump.sql to /tmp/backupdata-$SERVICE_NAME"; exit 1; }
-
-echo "$(getDate) Copy filestore files to temporary directory"
-cp -r "$ODOO_FILESTORE_PATH" "/tmp/backupdata-$SERVICE_NAME/filestore" > /dev/null 2>&1 || { echo "$(getDate) 🔴 Error copying filestore to /tmp/backupdata-$SERVICE_NAME"; exit 1; }
-
-if [ -f "git/git_hashes.txt" ]; then
-  echo "$(getDate) Copy git_hashes.txt to temporary directory"
-  cp -r git/git_hashes.txt "/tmp/backupdata-$SERVICE_NAME/git_hashes.txt" > /dev/null 2>&1 || { echo "$(getDate) 🔴 Error copying git_hashes.txt to /tmp/backupdata-$SERVICE_NAME"; exit 1; }
+if [ -z "$ADMIN_PASSWD" ] || [ -z "$PORT" ]; then
+  log_error "ADMIN_PASSWD and/or PORT not set in .env file. Cannot proceed with backup."
+  exit 1
 fi
 
-if [ -f "odoo-base/git_hashes.txt" ]; then
-  echo "$(getDate) Copy odoo-base/git_hashes.txt to temporary directory"
-  cp -r odoo-base/git_hashes.txt "/tmp/backupdata-$SERVICE_NAME/odoo-base_git_hashes.txt" > /dev/null 2>&1 || { echo "$(getDate) 🔴 Error copying odoo-base/git_hashes.txt to /tmp/backupdata-$SERVICE_NAME"; exit 1; }
+log_info "Start backup for database '$ODOO_DATABASE_NAME_PRD' from service '$SERVICE_NAME'"
+
+log_info "Requesting backup from Odoo..."
+curl -s -X POST \
+     -F "master_pwd=$ADMIN_PASSWD" \
+     -F "name=$ODOO_DATABASE_NAME_PRD" \
+     -F "backup_format=zip" \
+     -o "$BACKUP_FILE_PATH" \
+     "http://localhost:$PORT/web/database/backup"
+
+if [ -s "$BACKUP_FILE_PATH" ]; then
+    chown "$SUDO_USER":"$SUDO_USER" "$BACKUP_FILE_PATH"
+    log_success "Backup for '$ODOO_DATABASE_NAME_PRD' is completed. The backup file is located at $BACKUP_FILE_PATH."
+else
+    log_error "Backup failed. The output file is empty. Check Odoo logs for details. Is the master password correct?"
+    rm -f "$BACKUP_FILE_PATH" # Clean up empty file
+    exit 1
 fi
-
-echo "$(getDate) Change Directory to /tmp/backupdata-$SERVICE_NAME"
-cd "/tmp/backupdata-$SERVICE_NAME" > /dev/null 2>&1 || { echo "$(getDate) 🔴 Can't change directory to /tmp/backupdata-$SERVICE_NAME"; exit 1; }
-
-echo "$(getDate) Compress all files to $ZIP_FILE_NAME"
-zip -r "/tmp/$ZIP_FILE_NAME" ./dump.sql filestore ./git_hashes.txt ./odoo-base_git_hashes.txt > /dev/null 2>&1 || { echo "$(getDate) 🔴 Error compressing files to /tmp/$ZIP_FILE_NAME"; exit 1; }
-chown "$SUDO_USER":"$SUDO_USER" "/tmp/$ZIP_FILE_NAME"
-
-echo "$(getDate) Remove temporary directory"
-rm -rf "/tmp/backupdata-$SERVICE_NAME"
-
-echo "$(getDate) 🟢 Backup data for $SERVICE_NAME is completed. The backup file is located at /tmp/$ZIP_FILE_NAME."
