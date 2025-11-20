@@ -29,6 +29,26 @@ CURRENT_DIR=$(dirname "$(readlink -f "$0")")
 PATH_TO_ROOT_REPOSITORY=$(git -C "$CURRENT_DIR" rev-parse --show-toplevel)
 DOCKER_ODOO_APP_NAME=$(basename "$PATH_TO_ROOT_REPOSITORY")
 
+function create_sudoers_file() {
+  local user="$1"
+  local sudoers_file_name="01-${user}_as_root-$DOCKER_ODOO_APP_NAME-git_addons_updater"
+  local sudoers_file_path="/etc/sudoers.d/$sudoers_file_name"
+
+  log_info "Creating sudoers file for '$user' user at $sudoers_file_path..."
+
+  # Use a here-document to create the sudoers file content
+  if ! (
+    echo "$user ALL=(root) NOPASSWD: \\"
+    echo "/opt/$DOCKER_ODOO_APP_NAME/scripts/git_addons_updater.sh"
+  ) | visudo -c -f -; then
+    log_error "Generated sudoers content for user '$user' is invalid. Aborting for this user."
+    return 1
+  fi
+
+  (umask 0227; echo "$user ALL=(root) NOPASSWD: /opt/$DOCKER_ODOO_APP_NAME/scripts/git_addons_updater.sh" > "$sudoers_file_path")
+  log_success "Sudoers file for '$user' created successfully."
+}
+
 function main() {
   # Self-elevate to root if not already
   if [ "$(id -u)" -ne 0 ]; then
@@ -41,35 +61,17 @@ function main() {
 
   log_info "Detected Odoo App Name: $DOCKER_ODOO_APP_NAME"
 
-  SUDOERS_FILE_NAME="01-devops_as_root-$DOCKER_ODOO_APP_NAME-git_addons_updater"
-  SUDOERS_FILE_PATH="/etc/sudoers.d/$SUDOERS_FILE_NAME"
+  # Create sudoers file for the 'devops' user
+  create_sudoers_file "devops"
 
-  # Create a secure temporary file
-  TEMP_SUDOERS_FILE=$(mktemp)
-  # Ensure cleanup on exit
-  trap 'rm -f "$TEMP_SUDOERS_FILE"' EXIT
-
-  log_info "Creating sudoers file for devops user..."
-
-  cat <<EOF > "$TEMP_SUDOERS_FILE"
-devops ALL=(root) NOPASSWD: \\
-/opt/$DOCKER_ODOO_APP_NAME/scripts/git_addons_updater.sh
-EOF
-
-  chmod 440 "$TEMP_SUDOERS_FILE"
-  chown root:root "$TEMP_SUDOERS_FILE"
-
-  log_info "Validating sudoers file syntax..."
-  if visudo -c -f "$TEMP_SUDOERS_FILE"; then
-    log_success "Syntax is valid. Moving file to $SUDOERS_FILE_PATH"
-    mv "$TEMP_SUDOERS_FILE" "$SUDOERS_FILE_PATH"
-  else
-    log_error "Sudoers file syntax is invalid. Aborting."
-    exit 1
+  # Create sudoers file for the user who ran the script, if they are not 'devops' or 'root'
+  local logged_in_user
+  logged_in_user=$(logname)
+  if [ "$logged_in_user" != "root" ] && [ "$logged_in_user" != "devops" ]; then
+    create_sudoers_file "$logged_in_user"
   fi
 
-  log_success "Sudoers file created successfully at $SUDOERS_FILE_PATH"
-  log_info "devops user can now run git_addons_updater.sh with root privileges without a password."
+  log_success "Finished updating sudoers configurations."
 }
 
 main "@"
