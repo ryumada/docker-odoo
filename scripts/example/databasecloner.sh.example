@@ -183,14 +183,21 @@ function main() {
   log_success "Backup of '$ODOO_DATABASE_NAME_PRD' completed successfully to $TEMP_BACKUP_FILE"
 
   # 2. Restore to destination database using curl
-  log_info "Stopping the destination environment '$ODOO_DEPLOYMENT_ENVIRONMENT' before restore..."
-  if ! docker compose -f "$PATH_TO_ODOO_ENV/docker-compose.yml" stop > /dev/null 2>&1; then
-    log_warn "Could not stop destination environment. It might not be running."
+  log_info "Ensuring the destination environment '$ODOO_DEPLOYMENT_ENVIRONMENT' is running before restore..."
+  if ! docker compose -f "$PATH_TO_ODOO_ENV/docker-compose.yml" up -d > /dev/null 2>&1; then
+    log_warn "Could not start destination environment. It might already be running or there could be an issue."
   fi
 
   log_info "Dropping old database '$ODOO_DB_NAME_ENV' if it exists..."
-  if ! sudo -u postgres psql -c "DROP DATABASE IF EXISTS \"$ODOO_DB_NAME_ENV\" WITH (FORCE);" > /dev/null 2>&1; then
-    log_warn "Could not drop database '$ODOO_DB_NAME_ENV'. It might not exist."
+  drop_response=$(curl -s -X POST \
+    -d "master_pwd=$DEST_ADMIN_PASSWD" \
+    -d "name=$ODOO_DB_NAME_ENV" \
+    "http://localhost:$DEST_PORT/web/database/drop")
+
+  if [[ "$drop_response" == *"error"* ]] && [[ "$drop_response" != *"does not exist"* ]]; then
+      log_warn "Could not drop database '$ODOO_DB_NAME_ENV'. It might not exist or another error occurred. Response: $drop_response"
+  else
+      log_info "Drop database command sent for '$ODOO_DB_NAME_ENV'."
   fi
 
   log_info "Requesting restore to destination Odoo instance..."
