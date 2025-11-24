@@ -90,8 +90,9 @@ function main() {
   done
 
   if [ $pulledrepositories -gt 0 ]; then
-    log_info "Rebuilding the docker containers"
+    # log_info "Rebuilding the docker containers"
     # sudo -u "$REPOSITORY_OWNER" docker compose -f "$PATH_TO_ODOO/$DOCKER_COMPOSE_FILE" up -d --build
+    log_info "Restarting the docker containers"
     sudo -u "$REPOSITORY_OWNER" docker compose -f "$PATH_TO_ODOO/$DOCKER_COMPOSE_FILE" restart
 
     log_info "Cleaning Unused Docker caches..."
