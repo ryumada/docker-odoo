@@ -33,6 +33,12 @@ log_info "Updating Odoo configuration file..."
 
 # Copy the example configuration file to the final configuration file
 if [ -f "$ODOO_CONF_EXAMPLE" ]; then
+  if [ -f "$ODOO_CONF" ]; then
+    log_info "Backing up existing odoo.conf to odoo.conf.bak..."
+    cp "$ODOO_CONF" "$ODOO_CONF.bak"
+    log_success "Backup created."
+  fi
+  log_info "Copying odoo.conf.example to odoo.conf..."
   cp "$ODOO_CONF_EXAMPLE" "$ODOO_CONF"
   log_success "Copied odoo.conf.example to odoo.conf."
 else
