@@ -8,6 +8,11 @@ ARG INSTALL_LIBREOFFICE
 ARG POSTGRESQL_VERSION
 ARG VSCODE_DIRECT_DOWNLOAD_URL
 ARG WKHTMLTOPDF_DIRECT_DOWNLOAD_URL
+ARG APT_RESOURCE_URL
+
+RUN if [ -n "$APT_RESOURCE_URL" ]; then \
+        echo "$APT_RESOURCE_URL" > /etc/apt/sources.list; \
+    fi
 
 # install odoo dependencies
 RUN apt update; \
