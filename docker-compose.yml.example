@@ -16,6 +16,7 @@ services:
         - VSCODE_DIRECT_DOWNLOAD_URL=${VSCODE_DIRECT_DOWNLOAD_URL}
         - WKHTMLTOPDF_DIRECT_DOWNLOAD_URL=${WKHTMLTOPDF_DIRECT_DOWNLOAD_URL}
         - APT_RESOURCE_URL=${APT_RESOURCE_URL}
+        - POSTGRESQL_CUSTOM_REPO_URL=${POSTGRESQL_CUSTOM_REPO_URL}
       # Add labels to connect to github repository (enter github)
       labels:
         - org.opencontainers.image.source=${ODOO_IMAGE_SOURCE:-"no source"}

@@ -9,6 +9,7 @@ ARG POSTGRESQL_VERSION
 ARG VSCODE_DIRECT_DOWNLOAD_URL
 ARG WKHTMLTOPDF_DIRECT_DOWNLOAD_URL
 ARG APT_RESOURCE_URL
+ARG POSTGRESQL_CUSTOM_REPO_URL
 
 RUN if [ -n "$APT_RESOURCE_URL" ]; then \
         echo "$APT_RESOURCE_URL" > /etc/apt/sources.list; \
@@ -44,7 +45,8 @@ RUN if [ -n "$POSTGRESQL_VERSION" ]; then \
         install -d /usr/share/postgresql-common/pgdg; \
         curl -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc --fail https://www.postgresql.org/media/keys/ACCC4CF8.asc; \
         . /etc/os-release; \
-        sh -c "echo 'deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $VERSION_CODENAME-pgdg main' > /etc/apt/sources.list.d/pgdg.list"; \
+        REPO_URL="${POSTGRESQL_CUSTOM_REPO_URL:-https://apt.postgresql.org}"; \
+        sh -c "echo 'deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] $REPO_URL/pub/repos/apt $VERSION_CODENAME-pgdg main' > /etc/apt/sources.list.d/pgdg.list"; \
         apt update; \
         apt install -y postgresql-client-$POSTGRESQL_VERSION; \
     else \
