@@ -11,7 +11,7 @@ ARG WKHTMLTOPDF_DIRECT_DOWNLOAD_URL
 
 # install odoo dependencies
 RUN apt update; \
-    apt install -y wget software-properties-common build-essential libxslt-dev libzip-dev libldap2-dev libsasl2-dev node-less libpq-dev tmux xfonts-75dpi fontconfig libxrender1 xfonts-base libcups2-dev
+    apt install -y wget software-properties-common ca-certificates build-essential libxslt-dev libzip-dev libldap2-dev libsasl2-dev node-less libpq-dev tmux xfonts-75dpi fontconfig libxrender1 xfonts-base libcups2-dev
 
 RUN if [ -n "$WKHTMLTOPDF_DIRECT_DOWNLOAD_URL" ] && { [ "$WKHTMLTOPDF_DIRECT_DOWNLOAD_URL" != "${WKHTMLTOPDF_DIRECT_DOWNLOAD_URL#[http://]}" ] || [ "$WKHTMLTOPDF_DIRECT_DOWNLOAD_URL" != "${WKHTMLTOPDF_DIRECT_DOWNLOAD_URL#[https://]}" ]; }; then \
         filename="wkhtmltox_installer.deb"; \
@@ -36,8 +36,11 @@ RUN if [ "$INSTALL_LIBREOFFICE" = "Y" ]; then \
     fi
 
 RUN if [ -n "$POSTGRESQL_VERSION" ]; then \
-        apt install -y postgresql-common; \
-        bash /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y; \
+        install -d /usr/share/postgresql-common/pgdg \
+        curl -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc --fail https://www.postgresql.org/media/keys/ACCC4CF8.asc \
+        . /etc/os-release \
+        sh -c "echo 'deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $VERSION_CODENAME-pgdg main' > /etc/apt/sources.list.d/pgdg.list" \
+        apt update \
         apt install -y postgresql-client-$POSTGRESQL_VERSION; \
     else \
         apt install -y postgresql-client; \
