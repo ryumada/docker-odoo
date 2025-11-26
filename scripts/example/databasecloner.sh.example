@@ -218,7 +218,8 @@ function main() {
   log_info "Sanitizing Staging DB (deactivating crons, mail servers, and payment providers)..."
   sudo -u postgres psql -d "$ODOO_DB_NAME_ENV" -c "UPDATE ir_cron SET active=False;"
   sudo -u postgres psql -d "$ODOO_DB_NAME_ENV" -c "UPDATE ir_mail_server SET active=False;"
-  sudo -u postgres psql -d "$ODOO_DB_NAME_ENV" -c "UPDATE payment_acquirer SET state='disabled' WHERE state='enabled';"
+  # this query does not work the payment_aquirer table may not found. Please ask the tester to disable it manually.
+  # sudo -u postgres psql -d "$ODOO_DB_NAME_ENV" -c "UPDATE payment_acquirer SET state='disabled' WHERE state='enabled';"
   sudo -u postgres psql -d "$ODOO_DB_NAME_ENV" -c "INSERT INTO ir_config_parameter (key, value) VALUES ('mail.catchall.alias', 'catchall') ON CONFLICT (key) DO UPDATE SET value = 'catchall';"
   sudo -u postgres psql -d "$ODOO_DB_NAME_ENV" -c "INSERT INTO ir_config_parameter (key, value) VALUES ('mail.catchall.domain', 'example.com') ON CONFLICT (key) DO UPDATE SET value = 'example.com';"
 
