@@ -75,6 +75,20 @@ curl -s -X POST \
      "http://localhost:$PORT/web/database/backup"
 
 if [ -s "$BACKUP_FILE_PATH" ]; then
+    if grep -q -i "<html" "$BACKUP_FILE_PATH"; then
+        ODOO_ERROR_MSG=$(grep '<div class="alert alert-danger">' "$BACKUP_FILE_PATH" | sed -n 's/.*<div class="alert alert-danger">\(.*\)<\/div>.*/\1/p')
+
+        if [ -z "$ODOO_ERROR_MSG" ]; then
+            ODOO_ERROR_MSG="Unknown error (The response was an HTML page, but the specific error message could not be parsed)."
+        fi
+
+        log_error "Backup failed! Odoo returned an HTML error page instead of a ZIP file."
+        log_error "Odoo Message: $ODOO_ERROR_MSG"
+
+        rm -f "$BACKUP_FILE_PATH"
+        exit 1
+    fi
+
     chown "$SUDO_USER:$SUDO_USER" "$BACKUP_FILE_PATH"
     log_success "Backup for '$ODOO_DATABASE_NAME_PRD' is completed. The backup file is located at $BACKUP_FILE_PATH."
 else
