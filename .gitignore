@@ -23,6 +23,7 @@ scripts/*
 !scripts/change_mode_to_git.sh
 !scripts/dataodoo-backupper.sh
 !scripts/dataodoo-remover.sh
+!scripts/deploy_release_candidate.sh
 !scripts/git_addons_updater.sh
 !scripts/git_odoo-base_updater.sh
 !scripts/installer
