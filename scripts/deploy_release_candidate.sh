@@ -10,6 +10,7 @@ readonly COLOR_INFO="\033[0;34m"
 readonly COLOR_SUCCESS="\033[0;32m"
 readonly COLOR_WARN="\033[0;33m"
 readonly COLOR_ERROR="\033[0;31m"
+readonly COLOR_CYAN="\033[0;36m"
 
 # Function to log messages with a specific color and emoji
 log() {
@@ -23,6 +24,7 @@ log_info() { log "${COLOR_INFO}" "ℹ️" "$1"; }
 log_success() { log "${COLOR_SUCCESS}" "✅" "$1"; }
 log_warn() { log "${COLOR_WARN}" "⚠️" "$1"; }
 log_error() { log "${COLOR_ERROR}" "❌" "$1"; }
+log_stage() { log "${COLOR_CYAN}" "📋" "$1"; }
 # ------------------------------------
 
 # --- Dynamic Path Definition ---
@@ -75,14 +77,14 @@ esac
 # --- Validation ---
 if [ -z "$GIT_REPO_NAME" ]; then
     log_error "You must specify the Git Repo Name"
-    echo "Usage: sudo $0 <git_repo_name> <branch_name> [modules_to_update]"
+    echo "Usage: sudo $0 <git_repo_name> <branch_name> <is_renew_db> [modules_to_update]"
     exit 1
 fi
 
 if [ -z "$RELEASE_BRANCH" ]; then
-  log_error "You must specify a release branch."
-  echo "Usage: sudo $0 <git_repo_name> <branch_name> [modules_to_update]"
-  exit 1
+    log_error "You must specify a release branch."
+    echo "Usage: sudo $0 <git_repo_name> <branch_name> <is_renew_db> [modules_to_update]"
+    exit 1
 fi
 
 STG_GIT_PATH="$STG_PATH_TO_ODOO/git/$GIT_REPO_NAME"
@@ -96,12 +98,14 @@ fi
 log_info "🚀 Starting Deployment for Service: $SERVICE_NAME"
 log_info "   Git Repo Name: $GIT_REPO_NAME"
 log_info "   Branch: $RELEASE_BRANCH"
-log_info "   Target DB: $STG_DB_NAME"
+if [ "$IS_RENEW_DB" == "true" ]; then
+    log_info "   Target DB: $STG_DB_NAME"
+fi
 log_info "   Renew DB: $IS_RENEW_DB"
 
 # 1. SWITCH BRANCH (Code Update)
 # ---------------------------------------------------------
-log_info "[1/4] Switching Git Branch..."
+log_stage "[1/4] Switching Git Branch..."
 
 # Fetch updates
 if sudo -u "$CURRENT_DIR_USER" git -C "$STG_GIT_PATH" fetch; then
@@ -136,7 +140,7 @@ fi
 # 2. CLONE DATABASE (Data Reset)
 # ---------------------------------------------------------
 if [ "$IS_RENEW_DB" == "true" ]; then
-    log_info "[2/4] Cloning Production Database to Staging..."
+    log_stage "[2/4] Cloning Production Database to Staging..."
 
     # if the DB_NAME variable is set in Staging Environment file, drop it first
     STG_PORT=$(grep "^PORT=" "$STG_ENV_FILE" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
@@ -216,13 +220,13 @@ if [ "$IS_RENEW_DB" == "true" ]; then
     sudo -u postgres psql -d "$STG_DB_NAME" -c "UPDATE ir_mail_server SET active=False;" > /dev/null 2>&1
     log_success "Sanitization complete."
 else
-    log_info "[2/4] Skipping Database Clone (IS_RENEW_DB is false)."
+    log_stage "[2/4] Skipping Database Clone (IS_RENEW_DB is false)."
 fi
 
 
 # 3. RESTART CONTAINER
 # ---------------------------------------------------------
-log_info "[3/4] Restarting Staging Container..."
+log_stage "[3/4] Restarting Staging Container..."
 
 # Change directory to the dynamic STG_PATH_TO_ODOO
 if cd "$STG_PATH_TO_ODOO"; then
@@ -237,18 +241,17 @@ else
     exit 1
 fi
 
-log_info "Waiting 10 seconds for Odoo to initialize..."
-sleep 10
-
 
 # 4. UPDATE MODULES
 # ---------------------------------------------------------
-log_info "[4/4] Updating Odoo Modules..."
-
 if [ -z "$MODULES_TO_UPDATE" ]; then
+    log_stage "[4/4] Update module skipped..."
     log_warn "No specific modules listed."
-    log_info "Tip: You can pass modules as the second argument: $0 release/1.0 'sale,inventory'"
+    log_info "Tip: You can pass modules as the fourth argument: $0 release/1.0 1 'sale,inventory'"
 else
+    log_stage "[4/4] Updating Odoo Modules..."
+    log_info "Waiting 10 seconds for Odoo to initialize..."
+    sleep 10
     log_info "Updating modules: $MODULES_TO_UPDATE"
     # Using the 'odoo-module-upgrade' utility embedded in your image
     if docker compose exec odoo odoo-module-upgrade "$STG_DB_NAME" --update="$MODULES_TO_UPDATE"; then
@@ -263,6 +266,8 @@ echo ""
 echo "=================================================="
 log_success "Deployment Complete!"
 echo "   Service:     $SERVICE_NAME"
-echo "   Database:    $STG_DB_NAME"
+if [ "$IS_RENEW_DB" == "true" ]; then
+    echo "   Database:    $STG_DB_NAME"
+fi
 echo "   Branch:      $RELEASE_BRANCH"
 echo "=================================================="
