@@ -204,7 +204,7 @@ if [ "$IS_RENEW_DB" == "true" ]; then
         exit 1
     fi
 
-    log_success "Backup of '$ODOO_DATABASE_NAME_PRD' completed successfully to $TEMP_BACKUP_FILE"
+    log_success "Backup of '$PRD_DB_NAME' completed successfully to $TEMP_BACKUP_FILE"
 
     # restore the database
     log_info "Requesting restore to destination Odoo instance..."
