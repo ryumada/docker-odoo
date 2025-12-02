@@ -191,7 +191,7 @@ if [ "$IS_RENEW_DB" == "true" ]; then
 
     # check if the zip backup file actually an html file
     if grep -q -i "<html" "$TEMP_BACKUP_FILE"; then
-        ODOO_ERROR_MSG=$(grep '<div class="alert alert-danger">' "$TEMP_BACKUP_FILE" | sed -n 's/.*<div class="alert alert-danger">\(.*\)<\/div>.*/\1/p')
+        ODOO_ERROR_MSG=$(grep -oP '<div class="alert alert-danger">\K.*(?=</div)' "$TEMP_BACKUP_FILE")
 
         if [ -z "$ODOO_ERROR_MSG" ]; then
             ODOO_ERROR_MSG="Unknown error (The response was an HTML page, but the specific error message could not be parsed)."
