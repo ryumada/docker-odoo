@@ -975,6 +975,7 @@ function main() {
   fi
 
   "$REPOSITORY_DIRPATH/scripts/installer/install-backupdata.sh"
+  "$REPOSITORY_DIRPATH/scripts/installer/install_sudoers.sh"
 
   ENABLE_DATABASE_CLONER=$(grep "^ENABLE_DATABASE_CLONER=" "$REPOSITORY_DIRPATH/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
   if [ -n "$ENABLE_DATABASE_CLONER" ]; then
