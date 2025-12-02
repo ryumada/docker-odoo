@@ -46,7 +46,7 @@ function isCurlInstalled() {
 
 function restoreOdooDataViaEndpoint() {
   log_info "Restoring database via Odoo endpoint..."
-  response=$(curl -s -X POST -F "master_pwd=$ADMIN_PASSWD" -F "name=$RESTORED_DB_NAME" -F "backup_file=@$BACKUPDATA_FILE_PATH" -F "copy=true" "http://localhost:$PORT/web/database/restore")
+  response=$(curl -s -X POST -F "master_pwd=$ADMIN_PASSWD" -F "name=$RESTORED_DB_NAME" -F "backup_file=@$BACKUPDATA_FILE_PATH" -F "copy=true" -F "neutralize_database=true" "http://localhost:$PORT/web/database/restore")
   if [[ "$response" != *"error"* ]] && [[ "$response" != *"incorrect master password"* ]]; then
     log_success "Database restore command sent successfully."
   else

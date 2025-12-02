@@ -213,6 +213,7 @@ if [ "$IS_RENEW_DB" == "true" ]; then
         -F "name=$STG_DB_NAME" \
         -F "backup_file=@$TEMP_BACKUP_FILE" \
         -F "copy=true" \
+        -F "neutralize_database=true" \
         "http://localhost:$STG_PORT/web/database/restore")
 
     if [[ "$response" == *"error"* ]] || [[ "$response" == *"incorrect master password"* ]]; then
@@ -222,13 +223,6 @@ if [ "$IS_RENEW_DB" == "true" ]; then
     fi
 
     log_success "Database restore command sent successfully to destination."
-
-    # SANITIZATION
-    log_info "Sanitizing Staging DB (Deactivating scheduled actions & email)..."
-    log_warn "The sanitization script only works if the database deployed on the host machine!"
-    sudo -u postgres psql -d "$STG_DB_NAME" -c "UPDATE ir_cron SET active=False;" > /dev/null 2>&1
-    sudo -u postgres psql -d "$STG_DB_NAME" -c "UPDATE ir_mail_server SET active=False;" > /dev/null 2>&1
-    log_success "Sanitization complete."
 else
     log_stage "[2/4] Skipping Database Clone (IS_RENEW_DB is false)."
 fi
