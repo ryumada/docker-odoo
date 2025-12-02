@@ -31,47 +31,69 @@ DOCKER_ODOO_APP_NAME=$(basename "$PATH_TO_ROOT_REPOSITORY")
 
 function create_sudoers_file() {
   local user="$1"
-  local sudoers_file_name="01-${user}_as_root-$DOCKER_ODOO_APP_NAME-git_addons_updater"
-  local sudoers_file_path="/etc/sudoers.d/$sudoers_file_name"
+  local SCRIPT_NAME="$2"
 
-  log_info "Creating sudoers file for '$user' user at $sudoers_file_path..."
+  if ! id "$user" &>/dev/null; then
+    log_warn "User '$user' does not exist on this system. Skipping sudoers creation."
+    return 0
+  fi
+
+  local sudoers_file_name="01-${user}_as_root-$DOCKER_ODOO_APP_NAME-$SCRIPT_NAME"
+  local target_path="/etc/sudoers.d/$sudoers_file_name"
+  local script_path="$PATH_TO_ROOT_REPOSITORY/scripts/$SCRIPT_NAME.sh"
+  local rule_content="$user ALL=(root) NOPASSWD: $script_path"
+  local temp_file
+  temp_file=$(mktemp)
+
+  log_info "Creating sudoers file for '$user' user at $target_path to be able to run $script_path..."
+
+  echo "$rule_content" > "$temp_file"
+  chmod 0440 "$temp_file"
 
   # Use a here-document to create the sudoers file content
-  if ! (
-    echo "$user ALL=(root) NOPASSWD: \\"
-    echo "/opt/$DOCKER_ODOO_APP_NAME/scripts/git_addons_updater.sh"
-  ) | visudo -c -f -; then
-    log_error "Generated sudoers content for user '$user' is invalid. Aborting for this user."
+  if ! visudo -c -f "$temp_file"; then
+    log_error "Generated sudoers content for user '$user' is invalid. Aborting."
+    rm -f "$temp_file"
     return 1
   fi
 
-  (umask 0227; echo "$user ALL=(root) NOPASSWD: /opt/$DOCKER_ODOO_APP_NAME/scripts/git_addons_updater.sh" > "$sudoers_file_path")
-  log_success "Sudoers file for '$user' created successfully."
+  if ! mv "$temp_file" "$target_path"; then
+    log_error "Failed to move validated sudoers file to $target_path. Aborting."
+    rm -f "$temp_file"
+    return 1
+  fi
+
+  log_success "Sudoers file for '$user' created successfully at $target_path."
 }
 
 function main() {
   # Self-elevate to root if not already
   if [ "$(id -u)" -ne 0 ]; then
-      log_info "Elevating permissions to root..."
-      # shellcheck disable=SC2093
-      exec sudo "$0" "$@" # Re-run the script with sudo
-      log_error "Failed to elevate to root. Please run with sudo." # This will only run if exec fails
+    log_info "Elevating permissions to root..."
+    # shellcheck disable=SC2093
+    if ! exec sudo "$0" "$@"; then
+      log_error "Failed to elevate to root. Please run with sudo."
       exit 1
+    fi
   fi
 
   log_info "Detected Odoo App Name: $DOCKER_ODOO_APP_NAME"
 
   # Create sudoers file for the 'devops' user
-  create_sudoers_file "devops"
+  create_sudoers_file "devops" "git_addons_updater"
+  create_sudoers_file "devops" "git_odoo-base_updater"
+  create_sudoers_file "devops" "deploy_release_candidate"
 
   # Create sudoers file for the user who ran the script, if they are not 'devops' or 'root'
   local logged_in_user
   logged_in_user=$(logname)
   if [ "$logged_in_user" != "root" ] && [ "$logged_in_user" != "devops" ]; then
-    create_sudoers_file "$logged_in_user"
+    create_sudoers_file "$logged_in_user" "git_addons_updater"
+    create_sudoers_file "$logged_in_user" "git_odoo-base_updater"
+    create_sudoers_file "$logged_in_user" "deploy_release_candidate"
   fi
 
   log_success "Finished updating sudoers configurations."
 }
 
-main "@"
+main "$@"

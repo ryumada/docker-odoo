@@ -1,5 +1,14 @@
 #!/bin/bash
 
+# Self-elevate to root if not already
+if [ "$(id -u)" -ne 0 ]; then
+    log_info "Elevating permissions to root..."
+    # shellcheck disable=SC2093
+    exec sudo "$0" "$@" # Re-run the script with sudo
+    log_error "Failed to elevate to root. Please run with sudo." # This will only run if exec fails
+    exit 1
+fi
+
 # Exit immediately if a command exits with a non-zero status
 set -e
 
@@ -14,10 +23,10 @@ readonly COLOR_CYAN="\033[0;36m"
 
 # Function to log messages with a specific color and emoji
 log() {
-  local color="$1"
-  local emoji="$2"
-  local message="$3"
-  echo -e "${color}[$(date +"%Y-%m-%d %H:%M:%S")] ${emoji} ${message}${COLOR_RESET}"
+    local color="$1"
+    local emoji="$2"
+    local message="$3"
+    echo -e "${color}[$(date +"%Y-%m-%d %H:%M:%S")] ${emoji} ${message}${COLOR_RESET}"
 }
 
 log_info() { log "${COLOR_INFO}" "ℹ️" "$1"; }
@@ -91,8 +100,8 @@ STG_GIT_PATH="$STG_PATH_TO_ODOO/git/$GIT_REPO_NAME"
 
 # Verify Git path exists
 if [ ! -d "$STG_GIT_PATH" ]; then
-  log_error "Git path not found at: $STG_GIT_PATH"
-  exit 1
+    log_error "Git path not found at: $STG_GIT_PATH"
+    exit 1
 fi
 
 log_info "🚀 Starting Deployment for Service: $SERVICE_NAME"
@@ -102,6 +111,7 @@ if [ "$IS_RENEW_DB" == "true" ]; then
     log_info "   Target DB: $STG_DB_NAME"
 fi
 log_info "   Renew DB: $IS_RENEW_DB"
+
 
 # 1. SWITCH BRANCH (Code Update)
 # ---------------------------------------------------------
@@ -166,7 +176,7 @@ if [ "$IS_RENEW_DB" == "true" ]; then
     PRD_PORT=$(grep "^PORT=" "$PRD_ENV_FILE" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
     PRD_ADMIN_PASSWD=$(grep "^ADMIN_PASSWD=" "$PRD_ENV_FILE" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
 
-    log_info "Requesting backup from production $SERVICE_NAME instance..."
+    log_info "Requesting backup from production $SERVICE_NAME_PRD instance..."
     curl -s -X POST \
         -F "master_pwd=$PRD_ADMIN_PASSWD" \
         -F "name=$PRD_DB_NAME" \
@@ -175,7 +185,7 @@ if [ "$IS_RENEW_DB" == "true" ]; then
         "http://localhost:$PRD_PORT/web/database/backup"
 
     if [ ! -s "$TEMP_BACKUP_FILE" ]; then
-        log_error "Backup failed for production $SERVICE_NAME instance. The output file is empty or was not created. Check source Odoo logs."
+        log_error "Backup failed for production $SERVICE_NAME_PRD instance. The output file is empty or was not created. Check source Odoo logs."
         exit 1
     fi
 
@@ -247,7 +257,7 @@ fi
 if [ -z "$MODULES_TO_UPDATE" ]; then
     log_stage "[4/4] Update module skipped..."
     log_warn "No specific modules listed."
-    log_info "Tip: You can pass modules as the fourth argument: $0 release/1.0 1 'sale,inventory'"
+    log_info "Tip: You can pass modules as the fourth argument: $0 $RELEASE_BRANCH $IS_RENEW_DB 'sale,inventory'"
 else
     log_stage "[4/4] Updating Odoo Modules..."
     log_info "Waiting 10 seconds for Odoo to initialize..."
