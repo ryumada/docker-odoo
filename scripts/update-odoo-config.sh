@@ -77,7 +77,8 @@ if [ -f "$ENV_FILE" ]; then
 
   if [ -n "$ODOO_ADDITIONAL_CONF" ]; then
     log_info "Injecting Additional odoo.conf configuration to $ODOO_CONF..."
-    FORMATTED_CONF="\n# Additional custom odoo configuration generated from .env file\n$(echo "$ODOO_ADDITIONAL_CONF" | sed 's/=/ = /g; s/\;/\\n/g')"
+    CONFIG_DATA=$(echo "$ODOO_ADDITIONAL_CONF" | sed 's/=/ = /g; s/\;/\\n/g')
+    FORMATTED_CONF=$'\n# Additional custom odoo configuration generated from .env file\n'"$CONFIG_DATA"
     sed -i "/^proxy_mode = True/a $FORMATTED_CONF" "$ODOO_CONF"
     log_success "Appended ODOO_ADDITIONAL_CONF to $ODOO_CONF."
   else
