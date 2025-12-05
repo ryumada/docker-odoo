@@ -1,0 +1,154 @@
+# PLEASE Enter the right Allowed Domain inside the map function
+map $http_origin $cors_origin_header {
+        # Default is empty (i.e., blocked)
+        default "";
+
+        # Allowed Domain to access (Please add this line matching your domain)
+        # example if the domain service.app.vulnersight.com, then the regex will be like this
+        # "~^https:\/\/service\.app\.vulnersight\.com$" $http_origin;
+
+        # Allow requests without an Origin header (e.g., same-site, curl, postman)
+        "" "";
+}
+
+server {
+        listen 80;
+        server_name $DOMAIN;
+
+        if ($host != "$DOMAIN") {
+                return 403;
+        }
+
+        rewrite ^(.*) https://$host$1 permanent;
+}
+
+upstream $DOMAIN {
+        server 127.0.0.1:$HTTP_PORT;
+}
+
+upstream $DOMAIN-im {
+        server 127.0.0.1:$GEVENT_PORT;
+}
+
+server {
+        listen 443 ssl;
+        server_name $DOMAIN;
+        proxy_read_timeout 720s;
+        proxy_connect_timeout 720s;
+        proxy_send_timeout 720s;
+        proxy_http_version 1.1; #Force to http 1.1 to avoid possible http 2 issues.
+
+        if ($host != "$DOMAIN") {
+                return 403;
+        }
+
+        # SETUP: Please enter the right domain at map function. It will be called
+        set $check_origin "0";
+
+        # if Origin header exist
+        if ($http_origin ~* .) {
+                set $check_origin "1";
+        }
+
+        # cors_origin_header empty if the user does not send origin header or send false Origin
+        if ($cors_origin_header = "") {
+                set $check_origin "${check_origin}1";
+        }
+
+        # Stop and Forbid if there is Origin header AND not in whitelist (1) => $check_origin = "11"
+        if ($check_origin = "11") {
+                return 403;
+        }
+
+        # add Headers for odoo proxy mode
+        proxy_set_header Connection '';
+        proxy_set_header Host                   $host;
+        proxy_set_header X-Forwarded-Host       $host;
+        proxy_set_header X-Forwarded-For        $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto      $scheme;
+        proxy_set_header X-Real-IP              $remote_addr;
+
+        # SSL parameters
+        ssl_certificate         /etc/letsencrypt/live/$DOMAIN/fullchain.pem;
+        ssl_certificate_key     /etc/letsencrypt/live/$DOMAIN/privkey.pem;
+        include                 /etc/letsencrypt/options-ssl-nginx.conf;
+        ssl_dhparam             /etc/letsencrypt/ssl-dhparams.pem;
+
+        # proxy logs
+        access_log      /var/log/nginx/odoo.$DOMAIN.access.log;
+        error_log       /var/log/nginx/odoo.$DOMAIN.error.log;
+        access_log      /var/log/nginx/access.log;
+        error_log       /var/log/nginx/error.log;
+
+        location /web/login {
+                proxy_redirect off;
+                limit_except GET POST { deny all; }
+
+                # for DDOS volumemetric protection
+                keepalive_timeout 60s;
+                client_body_timeout 30s;
+                client_max_body_size 2M;
+
+                proxy_connect_timeout 30s;
+                proxy_read_timeout 30s;
+                proxy_send_timeout 30s;
+
+                limit_req zone=limitweblogin burst=10 delay=2;
+                limit_req_status 444;
+                limit_conn addrweblogin 100;
+
+                proxy_pass http://$DOMAIN;
+        }
+
+        location ~ /web/database/.* {
+                # to close access to database manager, please also disable it on the Odoo Configuration
+                # rewrite ^/web/database/.* /non-existent-page last;
+
+                proxy_redirect off;
+                limit_except GET POST {deny all; }
+
+                # for DDOS volumemetric protection
+                keepalive_timeout 300s;
+                client_body_timeout 300s;
+
+                proxy_connect_timeout 240s;
+                proxy_read_timeout 240s;
+                proxy_send_timeout 240s;
+
+                limit_req zone=limitwebdatabase burst=10 delay=2;
+                limit_req_status 444;
+                limit_conn addrwebdatabase 5;
+
+                proxy_pass http://$DOMAIN;
+        }
+
+        location /websocket {
+                limit_except GET POST { deny all; }
+
+                proxy_set_header Upgrade                $http_upgrade;
+                proxy_set_header Connection             "upgrade";
+
+                proxy_pass http://$DOMAIN-im;
+        }
+
+        location / {
+                proxy_redirect off;
+                limit_except GET POST { deny all; }
+
+                proxy_pass http://$DOMAIN;
+        }
+
+        location ~* /web/static/ {
+                limit_except GET {deny all; }
+                proxy_cache_valid 200 90m;
+                proxy_buffering on;
+                expires 864000;
+                proxy_pass http://$DOMAIN;
+        }
+
+        location /website/info {
+                rewrite ^/web/database/.* /non-existent-page last;
+        }
+}
+
+# source: https://www.goranstimac.com/blog/how-to-install-odoo-14-system-and-set-it-to-work-via-nginx-proxy/
