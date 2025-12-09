@@ -1,0 +1,6 @@
+[[config]]
+name = "Docker-Odoo"
+file_cache = false
+"$version" = "18.0"
+odoo_path = "./odoo-base/enter_odoo_base_repo"
+addons_paths = ["./git/enter_odoo_addons_git/custom_addons", "./git/enter_odoo_addons_git/external_addons"]
