@@ -28,6 +28,7 @@ scripts/*
 !scripts/git_odoo-base_updater.sh
 !scripts/installer
 !scripts/install_sudoers.sh
+!scripts/install-font.sh
 !scripts/README.md
 !scripts/restore-backupdata.sh
 !scripts/restore-snapshot.sh
@@ -39,6 +40,7 @@ utilities/*
 !utilities/README.md
 !utilities/getinfo-odoo_base.sh
 !utilities/getinfo-odoo_addons.sh
+!utilities/install-font.sh
 
 .env
 .env.bak*

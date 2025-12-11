@@ -80,8 +80,10 @@ RUN mkdir -p /var/log/odoo; \
 
 COPY ./utilities/getinfo-odoo_base.sh /usr/local/bin/getinfo-odoo_base
 COPY ./utilities/getinfo-odoo_git_addons.sh /usr/local/bin/getinfo-odoo_git_addons
+COPY ./utilities/install-font.sh /usr/local/bin/install-font
 RUN chmod 555 /usr/local/bin/getinfo-odoo_base; \
-    chmod 555 /usr/local/bin/getinfo-odoo_git_addons
+    chmod 555 /usr/local/bin/getinfo-odoo_git_addons; \
+    chmod 555 /usr/local/bin/install-font
 
 COPY --chown=odoo:odoo ./requirements.txt /opt/odoo/requirements.txt
 
