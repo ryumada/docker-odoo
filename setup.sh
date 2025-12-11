@@ -977,9 +977,13 @@ function main() {
       ODOO_BASE_DIRECTORY=$(find $ODOO_BASE_DIR -mindepth 1 -maxdepth 1 -type d -print -quit)
       log_info "Add execute permission to odoo-bin binary"
       chmod +x "$ODOO_BASE_DIRECTORY"/odoo-bin
-    fi
 
-    isFileExists "$REQUIREMENTS_FILE" "Please copy your requirements.txt file from your 'odoo-base' or create the file by following the requirements.txt.example file." || true
+      if ! isFileExists "$REQUIREMENTS_FILE" "Please copy your requirements.txt file from your 'odoo-base' or create the file by following the requirements.txt.example file."; then
+        log_info "Copying $REQUIREMENTS_FILE file..."
+        cp "$ODOO_BASE_DIRECTORY/$REQUIREMENTS_FILE" "$REQUIREMENTS_FILE"
+        log_success "$REQUIREMENTS_FILE file copied."
+      fi
+    fi
   elif [ "$build_or_pull" -eq 2 ]; then
     local ODOO_IMAGE_NAME
     ODOO_IMAGE_NAME=$(grep "^ODOO_IMAGE_NAME=" "$ENV_FILE" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
