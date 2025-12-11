@@ -305,28 +305,25 @@ function generatePostgresSecrets() {
 
   writeTextFile "$POSTGRES_ODOO_USERNAME" "$DB_USER_SECRET" "username"
 
+  # while true; do
+  #   read -r -p "❓ Do you want to regenerate the password for $POSTGRES_ODOO_USERNAME? [yes/no][y/N] : " response
 
-  if [[ "$response" =~ ^([yY][eE][sS]|[yY])+$ ]]; then
-    generatePostgresPassword "$POSTGRES_ODOO_USERNAME"
-  fi
+  #   case $response in
+  #     [yY][eE][sS]|[yY])
+  #       generatePostgresPassword "$POSTGRES_ODOO_USERNAME"
+  #       break
+  #       ;;
+  #     [nN][oO]|[nN])
+  #       log_info "Okay, You don't want to regenerate password."
+  #       break
+  #       ;;
+  #     *)
+  #       log_error "Invalid option"
+  #       ;;
+  #   esac
+  # done
 
-  while true; do
-    read -r -p "❓ Do you want to regenerate the password for $POSTGRES_ODOO_USERNAME? [yes/no][y/N] : " response
-
-    case $response in
-      [yY][eE][sS]|[yY])
-        generatePostgresPassword "$POSTGRES_ODOO_USERNAME"
-        break
-        ;;
-      [nN][oO]|[nN])
-        log_info "Okay, You don't want to regenerate password."
-        break
-        ;;
-      *)
-        log_error "Invalid option"
-        ;;
-    esac
-  done
+  generatePostgresPassword "$POSTGRES_ODOO_USERNAME"
 
   setPermissionFileToReadOnlyAndOnlyTo "$ODOO_LINUX_USER" "$DB_USER_SECRET"
   setPermissionFileToReadOnlyAndOnlyTo "$ODOO_LINUX_USER" "$DB_PASSWORD_SECRET"
@@ -878,12 +875,23 @@ function main() {
   echo "Deployment name will be    : $SERVICE_NAME"
   echo -e "===================================================================\n"
 
-  read -rp "Press enter key to continue..."
-  echo
+  if [ "$1" != "auto" ]; then
+    read -rp "Press enter key to continue..."
+  fi
 
-  read -r -a isbuildorpull <<< "$(isBuildOrPull)"
-  is_build_or_pull="${isbuildorpull[1]}"
-  build_or_pull="${isbuildorpull[0]}"
+  "$REPOSITORY_DIRPATH/scripts/update-env-file.sh"
+
+  IS_BUILD_OR_PULL_NUMBER_CHOOSEN=$(grep "^IS_BUILD_OR_PULL_NUMBER_CHOOSEN=" "$REPOSITORY_DIRPATH/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
+  IS_BUILD_OR_PULL_TEXT=$(grep "^IS_BUILD_OR_PULL_TEXT=" "$REPOSITORY_DIRPATH/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
+
+  if [ -z "$IS_BUILD_OR_PULL_NUMBER_CHOOSEN" ] && [ -z "$IS_BUILD_OR_PULL_TEXT" ]; then
+    read -r -a isbuildorpull <<< "$(isBuildOrPull)"
+    is_build_or_pull="${isbuildorpull[1]}"
+    build_or_pull="${isbuildorpull[0]}"
+  else
+    is_build_or_pull="$IS_BUILD_OR_PULL_TEXT"
+    build_or_pull="$IS_BUILD_OR_PULL_NUMBER_CHOOSEN"
+  fi
 
   echo -e "\n==================================================================="
 
@@ -895,8 +903,14 @@ function main() {
 
   installDockerServiceRestartorScript
 
-  read -rp "❓ Do you want to renew odoo-shell and odoo-module-upgrade scripts? [y/N] : " response
-  if [[ "$response" =~ ^([yY][eE][sS]|[yY])+$ ]]; then
+  if [ "$1" != "auto" ]; then
+    read -rp "❓ Do you want to renew odoo-shell and odoo-module-upgrade scripts? [y/N] : " response
+
+    if [[ "$response" =~ ^([yY][eE][sS]|[yY])+$ ]]; then
+      createOdooUtilitiesFromEntrypoint "shell"
+      createOdooUtilitiesFromEntrypoint "module-upgrade"
+    fi
+  else
     createOdooUtilitiesFromEntrypoint "shell"
     createOdooUtilitiesFromEntrypoint "module-upgrade"
   fi
@@ -905,8 +919,6 @@ function main() {
   log_info "This script will run in $is_build_or_pull Mode."
   log_info "Checking the necessary files and directories..."
   echo "==================================================================="
-
-  "$REPOSITORY_DIRPATH/scripts/update-env-file.sh"
 
   generateDockerComposeAndDockerfile
 
@@ -918,7 +930,12 @@ function main() {
 
     if [ "$DB_HOST" == "" ]; then
       if isPostgresInstalled; then
-        generatePostgresSecrets
+        DB_REGENERATE_SECRETS=$(grep 'DB_REGENERATE_SECRETS' $ENV_FILE | grep -v '#' | grep -o 'DB_HOST=\([^)]*\)' | sed 's/DB_HOST=//')
+        if [ "$DB_REGENERATE_SECRETS" == "Y" ]; then
+          generatePostgresSecrets "$DB_REGENERATE_SECRETS"
+        fi
+        sed -i "s/DB_REGENERATE_SECRETS=Y/DB_REGENERATE_SECRETS=/" "$ENV_FILE"
+
         installPostgresRestartorScript
       fi
     else
@@ -1005,4 +1022,4 @@ function main() {
   fi
 }
 
-main "@"
+main "$@"
