@@ -36,6 +36,64 @@ if [ "$(id -u)" -ne 0 ]; then
     exit 1
 fi
 
+# --- Usage / Help Function ---
+display_usage() {
+    echo -e "${COLOR_INFO}Usage:${COLOR_RESET} sudo $0 <REPO_NAME> <BRANCH> <RENEW_DB> [MODULES]"
+    echo ""
+    echo -e "${COLOR_CYAN}Arguments:${COLOR_RESET}"
+    echo -e "  ${COLOR_SUCCESS}1. REPO_NAME${COLOR_RESET}       : The directory name of the git repository (inside stg/git/)."
+    echo -e "  ${COLOR_SUCCESS}2. BRANCH${COLOR_RESET}          : The target Git branch to checkout (e.g., 'staging', 'main')."
+    echo -e "  ${COLOR_SUCCESS}3. RENEW_DB${COLOR_RESET}        : Set to 'true' or '1' to drop Staging DB and clone from Production."
+    echo -e "                       Set to 'false' or '0' to keep existing Staging data."
+    echo -e "  ${COLOR_SUCCESS}4. MODULES${COLOR_RESET}         : (Optional) Comma-separated list of modules to update (e.g., 'sale,stock')."
+    echo ""
+    echo -e "${COLOR_CYAN}Examples:${COLOR_RESET}"
+    echo "  # 1. Update code only (Fastest):"
+    echo "  sudo $0 odoo-custom release/feature_a false"
+    echo ""
+    echo "  # 2. Update code and refresh Database from Prod (Full Reset):"
+    echo "  sudo $0 odoo-custom release/feature_a true"
+    echo ""
+    echo "  # 3. Update code and specific modules without DB reset:"
+    echo "  sudo $0 odoo-custom release/feature_a false sale,inventory,account"
+    echo ""
+}
+
+# --- Check for Help Flag ---
+if [[ "$1" == "-h" || "$1" == "--help" ]]; then
+    display_usage
+    exit 0
+fi
+
+# --- Inputs ---
+GIT_REPO_NAME=$1
+RELEASE_BRANCH=$2
+IS_RENEW_DB=$3
+MODULES_TO_UPDATE=$4
+
+# --- Validation ---
+MISSING_ARGS=false
+if [ -z "$GIT_REPO_NAME" ]; then
+    log_error "Missing Argument 1: Git Repo Name"
+    MISSING_ARGS=true
+fi
+
+if [ -z "$RELEASE_BRANCH" ]; then
+    log_error "Missing Argument 2: Release Branch"
+    MISSING_ARGS=true
+fi
+
+if [ -z "$IS_RENEW_DB" ]; then
+    log_error "Missing Argument 3: Renew DB Flag (true/false)"
+    MISSING_ARGS=true
+fi
+
+if [ "$MISSING_ARGS" == "true" ]; then
+    echo ""
+    display_usage
+    exit 1
+fi
+
 # --- Dynamic Path Definition ---
 CURRENT_DIR=$(dirname "$(readlink -f "$0")")
 CURRENT_DIR_USER=$(stat -c '%U' "$CURRENT_DIR")
@@ -68,14 +126,8 @@ if [ -z "$PRD_DB_NAME" ]; then
     exit 1
 fi
 
-# --- Inputs ---
-GIT_REPO_NAME=$1
-RELEASE_BRANCH=$2
-IS_RENEW_DB=$3
-MODULES_TO_UPDATE=$4
-
 case "${IS_RENEW_DB}" in
-    1)
+    1|true|True|TRUE)
         IS_RENEW_DB=true
     ;;
     *)
