@@ -111,21 +111,6 @@ if [ -z "$STG_DB_NAME" ]; then
     STG_DB_NAME="$SERVICE_NAME-$(date +"%Y%m%d-%H%M%S")"
 fi
 
-PRD_PATH_TO_ODOO="$STG_PATH_TO_ODOO/../$SERVICE_NAME_PRD"
-PRD_ENV_FILE="$PRD_PATH_TO_ODOO/.env"
-
-if [ ! -f "$PRD_ENV_FILE" ]; then
-    log_error "Production .env file not found at: $PRD_ENV_FILE"
-    exit 1
-fi
-
-PRD_DB_NAME=$(grep "^DB_NAME=" "$PRD_ENV_FILE" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
-
-if [ -z "$PRD_DB_NAME" ]; then
-    log_error "DB_NAME is not set in the production environment. Please set it at: $PRD_ENV_FILE"
-    exit 1
-fi
-
 case "${IS_RENEW_DB}" in
     1|true|True|TRUE)
         IS_RENEW_DB=true
@@ -202,6 +187,21 @@ fi
 # 2. CLONE DATABASE (Data Reset)
 # ---------------------------------------------------------
 if [ "$IS_RENEW_DB" == "true" ]; then
+    PRD_PATH_TO_ODOO="$STG_PATH_TO_ODOO/../$SERVICE_NAME_PRD"
+    PRD_ENV_FILE="$PRD_PATH_TO_ODOO/.env"
+
+    if [ ! -f "$PRD_ENV_FILE" ]; then
+        log_error "Production .env file not found at: $PRD_ENV_FILE"
+        exit 1
+    fi
+
+    PRD_DB_NAME=$(grep "^DB_NAME=" "$PRD_ENV_FILE" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
+
+    if [ -z "$PRD_DB_NAME" ]; then
+        log_error "DB_NAME is not set in the production environment. Please set it at: $PRD_ENV_FILE"
+        exit 1
+    fi
+
     log_stage "[2/4] Cloning Production Database to Staging..."
 
     # if the DB_NAME variable is set in Staging Environment file, drop it first
