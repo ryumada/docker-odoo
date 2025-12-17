@@ -930,8 +930,9 @@ function main() {
 
     if [ "$DB_HOST" == "" ]; then
       if isPostgresInstalled; then
-        DB_REGENERATE_SECRETS=$(grep 'DB_REGENERATE_SECRETS' $ENV_FILE | grep -v '#' | grep -o 'DB_HOST=\([^)]*\)' | sed 's/DB_HOST=//')
+        DB_REGENERATE_SECRETS=$(grep 'DB_REGENERATE_SECRETS' $ENV_FILE | grep -v '#' | grep -o 'DB_REGENERATE_SECRETS=\([^)]*\)' | sed 's/DB_REGENERATE_SECRETS=//')
         if [ "$DB_REGENERATE_SECRETS" == "Y" ]; then
+          log_info "Regenerate Postgres secrets..."
           generatePostgresSecrets "$DB_REGENERATE_SECRETS"
         fi
         sed -i "s/DB_REGENERATE_SECRETS=Y/DB_REGENERATE_SECRETS=/" "$ENV_FILE"
