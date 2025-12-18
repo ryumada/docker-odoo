@@ -935,7 +935,7 @@ function main() {
           log_info "Regenerate Postgres secrets..."
           generatePostgresSecrets "$DB_REGENERATE_SECRETS"
         fi
-        sed -i "s/DB_REGENERATE_SECRETS=Y/DB_REGENERATE_SECRETS=/" "$ENV_FILE"
+        sed -i "s/DB_REGENERATE_SECRETS=Y/DB_REGENERATE_SECRETS=N/" "$ENV_FILE"
 
         installPostgresRestartorScript
       fi
