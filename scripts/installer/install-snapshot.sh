@@ -189,4 +189,4 @@ EOF
   log_success "Installation finished"
 }
 
-main "@"
+main "$@"

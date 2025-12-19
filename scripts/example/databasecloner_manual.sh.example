@@ -1,0 +1,239 @@
+#!/bin/bash
+
+# Exit immediately if a command exits with a non-zero status
+set -e
+
+# --- Logging Functions & Colors ---
+# Define colors for log messages
+readonly COLOR_RESET="\033[0m"
+readonly COLOR_INFO="\033[0;34m"
+readonly COLOR_SUCCESS="\033[0;32m"
+readonly COLOR_WARN="\033[0;33m"
+readonly COLOR_ERROR="\033[0;31m"
+
+# Function to log messages with a specific color and emoji
+log() {
+  local color="$1"
+  local emoji="$2"
+  local message="$3"
+  echo -e "${color}[$(date +"%Y-%m-%d %H:%M:%S")] ${emoji} ${message}${COLOR_RESET}"
+}
+
+log_info() { log "${COLOR_INFO}" "ℹ️" "$1"; }
+log_success() { log "${COLOR_SUCCESS}" "✅" "$1"; }
+log_warn() { log "${COLOR_WARN}" "⚠️" "$1"; }
+log_error() { log "${COLOR_ERROR}" "❌" "$1"; }
+# ------------------------------------
+
+error_handler() {
+  log_error "An error occurred on line $1. Exiting..."
+  exit 1
+}
+
+trap 'error_handler $LINENO' ERR
+
+function promptWhichEnvironment() {
+  local environment="$1"
+  local ODOO_DEPLOYMENT_ENVIRONMENT
+
+  if [ "$environment" == "" ]; then
+    # You need to choose whether there are multiple environments for your deployment
+    while true; do
+      read -rp "Which environment you wish to clone the data to?
+      [1] Development (dev)
+      [2] Staging (stg)
+      [3] Testing (tst)
+      [4] Other
+
+      Enter the number 1 - 4: " ODOO_DEPLOYMENT_ENVIRONMENT
+
+      if [[ ! "$ODOO_DEPLOYMENT_ENVIRONMENT" =~ ^[1-9]+$ ]]; then
+        log_error "Invalid input. Please enter a number based on the menu above."
+        continue
+      fi
+
+      case $ODOO_DEPLOYMENT_ENVIRONMENT in
+        1)
+          ODOO_DEPLOYMENT_ENVIRONMENT=dev
+          break
+          ;;
+        2)
+          ODOO_DEPLOYMENT_ENVIRONMENT=stg
+          break
+          ;;
+        3)
+          ODOO_DEPLOYMENT_ENVIRONMENT=tst
+          break
+          ;;
+        4)
+          read -rp "Enter the environment name: " ODOO_DEPLOYMENT_ENVIRONMENT
+          break
+          ;;
+        *)
+          log_error "Invalid option"
+          ;;
+      esac
+    done
+  else
+    ODOO_DEPLOYMENT_ENVIRONMENT=$environment
+  fi
+
+  echo "$ODOO_DEPLOYMENT_ENVIRONMENT"
+}
+
+function promptDBNameSuffix() {
+  local promptDBNameSuffix="$1"
+  local ODOO_DEPLOYMENT_ENVIRONMENT="$2"
+
+  local ODOO_DB_NAME_ENV
+
+  case "$promptDBNameSuffix" in
+    Y|y)
+      ODOO_DB_NAME_ENV="$ODOO_DATABASE_NAME_PRD-$ODOO_DEPLOYMENT_ENVIRONMENT-$(date +"%Y%m%d_%H%M")"
+      ;;
+    prompt)
+      while true; do
+        read -rp "Do you want to use a date suffix for the new database name? [Y/n]: " USE_DATE_SUFFIX
+
+        case "$USE_DATE_SUFFIX" in
+          Y|y)
+            ODOO_DB_NAME_ENV="$ODOO_DATABASE_NAME_PRD-$ODOO_DEPLOYMENT_ENVIRONMENT-$(date +"%Y%m%d_%H%M")"; break ;;
+          N|n)
+            ODOO_DB_NAME_ENV="$ODOO_DATABASE_NAME_PRD-$ODOO_DEPLOYMENT_ENVIRONMENT"; break ;;
+          *)
+            log_error "Invalid option" ;;
+        esac
+      done
+      ;;
+    *)
+      ODOO_DB_NAME_ENV="$ODOO_DATABASE_NAME_PRD-$ODOO_DEPLOYMENT_ENVIRONMENT"
+      ;;
+  esac
+
+  echo "$ODOO_DB_NAME_ENV"
+}
+
+function main() {
+    # Self-elevate to root if not already
+    if [ "$(id -u)" -ne 0 ]; then
+        log_info "Elevating permissions to root..."
+        # shellcheck disable=SC2093
+        exec sudo "$0" "$@" # Re-run the script with sudo
+        log_error "Failed to elevate to root. Please run with sudo." # This will only run if exec fails
+        exit 1
+    fi
+
+    CURRENT_DIR=$(dirname "$(readlink -f "$0")")
+    CURRENT_DIR_USER=$(stat -c '%U' "$CURRENT_DIR")
+    PATH_TO_ODOO=$(sudo -u "$CURRENT_DIR_USER" git -C "$(dirname "$(readlink -f "$0")")" rev-parse --show-toplevel)
+    SERVICE_NAME=$(basename "$PATH_TO_ODOO")
+
+    ODOO_DATABASE_NAME_PRD=$(grep "^DB_NAME=" "$PATH_TO_ODOO/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
+    if [ -z "$ODOO_DATABASE_NAME_PRD" ]; then
+        read -rp "Enter the database name: " ODOO_DATABASE_NAME_PRD
+    fi
+
+    ## The environment to which the database will be cloned (leave empty to prompt)
+    CLONED_ENV=$(grep "^CLONED_ENV=" "$PATH_TO_ODOO/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
+
+    ## ex. Y (replace with Y if you want to use a date suffix for the new database name)
+    # This variable determines whether to use a date suffix for the new database name
+    USE_DATE_SUFFIX=$(grep "^USE_DATE_SUFFIX=" "$PATH_TO_ODOO/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
+
+    ODOO_DEPLOYMENT_ENVIRONMENT=$(promptWhichEnvironment "$CLONED_ENV")
+
+    PATH_TO_ODOO_ENV="$PATH_TO_ODOO/../$SERVICE_NAME-$ODOO_DEPLOYMENT_ENVIRONMENT"
+
+    if [ ! -d "$PATH_TO_ODOO_ENV" ]; then
+        log_error "The deployment environment $SERVICE_NAME-$ODOO_DEPLOYMENT_ENVIRONMENT does not exist"
+        exit 1
+    fi
+
+    ODOO_DB_NAME_ENV=$(promptDBNameSuffix "$USE_DATE_SUFFIX" "$ODOO_DEPLOYMENT_ENVIRONMENT")
+
+    ODOO_FILESTORE_PATH_PRD="/var/lib/odoo/$SERVICE_NAME/filestore/$ODOO_DATABASE_NAME_PRD"
+    ODOO_FILESTORE_PATH_ENV="/var/lib/odoo/$SERVICE_NAME-$ODOO_DEPLOYMENT_ENVIRONMENT/filestore/$ODOO_DB_NAME_ENV"
+
+    # ODOO_DB_USER_PRD=$(cat ./secrets/db_user)
+    ODOO_DB_USER_ENV=$(cat "$PATH_TO_ODOO_ENV/.secrets/db_user")
+
+    log_info "Change Directory to $PATH_TO_ODOO"
+    cd "$PATH_TO_ODOO" || { log_error "Can't change directory to $PATH_TO_ODOO"; exit 1; }
+
+    log_info "Start cloning database from $ODOO_DATABASE_NAME_PRD to $ODOO_DB_NAME_ENV"
+
+    log_info "Dump $ODOO_DATABASE_NAME_PRD to temporary file"
+    sudo -u postgres pg_dump -d "$ODOO_DATABASE_NAME_PRD" -f "/tmp/$ODOO_DB_NAME_ENV.sql" > /dev/null 2>&1 || { log_error "Error dumping $ODOO_DATABASE_NAME_PRD"; exit 1; }
+
+    if [ -d "$ODOO_FILESTORE_PATH_ENV" ]; then
+        log_warn "Remove the old filestore of $ODOO_DB_NAME_ENV"
+        rm -rf "$ODOO_FILESTORE_PATH_ENV"
+    fi
+
+    log_info "Copy the filestore to the $ODOO_DEPLOYMENT_ENVIRONMENT environment"
+    mkdir "$ODOO_FILESTORE_PATH_ENV" > /dev/null 2>&1 || { log_warn "Error creating $ODOO_FILESTORE_PATH_ENV. Maybe the directory exists."; }
+    rsync -a "$ODOO_FILESTORE_PATH_PRD/" "$ODOO_FILESTORE_PATH_ENV" > /dev/null 2>&1 || { log_error "Error copying filestore"; exit 1; }
+
+    log_info "Change owner of $ODOO_FILESTORE_PATH_ENV to odoo"
+    chown -R odoo: "$ODOO_FILESTORE_PATH_ENV"
+
+    if [ "$ODOO_DB_NAME_ENV" == "$ODOO_DATABASE_NAME_PRD-$ODOO_DEPLOYMENT_ENVIRONMENT" ]; then
+        log_info "Stop the $ODOO_DEPLOYMENT_ENVIRONMENT environment"
+        docker compose -f "$PATH_TO_ODOO_ENV/docker-compose.yml" stop > /dev/null 2>&1 || { log_error "Error stopping $ODOO_DEPLOYMENT_ENVIRONMENT"; exit 1; }
+
+        log_warn "Drop the old database $ODOO_DB_NAME_ENV"
+        sudo -u postgres psql -d postgres -c "DROP DATABASE IF EXISTS \"$ODOO_DB_NAME_ENV\" WITH (FORCE)" > /dev/null 2>&1 || { log_error "Error dropping database: $(cat /dev/stderr)"; exit 1; }
+    fi
+
+    log_info "Create new database $ODOO_DB_NAME_ENV"
+    sudo -u postgres psql -d postgres -c "CREATE DATABASE \"$ODOO_DB_NAME_ENV\"" > /dev/null 2>&1 || { log_error "Error creating $ODOO_DB_NAME_ENV"; exit 1; }
+
+    log_info "Restore $ODOO_DB_NAME_ENV from $ODOO_DATABASE_NAME_PRD"
+    sudo -u postgres psql -d "$ODOO_DB_NAME_ENV" -f "/tmp/$ODOO_DB_NAME_ENV.sql" > /dev/null 2>&1 || { log_error "Error restoring $ODOO_DB_NAME_ENV"; exit 1; }
+    rm "/tmp/$ODOO_DB_NAME_ENV.sql"
+
+    log_info "Disable Odoo Cron"
+    sudo -u postgres psql -d "$ODOO_DB_NAME_ENV" -c " UPDATE ir_cron SET active=false;" > /dev/null 2>&1 || { log_error "Error Disable Odoo Cron"; exit 1; }
+
+    log_info "Change owner of $ODOO_DB_NAME_ENV to $ODOO_DB_USER_ENV"
+    sudo -u postgres psql -d postgres -c "ALTER DATABASE \"$ODOO_DB_NAME_ENV\" OWNER TO \"$ODOO_DB_USER_ENV\"" > /dev/null 2>&1 || { log_error "Error changing owner of $ODOO_DB_NAME_ENV"; exit 1; }
+
+    sudo -u postgres psql -d "$ODOO_DB_NAME_ENV" -c "
+        -- Change the owner of all tables
+        DO \$\$
+        DECLARE
+            rec RECORD;
+        BEGIN
+            FOR rec IN (SELECT tablename FROM pg_tables WHERE schemaname = 'public') LOOP
+                EXECUTE 'ALTER TABLE ' || quote_ident(rec.tablename) || ' OWNER TO \"${ODOO_DB_USER_ENV}\"';
+            END LOOP;
+        END \$\$;
+
+        -- Change the owner of all sequences
+        DO \$\$
+        DECLARE
+            rec RECORD;
+        BEGIN
+            FOR rec IN (SELECT sequence_name FROM information_schema.sequences WHERE sequence_schema = 'public') LOOP
+                EXECUTE 'ALTER SEQUENCE ' || quote_ident(rec.sequence_name) || ' OWNER TO \"${ODOO_DB_USER_ENV}\"';
+            END LOOP;
+        END \$\$;
+
+        -- Change the owner of all views
+        DO \$\$
+        DECLARE
+            rec RECORD;
+        BEGIN
+            FOR rec IN (SELECT table_name FROM information_schema.views WHERE table_schema = 'public') LOOP
+                EXECUTE 'ALTER VIEW ' || quote_ident(rec.table_name) || ' OWNER TO \"${ODOO_DB_USER_ENV}\"';
+            END LOOP;
+        END \$\$;
+    " > /dev/null 2>&1 || { log_error "Error changing owner of $ODOO_DB_NAME_ENV tables/sequences/views"; exit 1; }
+
+    log_info "Restart the $ODOO_DEPLOYMENT_ENVIRONMENT environment"
+    docker compose -f "$PATH_TO_ODOO_ENV/docker-compose.yml" restart > /dev/null 2>&1 || { log_error "Error restarting $ODOO_DEPLOYMENT_ENVIRONMENT"; exit 1; }
+
+    log_success "Finish cloning database $ODOO_DB_NAME_ENV from $ODOO_DATABASE_NAME_PRD"
+}
+
+main "$@"

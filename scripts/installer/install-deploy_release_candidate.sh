@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# This script will install the backupdata utility based on .env configuration.
+# This script will install the deploy_release_candidate utility based on .env configuration.
 
 # Exit immediately if a command exits with a non-zero status
 set -e
@@ -95,22 +95,22 @@ function main() {
     fi
 
     # Define the single command name used by the system
-    local link_name="backupdata-$SERVICE_NAME"
+    local link_name="deploy_release_candidate-$SERVICE_NAME"
     local script_filename="$link_name.sh"
     local target_path="$PATH_TO_ODOO/scripts/$script_filename"
     local source_path=""
 
     if [ "$BACKUP_RESTORE_METHOD" == "manual" ]; then
-      log_info "Configuration set to 'manual'. Installing Manual Backup utility."
-      source_path="$PATH_TO_ODOO/scripts/example/backupdata_manual.sh.example"
+      log_info "Configuration set to 'manual'. Installing Manual Deploy Release Candidate utility."
+      source_path="$PATH_TO_ODOO/scripts/example/deploy_release_candidate_manual.sh.example"
     else
-      log_info "Configuration is empty or set to standard. Installing Standard Backup utility."
-      source_path="$PATH_TO_ODOO/scripts/example/backupdata.sh.example"
+      log_info "Configuration is empty or set to standard. Installing Standard Deploy Release Candidate utility."
+      source_path="$PATH_TO_ODOO/scripts/example/deploy_release_candidate.sh.example"
     fi
 
     install_script "$link_name" "$source_path" "$target_path"
 
-    log_success "Backup Data utility installed successfully."
+    log_success "Deploy Release Candidate utility installed successfully."
     exit 0
 }
 

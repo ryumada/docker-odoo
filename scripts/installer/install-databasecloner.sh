@@ -1,17 +1,17 @@
 #!/bin/bash
 
+# This script will install the databasecloner utility (Standard and Manual versions).
+
 # Exit immediately if a command exits with a non-zero status
 set -e
 
 # --- Logging Functions & Colors ---
-# Define colors for log messages
 readonly COLOR_RESET="\033[0m"
 readonly COLOR_INFO="\033[0;34m"
 readonly COLOR_SUCCESS="\033[0;32m"
 readonly COLOR_WARN="\033[0;33m"
 readonly COLOR_ERROR="\033[0;31m"
 
-# Function to log messages with a specific color and emoji
 log() {
   local color="$1"
   local emoji="$2"
@@ -32,46 +32,84 @@ error_handler() {
 
 trap 'error_handler $LINENO' ERR
 
-function main() {
-  CURRENT_DIR=$(dirname "$(readlink -f "$0")")
-  CURRENT_DIR_USER=$(stat -c '%U' "$CURRENT_DIR")
-  PATH_TO_ODOO=$(sudo -u "$CURRENT_DIR_USER" git -C "$(dirname "$(readlink -f "$0")")" rev-parse --show-toplevel)
-  SERVICE_NAME=$(basename "$PATH_TO_ODOO")
-  # REPOSITORY_OWNER=$(stat -c '%U' "$PATH_TO_ODOO")
+function install_script() {
+    local link_name="$1"
+    local source_path="$2"
+    local target_path="$3"
 
-  # Self-elevate to root if not already
-  if [ "$(id -u)" -ne 0 ]; then
-      log_info "Elevating permissions to root..."
-      # shellcheck disable=SC2093
-      exec sudo "$0" "$@" # Re-run the script with sudo
-      log_error "Failed to elevate to root. Please run with sudo." # This will only run if exec fails
-      exit 1
-  fi
+    log_info "Processing $target_path..."
+    log_info "Copying from: $source_path"
 
-  if ! cd "$PATH_TO_ODOO"; then
-    log_error "Failed to change directory to $PATH_TO_ODOO"
-    exit 1
-  fi
+    if OUTPUT_RSYNC_COMMAND=$(rsync -acz "$source_path" "$target_path" 2>&1); then
+        log_success "Copied script file successfully."
+    else
+        log_error "Failed to copy script ➡️ $OUTPUT_RSYNC_COMMAND"
+        exit 1
+    fi
 
-  log_info "Installing databasecloner utility"
+    log_info "Changing permission to 755"
+    chmod 755 "$target_path"
 
-  log_info "Copying the latest script from the example script"
-  if OUTPUT_RSYNC_COMMAND=$(rsync -acz ./scripts/example/databasecloner.sh.example "./scripts/databasecloner-$SERVICE_NAME" 2>&1); then
-    log_success "Copied the latest script from the example script."
-  else
-    log_error "Failed to copy the latest script from the example script ➡️ $OUTPUT_RSYNC_COMMAND"
-    exit 1
-  fi
+    log_info "Linking /usr/local/sbin/$link_name"
 
-  log_info "Changing the permission of the script"
-  chmod 755 "./scripts/databasecloner-$SERVICE_NAME"
-
-  log_info "Create a softlink to /usr/local/sbin"
-  if OUTPUT_LN_COMMAND=$(ln -s "$PATH_TO_ODOO/scripts/databasecloner-$SERVICE_NAME" /usr/local/sbin/databasecloner-"$SERVICE_NAME" 2>&1); then
-    log_success "Created a symbolic link to /usr/local/sbin/databasecloner-$SERVICE_NAME"
-  else
-    log_warn "Failed to create a symbolic link to /usr/local/sbin/databasecloner-$SERVICE_NAME ➡️ $OUTPUT_LN_COMMAND"
-  fi
+    # Using -sf to force overwrite if the link already exists
+    if OUTPUT_LN_COMMAND=$(ln -sf "$target_path" "/usr/local/sbin/$link_name" 2>&1); then
+        log_success "Created symbolic link: /usr/local/sbin/$link_name"
+    else
+        log_error "Failed to create symbolic link ➡️ $OUTPUT_LN_COMMAND"
+    fi
 }
 
-main "@"
+function main() {
+    CURRENT_DIR=$(dirname "$(readlink -f "$0")")
+    CURRENT_DIR_USER=$(stat -c '%U' "$CURRENT_DIR")
+    PATH_TO_ODOO=$(sudo -u "$CURRENT_DIR_USER" git -C "$(dirname "$(readlink -f "$0")")" rev-parse --show-toplevel)
+    SERVICE_NAME=$(basename "$PATH_TO_ODOO")
+
+    # Self-elevate to root if not already
+    if [ "$(id -u)" -ne 0 ]; then
+        log_info "Elevating permissions to root..."
+        # shellcheck disable=SC2093
+        exec sudo "$0" "$@"
+        log_error "Failed to elevate to root."
+        exit 1
+    fi
+
+    if ! cd "$PATH_TO_ODOO"; then
+        log_error "Failed to change directory to $PATH_TO_ODOO"
+        exit 1
+    fi
+
+    log_info "Checking configuration in .env file..."
+
+    local ENV_FILE_PATH="$PATH_TO_ODOO/.env"
+    local BACKUP_RESTORE_METHOD
+
+    if [ -f "$ENV_FILE_PATH" ]; then
+        log_info "Found .env file at: $ENV_FILE_PATH"
+        BACKUP_RESTORE_METHOD=$(grep "^BACKUP_RESTORE_METHOD=" "$PATH_TO_ODOO/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
+    else
+        log_error "No .env file found at: $ENV_FILE_PATH"
+        exit 1
+    fi
+
+    local link_name="databasecloner-$SERVICE_NAME"
+    local script_filename="$link_name.sh"
+    local target_path="$PATH_TO_ODOO/scripts/$script_filename"
+    local source_path
+
+    if [ "$BACKUP_RESTORE_METHOD" == "manual" ]; then
+      log_info "Installing databasecloner utility using manual method for service: $SERVICE_NAME"
+      source_path="$PATH_TO_ODOO/scripts/example/databasecloner_manual.sh.example"
+    else
+      log_info "Configuration set to other than 'manual' or it is empty. Installing databasecloner utility using standard Odoo endpoint method for service: $SERVICE_NAME"
+      source_path="$PATH_TO_ODOO/scripts/example/databasecloner.sh.example"
+    fi
+
+    install_script "$link_name" "$source_path" "$target_path"
+
+    log_success "All Database Cloner scripts installed successfully."
+    exit 0
+}
+
+main "$@"

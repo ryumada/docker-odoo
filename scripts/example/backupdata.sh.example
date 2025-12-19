@@ -40,10 +40,10 @@ log_error() { log "${COLOR_ERROR}" "❌" "$1"; }
 # ------------------------------------
 
 if ! command -v curl &> /dev/null; then
-  log_error "curl command could not be found. Please install curl first."
-  echo "For Ubuntu: sudo apt install curl"
-  echo "For CentOS: sudo yum install curl"
-  exit 1
+    log_error "curl command could not be found. Please install curl first."
+    echo "For Ubuntu: sudo apt install curl"
+    echo "For CentOS: sudo yum install curl"
+    exit 1
 fi
 
 # Self-elevate to root if not already
@@ -56,12 +56,12 @@ if [ "$(id -u)" -ne 0 ]; then
 fi
 
 if [ -z "$ODOO_DATABASE_NAME_PRD" ]; then
-  read -rp "Enter the database name: " ODOO_DATABASE_NAME_PRD
+    read -rp "Enter the database name: " ODOO_DATABASE_NAME_PRD
 fi
 
 if [ -z "$ADMIN_PASSWD" ] || [ -z "$PORT" ]; then
-  log_error "ADMIN_PASSWD and/or PORT not set in .env file. Cannot proceed with backup."
-  exit 1
+    log_error "ADMIN_PASSWD and/or PORT not set in .env file. Cannot proceed with backup."
+    exit 1
 fi
 
 log_info "Start backup for database '$ODOO_DATABASE_NAME_PRD' from service '$SERVICE_NAME'"
