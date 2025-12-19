@@ -28,7 +28,7 @@ log_error() { log "${COLOR_ERROR}" "❌" "$1"; }
 CURRENT_DIR=$(dirname "$(readlink -f "$0")")
 PATH_TO_ROOT_REPOSITORY=$(git -C "$CURRENT_DIR" rev-parse --show-toplevel)
 DOCKER_ODOO_APP_NAME=$(basename "$PATH_TO_ROOT_REPOSITORY")
-SERVICE_NAME=$(basename "$PATH_TO_ODOO")
+SERVICE_NAME=$(basename "$PATH_TO_ROOT_REPOSITORY")
 
 function create_sudoers_file() {
   local user="$1"
