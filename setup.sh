@@ -982,6 +982,7 @@ function main() {
       if ! isFileExists "$REQUIREMENTS_FILE" "Please copy your requirements.txt file from your 'odoo-base' or create the file by following the requirements.txt.example file."; then
         log_info "Copying $REQUIREMENTS_FILE file..."
         cp "$ODOO_BASE_DIRECTORY/$REQUIREMENTS_FILE" "$REQUIREMENTS_FILE"
+        chown "$REPOSITORY_OWNER:$REPOSITORY_OWNER" "$REQUIREMENTS_FILE"
         log_success "$REQUIREMENTS_FILE file copied."
       fi
     fi
