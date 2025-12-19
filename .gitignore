@@ -50,6 +50,7 @@ requirements.txt
 dockerfile
 docker-compose*
 !docker-compose.yml.example
+odools.toml
 
 **.tar**
 **.swp
