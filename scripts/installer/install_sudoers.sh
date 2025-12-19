@@ -28,6 +28,7 @@ log_error() { log "${COLOR_ERROR}" "❌" "$1"; }
 CURRENT_DIR=$(dirname "$(readlink -f "$0")")
 PATH_TO_ROOT_REPOSITORY=$(git -C "$CURRENT_DIR" rev-parse --show-toplevel)
 DOCKER_ODOO_APP_NAME=$(basename "$PATH_TO_ROOT_REPOSITORY")
+SERVICE_NAME=$(basename "$PATH_TO_ODOO")
 
 function create_sudoers_file() {
   local user="$1"
@@ -95,7 +96,7 @@ function main() {
   # Create sudoers file for the 'devops' user
   create_sudoers_file "devops" "scripts" "git_addons_updater"
   create_sudoers_file "devops" "scripts" "git_odoo-base_updater"
-  create_sudoers_file "devops" "scripts" "deploy_release_candidate"
+  create_sudoers_file "devops" "scripts" "deploy_release_candidate-$SERVICE_NAME"
 
   # Create sudoers file for the user who ran the script, if they are not 'devops' or 'root'
   local logged_in_user
@@ -103,7 +104,7 @@ function main() {
   if [ "$logged_in_user" != "root" ] && [ "$logged_in_user" != "devops" ]; then
     create_sudoers_file "$logged_in_user" "scripts" "git_addons_updater"
     create_sudoers_file "$logged_in_user" "scripts" "git_odoo-base_updater"
-    create_sudoers_file "$logged_in_user" "scripts" "deploy_release_candidate"
+    create_sudoers_file "$logged_in_user" "scripts" "deploy_release_candidate-$SERVICE_NAME"
     create_sudoers_file "$logged_in_user" "root" "setup"
   fi
 
