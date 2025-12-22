@@ -45,8 +45,24 @@ function isCurlInstalled() {
 }
 
 function restoreOdooDataViaEndpoint() {
+  # Note: ENV_FILE is available here because it was defined in main() before this function was called
+  NEUTRALIZE_DB=$(grep "^NEUTRALIZE_DATABASE=" "$ENV_FILE" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
+
+  if [ -z "$NEUTRALIZE_DB" ]; then
+    NEUTRALIZE_DB="true"
+  fi
+
   log_info "Restoring database via Odoo endpoint..."
-  response=$(curl -s -X POST -F "master_pwd=$ADMIN_PASSWD" -F "name=$RESTORED_DB_NAME" -F "backup_file=@$BACKUPDATA_FILE_PATH" -F "copy=true" -F "neutralize_database=true" "http://localhost:$PORT/web/database/restore")
+  log_info "Neutralize database option: $NEUTRALIZE_DB"
+
+  response=$(curl -s -X POST \
+    -F "master_pwd=$ADMIN_PASSWD" \
+    -F "name=$RESTORED_DB_NAME" \
+    -F "backup_file=@$BACKUPDATA_FILE_PATH" \
+    -F "copy=true" \
+    -F "neutralize_database=$NEUTRALIZE_DB" \
+    "http://localhost:$PORT/web/database/restore")
+
   if [[ "$response" != *"error"* ]] && [[ "$response" != *"incorrect master password"* ]]; then
     log_success "Database restore command sent successfully."
   else
@@ -118,4 +134,4 @@ function main() {
   log_success "Finish restoring backup data for $SERVICE_NAME"
 }
 
-main "@"
+main "$@"
