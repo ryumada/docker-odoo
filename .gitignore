@@ -20,17 +20,13 @@ odoo-base/*
 scripts/*
 !scripts/example
 !scripts/add_hostname_to_btop_titlebar.sh
-!scripts/change_mode_to_git.sh
 !scripts/dataodoo-backupper.sh
 !scripts/dataodoo-remover.sh
-!scripts/deploy_release_candidate.sh
 !scripts/git_addons_updater.sh
 !scripts/git_odoo-base_updater.sh
 !scripts/installer
-!scripts/install_sudoers.sh
 !scripts/install-font.sh
 !scripts/README.md
-!scripts/restore-backupdata.sh
 !scripts/restore-snapshot.sh
 !scripts/.uninstall-odoo.sh
 !scripts/update-env-file.sh

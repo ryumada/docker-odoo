@@ -213,11 +213,29 @@ if [ "$IS_RENEW_DB" == "true" ]; then
         exit 1
     fi
 
-    log_info "Sanitizing Database..."
+    log_info "Sanitizing the database (Disabling Emails & Crons)"
 
-    # 1. Disable Crons (Important for Staging)
-    sudo -u postgres psql -d "$STG_DB_NAME" -c "UPDATE ir_cron SET active=false;" > /dev/null
-    log_info "Crons disabled."
+    # 1. Disable Crons and Emails (Important for Staging)
+    # SQL commands to disable outgoing email, crons, and mail servers
+    SANITIZE_SQL="
+        -- Disable all Outgoing Mail Servers
+        UPDATE ir_mail_server SET active = false;
+
+        -- Disable specific email-related cron jobs
+        UPDATE ir_cron SET active = false;
+
+        -- Set System Parameter to prevent catching emails
+        DELETE FROM ir_config_parameter WHERE key = 'mail.catchall.domain';
+        INSERT INTO ir_config_parameter (key, value) VALUES ('mail.catchall.domain', 'localhost');
+    "
+
+    # Execute the SQL commands
+    # Using || true to prevent script exit if a minor sql error occurs, but verifying execution via check
+    if sudo -u postgres psql -d "$STG_DB_NAME" -c "$SANITIZE_SQL" > /dev/null 2>&1; then
+        log_success "Database sanitized successfully."
+    else
+        log_warn "Warning: Failed to sanitize database completely (SQL command failed)."
+    fi
 
     # 2. Fix Ownership
     log_info "Fixing DB Object Ownership to user: $STG_DB_USER"

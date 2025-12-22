@@ -1,0 +1,244 @@
+#!/bin/bash
+
+# Exit immediately if a command exits with a non-zero status,
+# treat unset variables as an error, and fail if any command in a pipe fails.
+set -Eeuo pipefail
+
+# --- Logging Functions & Colors ---
+# Define colors for log messages
+readonly COLOR_RESET="\033[0m"
+readonly COLOR_INFO="\033[0;34m"
+readonly COLOR_SUCCESS="\033[0;32m"
+readonly COLOR_WARN="\033[0;33m"
+readonly COLOR_ERROR="\033[0;31m"
+
+# Function to log messages with a specific color and emoji
+log() {
+  local color="$1"
+  local emoji="$2"
+  local message="$3"
+  echo -e "${color}[$(date +"%Y-%m-%d %H:%M:%S")] ${emoji} ${message}${COLOR_RESET}"
+}
+
+log_info() { log "${COLOR_INFO}" "ℹ️" "$1"; }
+log_success() { log "${COLOR_SUCCESS}" "✅" "$1"; }
+log_warn() { log "${COLOR_WARN}" "⚠️" "$1"; }
+log_error() { log "${COLOR_ERROR}" "❌" "$1"; }
+
+error_handler() {
+  log_error "An error occurred on line $1. Exiting..."
+  exit 1
+}
+
+trap 'error_handler $LINENO' ERR
+# ------------------------------------
+
+function amIRoot() {
+  if [ "$EUID" -ne 0 ]; then
+    log_error "Please run this script as root"
+    exit 1
+  fi
+}
+
+function isBackupDataExists() {
+  local backupdata_file_path="$1"
+  if [ ! -f "$backupdata_file_path" ]; then
+    log_error "Backup data file '$backupdata_file_path' does not exist. Please place your backupdata file in the /tmp directory."
+    exit 1
+  fi
+}
+
+function isPg_restoreInstalled() {
+  if ! command -v pg_restore &>/dev/null; then
+    log_error "pg_restore is not installed. Please install postgresql-client"
+    log_info "Ubuntu: sudo apt install postgresql-client"
+    log_info "CentOS: sudo yum install postgresql-client"
+    exit 1
+  fi
+}
+
+function isRsyncInstalled() {
+  if ! command -v rsync &>/dev/null; then
+    log_error "rsync is not installed. Please install rsync"
+    log_info "Ubuntu: sudo apt install rsync"
+    log_info "CentOS: sudo yum install rsync"
+    exit 1
+  fi
+}
+
+function isUnZipInstalled() {
+  if ! command -v unzip &>/dev/null; then
+    log_error "unzip is not installed. Please install unzip"
+    log_info "Ubuntu: sudo apt install unzip"
+    log_info "CentOS: sudo yum install unzip"
+    exit 1
+  fi
+}
+
+function sanitizeDatabase() {
+  local restored_db_name="$1"
+  log_info "Sanitizing the database (Disabling Emails & Crons)"
+
+  # SQL commands to disable outgoing email, crons, and mail servers
+  local SANITIZE_SQL="
+    -- Disable all Outgoing Mail Servers
+    UPDATE ir_mail_server SET active = false;
+
+    -- Disable specific email-related cron jobs
+    UPDATE ir_cron SET active = false;
+
+    -- Set System Parameter to prevent catching emails
+    DELETE FROM ir_config_parameter WHERE key = 'mail.catchall.domain';
+    INSERT INTO ir_config_parameter (key, value) VALUES ('mail.catchall.domain', 'localhost');
+  "
+
+  # Execute the SQL commands
+  # Using || true to prevent script exit if a minor sql error occurs, but verifying execution via check
+  if sudo -u postgres psql -d "$restored_db_name" -c "$SANITIZE_SQL" > /dev/null 2>&1; then
+    log_success "Database sanitized successfully."
+  else
+    log_warn "Warning: Failed to sanitize database completely (SQL command failed)."
+  fi
+}
+
+function restoreOdooData() {
+  local restored_db_name="$1"
+  local odoo_db_user="$2"
+
+  log_info "Creating the '$restored_db_name' database"
+  sudo -u postgres psql -c "CREATE DATABASE \"$restored_db_name\"" > /dev/null 2>&1
+
+  log_info "Restoring the database schema and data"
+  sudo -u postgres psql -d "$restored_db_name" -f "$TEMP_DIR/dump.sql" > /dev/null 2>&1
+
+  log_info "Changing the owner of the database"
+  if ! sudo -u postgres psql -c "ALTER DATABASE \"$restored_db_name\" OWNER TO \"$odoo_db_user\"" --quiet -t -P pager=off 2> /dev/null > /dev/null; then
+     log_error "Can't change the owner of the database $restored_db_name"
+     exit 1
+  fi
+
+  log_info "Changing the owner of tables, sequences, and views"
+  if ! sudo -u postgres psql --quiet -t -P pager=off -d "$restored_db_name" -c "
+    -- Change the owner of all tables
+    DO \$\$
+    DECLARE
+        rec RECORD;
+    BEGIN
+        FOR rec IN (SELECT tablename FROM pg_tables WHERE schemaname = 'public') LOOP
+            EXECUTE 'ALTER TABLE ' || quote_ident(rec.tablename) || ' OWNER TO \"${odoo_db_user}\"';
+        END LOOP;
+    END \$\$;
+
+    -- Change the owner of all sequences
+    DO \$\$
+    DECLARE
+        rec RECORD;
+    BEGIN
+        FOR rec IN (SELECT sequence_name FROM information_schema.sequences WHERE sequence_schema = 'public') LOOP
+            EXECUTE 'ALTER SEQUENCE ' || quote_ident(rec.sequence_name) || ' OWNER TO \"${odoo_db_user}\"';
+        END LOOP;
+    END \$\$;
+
+    -- Change the owner of all views
+    DO \$\$
+    DECLARE
+        rec RECORD;
+    BEGIN
+        FOR rec IN (SELECT table_name FROM information_schema.views WHERE table_schema = 'public') LOOP
+            EXECUTE 'ALTER VIEW ' || quote_ident(rec.table_name) || ' OWNER TO \"${odoo_db_user}\"';
+        END LOOP;
+    END \$\$;
+  " 2> /dev/null > /dev/null; then
+     log_error "Can't change the owner of the tables, sequences, and views of the database $restored_db_name"
+     exit 1
+  fi
+}
+
+function main() {
+  CURRENT_DIR=$(dirname "$(readlink -f "$0")")
+  CURRENT_DIR_USER=$(stat -c '%U' "$CURRENT_DIR")
+  PATH_TO_ODOO=$(sudo -u "$CURRENT_DIR_USER" git -C "$(dirname "$(readlink -f "$0")")" rev-parse --show-toplevel)
+  SERVICE_NAME=$(basename "$PATH_TO_ODOO")
+
+  # Ensure secret file exists
+  if [ ! -f "$PATH_TO_ODOO/.secrets/db_user" ]; then
+    log_error "Secret file .secrets/db_user not found in $PATH_TO_ODOO"
+    exit 1
+  fi
+  ODOO_DB_USER=$(cat "$PATH_TO_ODOO/.secrets/db_user")
+
+  BACKUPDATA_FILE_NAME="backupdata-$SERVICE_NAME.zip"
+  BACKUPDATA_FILE_PATH="/tmp/$BACKUPDATA_FILE_NAME"
+  TEMP_DIR="/tmp/backupdata-$SERVICE_NAME"
+  RESTORED_DB_NAME=""
+
+  amIRoot
+  isBackupDataExists "$BACKUPDATA_FILE_PATH"
+  isRsyncInstalled
+  isPg_restoreInstalled
+  isUnZipInstalled
+
+  log_info "Start restoring backup data for $SERVICE_NAME"
+
+  while true; do
+    # Using || true to prevent grep failure from triggering set -e if key is missing
+    PROMPT_FOR_DATABASE_NAME=$(grep "^PROMPT_FOR_DATABASE_NAME=" "$PATH_TO_ODOO/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
+
+    if [ -z "$PROMPT_FOR_DATABASE_NAME" ]; then
+      ODOO_DATABASE_NAME_PRD=$(grep "^DB_NAME=" "$PATH_TO_ODOO/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
+      if [ -z "$ODOO_DATABASE_NAME_PRD" ]; then
+        RESTORED_DB_NAME="$SERVICE_NAME-$(date +"%Y%m%d-%H%M%S")"
+      else
+        RESTORED_DB_NAME="$ODOO_DATABASE_NAME_PRD-$(date +"%Y%m%d-%H%M%S")"
+      fi
+    else
+      # Prompting logic
+      echo -n -e "${COLOR_INFO}[$(date +"%Y-%m-%d %H:%M:%S")] ℹ️  Enter the new database name: ${COLOR_RESET}"
+      read -r RESTORED_DB_NAME
+    fi
+
+    log_info "Database name would be: $RESTORED_DB_NAME"
+
+    log_info "Checking if the database exists..."
+    if sudo -u postgres psql -c '\l' | grep -wq "$RESTORED_DB_NAME"; then
+      log_warn "Database $RESTORED_DB_NAME already exists."
+      if [ -z "$PROMPT_FOR_DATABASE_NAME" ]; then
+         # If automated, we can't loop forever with the same name, so we must error out or append random
+         log_error "Automated restore failed because DB exists. Please rename existing DB or enable PROMPT_FOR_DATABASE_NAME."
+         exit 1
+      else
+         log_info "Please enter a different database name."
+      fi
+    else
+      log_success "Database name '$RESTORED_DB_NAME' is available."
+      break
+    fi
+  done
+
+  FILESTORE_PATH="/var/lib/odoo/$SERVICE_NAME/filestore/$RESTORED_DB_NAME"
+
+  log_info "Creating a temporary directory: $TEMP_DIR"
+  mkdir -p "$TEMP_DIR"
+
+  log_info "Extracting the zip backup file (this may take a while)..."
+  unzip -qqqq -d "$TEMP_DIR" "$BACKUPDATA_FILE_PATH" > /dev/null 2>&1
+
+  log_info "Creating the filestore directory at $FILESTORE_PATH"
+  mkdir -p "$FILESTORE_PATH"
+
+  log_info "Restoring the filestore files..."
+  rsync -a "$TEMP_DIR/filestore/" "$FILESTORE_PATH"
+
+  log_info "Changing the ownership of $FILESTORE_PATH to odoo user"
+  chown -R odoo: "$FILESTORE_PATH"
+
+  restoreOdooData "$RESTORED_DB_NAME" "$ODOO_DB_USER"
+  sanitizeDatabase "$RESTORED_DB_NAME"
+
+  log_info "Cleaning up the temporary directory"
+  rm -rf "$TEMP_DIR"
+
+  log_success "Finished restoring backup data for $SERVICE_NAME"
+}
+
+main "$@"

@@ -113,6 +113,72 @@ function promptDBNameSuffix() {
   echo "$ODOO_DB_NAME_ENV"
 }
 
+function sanitize_database() {
+  local db_name="$1"
+  log_info "Sanitizing the database (Disabling Emails & Crons)"
+
+  # SQL commands to disable outgoing email, crons, and mail servers
+  local SANITIZE_SQL="
+    -- Disable all Outgoing Mail Servers
+    UPDATE ir_mail_server SET active = false;
+
+    -- Disable ALL crons initially (Safety first)
+    UPDATE ir_cron SET active = false;
+
+    -- Set System Parameter to prevent catching emails
+    DELETE FROM ir_config_parameter WHERE key = 'mail.catchall.domain';
+    INSERT INTO ir_config_parameter (key, value) VALUES ('mail.catchall.domain', 'localhost');
+  "
+
+  # Execute the SQL commands
+  if sudo -u postgres psql -d "$db_name" -c "$SANITIZE_SQL" > /dev/null 2>&1; then
+    log_success "Database sanitized successfully."
+  else
+    log_warn "Warning: Failed to sanitize database completely (SQL command failed)."
+  fi
+}
+
+function change_db_ownership() {
+  local db_name="$1"
+  local db_user="$2"
+
+  log_info "Changing ownership of DB $db_name to $db_user"
+
+  sudo -u postgres psql -d postgres -c "ALTER DATABASE \"$db_name\" OWNER TO \"$db_user\"" > /dev/null 2>&1 || { log_error "Error changing DB owner"; exit 1; }
+
+  sudo -u postgres psql -d "$db_name" -c "
+    -- Change the owner of all tables
+    DO \$\$
+    DECLARE
+      rec RECORD;
+    BEGIN
+      FOR rec IN (SELECT tablename FROM pg_tables WHERE schemaname = 'public') LOOP
+        EXECUTE 'ALTER TABLE ' || quote_ident(rec.tablename) || ' OWNER TO \"${db_user}\"';
+      END LOOP;
+    END \$\$;
+
+    -- Change the owner of all sequences
+    DO \$\$
+    DECLARE
+        rec RECORD;
+    BEGIN
+      FOR rec IN (SELECT sequence_name FROM information_schema.sequences WHERE sequence_schema = 'public') LOOP
+        EXECUTE 'ALTER SEQUENCE ' || quote_ident(rec.sequence_name) || ' OWNER TO \"${db_user}\"';
+      END LOOP;
+    END \$\$;
+
+    -- Change the owner of all views
+    DO \$\$
+    DECLARE
+      rec RECORD;
+    BEGIN
+      FOR rec IN (SELECT table_name FROM information_schema.views WHERE table_schema = 'public') LOOP
+        EXECUTE 'ALTER VIEW ' || quote_ident(rec.table_name) || ' OWNER TO \"${db_user}\"';
+      END LOOP;
+    END \$\$;
+  " > /dev/null 2>&1 || { log_error "Error changing ownership of tables/sequences/views"; exit 1; }
+}
+
 function main() {
     # Self-elevate to root if not already
     if [ "$(id -u)" -ne 0 ]; then
@@ -192,43 +258,8 @@ function main() {
     sudo -u postgres psql -d "$ODOO_DB_NAME_ENV" -f "/tmp/$ODOO_DB_NAME_ENV.sql" > /dev/null 2>&1 || { log_error "Error restoring $ODOO_DB_NAME_ENV"; exit 1; }
     rm "/tmp/$ODOO_DB_NAME_ENV.sql"
 
-    log_info "Disable Odoo Cron"
-    sudo -u postgres psql -d "$ODOO_DB_NAME_ENV" -c " UPDATE ir_cron SET active=false;" > /dev/null 2>&1 || { log_error "Error Disable Odoo Cron"; exit 1; }
-
-    log_info "Change owner of $ODOO_DB_NAME_ENV to $ODOO_DB_USER_ENV"
-    sudo -u postgres psql -d postgres -c "ALTER DATABASE \"$ODOO_DB_NAME_ENV\" OWNER TO \"$ODOO_DB_USER_ENV\"" > /dev/null 2>&1 || { log_error "Error changing owner of $ODOO_DB_NAME_ENV"; exit 1; }
-
-    sudo -u postgres psql -d "$ODOO_DB_NAME_ENV" -c "
-        -- Change the owner of all tables
-        DO \$\$
-        DECLARE
-            rec RECORD;
-        BEGIN
-            FOR rec IN (SELECT tablename FROM pg_tables WHERE schemaname = 'public') LOOP
-                EXECUTE 'ALTER TABLE ' || quote_ident(rec.tablename) || ' OWNER TO \"${ODOO_DB_USER_ENV}\"';
-            END LOOP;
-        END \$\$;
-
-        -- Change the owner of all sequences
-        DO \$\$
-        DECLARE
-            rec RECORD;
-        BEGIN
-            FOR rec IN (SELECT sequence_name FROM information_schema.sequences WHERE sequence_schema = 'public') LOOP
-                EXECUTE 'ALTER SEQUENCE ' || quote_ident(rec.sequence_name) || ' OWNER TO \"${ODOO_DB_USER_ENV}\"';
-            END LOOP;
-        END \$\$;
-
-        -- Change the owner of all views
-        DO \$\$
-        DECLARE
-            rec RECORD;
-        BEGIN
-            FOR rec IN (SELECT table_name FROM information_schema.views WHERE table_schema = 'public') LOOP
-                EXECUTE 'ALTER VIEW ' || quote_ident(rec.table_name) || ' OWNER TO \"${ODOO_DB_USER_ENV}\"';
-            END LOOP;
-        END \$\$;
-    " > /dev/null 2>&1 || { log_error "Error changing owner of $ODOO_DB_NAME_ENV tables/sequences/views"; exit 1; }
+    sanitize_database "$ODOO_DB_NAME_ENV"
+    change_db_ownership "$ODOO_DB_NAME_ENV" "$ODOO_DB_USER_ENV"
 
     log_info "Restart the $ODOO_DEPLOYMENT_ENVIRONMENT environment"
     docker compose -f "$PATH_TO_ODOO_ENV/docker-compose.yml" restart > /dev/null 2>&1 || { log_error "Error restarting $ODOO_DEPLOYMENT_ENVIRONMENT"; exit 1; }

@@ -259,13 +259,20 @@ if [ "$IS_RENEW_DB" == "true" ]; then
     log_success "Backup of '$PRD_DB_NAME' completed successfully to $TEMP_BACKUP_FILE"
 
     # restore the database
+    NEUTRALIZE_DB=$(grep "^NEUTRALIZE_DATABASE=" "$ENV_FILE" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
+    if [ -z "$NEUTRALIZE_DB" ]; then
+        NEUTRALIZE_DB="true"
+    fi
+
     log_info "Requesting restore to destination Odoo instance..."
+    log_info "Neutralize database option: $NEUTRALIZE_DB"
+
     response=$(curl -s -X POST \
         -F "master_pwd=$STG_ADMIN_PASSWD" \
         -F "name=$STG_DB_NAME" \
         -F "backup_file=@$TEMP_BACKUP_FILE" \
         -F "copy=true" \
-        -F "neutralize_database=true" \
+        -F "neutralize_database=$NEUTRALIZE_DB" \
         "http://localhost:$STG_PORT/web/database/restore")
 
     if [[ "$response" == *"error"* ]] || [[ "$response" == *"incorrect master password"* ]]; then

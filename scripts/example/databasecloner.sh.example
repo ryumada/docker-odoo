@@ -128,22 +128,23 @@ function main() {
   PATH_TO_ODOO=$(sudo -u "$CURRENT_DIR_USER" git -C "$(dirname "$(readlink -f "$0")")" rev-parse --show-toplevel)
   SERVICE_NAME=$(basename "$PATH_TO_ODOO")
   TEMP_BACKUP_FILE="/tmp/cloner_backup-$SERVICE_NAME.zip"
+  ENV_FILE="$PATH_TO_ODOO/.env"
 
   # Source environment details
-  SOURCE_ADMIN_PASSWD=$(grep "^ADMIN_PASSWD=" "$PATH_TO_ODOO/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
-  SOURCE_PORT=$(grep "^PORT=" "$PATH_TO_ODOO/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
+  SOURCE_ADMIN_PASSWD=$(grep "^ADMIN_PASSWD=" "$ENV_FILE" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
+  SOURCE_PORT=$(grep "^PORT=" "$ENV_FILE" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
 
-  ODOO_DATABASE_NAME_PRD=$(grep "^DB_NAME=" "$PATH_TO_ODOO/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
+  ODOO_DATABASE_NAME_PRD=$(grep "^DB_NAME=" "$ENV_FILE" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
   if [ -z "$ODOO_DATABASE_NAME_PRD" ]; then
     read -rp "Enter the database name: " ODOO_DATABASE_NAME_PRD
   fi
 
   ## The environment to which the database will be cloned (leave empty to prompt)
-  CLONED_ENV=$(grep "^CLONED_ENV=" "$PATH_TO_ODOO/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
+  CLONED_ENV=$(grep "^CLONED_ENV=" "$ENV_FILE" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
 
   ## ex. Y (replace with Y if you want to use a date suffix for the new database name)
   # This variable determines whether to use a date suffix for the new database name
-  USE_DATE_SUFFIX=$(grep "^USE_DATE_SUFFIX=" "$PATH_TO_ODOO/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
+  USE_DATE_SUFFIX=$(grep "^USE_DATE_SUFFIX=" "$ENV_FILE" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
 
   ODOO_DEPLOYMENT_ENVIRONMENT=$(promptWhichEnvironment "$CLONED_ENV")
 
@@ -200,13 +201,21 @@ function main() {
       log_info "Drop database command sent for '$ODOO_DB_NAME_ENV'."
   fi
 
+  # restore the database
+  NEUTRALIZE_DB=$(grep "^NEUTRALIZE_DATABASE=" "$ENV_FILE" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
+  if [ -z "$NEUTRALIZE_DB" ]; then
+      NEUTRALIZE_DB="true"
+  fi
+
   log_info "Requesting restore to destination Odoo instance..."
+  log_info "Neutralize database option: $NEUTRALIZE_DB"
+
   response=$(curl -s -X POST \
     -F "master_pwd=$DEST_ADMIN_PASSWD" \
     -F "name=$ODOO_DB_NAME_ENV" \
     -F "backup_file=@$TEMP_BACKUP_FILE" \
     -F "copy=true" \
-    -F "neutralize_database=true" \
+    -F "neutralize_database=$NEUTRALIZE_DB" \
     "http://localhost:$DEST_PORT/web/database/restore")
 
   if [[ "$response" == *"error"* ]] || [[ "$response" == *"incorrect master password"* ]]; then

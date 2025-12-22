@@ -47,7 +47,6 @@ function isCurlInstalled() {
 function restoreOdooDataViaEndpoint() {
   # Note: ENV_FILE is available here because it was defined in main() before this function was called
   NEUTRALIZE_DB=$(grep "^NEUTRALIZE_DATABASE=" "$ENV_FILE" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
-
   if [ -z "$NEUTRALIZE_DB" ]; then
     NEUTRALIZE_DB="true"
   fi

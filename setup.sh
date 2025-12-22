@@ -999,6 +999,7 @@ function main() {
 
   "$REPOSITORY_DIRPATH/scripts/installer/install-backupdata.sh"
   "$REPOSITORY_DIRPATH/scripts/installer/install-deploy_release_candidate.sh"
+  "$REPOSITORY_DIRPATH/scripts/installer/install-restore_backupdata.sh"
   "$REPOSITORY_DIRPATH/scripts/installer/install_sudoers.sh"
 
   ENABLE_DATABASE_CLONER=$(grep "^ENABLE_DATABASE_CLONER=" "$REPOSITORY_DIRPATH/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
