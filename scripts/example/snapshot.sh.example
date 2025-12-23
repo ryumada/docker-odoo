@@ -185,7 +185,7 @@ function main() {
   # enter the production database name this is required to backup the database
   # Robust parsing for DB_NAME
   ODOO_DATABASE_NAME_PRD=$(grep "^DB_NAME=" "$PATH_TO_ODOO/.env" | cut -d '=' -f2- | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//')
-  
+
   if [ -z "$ODOO_DATABASE_NAME_PRD" ]; then
     log_error "Please setup DB_NAME in your .env file!"
     exit 1
@@ -204,7 +204,7 @@ function main() {
 
   ## Add Directory (ADD MORE VARIABLE TO ADD NEW DIRECTORY for the archive by uncommenting and adding.)
   # files_dirs_to_tar+=("enter_path_to_directory")
-  
+
   ## Make sure that the git directory and odoo base directory has git_hashes.txt file.
   ## If not, you need to change this to the directory of odoo modules and odoo-base instead of git_hashes.txt.
   ## enter the correct path
@@ -236,6 +236,7 @@ function main() {
 
   # Use secure temp file for SQL dump
   SQL_DUMP_FILE=$(mktemp --tmpdir "${ODOO_DATABASE_NAME_PRD}_XXXXXX.sql")
+  chown postgres "$SQL_DUMP_FILE"
   files_dirs_to_tar+=("$SQL_DUMP_FILE")
 
   # These files not backupped to the snapshot file
