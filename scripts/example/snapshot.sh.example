@@ -44,7 +44,7 @@ function areYouReallySure() {
           rm -f "$tar_file_path"
           ;;
         *)
-          log_error "You're not sure, okay. Now exitting the script."
+          log_error "You're not sure, okay. Now exiting the script."
           exit 1
           ;;
       esac
@@ -120,7 +120,7 @@ function moveSnapshotFileToTempDir() {
   chmod 644 "$temp_dir/$tar_file_name"
   chown -R "$REPOSITORY_OWNER": "$temp_dir"
 
-  log_success "The snapshot File Created Successfully named $tar_file_name. File Backupped at $temp_dir/$tar_file_name"
+  log_success "The snapshot File Created Successfully named $tar_file_name. File Backed up at $temp_dir/$tar_file_name"
 }
 
 function resetGitHashFile(){
@@ -169,14 +169,23 @@ function main() {
       exit 1
   fi
 
+  # Setup cleanup trap
+  SQL_DUMP_FILE=""
+  cleanup() {
+      if [[ -n "$SQL_DUMP_FILE" && -f "$SQL_DUMP_FILE" ]]; then
+          rm -f "$SQL_DUMP_FILE"
+      fi
+  }
+  trap cleanup EXIT
+
   echo "-------------------------------------------------------------------------------"
   echo " DAILY SNAPSHOT FOR $SERVICE_NAME @ $(date +"%A, %d %B %Y %H:%M %Z")"
   echo "-------------------------------------------------------------------------------"
 
   # enter the production database name this is required to backup the database
-  ODOO_DATABASE_NAME_PRD=$(grep "^DB_NAME=" "$PATH_TO_ODOO/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
-  # ODOO_DATABASE_NAME_PRD=enter_production_database_name
-  # read -p "Enter the database name: " ODOO_DATABASE_NAME_PRD
+  # Robust parsing for DB_NAME
+  ODOO_DATABASE_NAME_PRD=$(grep "^DB_NAME=" "$PATH_TO_ODOO/.env" | cut -d '=' -f2- | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//')
+  
   if [ -z "$ODOO_DATABASE_NAME_PRD" ]; then
     log_error "Please setup DB_NAME in your .env file!"
     exit 1
@@ -184,31 +193,29 @@ function main() {
 
   # ask to replace the existing snapshot file
   # enter "Y" to add question to replace the existing snapshot file
-  ASK_TO_REPLACE_EXISTING_SNAPSHOT=$(grep "^ASK_TO_REPLACE_EXISTING_SNAPSHOT=" "$PATH_TO_ODOO/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
+  ASK_TO_REPLACE_EXISTING_SNAPSHOT=$(grep "^ASK_TO_REPLACE_EXISTING_SNAPSHOT=" "$PATH_TO_ODOO/.env" | cut -d '=' -f2- | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//')
 
   # you can leave it as is to back up to the /tmp directory instead of Google Cloud Storage (GCS)
-  GCS_BUCKET_NAME=$(grep "^GCS_BUCKET_NAME=" "$PATH_TO_ODOO/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
-  # GCS_BUCKET_NAME=enter_gcs_bucket_name
-  # read -p "Enter the GCS bucket name: " GCS_BUCKET_NAME
+  GCS_BUCKET_NAME=$(grep "^GCS_BUCKET_NAME=" "$PATH_TO_ODOO/.env" | cut -d '=' -f2- | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//')
 
   ## This variable below to define the new variable (DON'T EDIT)
-  FILES_DIRS_TO_TAR=""
+  # Use array for files
+  files_dirs_to_tar=()
 
-  ## Add Directory (ADD MORE VARIABLE TO ADD NEW DIRECTORY for the archive by uncomment this line and add the path of the directory.)
-  # FILES_DIRS_TO_TAR="enter_path_to_directory $FILES_DIRS_TO_TAR"
-  # FILES_DIRS_TO_TAR="enter_path_to_directory $FILES_DIRS_TO_TAR"
-
+  ## Add Directory (ADD MORE VARIABLE TO ADD NEW DIRECTORY for the archive by uncommenting and adding.)
+  # files_dirs_to_tar+=("enter_path_to_directory")
+  
   ## Make sure that the git directory and odoo base directory has git_hashes.txt file.
   ## If not, you need to change this to the directory of odoo modules and odoo-base instead of git_hashes.txt.
   ## enter the correct path
-  FILES_DIRS_TO_TAR="git/git_hashes.txt $FILES_DIRS_TO_TAR"
-  FILES_DIRS_TO_TAR="odoo-base/git_hashes.txt $FILES_DIRS_TO_TAR"
+  files_dirs_to_tar+=("git/git_hashes.txt")
+  files_dirs_to_tar+=("odoo-base/git_hashes.txt")
 
   ## Add the additional odoo module directory that don't use git (uncomment and add the path of the directory)
-  # FILES_DIRS_TO_TAR="git/enter_additional_git_odoo_module_directory $FILES_DIRS_TO_TAR"
+  # files_dirs_to_tar+=("git/enter_additional_git_odoo_module_directory")
 
   ## Make sure that the datadir location is correct (enter the correct one)
-  FILES_DIRS_TO_TAR="/var/lib/odoo/$SERVICE_NAME/filestore/$ODOO_DATABASE_NAME_PRD $FILES_DIRS_TO_TAR"
+  files_dirs_to_tar+=("/var/lib/odoo/$SERVICE_NAME/filestore/$ODOO_DATABASE_NAME_PRD")
 
   log_info "Change WORKDIR to $PATH_TO_ODOO."
   if ! cd "$PATH_TO_ODOO"; then
@@ -216,20 +223,20 @@ function main() {
     exit 1
   fi
 
-  # DATE_FOR_FILENAME="$(date +"%Y%m%d-%H%M%S")"
-  # DATE_FOR_MESSAGE=$(date +"%Y-%m-%d %H:%M:%S")
   TAR_FILE_NAME=snapshot-$SERVICE_NAME.tar.zst
   TAR_FILE_PATH=/tmp/$TAR_FILE_NAME
 
   areYouReallySure "$TAR_FILE_PATH" "$ASK_TO_REPLACE_EXISTING_SNAPSHOT"
 
-  FILES_DIRS_TO_TAR=".secrets/db_user $FILES_DIRS_TO_TAR"
-  FILES_DIRS_TO_TAR=".secrets/db_password $FILES_DIRS_TO_TAR"
-  FILES_DIRS_TO_TAR="conf/odoo.conf $FILES_DIRS_TO_TAR"
-  FILES_DIRS_TO_TAR=".env $FILES_DIRS_TO_TAR"
-  FILES_DIRS_TO_TAR="requirements.txt $FILES_DIRS_TO_TAR"
+  files_dirs_to_tar+=(".secrets/db_user")
+  files_dirs_to_tar+=(".secrets/db_password")
+  files_dirs_to_tar+=("conf/odoo.conf")
+  files_dirs_to_tar+=(".env")
+  files_dirs_to_tar+=("requirements.txt")
 
-  FILES_DIRS_TO_TAR="/tmp/$ODOO_DATABASE_NAME_PRD.sql $FILES_DIRS_TO_TAR"
+  # Use secure temp file for SQL dump
+  SQL_DUMP_FILE=$(mktemp --tmpdir "${ODOO_DATABASE_NAME_PRD}_XXXXXX.sql")
+  files_dirs_to_tar+=("$SQL_DUMP_FILE")
 
   # These files not backupped to the snapshot file
   ## crontab or /etc.cron.d directory is the place where docker-odoo cron jobs are stored.
@@ -237,19 +244,16 @@ function main() {
   ## /etc/logrotate.d is the place where logrotate configuration files are stored.
 
   if [ -f "scripts/backupdata-$SERVICE_NAME" ]; then
-    FILES_DIRS_TO_TAR="scripts/backupdata-$SERVICE_NAME $FILES_DIRS_TO_TAR"
+    files_dirs_to_tar+=("scripts/backupdata-$SERVICE_NAME")
   fi
 
   if [ -f "scripts/databasecloner-$SERVICE_NAME" ]; then
-    FILES_DIRS_TO_TAR="scripts/databasecloner-$SERVICE_NAME $FILES_DIRS_TO_TAR"
+    files_dirs_to_tar+=("scripts/databasecloner-$SERVICE_NAME")
   fi
 
   if [ -f "scripts/snapshot-$SERVICE_NAME" ]; then
-    FILES_DIRS_TO_TAR="scripts/snapshot-$SERVICE_NAME $FILES_DIRS_TO_TAR"
+    files_dirs_to_tar+=("scripts/snapshot-$SERVICE_NAME")
   fi
-
-  TEMP_FILES_TO_REMOVE="/tmp/$ODOO_DATABASE_NAME_PRD.sql"
-  # TEMP_FILES_TO_REMOVE="more_files_to_remove $TEMP_FILES_TO_REMOVE"
 
   if ! command -v zstd >/dev/null 2>&1; then
     log_error "zstd is not installed. Please install zstd first."
@@ -261,36 +265,28 @@ function main() {
   writeGitHash "$PATH_TO_ODOO/git"
   writeGitHash "$PATH_TO_ODOO/odoo-base"
 
-  log_info "Dumping $ODOO_DATABASE_NAME_PRD database..."
-  sudo -u postgres pg_dump -f /tmp/"$ODOO_DATABASE_NAME_PRD.sql" "$ODOO_DATABASE_NAME_PRD" > /dev/null 2>&1
-  PG_DUMP_EXIT_CODE=$?
-  if [ $PG_DUMP_EXIT_CODE -ne 0 ]; then
-    log_error "pg_dump failed to dump the database. Exit code: $PG_DUMP_EXIT_CODE"
+  log_info "Dumping $ODOO_DATABASE_NAME_PRD database to $SQL_DUMP_FILE..."
+  # Use the secure temp file
+  if ! sudo -u postgres pg_dump -f "$SQL_DUMP_FILE" "$ODOO_DATABASE_NAME_PRD" > /dev/null 2>&1; then
+    log_error "pg_dump failed to dump the database."
     exit 1
   fi
 
   log_info "Backing up the database and its datadir..."
-  tar -cf "$TAR_FILE_PATH" -I "zstd -vT0 -7 --ultra" "$FILES_DIRS_TO_TAR" > /dev/null 2>&1
-  TAR_EXIT_CODE=$?
-  if [ $TAR_EXIT_CODE -ne 0 ]; then
-    log_info "Removing temporary files."
-    rm "$TEMP_FILES_TO_REMOVE"
-
-    log_error "tar failed to backup the database and its datadir. Exit code: $TAR_EXIT_CODE"
+  # Use array expansion
+  if ! tar -cf "$TAR_FILE_PATH" -I "zstd -vT0 -7 --ultra" "${files_dirs_to_tar[@]}" > /dev/null 2>&1; then
+    log_error "tar failed to backup the database and its datadir."
     exit 1
   fi
 
   log_info "Changing the ownership of the snapshot file..."
   chown "$REPOSITORY_OWNER": "$TAR_FILE_PATH"
 
-  log_info "Removing temporary files."
-  rm "$TEMP_FILES_TO_REMOVE"
-
   if [ "$GCS_BUCKET_NAME" != "" ]; then
     if sudo -u "$REPOSITORY_OWNER" gsutil ls "gs://$GCS_BUCKET_NAME" > /dev/null 2>&1; then
       log_info "Moving the snapshot file to Google Cloud Storage bucket: gs://$GCS_BUCKET_NAME."
       if sudo -u "$REPOSITORY_OWNER" gsutil -m mv "$TAR_FILE_PATH" "gs://$GCS_BUCKET_NAME/$TAR_FILE_NAME"; then
-        log_success "The snapshot File Created Successfully named $TAR_FILE_NAME. File Backupped at gs://$GCS_BUCKET_NAME/$TAR_FILE_NAME."
+        log_success "The snapshot File Created Successfully named $TAR_FILE_NAME. File Backed up at gs://$GCS_BUCKET_NAME/$TAR_FILE_NAME."
       else
         log_error "Error can't move the snapshot file to gs://$GCS_BUCKET_NAME. Exit code: $?"
         moveSnapshotFileToTempDir "$TAR_FILE_PATH" "$TAR_FILE_NAME"
@@ -306,4 +302,4 @@ function main() {
   echo
 }
 
-main "@"
+main "$@"
