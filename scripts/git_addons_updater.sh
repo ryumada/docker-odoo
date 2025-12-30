@@ -17,12 +17,20 @@ readonly COLOR_SUCCESS="\033[0;32m"
 readonly COLOR_WARN="\033[0;33m"
 readonly COLOR_ERROR="\033[0;31m"
 
+# Global JSON Mode flag
+JSON_MODE="false"
+
 # Function to log messages with a specific color and emoji
 log() {
   local color="$1"
   local emoji="$2"
   local message="$3"
-  echo -e "${color}[$(date +"%Y-%m-%d %H:%M:%S")] ${emoji} ${message}${COLOR_RESET}"
+  # If in JSON mode, redirect all logs to stderr to keep stdout clean for JSON
+  if [ "$JSON_MODE" = "true" ]; then
+      echo -e "${color}[$(date +"%Y-%m-%d %H:%M:%S")] ${emoji} ${message}${COLOR_RESET}" >&2
+  else
+      echo -e "${color}[$(date +"%Y-%m-%d %H:%M:%S")] ${emoji} ${message}${COLOR_RESET}"
+  fi
 }
 
 log_info() { log "${COLOR_INFO}" "ℹ️" "$1"; }
@@ -32,7 +40,7 @@ log_error() { log "${COLOR_ERROR}" "❌" "$1"; }
 # ------------------------------------
 
 function isDirectoryGitRepository() {
-  dir=$1
+  local dir=$1
 
   if [ -d "$dir/.git" ]; then
     if sudo -u "$REPOSITORY_OWNER" git -C "$dir" rev-parse --is-inside-work-tree &>/dev/null; then
@@ -46,18 +54,99 @@ function isDirectoryGitRepository() {
 }
 
 function getSubDirectories() {
-  dir=$1
+  local dir=$1
   subdirs="$(ls -d "$dir"/*/)"
   echo "$subdirs"
 }
 
+function process_repo() {
+    local subdir=$1
+    local repo_name
+    repo_name=$(basename "$subdir")
+    local status="clean"
+    local changed_files=""
+    local ret_updated=0
+
+    if isDirectoryGitRepository "$subdir"; then
+        log_info "Fetching $repo_name..."
+        # Fetch updates silently
+        if ! sudo -u "$REPOSITORY_OWNER" git -C "$subdir" fetch -q 2>/dev/null; then
+             log_warn "Failed to fetch $repo_name"
+             status="fetch_failed"
+        else
+             # Check for changes
+             # @{u} refers to upstream
+             changed_files=$(sudo -u "$REPOSITORY_OWNER" git -C "$subdir" diff --name-only HEAD..@{u} 2>/dev/null)
+
+             if [ -n "$changed_files" ]; then
+                 log_info "Pulling updates for $repo_name..."
+                 if sudo -u "$REPOSITORY_OWNER" git -C "$subdir" pull -q; then
+                     status="success"
+                     ret_updated=1
+                 else
+                     status="clean_failed"
+                 fi
+             fi
+        fi
+    else
+        log_warn "$subdir is not a git repository."
+        status="not_git"
+    fi
+
+    # Output Handling
+    if [ "$JSON_MODE" = "true" ]; then
+        # If not the first repo, print comma
+        if [ "$FIRST_JSON_REPO" -eq 0 ]; then
+            echo ","
+        fi
+        FIRST_JSON_REPO=0
+
+        echo '    {'
+        echo "      \"name\": \"$repo_name\","
+        echo "      \"status\": \"$status\","
+        echo '      "files": ['
+
+        local first_file=1
+        while IFS= read -r line; do
+            [ -z "$line" ] && continue
+            if [ $first_file -eq 0 ]; then echo ","; fi
+            # Escape quotes
+            local clean_line=$(echo "$line" | sed 's/"/\\"/g')
+            echo -n "        \"$clean_line\""
+            first_file=0
+        done <<< "$changed_files"
+        echo ""
+        echo '      ]'
+        echo -n '    }'
+    else
+        # Normal Mode
+        if [ "$status" == "success" ] && [ -n "$changed_files" ]; then
+             log_success "Updated $repo_name with the following changes:"
+             echo "$changed_files" | while read -r line; do
+                 echo "  - $line"
+             done
+        elif [ "$status" == "clean_failed" ]; then
+             log_error "Failed to update $repo_name"
+        elif [ "$status" == "not_git" ]; then
+             : # Already warned
+        fi
+    fi
+
+    return $ret_updated
+}
+
 function main() {
+  local args="$@"
+  if [[ " $args " =~ " json " ]] || [ "$1" == "json" ]; then
+      JSON_MODE="true"
+  fi
+
   # Self-elevate to root if not already
   if [ "$(id -u)" -ne 0 ]; then
       log_info "Elevating permissions to root..."
       # shellcheck disable=SC2093
       exec sudo "$0" "$@" # Re-run the script with sudo
-      log_error "Failed to elevate to root. Please run with sudo." # This will only run if exec fails
+      log_error "Failed to elevate to root. Please run with sudo."
       exit 1
   fi
 
@@ -72,31 +161,56 @@ function main() {
 
   if wc -l <<< "$GIT_SUBDIRS" | grep -q "0"; then
     log_error "No git repositories found in $GIT_PATH"
+    if [ "$JSON_MODE" = "true" ]; then echo '{"error": "No git directory found"}'; fi
     exit 1
   fi
 
+  # Start JSON output
+  if [ "$JSON_MODE" = "true" ]; then
+      echo "{"
+      echo '  "repositories": ['
+  fi
+
+  FIRST_JSON_REPO=1
   pulledrepositories=0
+
   for subdir in $GIT_SUBDIRS; do
-    if isDirectoryGitRepository "$subdir"; then
-      log_info "Fetch and pull $subdir"
-      sudo -u "$REPOSITORY_OWNER" git -C "$subdir" fetch
-      if sudo -u "$REPOSITORY_OWNER" git -C "$subdir" pull | grep -v "up to date" ;then
-        pulledrepositories=$((pulledrepositories+1))
+      if process_repo "$subdir"; then
+          pulledrepositories=$((pulledrepositories+1))
       fi
-    else
-      log_warn "$subdir is not a git repository."
-      log_warn "Please make sure you have added $subdir directory to your snapshot script to backup the addons manually."
-    fi
   done
 
+  # End JSON output
+  if [ "$JSON_MODE" = "true" ]; then
+      echo "" # Newline after last item
+      echo '  ]'
+      echo "}"
+  fi
+
   if [ $pulledrepositories -gt 0 ]; then
-    # log_info "Rebuilding the docker containers"
-    # sudo -u "$REPOSITORY_OWNER" docker compose -f "$PATH_TO_ODOO/$DOCKER_COMPOSE_FILE" up -d --build
     log_info "Restarting the docker containers"
-    sudo -u "$REPOSITORY_OWNER" docker compose -f "$PATH_TO_ODOO/$DOCKER_COMPOSE_FILE" restart
+    # shellcheck disable=SC2086
+    if [ "$JSON_MODE" = "true" ]; then
+        sudo -u "$REPOSITORY_OWNER" docker compose -f "$PATH_TO_ODOO/$DOCKER_COMPOSE_FILE" restart >&2
+    else
+        sudo -u "$REPOSITORY_OWNER" docker compose -f "$PATH_TO_ODOO/$DOCKER_COMPOSE_FILE" restart
+    fi
 
     log_info "Cleaning Unused Docker caches..."
-    sudo -u "$REPOSITORY_OWNER" docker container prune -f; sudo -u "$REPOSITORY_OWNER" docker image prune -f; sudo -u "$REPOSITORY_OWNER" docker system prune -f; sudo sync && echo 3 | sudo tee /proc/sys/vm/drop_caches
+    # shellcheck disable=SC2086
+    if [ "$JSON_MODE" = "true" ]; then
+        {
+            sudo -u "$REPOSITORY_OWNER" docker container prune -f
+            sudo -u "$REPOSITORY_OWNER" docker image prune -f
+            sudo -u "$REPOSITORY_OWNER" docker system prune -f
+            sudo sync && echo 3 | sudo tee /proc/sys/vm/drop_caches
+        } >&2
+    else
+        sudo -u "$REPOSITORY_OWNER" docker container prune -f
+        sudo -u "$REPOSITORY_OWNER" docker image prune -f
+        sudo -u "$REPOSITORY_OWNER" docker system prune -f
+        sudo sync && echo 3 | sudo tee /proc/sys/vm/drop_caches
+    fi
   else
     log_success "No updates found"
   fi
@@ -104,4 +218,4 @@ function main() {
   log_success "Finish checking updates for $SERVICE_NAME"
 }
 
-main "@"
+main "$@"
