@@ -29,6 +29,7 @@ scripts/*
 !scripts/README.md
 !scripts/rename_project.sh
 !scripts/restore-snapshot.sh
+!scripts/transfer_pg_ownership.sh
 !scripts/.uninstall-odoo.sh
 !scripts/update-env-file.sh
 !scripts/update-odoo-config.sh

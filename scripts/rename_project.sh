@@ -118,6 +118,14 @@ OLD_DIR="$PATH_TO_ODOO"
 NEW_DIR="$NEW_PATH_TO_ODOO"
 ENV_FILE="$NEW_ENV_FILE"
 
+# Read current data/log paths from .env before moving anything
+OLD_DATADIR=$(grep "^ODOO_DATADIR_SERVICE=" "\$ENV_FILE" | cut -d "=" -f 2)
+OLD_LOGDIR=$(grep "^ODOO_LOG_DIR_SERVICE=" "\$ENV_FILE" | cut -d "=" -f 2)
+
+# Calculate new paths (replacing the service name part)
+NEW_DATADIR="${OLD_DATADIR/\$OLD_SERVICE_NAME/\$NEW_SERVICE_NAME}"
+NEW_LOGDIR="${OLD_LOGDIR/\$OLD_SERVICE_NAME/\$NEW_SERVICE_NAME}"
+
 log_info "Stopping containers in \$OLD_DIR..."
 cd "\$OLD_DIR" || exit 1
 docker compose down || true
@@ -135,74 +143,40 @@ cd "\$(dirname "\$OLD_DIR")"
 mv "\$OLD_DIR" "\$NEW_DIR"
 
 log_info "Renaming data directories..."
-# Check and rename lib dir
-if [ -d "/var/lib/odoo/$OLD_SERVICE_NAME" ]; then
-    sudo mv "/var/lib/odoo/$OLD_SERVICE_NAME" "/var/lib/odoo/$NEW_SERVICE_NAME"
-    log_success "Renamed /var/lib/odoo/$OLD_SERVICE_NAME to /var/lib/odoo/$NEW_SERVICE_NAME"
+# Move Data Directory (Filestore)
+if [ -n "\$OLD_DATADIR" ] && [ -d "\$OLD_DATADIR" ]; then
+    log_info "Moving Data Dir: \$OLD_DATADIR -> \$NEW_DATADIR"
+    sudo mv "\$OLD_DATADIR" "\$NEW_DATADIR"
 else
-    log_warn "/var/lib/odoo/$OLD_SERVICE_NAME not found."
+    log_warn "Data directory \$OLD_DATADIR not found or not set."
 fi
 
-# Check and rename log dir
-if [ -d "/var/log/odoo/$OLD_SERVICE_NAME" ]; then
-    sudo mv "/var/log/odoo/$OLD_SERVICE_NAME" "/var/log/odoo/$NEW_SERVICE_NAME"
-    log_success "Renamed /var/log/odoo/$OLD_SERVICE_NAME to /var/log/odoo/$NEW_SERVICE_NAME"
+# Move Log Directory
+if [ -n "\$OLD_LOGDIR" ] && [ -d "\$OLD_LOGDIR" ]; then
+    log_info "Moving Log Dir: \$OLD_LOGDIR -> \$NEW_LOGDIR"
+    sudo mv "\$OLD_LOGDIR" "\$NEW_LOGDIR"
 else
-    log_warn "/var/log/odoo/$OLD_SERVICE_NAME not found."
+    log_warn "Log directory \$OLD_LOGDIR not found or not set."
 fi
 
 log_info "Updating .env file..."
 # Script is now in the new location, but we use the static absolute path to be safe
 sed -i "s|^SERVICE_NAME=.*|SERVICE_NAME=$NEW_SERVICE_NAME|" "\$ENV_FILE"
-sed -i "s|/var/log/odoo/$OLD_SERVICE_NAME|/var/log/odoo/$NEW_SERVICE_NAME|g" "\$ENV_FILE"
-sed -i "s|/var/lib/odoo/$OLD_SERVICE_NAME|/var/lib/odoo/$NEW_SERVICE_NAME|g" "\$ENV_FILE"
+# Update paths using the variables we captured
+if [ -n "\$OLD_LOGDIR" ]; then
+    sed -i "s|\$OLD_LOGDIR|\$NEW_LOGDIR|g" "\$ENV_FILE"
+fi
+if [ -n "\$OLD_DATADIR" ]; then
+    sed -i "s|\$OLD_DATADIR|\$NEW_DATADIR|g" "\$ENV_FILE"
+fi
 
 log_info "Running setup.sh to configure new user and permissions..."
 cd "\$NEW_DIR"
-sudo ./setup.sh auto
+sudo ./setup.sh
 
-log_info "Transferring database ownership..."
-# We use the array passed from the parent script
-DATABASES=(${DATABASES_TO_MIGRATE[@]})
-NEW_USER="$NEW_SERVICE_NAME"
-
-for DB in "\${DATABASES[@]}"; do
-    log_info "Migrating database: \$DB to owner \$NEW_USER"
-
-    # 1. Change Database Owner
-    sudo -u postgres psql -c "ALTER DATABASE \"\$DB\" OWNER TO \"\$NEW_USER\";"
-
-    # 2. Change ownership of tables, sequences, and views
-    sudo -u postgres psql -d "\$DB" -c "
-      DO \\\$\\\$
-      DECLARE
-          rec RECORD;
-      BEGIN
-          FOR rec IN (SELECT tablename FROM pg_tables WHERE schemaname = 'public') LOOP
-              EXECUTE 'ALTER TABLE ' || quote_ident(rec.tablename) || ' OWNER TO \"\$NEW_USER\"';
-          END LOOP;
-      END \\\$\\\$;
-
-      DO \\\$\\\$
-      DECLARE
-          rec RECORD;
-      BEGIN
-          FOR rec IN (SELECT sequence_name FROM information_schema.sequences WHERE sequence_schema = 'public') LOOP
-              EXECUTE 'ALTER SEQUENCE ' || quote_ident(rec.sequence_name) || ' OWNER TO \"\$NEW_USER\"';
-          END LOOP;
-      END \\\$\\\$;
-
-      DO \\\$\\\$
-      DECLARE
-          rec RECORD;
-      BEGIN
-          FOR rec IN (SELECT table_name FROM information_schema.views WHERE table_schema = 'public') LOOP
-              EXECUTE 'ALTER VIEW ' || quote_ident(rec.table_name) || ' OWNER TO \"\$NEW_USER\"';
-          END LOOP;
-      END \\\$\\\$;
-    "
-    log_success "Database \$DB ownership transferred."
-done
+log_warn "Critical: A new PostgreSQL user '\$NEW_SERVICE_NAME' has been created."
+log_warn "Existing databases owned by '\$OLD_SERVICE_NAME' will NOT be accessible by this new user."
+log_warn "Please run 'sudo ./scripts/transfer_pg_ownership.sh' to fix database ownership."
 
 log_info "Rebuilding and starting services..."
 docker compose up -d --build
@@ -210,4 +184,6 @@ docker compose up -d --build
 log_success "Rename operation completed successfully! New service is running at \$NEW_DIR"
 
 EOF
+
 exec "$TEMP_SCRIPT"
+```
