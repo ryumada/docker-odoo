@@ -83,6 +83,10 @@ if [[ ! "$confirm" =~ ^[yY] ]]; then
     exit 0
 fi
 
+# Pre-calculate absolute paths for the new location
+NEW_PATH_TO_ODOO="$(dirname "$PATH_TO_ODOO")/$NEW_SERVICE_NAME"
+NEW_ENV_FILE="$NEW_PATH_TO_ODOO/.env"
+
 # Create a temporary script to handle the actual move and restart
 TEMP_SCRIPT=$(mktemp)
 chmod +x "$TEMP_SCRIPT"
@@ -109,16 +113,17 @@ log_success() { log "\${COLOR_SUCCESS}" "✅" "\$1"; }
 log_warn() { log "\${COLOR_WARN}" "⚠️" "\$1"; }
 log_error() { log "\${COLOR_ERROR}" "❌" "\$1"; }
 
-OLD_DIR="$CURRENT_DIR"
-PARENT_DIR="\$(dirname "\$OLD_DIR")"
-NEW_DIR="\$PARENT_DIR/$NEW_SERVICE_NAME"
+# Use static absolute paths calculated by proper logic in parent script
+OLD_DIR="$PATH_TO_ODOO"
+NEW_DIR="$NEW_PATH_TO_ODOO"
+ENV_FILE="$NEW_ENV_FILE"
 
 log_info "Stopping containers in \$OLD_DIR..."
 cd "\$OLD_DIR" || exit 1
 docker compose down || true
 
 log_info "Renaming project directory..."
-cd "\$PARENT_DIR"
+# Use absolute paths for safely moving the project root
 mv "\$OLD_DIR" "\$NEW_DIR"
 
 log_info "Renaming data directories..."
@@ -139,12 +144,13 @@ else
 fi
 
 log_info "Updating .env file..."
-cd "\$NEW_DIR"
-sed -i "s|^SERVICE_NAME=.*|SERVICE_NAME=$NEW_SERVICE_NAME|" .env
-sed -i "s|/var/log/odoo/$OLD_SERVICE_NAME|/var/log/odoo/$NEW_SERVICE_NAME|g" .env
-sed -i "s|/var/lib/odoo/$OLD_SERVICE_NAME|/var/lib/odoo/$NEW_SERVICE_NAME|g" .env
+# Script is now in the new location, but we use the static absolute path to be safe
+sed -i "s|^SERVICE_NAME=.*|SERVICE_NAME=$NEW_SERVICE_NAME|" "\$ENV_FILE"
+sed -i "s|/var/log/odoo/$OLD_SERVICE_NAME|/var/log/odoo/$NEW_SERVICE_NAME|g" "\$ENV_FILE"
+sed -i "s|/var/lib/odoo/$OLD_SERVICE_NAME|/var/lib/odoo/$NEW_SERVICE_NAME|g" "\$ENV_FILE"
 
 log_info "Running setup.sh to configure new user and permissions..."
+cd "\$NEW_DIR"
 sudo ./setup.sh auto
 
 log_info "Transferring database ownership..."
@@ -196,7 +202,4 @@ docker compose up -d --build
 log_success "Rename operation completed successfully! New service is running at \$NEW_DIR"
 
 EOF
-
-log_info "Handing over execution to temporary script..."
-# Execute the temp script replacing the current process
 exec "$TEMP_SCRIPT"
