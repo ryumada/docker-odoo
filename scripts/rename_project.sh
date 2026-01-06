@@ -123,6 +123,14 @@ cd "\$OLD_DIR" || exit 1
 docker compose down || true
 
 log_info "Renaming project directory..."
+# Safety check: Ensure the target directory does not exist to avoid nesting
+if [ -d "\$NEW_DIR" ]; then
+    log_error "Target directory \$NEW_DIR already exists! Aborting to prevent nesting."
+    exit 1
+fi
+
+# Move out of the directory we are about to rename
+cd "\$(dirname "\$OLD_DIR")"
 # Use absolute paths for safely moving the project root
 mv "\$OLD_DIR" "\$NEW_DIR"
 
