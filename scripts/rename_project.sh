@@ -28,10 +28,12 @@ fi
 
 # --- Main Logic ---
 
-CURRENT_DIR=$(pwd)
-SERVICE_NAME="$(basename "$CURRENT_DIR")"
+CURRENT_DIR=$(dirname "$(readlink -f "$0")")
+CURRENT_DIR_USER=$(stat -c '%U' "$CURRENT_DIR")
+PATH_TO_ODOO=$(sudo -u "$CURRENT_DIR_USER" git -C "$(dirname "$(readlink -f "$0")")" rev-parse --show-toplevel)
+SERVICE_NAME=$(basename "$PATH_TO_ODOO")
 OLD_SERVICE_NAME="$SERVICE_NAME"
-ENV_FILE="$CURRENT_DIR/.env"
+ENV_FILE="$PATH_TO_ODOO/.env"
 
 if [ ! -f "$ENV_FILE" ]; then
     log_error ".env file not found in current directory."
@@ -152,7 +154,7 @@ NEW_USER="$NEW_SERVICE_NAME"
 
 for DB in "\${DATABASES[@]}"; do
     log_info "Migrating database: \$DB to owner \$NEW_USER"
-    
+
     # 1. Change Database Owner
     sudo -u postgres psql -c "ALTER DATABASE \"\$DB\" OWNER TO \"\$NEW_USER\";"
 
