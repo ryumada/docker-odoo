@@ -26,54 +26,87 @@ if [ "$(id -u)" -ne 0 ]; then
     exec sudo "$0" "$@"
 fi
 
-# Change database tables owner and its database
-read -rp "Enter Database Name: " SUDOERP_DATABASE_NAME_DEV
-read -rp "Enter the Owner for database $SUDOERP_DATABASE_NAME_DEV: " POSTGRES_USER_DEV
+# --- Inputs ---
+# Usage: ./transfer_pg_ownership.sh [OLD_OWNER] [NEW_OWNER]
 
-log_info "Processing Database: $SUDOERP_DATABASE_NAME_DEV"
-log_info "New Owner: $POSTGRES_USER_DEV"
+OLD_OWNER="$1"
+NEW_OWNER="$2"
 
-# Check if new owner exists
-if ! sudo -u postgres psql -tAc "SELECT 1 FROM pg_roles WHERE rolname='$POSTGRES_USER_DEV'" | grep -q 1; then
-    log_warn "User '$POSTGRES_USER_DEV' does not exist in PostgreSQL. Creating it now..."
-    sudo -u postgres psql -c "CREATE ROLE \"$POSTGRES_USER_DEV\" LOGIN CREATEDB;"
-    log_success "Created user '$POSTGRES_USER_DEV'."
+if [ -z "$OLD_OWNER" ]; then
+    read -rp "Enter the Old Owner (to find databases): " OLD_OWNER
 fi
 
-log_info "Changing database owner..."
-sudo -u postgres psql -c "ALTER DATABASE \"$SUDOERP_DATABASE_NAME_DEV\" OWNER TO \"$POSTGRES_USER_DEV\"";
+if [ -z "$NEW_OWNER" ]; then
+    read -rp "Enter the New Owner: " NEW_OWNER
+fi
 
-log_info "Changing ownership of tables, sequences, and views..."
-sudo -u postgres psql -d "$SUDOERP_DATABASE_NAME_DEV" -c "
-  -- Change the owner of all tables
-  DO \$\$
-  DECLARE
-      rec RECORD;
-  BEGIN
-      FOR rec IN (SELECT tablename FROM pg_tables WHERE schemaname = 'public') LOOP
-          EXECUTE 'ALTER TABLE ' || quote_ident(rec.tablename) || ' OWNER TO \"$POSTGRES_USER_DEV\"';
-      END LOOP;
-  END \$\$;
+if [ -z "$OLD_OWNER" ] || [ -z "$NEW_OWNER" ]; then
+    log_error "Old Owner and New Owner are required."
+    echo "Usage: $0 [OLD_OWNER] [NEW_OWNER]"
+    exit 1
+fi
 
-  -- Change the owner of all sequences
-  DO \$\$
-  DECLARE
-      rec RECORD;
-  BEGIN
-      FOR rec IN (SELECT sequence_name FROM information_schema.sequences WHERE sequence_schema = 'public') LOOP
-          EXECUTE 'ALTER SEQUENCE ' || quote_ident(rec.sequence_name) || ' OWNER TO \"$POSTGRES_USER_DEV\"';
-      END LOOP;
-  END \$\$;
+log_info "Looking for databases owned by '$OLD_OWNER'..."
 
-  -- Change the owner of all views
-  DO \$\$
-  DECLARE
-      rec RECORD;
-  BEGIN
-      FOR rec IN (SELECT table_name FROM information_schema.views WHERE table_schema = 'public') LOOP
-          EXECUTE 'ALTER VIEW ' || quote_ident(rec.table_name) || ' OWNER TO \"$POSTGRES_USER_DEV\"';
-      END LOOP;
-  END \$\$;
-"
+DATABASES_TO_MIGRATE=()
+while IFS= read -r dbname; do
+  DATABASES_TO_MIGRATE+=("$dbname")
+done < <(sudo -u postgres psql -tAc "SELECT datname FROM pg_database WHERE datdba = (SELECT usesysid FROM pg_user WHERE usename = '$OLD_OWNER');")
 
-log_success "Ownership transfer complete for database '$SUDOERP_DATABASE_NAME_DEV'."
+if [ ${#DATABASES_TO_MIGRATE[@]} -eq 0 ]; then
+    log_warn "No databases found owned by '$OLD_OWNER'."
+    exit 0
+else
+    log_success "Found ${#DATABASES_TO_MIGRATE[@]} database(s): ${DATABASES_TO_MIGRATE[*]}"
+fi
+
+# Check if new owner exists
+if ! sudo -u postgres psql -tAc "SELECT 1 FROM pg_roles WHERE rolname='$NEW_OWNER'" | grep -q 1; then
+    log_warn "User '$NEW_OWNER' does not exist in PostgreSQL. Creating it now..."
+    sudo -u postgres psql -c "CREATE ROLE \"$NEW_OWNER\" LOGIN CREATEDB;"
+    log_success "Created user '$NEW_OWNER'."
+fi
+
+for SUDOERP_DATABASE_NAME_DEV in "${DATABASES_TO_MIGRATE[@]}"; do
+    log_info "--------------------------------------------------------"
+    log_info "Processing Database: $SUDOERP_DATABASE_NAME_DEV"
+    log_info "--------------------------------------------------------"
+
+    log_info "Changing database owner..."
+    sudo -u postgres psql -c "ALTER DATABASE \"$SUDOERP_DATABASE_NAME_DEV\" OWNER TO \"$NEW_OWNER\";";
+
+    log_info "Changing ownership of tables, sequences, and views..."
+    sudo -u postgres psql -d "$SUDOERP_DATABASE_NAME_DEV" -c "
+      -- Change the owner of all tables
+      DO \$\$
+      DECLARE
+          rec RECORD;
+      BEGIN
+          FOR rec IN (SELECT tablename FROM pg_tables WHERE schemaname = 'public') LOOP
+              EXECUTE 'ALTER TABLE ' || quote_ident(rec.tablename) || ' OWNER TO \"$NEW_OWNER\"';
+          END LOOP;
+      END \$\$;
+
+      -- Change the owner of all sequences
+      DO \$\$
+      DECLARE
+          rec RECORD;
+      BEGIN
+          FOR rec IN (SELECT sequence_name FROM information_schema.sequences WHERE sequence_schema = 'public') LOOP
+              EXECUTE 'ALTER SEQUENCE ' || quote_ident(rec.sequence_name) || ' OWNER TO \"$NEW_OWNER\"';
+          END LOOP;
+      END \$\$;
+
+      -- Change the owner of all views
+      DO \$\$
+      DECLARE
+          rec RECORD;
+      BEGIN
+          FOR rec IN (SELECT table_name FROM information_schema.views WHERE table_schema = 'public') LOOP
+              EXECUTE 'ALTER VIEW ' || quote_ident(rec.table_name) || ' OWNER TO \"$NEW_OWNER\"';
+          END LOOP;
+      END \$\$;
+    "
+    log_success "Ownership transfer complete for database '$SUDOERP_DATABASE_NAME_DEV'."
+done
+
