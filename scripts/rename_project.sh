@@ -170,13 +170,15 @@ if [ -n "\$OLD_DATADIR" ]; then
     sed -i "s|\$OLD_DATADIR|\$NEW_DATADIR|g" "\$ENV_FILE"
 fi
 
+# Enable DB secret regeneration so setup.sh creates the new user/password
+sed -i "s|^DB_REGENERATE_SECRETS=.*|DB_REGENERATE_SECRETS=Y|" "\$ENV_FILE"
+
 log_info "Running setup.sh to configure new user and permissions..."
 cd "\$NEW_DIR"
 sudo ./setup.sh
 
-log_warn "Critical: A new PostgreSQL user '\$NEW_SERVICE_NAME' has been created."
-log_warn "Existing databases owned by '\$OLD_SERVICE_NAME' will NOT be accessible by this new user."
-log_warn "Please run 'sudo ./scripts/transfer_pg_ownership.sh' to fix database ownership."
+log_info "Transferring database ownership from '\$OLD_SERVICE_NAME' to '\$NEW_SERVICE_NAME'..."
+sudo ./scripts/transfer_pg_ownership.sh "\$OLD_SERVICE_NAME" "\$NEW_SERVICE_NAME"
 
 log_info "Rebuilding and starting services..."
 docker compose up -d --build
@@ -186,4 +188,3 @@ log_success "Rename operation completed successfully! New service is running at 
 EOF
 
 exec "$TEMP_SCRIPT"
-```
