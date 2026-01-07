@@ -175,6 +175,10 @@ sed -i "s|^DB_REGENERATE_SECRETS=.*|DB_REGENERATE_SECRETS=Y|" "\$ENV_FILE"
 
 log_info "Running setup.sh to configure new user and permissions..."
 cd "\$NEW_DIR"
+
+# Fix "detected dubious ownership" error because we are root but repo is owned by user
+git config --global --add safe.directory "\$NEW_DIR"
+
 sudo ./setup.sh
 
 log_info "Transferring database ownership from '\$OLD_SERVICE_NAME' to '\$NEW_SERVICE_NAME'..."
