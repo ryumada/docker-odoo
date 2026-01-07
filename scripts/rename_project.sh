@@ -123,8 +123,8 @@ OLD_DATADIR=$(grep "^ODOO_DATADIR_SERVICE=" "\$ENV_FILE" | cut -d "=" -f 2)
 OLD_LOGDIR=$(grep "^ODOO_LOG_DIR_SERVICE=" "\$ENV_FILE" | cut -d "=" -f 2)
 
 # Calculate new paths (replacing the service name part)
-NEW_DATADIR="${OLD_DATADIR/\$OLD_SERVICE_NAME/\$NEW_SERVICE_NAME}"
-NEW_LOGDIR="${OLD_LOGDIR/\$OLD_SERVICE_NAME/\$NEW_SERVICE_NAME}"
+NEW_DATADIR="\${OLD_DATADIR/$OLD_SERVICE_NAME/$NEW_SERVICE_NAME}"
+NEW_LOGDIR="\${OLD_LOGDIR/$OLD_SERVICE_NAME/$NEW_SERVICE_NAME}"
 
 log_info "Stopping containers in \$OLD_DIR..."
 cd "\$OLD_DIR" || exit 1
@@ -182,7 +182,7 @@ git config --global --add safe.directory "\$NEW_DIR"
 sudo ./setup.sh
 
 log_info "Transferring database ownership from '\$OLD_SERVICE_NAME' to '\$NEW_SERVICE_NAME'..."
-sudo ./scripts/transfer_pg_ownership.sh "\$OLD_SERVICE_NAME" "\$NEW_SERVICE_NAME"
+./scripts/transfer_pg_ownership.sh "$OLD_SERVICE_NAME" "$NEW_SERVICE_NAME"
 
 log_info "Rebuilding and starting services..."
 docker compose up -d --build
