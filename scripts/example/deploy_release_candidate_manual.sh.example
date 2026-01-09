@@ -72,7 +72,7 @@ CURRENT_DIR=$(dirname "$(readlink -f "$0")")
 CURRENT_DIR_USER=$(stat -c '%U' "$CURRENT_DIR")
 STG_PATH_TO_ODOO=$(sudo -u "$CURRENT_DIR_USER" git -C "$(dirname "$(readlink -f "$0")")" rev-parse --show-toplevel)
 SERVICE_NAME=$(basename "$STG_PATH_TO_ODOO")
-SERVICE_NAME_PRD=${SERVICE_NAME%%-*} # Assumes format like 'project-stg' -> 'project'
+SERVICE_NAME_PRD=${SERVICE_NAME%-*} # Assumes format like 'project-stg' -> 'project' OR 'project-16-stg' -> 'project-16'
 
 # Load Staging Env
 STG_ENV_FILE="$STG_PATH_TO_ODOO/.env"
@@ -217,7 +217,7 @@ if [ "$IS_RENEW_DB" == "true" ]; then
 
     # 1. Disable Crons and Emails (Important for Staging)
     # SQL commands to disable outgoing email, crons, and mail servers
-    NEUTRALIZE_DB=$(grep "^NEUTRALIZE_DATABASE=" "$STG_ENV_FILE" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
+    NEUTRALIZE_DB=$(grep "^NEUTRALIZE_DATABASE=" "$PRD_ENV_FILE" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
     if [ -z "$NEUTRALIZE_DB" ]; then
         NEUTRALIZE_DB="true"
     fi
