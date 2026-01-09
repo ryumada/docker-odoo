@@ -186,6 +186,7 @@ log_info "Transferring database ownership from '\$OLD_SERVICE_NAME' to '\$NEW_SE
 
 log_info "Rebuilding and starting services..."
 docker compose up -d --build
+docker compose restart
 
 log_success "Rename operation completed successfully! New service is running at \$NEW_DIR"
 
