@@ -233,7 +233,17 @@ function main() {
   chown -R odoo: "$FILESTORE_PATH"
 
   restoreOdooData "$RESTORED_DB_NAME" "$ODOO_DB_USER"
-  sanitizeDatabase "$RESTORED_DB_NAME"
+
+  NEUTRALIZE_DB=$(grep "^NEUTRALIZE_DATABASE=" "$PATH_TO_ODOO/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]]*//g' | sed 's/[[:space:]]*$//g')
+  if [ -z "$NEUTRALIZE_DB" ]; then
+    NEUTRALIZE_DB="true"
+  fi
+
+  log_info "Neutralize database option: $NEUTRALIZE_DB"
+
+  if [ "$NEUTRALIZE_DB" = "true" ]; then
+    sanitizeDatabase "$RESTORED_DB_NAME"
+  fi
 
   log_info "Cleaning up the temporary directory"
   rm -rf "$TEMP_DIR"

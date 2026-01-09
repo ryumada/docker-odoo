@@ -258,7 +258,15 @@ function main() {
     sudo -u postgres psql -d "$ODOO_DB_NAME_ENV" -f "/tmp/$ODOO_DB_NAME_ENV.sql" > /dev/null 2>&1 || { log_error "Error restoring $ODOO_DB_NAME_ENV"; exit 1; }
     rm "/tmp/$ODOO_DB_NAME_ENV.sql"
 
-    sanitize_database "$ODOO_DB_NAME_ENV"
+    NEUTRALIZE_DB=$(grep "^NEUTRALIZE_DATABASE=" "$PATH_TO_ODOO_ENV/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
+    if [ -z "$NEUTRALIZE_DB" ]; then
+        NEUTRALIZE_DB="true"
+    fi
+
+    if [ "$NEUTRALIZE_DB" = "true" ]; then
+        sanitize_database "$ODOO_DB_NAME_ENV"
+    fi
+
     change_db_ownership "$ODOO_DB_NAME_ENV" "$ODOO_DB_USER_ENV"
 
     log_info "Restart the $ODOO_DEPLOYMENT_ENVIRONMENT environment"

@@ -217,24 +217,31 @@ if [ "$IS_RENEW_DB" == "true" ]; then
 
     # 1. Disable Crons and Emails (Important for Staging)
     # SQL commands to disable outgoing email, crons, and mail servers
-    SANITIZE_SQL="
-        -- Disable all Outgoing Mail Servers
-        UPDATE ir_mail_server SET active = false;
+    NEUTRALIZE_DB=$(grep "^NEUTRALIZE_DATABASE=" "$STG_ENV_FILE" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
+    if [ -z "$NEUTRALIZE_DB" ]; then
+        NEUTRALIZE_DB="true"
+    fi
 
-        -- Disable specific email-related cron jobs
-        UPDATE ir_cron SET active = false;
+    if [ "$NEUTRALIZE_DB" = "true" ]; then
+        SANITIZE_SQL="
+            -- Disable all Outgoing Mail Servers
+            UPDATE ir_mail_server SET active = false;
 
-        -- Set System Parameter to prevent catching emails
-        DELETE FROM ir_config_parameter WHERE key = 'mail.catchall.domain';
-        INSERT INTO ir_config_parameter (key, value) VALUES ('mail.catchall.domain', 'localhost');
-    "
+            -- Disable specific email-related cron jobs
+            UPDATE ir_cron SET active = false;
 
-    # Execute the SQL commands
-    # Using || true to prevent script exit if a minor sql error occurs, but verifying execution via check
-    if sudo -u postgres psql -d "$STG_DB_NAME" -c "$SANITIZE_SQL" > /dev/null 2>&1; then
-        log_success "Database sanitized successfully."
-    else
-        log_warn "Warning: Failed to sanitize database completely (SQL command failed)."
+            -- Set System Parameter to prevent catching emails
+            DELETE FROM ir_config_parameter WHERE key = 'mail.catchall.domain';
+            INSERT INTO ir_config_parameter (key, value) VALUES ('mail.catchall.domain', 'localhost');
+        "
+
+        # Execute the SQL commands
+        # Using || true to prevent script exit if a minor sql error occurs, but verifying execution via check
+        if sudo -u postgres psql -d "$STG_DB_NAME" -c "$SANITIZE_SQL" > /dev/null 2>&1; then
+            log_success "Database sanitized successfully."
+        else
+            log_warn "Warning: Failed to sanitize database completely (SQL command failed)."
+        fi
     fi
 
     # 2. Fix Ownership

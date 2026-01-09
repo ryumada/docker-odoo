@@ -202,7 +202,7 @@ function main() {
   fi
 
   # restore the database
-  NEUTRALIZE_DB=$(grep "^NEUTRALIZE_DATABASE=" "$ENV_FILE" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
+  NEUTRALIZE_DB=$(grep "^NEUTRALIZE_DATABASE=" "$PATH_TO_ODOO_ENV/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
   if [ -z "$NEUTRALIZE_DB" ]; then
       NEUTRALIZE_DB="true"
   fi
@@ -210,13 +210,22 @@ function main() {
   log_info "Requesting restore to destination Odoo instance..."
   log_info "Neutralize database option: $NEUTRALIZE_DB"
 
-  response=$(curl -s -X POST \
-    -F "master_pwd=$DEST_ADMIN_PASSWD" \
-    -F "name=$ODOO_DB_NAME_ENV" \
-    -F "backup_file=@$TEMP_BACKUP_FILE" \
-    -F "copy=true" \
-    -F "neutralize_database=$NEUTRALIZE_DB" \
-    "http://localhost:$DEST_PORT/web/database/restore")
+  if [ "$NEUTRALIZE_DB" = "true" ]; then
+    response=$(curl -s -X POST \
+      -F "master_pwd=$DEST_ADMIN_PASSWD" \
+      -F "name=$ODOO_DB_NAME_ENV" \
+      -F "backup_file=@$TEMP_BACKUP_FILE" \
+      -F "copy=true" \
+      -F "neutralize_database=true" \
+      "http://localhost:$DEST_PORT/web/database/restore")
+  else
+    response=$(curl -s -X POST \
+      -F "master_pwd=$DEST_ADMIN_PASSWD" \
+      -F "name=$ODOO_DB_NAME_ENV" \
+      -F "backup_file=@$TEMP_BACKUP_FILE" \
+      -F "copy=true" \
+      "http://localhost:$DEST_PORT/web/database/restore")
+  fi
 
   if [[ "$response" == *"error"* ]] || [[ "$response" == *"incorrect master password"* ]]; then
     log_error "Failed to restore database to destination. Response: $response"
