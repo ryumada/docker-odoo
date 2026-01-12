@@ -3,6 +3,19 @@
 # Exit immediately if a command exits with a non-zero status
 set -e
 
+# --- JSON Mode Detection ---
+JSON_MODE="false"
+# Filter 'json' from arguments
+ARGS=()
+for arg in "$@"; do
+    if [ "$arg" == "json" ]; then
+        JSON_MODE="true"
+    else
+        ARGS+=("$arg")
+    fi
+done
+set -- "${ARGS[@]}"
+
 # --- Logging Functions & Colors ---
 readonly COLOR_RESET="\033[0m"
 readonly COLOR_INFO="\033[0;34m"
@@ -11,11 +24,14 @@ readonly COLOR_WARN="\033[0;33m"
 readonly COLOR_ERROR="\033[0;31m"
 readonly COLOR_CYAN="\033[0;36m"
 
-log() {
     local color="$1"
     local emoji="$2"
     local message="$3"
-    echo -e "${color}[$(date +"%Y-%m-%d %H:%M:%S")] ${emoji} ${message}${COLOR_RESET}"
+    if [ "$JSON_MODE" = "true" ]; then
+        echo -e "${color}[$(date +"%Y-%m-%d %H:%M:%S")] ${emoji} ${message}${COLOR_RESET}" >&2
+    else
+        echo -e "${color}[$(date +"%Y-%m-%d %H:%M:%S")] ${emoji} ${message}${COLOR_RESET}"
+    fi
 }
 
 log_info() { log "${COLOR_INFO}" "ℹ️" "$1"; }
@@ -101,7 +117,13 @@ log_info "   Renew DB: $IS_RENEW_DB"
 # =========================================================
 log_stage "[1/4] Switching Git Branch..."
 
-if sudo -u "$CURRENT_DIR_USER" git -C "$STG_GIT_PATH" fetch; then
+if [ "$JSON_MODE" = "true" ]; then
+    GIT_FETCH_CMD="sudo -u $CURRENT_DIR_USER git -C $STG_GIT_PATH fetch >&2"
+else
+    GIT_FETCH_CMD="sudo -u $CURRENT_DIR_USER git -C $STG_GIT_PATH fetch"
+fi
+
+if eval "$GIT_FETCH_CMD"; then
     log_info "Fetch success."
 else
     log_error "Failed to fetch."
@@ -109,16 +131,32 @@ else
 fi
 
 # Reset hard to discard local changes in staging
-sudo -u "$CURRENT_DIR_USER" git -C "$STG_GIT_PATH" reset --hard > /dev/null
+if [ "$JSON_MODE" = "true" ]; then
+    sudo -u "$CURRENT_DIR_USER" git -C "$STG_GIT_PATH" reset --hard > /dev/null 2>&1
+else
+    sudo -u "$CURRENT_DIR_USER" git -C "$STG_GIT_PATH" reset --hard > /dev/null
+fi
 
-if sudo -u "$CURRENT_DIR_USER" git -C "$STG_GIT_PATH" checkout "$RELEASE_BRANCH"; then
+if [ "$JSON_MODE" = "true" ]; then
+    GIT_CHECKOUT_CMD="sudo -u $CURRENT_DIR_USER git -C $STG_GIT_PATH checkout $RELEASE_BRANCH >&2"
+else
+    GIT_CHECKOUT_CMD="sudo -u $CURRENT_DIR_USER git -C $STG_GIT_PATH checkout $RELEASE_BRANCH"
+fi
+
+if eval "$GIT_CHECKOUT_CMD"; then
     log_success "Checked out branch: $RELEASE_BRANCH"
 else
     log_error "Failed to checkout branch $RELEASE_BRANCH."
     exit 1
 fi
 
-if sudo -u "$CURRENT_DIR_USER" git -C "$STG_GIT_PATH" pull; then
+if [ "$JSON_MODE" = "true" ]; then
+    GIT_PULL_CMD="sudo -u $CURRENT_DIR_USER git -C $STG_GIT_PATH pull >&2"
+else
+    GIT_PULL_CMD="sudo -u $CURRENT_DIR_USER git -C $STG_GIT_PATH pull"
+fi
+
+if eval "$GIT_PULL_CMD"; then
     log_success "Code is up to date."
 else
     log_error "Failed to pull latest code."
@@ -163,11 +201,20 @@ if [ "$IS_RENEW_DB" == "true" ]; then
 
     DUMP_FILE="/tmp/${STG_DB_NAME}_clone.sql"
     log_info "Dumping Production DB ($PRD_DB_NAME) to $DUMP_FILE..."
-    if sudo -u postgres pg_dump -d "$PRD_DB_NAME" -f "$DUMP_FILE"; then
-        log_success "Dump created."
+    if [ "$JSON_MODE" = "true" ]; then
+        if sudo -u postgres pg_dump -d "$PRD_DB_NAME" -f "$DUMP_FILE" >&2; then
+            log_success "Dump created."
+        else
+            log_error "Failed to dump production database. Check postgres permissions or DB name."
+            exit 1
+        fi
     else
-        log_error "Failed to dump production database. Check postgres permissions or DB name."
-        exit 1
+        if sudo -u postgres pg_dump -d "$PRD_DB_NAME" -f "$DUMP_FILE"; then
+            log_success "Dump created."
+        else
+            log_error "Failed to dump production database. Check postgres permissions or DB name."
+            exit 1
+        fi
     fi
 
     log_info "Syncing Filestore..."
@@ -177,7 +224,13 @@ if [ "$IS_RENEW_DB" == "true" ]; then
     mkdir -p "$STG_FILESTORE_PATH"
 
     # Use rsync to copy data
-    if rsync -a "$PRD_FILESTORE_PATH/" "$STG_FILESTORE_PATH"; then
+    if [ "$JSON_MODE" = "true" ]; then
+        RSYNC_CMD="rsync -a $PRD_FILESTORE_PATH/ $STG_FILESTORE_PATH >&2"
+    else
+        RSYNC_CMD="rsync -a $PRD_FILESTORE_PATH/ $STG_FILESTORE_PATH"
+    fi
+
+    if eval "$RSYNC_CMD"; then
         log_success "Filestore copied."
         # Fix ownership
         chown -R odoo: "$STG_FILESTORE_PATH"
@@ -188,7 +241,11 @@ if [ "$IS_RENEW_DB" == "true" ]; then
 
     log_info "Stopping Staging container to release DB locks..."
     cd "$STG_PATH_TO_ODOO"
-    docker compose stop odoo
+    if [ "$JSON_MODE" = "true" ]; then
+        docker compose stop odoo >&2
+    else
+        docker compose stop odoo
+    fi
 
     log_info "Dropping and Recreating Database ($STG_DB_NAME)..."
 
@@ -196,11 +253,20 @@ if [ "$IS_RENEW_DB" == "true" ]; then
     sudo -u postgres psql -d postgres -c "DROP DATABASE IF EXISTS \"$STG_DB_NAME\" WITH (FORCE)" > /dev/null
 
     # Create
-    if sudo -u postgres psql -d postgres -c "CREATE DATABASE \"$STG_DB_NAME\""; then
-        log_success "Database created."
+    if [ "$JSON_MODE" = "true" ]; then
+        if sudo -u postgres psql -d postgres -c "CREATE DATABASE \"$STG_DB_NAME\"" >&2; then
+             log_success "Database created."
+        else
+             log_error "Failed to create database."
+             exit 1
+        fi
     else
-        log_error "Failed to create database."
-        exit 1
+        if sudo -u postgres psql -d postgres -c "CREATE DATABASE \"$STG_DB_NAME\""; then
+             log_success "Database created."
+        else
+             log_error "Failed to create database."
+             exit 1
+        fi
     fi
 
     log_info "Restoring Dump into Staging..."
@@ -281,11 +347,20 @@ log_stage "[3/4] Restarting Staging Container..."
 
 cd "$STG_PATH_TO_ODOO"
 # Using up -d --force-recreate ensures clean start if it was stopped
-if docker compose up -d --force-recreate odoo; then
-    log_success "Container restarted."
+if [ "$JSON_MODE" = "true" ]; then
+    if docker compose up -d --force-recreate odoo >&2; then
+        log_success "Container restarted."
+    else
+        log_error "Failed to restart docker container."
+        exit 1
+    fi
 else
-    log_error "Failed to restart docker container."
-    exit 1
+    if docker compose up -d --force-recreate odoo; then
+        log_success "Container restarted."
+    else
+        log_error "Failed to restart docker container."
+        exit 1
+    fi
 fi
 
 # =========================================================
@@ -300,20 +375,73 @@ else
     sleep 10
     log_info "Updating modules: $MODULES_TO_UPDATE"
 
-    if docker compose exec odoo odoo-module-upgrade "$STG_DB_NAME" --update="$MODULES_TO_UPDATE"; then
-        log_success "Modules updated successfully."
+    if [ "$JSON_MODE" = "true" ]; then
+        if docker compose exec odoo odoo-module-upgrade "$STG_DB_NAME" --update="$MODULES_TO_UPDATE" >&2; then
+            log_success "Modules updated successfully."
+        else
+            log_error "Failed to update modules."
+            exit 1
+        fi
     else
-        log_error "Failed to update modules."
-        exit 1
+        if docker compose exec odoo odoo-module-upgrade "$STG_DB_NAME" --update="$MODULES_TO_UPDATE"; then
+            log_success "Modules updated successfully."
+        else
+            log_error "Failed to update modules."
+            exit 1
+        fi
     fi
 fi
 
-echo ""
-echo "=================================================="
-log_success "Deployment Complete!"
-echo "   Service:     $SERVICE_NAME"
-if [ "$IS_RENEW_DB" == "true" ]; then
-    echo "   Database:    $STG_DB_NAME (Cloned from $PRD_DB_NAME)"
+if [ "$JSON_MODE" = "false" ]; then
+    echo ""
+    echo "=================================================="
+    log_success "Deployment Complete!"
+    echo "   Service:     $SERVICE_NAME"
+    if [ "$IS_RENEW_DB" == "true" ]; then
+        echo "   Database:    $STG_DB_NAME (Cloned from $PRD_DB_NAME)"
+    fi
+    echo "   Branch:      $RELEASE_BRANCH"
+    echo "=================================================="
 fi
-echo "   Branch:      $RELEASE_BRANCH"
-echo "=================================================="
+
+# --- JSON Output Generation ---
+if [ "$JSON_MODE" = "true" ]; then
+    echo "{"
+    echo '  "repositories": ['
+
+    GIT_ROOT="$STG_PATH_TO_ODOO/git"
+    FIRST_REPO=1
+
+    if [ -d "$GIT_ROOT" ]; then
+        for repo_dir in "$GIT_ROOT"/*/; do
+            [ -d "$repo_dir" ] || continue
+            repo_name=$(basename "$repo_dir")
+
+            status="clean"
+
+            if [ -d "$repo_dir/.git" ]; then
+               commit_hash=$(sudo -u "$CURRENT_DIR_USER" git -C "$repo_dir" rev-parse --short HEAD 2>/dev/null || echo "unknown")
+               commit_subject=$(sudo -u "$CURRENT_DIR_USER" git -C "$repo_dir" log -1 --format="%s" 2>/dev/null | tr -d '"\\' || echo "")
+            else
+               status="not_git"
+               commit_hash=""
+               commit_subject=""
+            fi
+
+            if [ $FIRST_REPO -eq 0 ]; then echo ","; fi
+            FIRST_REPO=0
+
+            echo "    {"
+            echo "      \"name\": \"$repo_name\","
+            echo "      \"status\": \"$status\","
+            echo "      \"commit\": \"$commit_hash\","
+            echo "      \"subject\": \"$commit_subject\","
+            echo "      \"files\": []"
+            echo -n "    }"
+        done
+    fi
+    echo ""
+    echo "  ],"
+    echo "  \"database_name\": \"$STG_DB_NAME\""
+    echo "}"
+fi

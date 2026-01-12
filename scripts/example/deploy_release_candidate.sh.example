@@ -3,6 +3,19 @@
 # Exit immediately if a command exits with a non-zero status
 set -e
 
+# --- JSON Mode Detection ---
+JSON_MODE="false"
+# Filter 'json' from arguments
+ARGS=()
+for arg in "$@"; do
+    if [ "$arg" == "json" ]; then
+        JSON_MODE="true"
+    else
+        ARGS+=("$arg")
+    fi
+done
+set -- "${ARGS[@]}"
+
 # --- Logging Functions & Colors ---
 # Define colors for log messages
 readonly COLOR_RESET="\033[0m"
@@ -17,7 +30,11 @@ log() {
     local color="$1"
     local emoji="$2"
     local message="$3"
-    echo -e "${color}[$(date +"%Y-%m-%d %H:%M:%S")] ${emoji} ${message}${COLOR_RESET}"
+    if [ "$JSON_MODE" = "true" ]; then
+        echo -e "${color}[$(date +"%Y-%m-%d %H:%M:%S")] ${emoji} ${message}${COLOR_RESET}" >&2
+    else
+        echo -e "${color}[$(date +"%Y-%m-%d %H:%M:%S")] ${emoji} ${message}${COLOR_RESET}"
+    fi
 }
 
 log_info() { log "${COLOR_INFO}" "ℹ️" "$1"; }
@@ -155,7 +172,14 @@ log_info "   Renew DB: $IS_RENEW_DB"
 log_stage "[1/4] Switching Git Branch..."
 
 # Fetch updates
-if sudo -u "$CURRENT_DIR_USER" git -C "$STG_GIT_PATH" fetch; then
+# Fetch updates
+if [ "$JSON_MODE" = "true" ]; then
+    GIT_FETCH_CMD="sudo -u $CURRENT_DIR_USER git -C $STG_GIT_PATH fetch >&2"
+else
+    GIT_FETCH_CMD="sudo -u $CURRENT_DIR_USER git -C $STG_GIT_PATH fetch"
+fi
+
+if eval "$GIT_FETCH_CMD"; then
     log_info "Fetch success."
 else
     log_error "Failed to fetch."
@@ -163,20 +187,39 @@ else
 fi
 
 # Force checkout clean (discard local changes in staging)
-if sudo -u "$CURRENT_DIR_USER" git -C "$STG_GIT_PATH" reset --hard; then
+# Force checkout clean (discard local changes in staging)
+if [ "$JSON_MODE" = "true" ]; then
+    GIT_RESET_CMD="sudo -u $CURRENT_DIR_USER git -C $STG_GIT_PATH reset --hard >&2"
+else
+    GIT_RESET_CMD="sudo -u $CURRENT_DIR_USER git -C $STG_GIT_PATH reset --hard"
+fi
+
+if eval "$GIT_RESET_CMD"; then
     log_info "Local changes discarded (Reset Hard)."
 else
     log_warn "Could not reset git changes. Proceeding..."
 fi
 
-if sudo -u "$CURRENT_DIR_USER" git -C "$STG_GIT_PATH" checkout "$RELEASE_BRANCH"; then
+if [ "$JSON_MODE" = "true" ]; then
+    GIT_CHECKOUT_CMD="sudo -u $CURRENT_DIR_USER git -C $STG_GIT_PATH checkout $RELEASE_BRANCH >&2"
+else
+    GIT_CHECKOUT_CMD="sudo -u $CURRENT_DIR_USER git -C $STG_GIT_PATH checkout $RELEASE_BRANCH"
+fi
+
+if eval "$GIT_CHECKOUT_CMD"; then
     log_success "Checked out branch: $RELEASE_BRANCH"
 else
     log_error "Failed to checkout branch $RELEASE_BRANCH. Does it exist?"
     exit 1
 fi
 
-if sudo -u "$CURRENT_DIR_USER" git -C "$STG_GIT_PATH" pull; then
+if [ "$JSON_MODE" = "true" ]; then
+    GIT_PULL_CMD="sudo -u $CURRENT_DIR_USER git -C $STG_GIT_PATH pull >&2"
+else
+    GIT_PULL_CMD="sudo -u $CURRENT_DIR_USER git -C $STG_GIT_PATH pull"
+fi
+
+if eval "$GIT_PULL_CMD"; then
     log_success "Code is up to date."
 else
     log_error "Failed to pull latest code."
@@ -229,12 +272,21 @@ if [ "$IS_RENEW_DB" == "true" ]; then
     PRD_ADMIN_PASSWD=$(grep "^ADMIN_PASSWD=" "$PRD_ENV_FILE" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
 
     log_info "Requesting backup from production $SERVICE_NAME_PRD instance..."
-    curl -s -X POST \
-        -F "master_pwd=$PRD_ADMIN_PASSWD" \
-        -F "name=$PRD_DB_NAME" \
-        -F "backup_format=zip" \
-        -o "$TEMP_BACKUP_FILE" \
-        "http://localhost:$PRD_PORT/web/database/backup"
+    if [ "$JSON_MODE" = "true" ]; then
+        curl -s -X POST \
+            -F "master_pwd=$PRD_ADMIN_PASSWD" \
+            -F "name=$PRD_DB_NAME" \
+            -F "backup_format=zip" \
+            -o "$TEMP_BACKUP_FILE" \
+            "http://localhost:$PRD_PORT/web/database/backup" >&2
+    else
+        curl -s -X POST \
+            -F "master_pwd=$PRD_ADMIN_PASSWD" \
+            -F "name=$PRD_DB_NAME" \
+            -F "backup_format=zip" \
+            -o "$TEMP_BACKUP_FILE" \
+            "http://localhost:$PRD_PORT/web/database/backup"
+    fi
 
     if [ ! -s "$TEMP_BACKUP_FILE" ]; then
         log_error "Backup failed for production $SERVICE_NAME_PRD instance. The output file is empty or was not created. Check source Odoo logs."
@@ -302,12 +354,21 @@ log_stage "[3/4] Restarting Staging Container..."
 
 # Change directory to the dynamic STG_PATH_TO_ODOO
 if cd "$STG_PATH_TO_ODOO"; then
+if [ "$JSON_MODE" = "true" ]; then
+    if docker compose restart odoo >&2; then
+        log_success "Container restarted."
+    else
+        log_error "Failed to restart docker container."
+        exit 1
+    fi
+else
     if docker compose restart odoo; then
         log_success "Container restarted."
     else
         log_error "Failed to restart docker container."
         exit 1
     fi
+fi
 else
     log_error "Could not find directory $STG_PATH_TO_ODOO"
     exit 1
@@ -326,20 +387,78 @@ else
     sleep 10
     log_info "Updating modules: $MODULES_TO_UPDATE"
     # Using the 'odoo-module-upgrade' utility embedded in your image
-    if docker compose exec odoo odoo-module-upgrade "$STG_DB_NAME" --update="$MODULES_TO_UPDATE"; then
-        log_success "Modules updated successfully."
+    # Using the 'odoo-module-upgrade' utility embedded in your image
+    if [ "$JSON_MODE" = "true" ]; then
+        if docker compose exec odoo odoo-module-upgrade "$STG_DB_NAME" --update="$MODULES_TO_UPDATE" >&2; then
+            log_success "Modules updated successfully."
+        else
+            log_error "Failed to update modules."
+            exit 1
+        fi
     else
-        log_error "Failed to update modules."
-        exit 1
+        if docker compose exec odoo odoo-module-upgrade "$STG_DB_NAME" --update="$MODULES_TO_UPDATE"; then
+            log_success "Modules updated successfully."
+        else
+            log_error "Failed to update modules."
+            exit 1
+        fi
     fi
 fi
 
-echo ""
-echo "=================================================="
-log_success "Deployment Complete!"
-echo "   Service:     $SERVICE_NAME"
-if [ "$IS_RENEW_DB" == "true" ]; then
-    echo "   Database:    $STG_DB_NAME"
+if [ "$JSON_MODE" = "false" ]; then
+    echo ""
+    echo "=================================================="
+    log_success "Deployment Complete!"
+    echo "   Service:     $SERVICE_NAME"
+    if [ "$IS_RENEW_DB" == "true" ]; then
+        echo "   Database:    $STG_DB_NAME"
+    fi
+    echo "   Branch:      $RELEASE_BRANCH"
+    echo "=================================================="
 fi
-echo "   Branch:      $RELEASE_BRANCH"
-echo "=================================================="
+
+# --- JSON Output Generation ---
+if [ "$JSON_MODE" = "true" ]; then
+    echo "{"
+    echo '  "repositories": ['
+    
+    GIT_ROOT="$STG_PATH_TO_ODOO/git"
+    FIRST_REPO=1
+    
+    if [ -d "$GIT_ROOT" ]; then
+        for repo_dir in "$GIT_ROOT"/*/; do
+            [ -d "$repo_dir" ] || continue
+            repo_name=$(basename "$repo_dir")
+            
+            # Default values
+            status="clean" 
+            # Note: We don't do full 'git status' check here to keep it fast, 
+            # but we can assume existing is 'clean' or 'not_git' unless we want to run git status.
+            # The user asked for "list of current commit".
+            
+            if [ -d "$repo_dir/.git" ]; then
+               commit_hash=$(sudo -u "$CURRENT_DIR_USER" git -C "$repo_dir" rev-parse --short HEAD 2>/dev/null || echo "unknown")
+               commit_subject=$(sudo -u "$CURRENT_DIR_USER" git -C "$repo_dir" log -1 --format="%s" 2>/dev/null | tr -d '"\\' || echo "")
+            else
+               status="not_git"
+               commit_hash=""
+               commit_subject=""
+            fi
+            
+            if [ $FIRST_REPO -eq 0 ]; then echo ","; fi
+            FIRST_REPO=0
+            
+            echo "    {"
+            echo "      \"name\": \"$repo_name\","
+            echo "      \"status\": \"$status\","
+            echo "      \"commit\": \"$commit_hash\","
+            echo "      \"subject\": \"$commit_subject\","
+            echo "      \"files\": []"
+            echo -n "    }"
+        done
+    fi
+    echo ""
+    echo "  ],"
+    echo "  \"database_name\": \"$STG_DB_NAME\""
+    echo "}"
+fi
