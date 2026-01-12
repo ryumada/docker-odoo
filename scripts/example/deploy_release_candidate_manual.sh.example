@@ -111,7 +111,7 @@ fi
 log_info "🚀 Starting Deployment for Service: $SERVICE_NAME"
 log_info "   Git Repo: $GIT_REPO_NAME"
 log_info "   Branch:   $RELEASE_BRANCH"
-log_info "   Renew DB: $IS_RENEW_DB"
+log_info "   Clone DB: $IS_RENEW_DB"
 
 # =========================================================
 # 1. SWITCH BRANCH (Code Update)

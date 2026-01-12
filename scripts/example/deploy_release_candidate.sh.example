@@ -101,7 +101,7 @@ if [ -z "$RELEASE_BRANCH" ]; then
 fi
 
 if [ -z "$IS_RENEW_DB" ]; then
-    log_error "Missing Argument 3: Renew DB Flag (true/false)"
+    log_error "Missing Argument 3: Clone DB Flag (true/false)"
     MISSING_ARGS=true
 fi
 
@@ -164,7 +164,7 @@ log_info "   Branch: $RELEASE_BRANCH"
 if [ "$IS_RENEW_DB" == "true" ]; then
     log_info "   Target DB: $STG_DB_NAME"
 fi
-log_info "   Renew DB: $IS_RENEW_DB"
+log_info "   Clone DB: $IS_RENEW_DB"
 
 
 # 1. SWITCH BRANCH (Code Update)
