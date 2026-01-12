@@ -197,6 +197,7 @@ if [[ "$UPDATE_MODULES" != "--update="* ]]; then
 fi
 UPDATE_MODULES="${UPDATE_MODULES#--update=}"
 add_arg "update" "$UPDATE_MODULES"
+add_arg "stop-after-init"
 EOF
     sed -i "s/PARAM/$param/g" "$temp_upgrade_logic"
     # Use sed 'r' to read the temp file and insert it after the matching line
