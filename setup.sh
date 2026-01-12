@@ -949,6 +949,7 @@ function main() {
     checkImportantEnvVariable "GEVENT_PORT" $ENV_FILE
     checkImportantEnvVariable "ADMIN_PASSWD" $ENV_FILE
     checkImportantEnvVariable "ADDONS_PATH" $ENV_FILE
+    checkImportantEnvVariable "WKHTMLTOPDF_DIRECT_DOWNLOAD_URL" $ENV_FILE
   fi
 
   ODOO_ADMIN_PASSWD=$(grep "^ADMIN_PASSWD=" "$REPOSITORY_DIRPATH/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
