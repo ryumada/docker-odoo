@@ -136,11 +136,6 @@ function process_repo() {
 }
 
 function main() {
-  local args="$@"
-  if [[ " $args " =~ " json " ]] || [ "$1" == "json" ]; then
-      JSON_MODE="true"
-  fi
-
   # Self-elevate to root if not already
   if [ "$(id -u)" -ne 0 ]; then
       log_info "Elevating permissions to root..."
@@ -148,6 +143,11 @@ function main() {
       exec sudo "$0" "$@" # Re-run the script with sudo
       log_error "Failed to elevate to root. Please run with sudo."
       exit 1
+  fi
+
+  local args="$@"
+  if [[ " $args " =~ " json " ]] || [ "$1" == "json" ]; then
+      JSON_MODE="true"
   fi
 
   log_info "Change Directory to $PATH_TO_ODOO"

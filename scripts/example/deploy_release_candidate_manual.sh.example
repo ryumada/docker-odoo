@@ -3,19 +3,6 @@
 # Exit immediately if a command exits with a non-zero status
 set -e
 
-# --- JSON Mode Detection ---
-JSON_MODE="false"
-# Filter 'json' from arguments
-ARGS=()
-for arg in "$@"; do
-    if [ "$arg" == "json" ]; then
-        JSON_MODE="true"
-    else
-        ARGS+=("$arg")
-    fi
-done
-set -- "${ARGS[@]}"
-
 # --- Logging Functions & Colors ---
 readonly COLOR_RESET="\033[0m"
 readonly COLOR_INFO="\033[0;34m"
@@ -41,14 +28,6 @@ log_error() { log "${COLOR_ERROR}" "❌" "$1"; }
 log_stage() { log "${COLOR_CYAN}" "📋" "$1"; }
 # ------------------------------------
 
-# Self-elevate to root if not already
-if [ "$(id -u)" -ne 0 ]; then
-    log_info "Elevating permissions to root..."
-    exec sudo "$0" "$@"
-    log_error "Failed to elevate to root. Please run with sudo."
-    exit 1
-fi
-
 # --- Usage / Help Function ---
 display_usage() {
     echo -e "${COLOR_INFO}Usage:${COLOR_RESET} sudo $0 <REPO_NAME> <BRANCH> <RENEW_DB> [MODULES]"
@@ -64,6 +43,28 @@ if [[ "$1" == "-h" || "$1" == "--help" ]]; then
     display_usage
     exit 0
 fi
+
+# Self-elevate to root if not already
+if [ "$(id -u)" -ne 0 ]; then
+    log_info "Elevating permissions to root..."
+    # shellcheck disable=SC2093
+    exec sudo "$0" "$@" # Re-run the script with sudo
+    log_error "Failed to elevate to root. Please run with sudo." # This will only run if exec fails
+    exit 1
+fi
+
+# --- JSON Mode Detection ---
+JSON_MODE="false"
+# Filter 'json' from arguments
+ARGS=()
+for arg in "$@"; do
+    if [ "$arg" == "json" ]; then
+        JSON_MODE="true"
+    else
+        ARGS+=("$arg")
+    fi
+done
+set -- "${ARGS[@]}"
 
 # --- Inputs ---
 GIT_REPO_NAME=$1
