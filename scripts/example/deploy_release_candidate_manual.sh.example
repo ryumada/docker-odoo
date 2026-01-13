@@ -441,8 +441,25 @@ if [ "$JSON_MODE" = "true" ]; then
             echo -n "    }"
         done
     fi
-    echo ""
-    echo "  ],"
-    echo "  \"database_name\": \"$STG_DB_NAME\""
-    echo "}"
+    if [ -n "$MODULES_TO_UPDATE" ]; then
+        echo "  ],"
+        echo "  \"database_name\": \"$STG_DB_NAME\","
+        echo '  "modules_to_upgrade": ['
+        IFS=',' read -ra MODULES <<< "$MODULES_TO_UPDATE"
+        FIRST_MODULE=1
+        for module in "${MODULES[@]}"; do
+            if [ $FIRST_MODULE -eq 0 ]; then echo ","; fi
+            # Trim whitespace just in case
+            module=$(echo "$module" | xargs)
+            echo -n "    \"$module\""
+            FIRST_MODULE=0
+        done
+        echo ""
+        echo "  ]"
+        echo "}"
+    else
+        echo "  ],"
+        echo "  \"database_name\": \"$STG_DB_NAME\""
+        echo "}"
+    fi
 fi
