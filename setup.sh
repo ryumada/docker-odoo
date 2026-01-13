@@ -221,6 +221,29 @@ function generateDockerComposeAndDockerfile() {
   cp docker-compose.yml.example docker-compose.yml
   chown "$REPOSITORY_OWNER": docker-compose.yml
 
+  # Inject Custom Secrets from .env
+  custom_secrets=$(grep "^CUSTOM_SECRETS_FILES=" "$REPOSITORY_DIRPATH/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
+  if [ -n "$custom_secrets" ]; then
+    log_info "Found custom secrets: $custom_secrets. Injecting into docker-compose.yml..."
+    IFS=',' read -ra ADDR <<< "$custom_secrets"
+    for secret in "${ADDR[@]}"; do
+      # trim whitespace
+      secret=$(echo "$secret" | xargs)
+      if [ -n "$secret" ]; then
+         setPermissionFileToReadOnlyAndOnlyTo "$ODOO_LINUX_USER" ".secrets/$secret"
+
+         # Inject into services > odoo > secrets
+         sed -i "/      - db_password/a \      - $secret" docker-compose.yml
+
+         # Inject into top-level secrets
+         cat <<EOF >> docker-compose.yml
+  $secret:
+    file: .secrets/$secret
+EOF
+      fi
+    done
+  fi
+
   local mount_or_copy
   mount_or_copy=$(grep "^ODOO_ADDONS_MOUNT_OR_COPY=" "$REPOSITORY_DIRPATH/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
 
