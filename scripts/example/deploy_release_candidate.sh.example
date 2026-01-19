@@ -116,13 +116,14 @@ CURRENT_DIR=$(dirname "$(readlink -f "$0")")
 CURRENT_DIR_USER=$(stat -c '%U' "$CURRENT_DIR")
 STG_PATH_TO_ODOO=$(sudo -u "$CURRENT_DIR_USER" git -C "$(dirname "$(readlink -f "$0")")" rev-parse --show-toplevel)
 SERVICE_NAME=$(basename "$STG_PATH_TO_ODOO")
-SERVICE_NAME_PRD=${SERVICE_NAME%-*}
+SERVICE_NAME_PRD=${SERVICE_NAME%-*} # Assumes format like 'project-stg' -> 'project' OR 'project-16-stg' -> 'project-16'
 
 # Try to grab this automatically from your .env file
 STG_ENV_FILE="$STG_PATH_TO_ODOO/.env"
 STG_DB_NAME_FROM_ENV=$(grep "^DB_NAME=" "$STG_ENV_FILE" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
 STG_DB_NAME="$STG_DB_NAME_FROM_ENV"
 
+# Fallback DB Name
 if [ -z "$STG_DB_NAME" ]; then
     # Fallback if .env is empty
     STG_DB_NAME="$SERVICE_NAME-$(date +"%Y%m%d-%H%M%S")"
@@ -136,19 +137,6 @@ case "${IS_RENEW_DB}" in
         IS_RENEW_DB=false
     ;;
 esac
-
-# --- Validation ---
-if [ -z "$GIT_REPO_NAME" ]; then
-    log_error "You must specify the Git Repo Name"
-    echo "Usage: sudo $0 <git_repo_name> <branch_name> <is_renew_db> [modules_to_update]"
-    exit 1
-fi
-
-if [ -z "$RELEASE_BRANCH" ]; then
-    log_error "You must specify a release branch."
-    echo "Usage: sudo $0 <git_repo_name> <branch_name> <is_renew_db> [modules_to_update]"
-    exit 1
-fi
 
 STG_GIT_PATH="$STG_PATH_TO_ODOO/git/$GIT_REPO_NAME"
 
@@ -172,7 +160,6 @@ log_info "   Clone DB: $IS_RENEW_DB"
 log_stage "[1/4] Switching Git Branch..."
 
 # Fetch updates
-# Fetch updates
 if [ "$JSON_MODE" = "true" ]; then
     GIT_FETCH_CMD="sudo -u $CURRENT_DIR_USER git -C $STG_GIT_PATH fetch >&2"
 else
@@ -186,7 +173,6 @@ else
     exit 1
 fi
 
-# Force checkout clean (discard local changes in staging)
 # Force checkout clean (discard local changes in staging)
 if [ "$JSON_MODE" = "true" ]; then
     GIT_RESET_CMD="sudo -u $CURRENT_DIR_USER git -C $STG_GIT_PATH reset --hard >&2"
@@ -354,21 +340,21 @@ log_stage "[3/4] Restarting Staging Container..."
 
 # Change directory to the dynamic STG_PATH_TO_ODOO
 if cd "$STG_PATH_TO_ODOO"; then
-if [ "$JSON_MODE" = "true" ]; then
-    if docker compose restart odoo >&2; then
-        log_success "Container restarted."
+    if [ "$JSON_MODE" = "true" ]; then
+        if docker compose restart odoo >&2; then
+            log_success "Container restarted."
+        else
+            log_error "Failed to restart docker container."
+            exit 1
+        fi
     else
-        log_error "Failed to restart docker container."
-        exit 1
+        if docker compose restart odoo; then
+            log_success "Container restarted."
+        else
+            log_error "Failed to restart docker container."
+            exit 1
+        fi
     fi
-else
-    if docker compose restart odoo; then
-        log_success "Container restarted."
-    else
-        log_error "Failed to restart docker container."
-        exit 1
-    fi
-fi
 else
     log_error "Could not find directory $STG_PATH_TO_ODOO"
     exit 1
@@ -386,7 +372,6 @@ else
     log_info "Waiting 10 seconds for Odoo to initialize..."
     sleep 10
     log_info "Updating modules: $MODULES_TO_UPDATE"
-    # Using the 'odoo-module-upgrade' utility embedded in your image
     # Using the 'odoo-module-upgrade' utility embedded in your image
     if [ "$JSON_MODE" = "true" ]; then
         if docker compose exec odoo odoo-module-upgrade "$STG_DB_NAME" --update="$MODULES_TO_UPDATE" >&2; then
@@ -411,7 +396,7 @@ if [ "$JSON_MODE" = "false" ]; then
     log_success "Deployment Complete!"
     echo "   Service:     $SERVICE_NAME"
     if [ "$IS_RENEW_DB" == "true" ]; then
-        echo "   Database:    $STG_DB_NAME"
+        echo "   Database:    $STG_DB_NAME (Cloned from $PRD_DB_NAME)"
     fi
     echo "   Branch:      $RELEASE_BRANCH"
     echo "=================================================="

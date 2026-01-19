@@ -4,6 +4,7 @@
 set -e
 
 # --- Logging Functions & Colors ---
+# Define colors for log messages
 readonly COLOR_RESET="\033[0m"
 readonly COLOR_INFO="\033[0;34m"
 readonly COLOR_SUCCESS="\033[0;32m"
@@ -11,6 +12,8 @@ readonly COLOR_WARN="\033[0;33m"
 readonly COLOR_ERROR="\033[0;31m"
 readonly COLOR_CYAN="\033[0;36m"
 
+# Function to log messages with a specific color and emoji
+log() {
     local color="$1"
     local emoji="$2"
     local message="$3"
@@ -27,22 +30,6 @@ log_warn() { log "${COLOR_WARN}" "⚠️" "$1"; }
 log_error() { log "${COLOR_ERROR}" "❌" "$1"; }
 log_stage() { log "${COLOR_CYAN}" "📋" "$1"; }
 # ------------------------------------
-
-# --- Usage / Help Function ---
-display_usage() {
-    echo -e "${COLOR_INFO}Usage:${COLOR_RESET} sudo $0 <REPO_NAME> <BRANCH> <RENEW_DB> [MODULES]"
-    echo ""
-    echo -e "${COLOR_CYAN}Examples:${COLOR_RESET}"
-    echo "  sudo $0 odoo-custom release/feature_a false"
-    echo "  sudo $0 odoo-custom release/feature_a true"
-    echo "  sudo $0 odoo-custom release/feature_a false sale,stock"
-    echo ""
-}
-
-if [[ "$1" == "-h" || "$1" == "--help" ]]; then
-    display_usage
-    exit 0
-fi
 
 # Self-elevate to root if not already
 if [ "$(id -u)" -ne 0 ]; then
@@ -66,23 +53,63 @@ for arg in "$@"; do
 done
 set -- "${ARGS[@]}"
 
+# --- Usage / Help Function ---
+display_usage() {
+    echo -e "${COLOR_INFO}Usage:${COLOR_RESET} sudo $0 <REPO_NAME> <BRANCH> <RENEW_DB> [MODULES]"
+    echo ""
+    echo -e "${COLOR_CYAN}Arguments:${COLOR_RESET}"
+    echo -e "  ${COLOR_SUCCESS}1. REPO_NAME${COLOR_RESET}       : The directory name of the git repository (inside stg/git/)."
+    echo -e "  ${COLOR_SUCCESS}2. BRANCH${COLOR_RESET}          : The target Git branch to checkout (e.g., 'staging', 'main')."
+    echo -e "  ${COLOR_SUCCESS}3. RENEW_DB${COLOR_RESET}        : Set to 'true' or '1' to drop Staging DB and clone from Production."
+    echo -e "                       Set to 'false' or '0' to keep existing Staging data."
+    echo -e "  ${COLOR_SUCCESS}4. MODULES${COLOR_RESET}         : (Optional) Comma-separated list of modules to update (e.g., 'sale,stock')."
+    echo ""
+    echo -e "${COLOR_CYAN}Examples:${COLOR_RESET}"
+    echo "  # 1. Update code only (Fastest):"
+    echo "  sudo $0 odoo-custom release/feature_a false"
+    echo ""
+    echo "  # 2. Update code and refresh Database from Prod (Full Reset):"
+    echo "  sudo $0 odoo-custom release/feature_a true"
+    echo ""
+    echo "  # 3. Update code and specific modules without DB reset:"
+    echo "  sudo $0 odoo-custom release/feature_a false sale,inventory,account"
+    echo ""
+}
+
+# --- Check for Help Flag ---
+if [[ "$1" == "-h" || "$1" == "--help" ]]; then
+    display_usage
+    exit 0
+fi
+
 # --- Inputs ---
 GIT_REPO_NAME=$1
 RELEASE_BRANCH=$2
 IS_RENEW_DB=$3
 MODULES_TO_UPDATE=$4
 
-# --- Input Validation ---
-if [ -z "$GIT_REPO_NAME" ] || [ -z "$RELEASE_BRANCH" ] || [ -z "$IS_RENEW_DB" ]; then
-    log_error "Missing arguments."
+# --- Validation ---
+MISSING_ARGS=false
+if [ -z "$GIT_REPO_NAME" ]; then
+    log_error "Missing Argument 1: Git Repo Name"
+    MISSING_ARGS=true
+fi
+
+if [ -z "$RELEASE_BRANCH" ]; then
+    log_error "Missing Argument 2: Release Branch"
+    MISSING_ARGS=true
+fi
+
+if [ -z "$IS_RENEW_DB" ]; then
+    log_error "Missing Argument 3: Clone DB Flag (true/false)"
+    MISSING_ARGS=true
+fi
+
+if [ "$MISSING_ARGS" == "true" ]; then
+    echo ""
     display_usage
     exit 1
 fi
-
-case "${IS_RENEW_DB}" in
-    1|true|True|TRUE) IS_RENEW_DB=true ;;
-    *) IS_RENEW_DB=false ;;
-esac
 
 # --- Dynamic Path Definition ---
 CURRENT_DIR=$(dirname "$(readlink -f "$0")")
@@ -91,33 +118,48 @@ STG_PATH_TO_ODOO=$(sudo -u "$CURRENT_DIR_USER" git -C "$(dirname "$(readlink -f 
 SERVICE_NAME=$(basename "$STG_PATH_TO_ODOO")
 SERVICE_NAME_PRD=${SERVICE_NAME%-*} # Assumes format like 'project-stg' -> 'project' OR 'project-16-stg' -> 'project-16'
 
-# Load Staging Env
+# Try to grab this automatically from your .env file
 STG_ENV_FILE="$STG_PATH_TO_ODOO/.env"
 STG_DB_NAME_FROM_ENV=$(grep "^DB_NAME=" "$STG_ENV_FILE" | cut -d "=" -f 2 | tr -d '[:space:]')
 STG_DB_NAME="$STG_DB_NAME_FROM_ENV"
 
 # Fallback DB Name
 if [ -z "$STG_DB_NAME" ]; then
+    # Fallback if .env is empty
     STG_DB_NAME="$SERVICE_NAME-$(date +"%Y%m%d-%H%M%S")"
 fi
 
+case "${IS_RENEW_DB}" in
+    1|true|True|TRUE)
+        IS_RENEW_DB=true
+    ;;
+    *)
+        IS_RENEW_DB=false
+    ;;
+esac
+
 STG_GIT_PATH="$STG_PATH_TO_ODOO/git/$GIT_REPO_NAME"
 
+# Verify Git path exists
 if [ ! -d "$STG_GIT_PATH" ]; then
     log_error "Git path not found at: $STG_GIT_PATH"
     exit 1
 fi
 
 log_info "🚀 Starting Deployment for Service: $SERVICE_NAME"
-log_info "   Git Repo: $GIT_REPO_NAME"
-log_info "   Branch:   $RELEASE_BRANCH"
+log_info "   Git Repo Name: $GIT_REPO_NAME"
+log_info "   Branch: $RELEASE_BRANCH"
+if [ "$IS_RENEW_DB" == "true" ]; then
+    log_info "   Target DB: $STG_DB_NAME"
+fi
 log_info "   Clone DB: $IS_RENEW_DB"
 
-# =========================================================
+
 # 1. SWITCH BRANCH (Code Update)
-# =========================================================
+# ---------------------------------------------------------
 log_stage "[1/4] Switching Git Branch..."
 
+# Fetch updates
 if [ "$JSON_MODE" = "true" ]; then
     GIT_FETCH_CMD="sudo -u $CURRENT_DIR_USER git -C $STG_GIT_PATH fetch >&2"
 else
@@ -131,11 +173,17 @@ else
     exit 1
 fi
 
-# Reset hard to discard local changes in staging
+# Force checkout clean (discard local changes in staging)
 if [ "$JSON_MODE" = "true" ]; then
-    sudo -u "$CURRENT_DIR_USER" git -C "$STG_GIT_PATH" reset --hard > /dev/null 2>&1
+    GIT_RESET_CMD="sudo -u $CURRENT_DIR_USER git -C $STG_GIT_PATH reset --hard >&2"
 else
-    sudo -u "$CURRENT_DIR_USER" git -C "$STG_GIT_PATH" reset --hard > /dev/null
+    GIT_RESET_CMD="sudo -u $CURRENT_DIR_USER git -C $STG_GIT_PATH reset --hard"
+fi
+
+if eval "$GIT_RESET_CMD"; then
+    log_info "Local changes discarded (Reset Hard)."
+else
+    log_warn "Could not reset git changes. Proceeding..."
 fi
 
 if [ "$JSON_MODE" = "true" ]; then
@@ -147,7 +195,7 @@ fi
 if eval "$GIT_CHECKOUT_CMD"; then
     log_success "Checked out branch: $RELEASE_BRANCH"
 else
-    log_error "Failed to checkout branch $RELEASE_BRANCH."
+    log_error "Failed to checkout branch $RELEASE_BRANCH. Does it exist?"
     exit 1
 fi
 
@@ -164,13 +212,10 @@ else
     exit 1
 fi
 
-# =========================================================
-# 2. CLONE DATABASE (Manual Dump/Restore)
-# =========================================================
-if [ "$IS_RENEW_DB" == "true" ]; then
-    log_stage "[2/4] Cloning Production Database to Staging..."
 
-    # Define Prod Paths
+# 2. CLONE DATABASE (Data Reset)
+# ---------------------------------------------------------
+if [ "$IS_RENEW_DB" == "true" ]; then
     PRD_PATH_TO_ODOO="$STG_PATH_TO_ODOO/../$SERVICE_NAME_PRD"
     PRD_ENV_FILE="$PRD_PATH_TO_ODOO/.env"
 
@@ -179,12 +224,14 @@ if [ "$IS_RENEW_DB" == "true" ]; then
         exit 1
     fi
 
-    PRD_DB_NAME=$(grep "^DB_NAME=" "$PRD_ENV_FILE" | cut -d "=" -f 2 | tr -d '[:space:]')
+    PRD_DB_NAME=$(grep "^DB_NAME=" "$PRD_ENV_FILE" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
 
     if [ -z "$PRD_DB_NAME" ]; then
-        log_error "DB_NAME is not set in Production .env"
+        log_error "DB_NAME is not set in the production environment. Please set it at: $PRD_ENV_FILE"
         exit 1
     fi
+
+    log_stage "[2/4] Cloning Production Database to Staging..."
 
     # Determine DB User for Staging (for ownership)
     # Check secrets file first (like reference script), then env, then default 'odoo'
@@ -341,41 +388,46 @@ else
     log_stage "[2/4] Skipping Database Clone (IS_RENEW_DB is false)."
 fi
 
-# =========================================================
+
 # 3. RESTART CONTAINER
-# =========================================================
+# ---------------------------------------------------------
 log_stage "[3/4] Restarting Staging Container..."
 
-cd "$STG_PATH_TO_ODOO"
-# Using up -d --force-recreate ensures clean start if it was stopped
-if [ "$JSON_MODE" = "true" ]; then
-    if docker compose up -d --force-recreate odoo >&2; then
-        log_success "Container restarted."
+# Change directory to the dynamic STG_PATH_TO_ODOO
+if cd "$STG_PATH_TO_ODOO"; then
+    if [ "$JSON_MODE" = "true" ]; then
+        if docker compose restart odoo >&2; then
+            log_success "Container restarted."
+        else
+            log_error "Failed to restart docker container."
+            exit 1
+        fi
     else
-        log_error "Failed to restart docker container."
-        exit 1
+        if docker compose restart odoo; then
+            log_success "Container restarted."
+        else
+            log_error "Failed to restart docker container."
+            exit 1
+        fi
     fi
 else
-    if docker compose up -d --force-recreate odoo; then
-        log_success "Container restarted."
-    else
-        log_error "Failed to restart docker container."
-        exit 1
-    fi
+    log_error "Could not find directory $STG_PATH_TO_ODOO"
+    exit 1
 fi
 
-# =========================================================
+
 # 4. UPDATE MODULES
-# =========================================================
+# ---------------------------------------------------------
 if [ -z "$MODULES_TO_UPDATE" ]; then
     log_stage "[4/4] Update module skipped..."
     log_warn "No specific modules listed."
+    log_info "Tip: You can pass modules as the fourth argument: $0 $RELEASE_BRANCH $IS_RENEW_DB 'sale,inventory'"
 else
     log_stage "[4/4] Updating Odoo Modules..."
     log_info "Waiting 10 seconds for Odoo to initialize..."
     sleep 10
     log_info "Updating modules: $MODULES_TO_UPDATE"
-
+    # Using the 'odoo-module-upgrade' utility embedded in your image
     if [ "$JSON_MODE" = "true" ]; then
         if docker compose exec odoo odoo-module-upgrade "$STG_DB_NAME" --update="$MODULES_TO_UPDATE" >&2; then
             log_success "Modules updated successfully."
@@ -418,7 +470,11 @@ if [ "$JSON_MODE" = "true" ]; then
             [ -d "$repo_dir" ] || continue
             repo_name=$(basename "$repo_dir")
 
+            # Default values
             status="clean"
+            # Note: We don't do full 'git status' check here to keep it fast,
+            # but we can assume existing is 'clean' or 'not_git' unless we want to run git status.
+            # The user asked for "list of current commit".
 
             if [ -d "$repo_dir/.git" ]; then
                commit_hash=$(sudo -u "$CURRENT_DIR_USER" git -C "$repo_dir" rev-parse --short HEAD 2>/dev/null || echo "unknown")
