@@ -45,7 +45,7 @@ JSON_MODE="false"
 # Filter 'json' from arguments
 ARGS=()
 for arg in "$@"; do
-    if [ "$arg" == "json" ]; then
+    if [[ "$arg" == "json" ]]; then
         JSON_MODE="true"
     else
         ARGS+=("$arg")
