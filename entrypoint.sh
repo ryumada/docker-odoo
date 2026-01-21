@@ -69,6 +69,13 @@ function add_arg() {
 }
 
 function main() {
+  # Check for bypass commands
+  case "$1" in
+    bash|sh|*) # Added * to catch any other command
+      exec "$@"
+      ;;
+  esac
+
   if [ "$ODOO_VERSION" -ge 11 ]; then
     add_arg "http-port" "$PORT"
   else
@@ -153,4 +160,4 @@ function main() {
   fi
 }
 
-main
+main "$@"

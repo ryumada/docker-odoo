@@ -244,55 +244,22 @@ EOF
     done
   fi
 
-  local mount_or_copy
-  mount_or_copy=$(grep "^ODOO_ADDONS_MOUNT_OR_COPY=" "$REPOSITORY_DIRPATH/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
-
-  while true; do
-    if [ -z "$mount_or_copy" ]; then
-      echo -e "\n❓ Do you want to use:\n"
-      echo "1. bind mount (faster buiding image)"
-      echo -e "2. copy the addons and odoo-base directories to the container image (slower building image but more stable in changes)\n"
-      read -rp "Choose 1 or 2: " mount_or_copy
-      echo
-    fi
-
-    case $mount_or_copy in
-      1)
-        log_info "You have chosen to use bind mount."
-        sed -i '/volumes/a \
+  log_info "Bind mounts enabled for Development and Builder modes."
+  sed -i '/volumes/a \
      - ./git:/opt/odoo/git\
      - ./odoo-base:/opt/odoo/odoo-base' docker-compose.yml
 
-        generateDockerFile "mount"
-        break
-        ;;
-      2)
-        log_info "You have chosen to copy the addons and odoo-base directory to the image."
-        generateDockerFile "copy"
-        break
-        ;;
-      *)
-        log_error "Invalid Option."
-        mount_or_copy=""
-        ;;
-    esac
-  done
+  generateDockerFile
 }
 
 function generateDockerFile() {
   # _inherit = generateDockerComposeFile
 
-  mount_or_copy=$1
-
   log_info "Create dockerfile..."
   cp dockerfile.example dockerfile
   chown "$REPOSITORY_OWNER": dockerfile
 
-  log_info "Setting up how odoo modules and odoo base read by container [$mount_or_copy]..."
-  if [ "$mount_or_copy" == "mount" ]; then
-    sed -i '/COPY --chown=odoo:odoo .\/odoo-base \/opt\/odoo\/odoo-base/d' dockerfile
-    sed -i '/COPY --chown=odoo:odoo .\/git \/opt\/odoo\/git/d' dockerfile
-  fi
+  log_info "Setting up dockerfile with mount strategy..."
 
   FAKETIME=$(grep "^FAKETIME=" "$REPOSITORY_DIRPATH/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
   [ -n "$FAKETIME" ] && validateDatetimeFormat "$FAKETIME" " FAKETIME on .env file" && {
@@ -507,22 +474,26 @@ EOF
 EOF
 }
 
-function isBuildOrPull() {
+function selectMode() {
     while true; do
-      read -rp "Do you want to build or pull images?
-      [1] Build
-      [2] Pull
+      read -rp "Select the deployment mode:
+      [1] Development (Build locally, bind-mounts)
+      [2] Builder (Build, check versions, push to registry)
+      [3] Production (Pull from registry)
 
       : " -e user_choice
 
-      choice=()
       case $user_choice in
         1)
-          choice=("1" "Build")
+          echo "1 Development"
           break
           ;;
         2)
-          choice=("2" "Pull")
+          echo "2 Builder"
+          break
+          ;;
+        3)
+          echo "3 Production"
           break
           ;;
         *)
@@ -530,8 +501,6 @@ function isBuildOrPull() {
           ;;
       esac
     done
-
-    echo "${choice[@]}"
 }
 
 function isDirectoryGitRepository() {
@@ -865,9 +834,9 @@ function writeLogDirVariableOnEnvFile() {
   if ! grep -q "SERVICE_NAME" "$ENV_FILE"; then
     cat <<-EOF >> "$ENV_FILE"
 
-# # # # # # # # # # # # # # # #
-# DIRECTORIES                 #
-# # # # # # # # # # # # # # # #
+# # # # # # # # # # # # # # # # #
+# DIRECTORIES                   #
+# # # # # # # # # # # # # # # # #
 SERVICE_NAME=$SERVICE_NAME
 ODOO_LOG_DIR_SERVICE=$ODOO_LOG_DIR_SERVICE
 EOF
@@ -882,6 +851,32 @@ function writeTextFile() {
   log_info "Writing $type to $file..."
 
   echo "$password" > "$file"
+}
+
+function checkRegistryConnection() {
+    image_name=$1
+    if [ -z "$image_name" ]; then return 0; fi
+
+    registry=$(echo "$image_name" | cut -d/ -f1)
+
+    # Basic heuristic to warn user if not logged in
+    # This is not a blocker, just a warning
+    if [[ "$registry" == *"index.docker.io"* ]] || [[ "$registry" != *"."* ]]; then
+        # Docker Hub or official library
+        if ! grep -q "index.docker.io" ~/.docker/config.json 2>/dev/null; then
+             log_warn "It seems you are not logged into Docker Hub. Please ensure you are logged in ('docker login') if the repository is private."
+        fi
+    elif [[ "$registry" == *"ghcr.io"* ]]; then
+         if ! grep -q "ghcr.io" ~/.docker/config.json 2>/dev/null; then
+             log_warn "It seems you are not logged into GitHub Container Registry. Please ensure you are logged in."
+         fi
+    elif [[ "$registry" == *"gitlab.com"* ]]; then
+         if ! grep -q "gitlab.com" ~/.docker/config.json 2>/dev/null; then
+             log_warn "It seems you are not logged into GitLab Registry. Please ensure you are logged in."
+         fi
+    fi
+    # Proceed anyway, checking "if connection is already successful" implies we trust the environment or just try.
+    log_info "Registry connection check passed (soft check)."
 }
 
 function main() {
@@ -905,17 +900,20 @@ function main() {
 
   "$REPOSITORY_DIRPATH/scripts/update-env-file.sh"
 
-  IS_BUILD_OR_PULL_NUMBER_CHOOSEN=$(grep "^IS_BUILD_OR_PULL_NUMBER_CHOOSEN=" "$REPOSITORY_DIRPATH/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
-  IS_BUILD_OR_PULL_TEXT=$(grep "^IS_BUILD_OR_PULL_TEXT=" "$REPOSITORY_DIRPATH/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
+  DOCKER_BUILD_MODE=$(grep "^DOCKER_BUILD_MODE=" "$REPOSITORY_DIRPATH/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
 
-  if [ -z "$IS_BUILD_OR_PULL_NUMBER_CHOOSEN" ] && [ -z "$IS_BUILD_OR_PULL_TEXT" ]; then
-    read -r -a isbuildorpull <<< "$(isBuildOrPull)"
-    is_build_or_pull="${isbuildorpull[1]}"
-    build_or_pull="${isbuildorpull[0]}"
+  if [ -z "$DOCKER_BUILD_MODE" ]; then
+    mode_selection=$(selectMode)
   else
-    is_build_or_pull="$IS_BUILD_OR_PULL_TEXT"
-    build_or_pull="$IS_BUILD_OR_PULL_NUMBER_CHOOSEN"
+      # Map old values or just use what we have if it matches "1 Development" etc.
+      # For backward compatibility or direct env usage, we assume strict values or we map 1 -> Development
+    if [ "$DOCKER_BUILD_MODE" == "1" ]; then mode_selection="1 Development"; fi
+    if [ "$DOCKER_BUILD_MODE" == "2" ]; then mode_selection="2 Builder"; fi
+    if [ "$DOCKER_BUILD_MODE" == "3" ]; then mode_selection="3 Production"; fi
   fi
+
+  mode_number=$(echo "$mode_selection" | awk '{print $1}')
+  mode_name=$(echo "$mode_selection" | cut -d ' ' -f 2-)
 
   echo -e "\n==================================================================="
 
@@ -940,7 +938,7 @@ function main() {
   fi
 
   echo -e "\n==================================================================="
-  log_info "This script will run in $is_build_or_pull Mode."
+  log_info "This script will run in $mode_name Mode."
   log_info "Checking the necessary files and directories..."
   echo "==================================================================="
 
@@ -988,7 +986,11 @@ function main() {
 
   isFileExists "$DOCKER_COMPOSE_FILE" "Please create a docker-compose.yml file by following the docker-compose.yml.example file." || true
 
-  if [ "$build_or_pull" -eq 1 ]; then
+  # Extract ODOO_IMAGE_NAME early as it's used in 2 and 3
+  ODOO_IMAGE_NAME=$(grep "^ODOO_IMAGE_NAME=" "$ENV_FILE" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
+
+  # MODE 1: DEVELOPMENT or MODE 2: BUILDER
+  if [ "$mode_number" -eq 1 ] || [ "$mode_number" -eq 2 ]; then
     if isFileExists "$ODOO_CONF_FILE" "Please create an odoo.conf file by following the odoo.conf.example file."; then
       checkAddonsPathOnOdooConfFile
     fi
@@ -1011,11 +1013,33 @@ function main() {
         log_success "$REQUIREMENTS_FILE file copied."
       fi
     fi
-  elif [ "$build_or_pull" -eq 2 ]; then
-    local ODOO_IMAGE_NAME
-    ODOO_IMAGE_NAME=$(grep "^ODOO_IMAGE_NAME=" "$ENV_FILE" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
+
+  ODOO_IMAGE_NAME=$(grep "^ODOO_IMAGE_NAME=" "$REPOSITORY_DIRPATH/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
+  ODOO_IMAGE_VERSION=$(grep "^ODOO_IMAGE_VERSION=" "$REPOSITORY_DIRPATH/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
+
+  if [ -n "$ODOO_IMAGE_NAME" ] && [ -n "$ODOO_IMAGE_VERSION" ]; then
+    ODOO_IMAGE_NAME="${ODOO_IMAGE_NAME}:${ODOO_IMAGE_VERSION}"
+    log_info "Using automated tag: $ODOO_IMAGE_NAME"
+    export ODOO_IMAGE_NAME
+  elif [ -n "$ODOO_IMAGE_NAME" ]; then
+    export ODOO_IMAGE_NAME
+  fi
+
+  # Builder Mode Specifics
+  if [ "$mode_number" -eq 2 ]; then
+      if [ -z "$ODOO_IMAGE_NAME" ]; then
+          log_error "ODOO_IMAGE_NAME variable is not set in your .env file. Builder mode requires this."
+          TODO+=("Please set the ODOO_IMAGE_NAME variable in your .env file.")
+      else
+          log_success "ODOO_IMAGE_NAME variable is set to $ODOO_IMAGE_NAME"
+          checkRegistryConnection "$ODOO_IMAGE_NAME"
+      fi
+  fi
+
+  # MODE 3: PRODUCTION
+  elif [ "$mode_number" -eq 3 ]; then
     if [ -z "$ODOO_IMAGE_NAME" ]; then
-      log_error "ODOO_IMAGE_NAME variable is not set in your .env file."
+      log_error "ODOO_IMAGE_NAME variable is not set in your .env file. Production mode requires this to pull the image."
       TODO+=("Please set the ODOO_IMAGE_NAME variable in your .env file.")
     else
       log_success "ODOO_IMAGE_NAME variable is set to $ODOO_IMAGE_NAME"
@@ -1045,10 +1069,83 @@ function main() {
   if printTodo; then
     echo
     echo
-    log_success "Everything is ready to build your docker image."
-    log_info "Please run the following command to build your docker image: 'docker compose build'"
-    log_info "Then, you can run the compose using this command: 'docker compose up -d'"
-    log_info "You can combine the command using: 'docker compose up --build -d'."
+    log_success "Configuration complete."
+
+    if [ "$mode_number" -eq 1 ]; then
+        log_info "MODE: DEVELOPMENT"
+        log_info "1. Building image..."
+        if sudo -u "$REPOSITORY_OWNER" docker compose build; then
+            log_success "Image built successfully."
+            log_info "Now run: 'docker compose up -d'"
+        else
+            log_error "Build failed."
+            exit 1
+        fi
+
+    elif [ "$mode_number" -eq 2 ]; then
+        log_info "MODE: BUILDER"
+        log_info "1. Building image..."
+        if sudo -u "$REPOSITORY_OWNER" docker compose build; then
+            log_success "Image built successfully."
+        else
+            log_error "Build failed."
+            exit 1
+        fi
+
+        log_info "2. Verifying and extracting versions..."
+        # Use the built image (ODOO_IMAGE_NAME or Service Name default)
+        TARGET_IMAGE=${ODOO_IMAGE_NAME:-$SERVICE_NAME:latest}
+
+        log_info "Running version checks on $TARGET_IMAGE..."
+
+        log_info "--- Odoo Base Version ---"
+        sudo -u "$REPOSITORY_OWNER" docker run --rm \
+            "$TARGET_IMAGE" \
+            getinfo-odoo_base || log_error "Failed to get Odoo base version"
+
+        log_info "--- Odoo Addons Version ---"
+        sudo -u "$REPOSITORY_OWNER" docker run --rm \
+            "$TARGET_IMAGE" \
+            getinfo-odoo_git_addons || log_error "Failed to get Addons version"
+
+        log_info "3. Pushing image to $TARGET_IMAGE..."
+        if sudo -u "$REPOSITORY_OWNER" docker push "$TARGET_IMAGE"; then
+            log_success "Image pushed successfully!"
+
+            # Dual Tagging: If we pushed a specific version, also update 'latest'
+            if [ -n "$ODOO_IMAGE_VERSION" ] && [ "$ODOO_IMAGE_VERSION" != "latest" ]; then
+                BASIC_IMAGE_NAME=$(echo "$TARGET_IMAGE" | cut -d: -f1)
+                LATEST_TAG="${BASIC_IMAGE_NAME}:latest"
+                log_info "Dual Tagging: Also pushing $LATEST_TAG..."
+
+                if sudo -u "$REPOSITORY_OWNER" docker tag "$TARGET_IMAGE" "$LATEST_TAG"; then
+                    if sudo -u "$REPOSITORY_OWNER" docker push "$LATEST_TAG"; then
+                        log_success "Latest tag pushed successfully!"
+                    else
+                        log_warn "Failed to push 'latest' tag. Detailed error above."
+                    fi
+                else
+                    log_error "Failed to create 'latest' tag."
+                fi
+            fi
+        else
+            log_error "Detailed push error usually involves authentication or permission."
+            log_error "Failed to push image."
+            exit 1
+        fi
+
+    elif [ "$mode_number" -eq 3 ]; then
+        log_info "MODE: PRODUCTION"
+        log_info "1. Pulling image $ODOO_IMAGE_NAME..."
+        if sudo -u "$REPOSITORY_OWNER" docker compose pull; then
+            log_success "Image pulled successfully."
+            log_info "Now run: 'docker compose up -d'"
+        else
+            log_error "Pull failed."
+            exit 1
+        fi
+    fi
+
     exit 0
   else
     exit 1

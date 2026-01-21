@@ -2,7 +2,7 @@
 
 services:
   odoo:
-    image: ${ODOO_IMAGE_NAME:-$SERVICE_NAME:latest}
+    image: ${ODOO_IMAGE_NAME:-$SERVICE_NAME}${ODOO_IMAGE_VERSION:+:$ODOO_IMAGE_VERSION}
 
     build:
       context: .

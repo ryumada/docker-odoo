@@ -1,3 +1,3 @@
 #!/bin/bash
 
-cat /opt/odoo/odoo-base/git_hashes.txt
+cat /opt/git_hashes-odoo_base.txt

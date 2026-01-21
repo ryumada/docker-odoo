@@ -1,3 +1,3 @@
 #!/bin/bash
 
-cat /opt/odoo/git/git_hashes.txt
+cat /opt/git_hashes-odoo_git_addons.txt
