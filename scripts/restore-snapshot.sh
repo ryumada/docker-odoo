@@ -6,18 +6,19 @@ PATH_TO_ODOO=$(sudo -u "$CURRENT_DIR_USER" git -C "$(dirname "$(readlink -f "$0"
 SERVICE_NAME=$(basename "$PATH_TO_ODOO")
 REPOSITORY_OWNER=$(stat -c '%U' "$PATH_TO_ODOO")
 
+# The path inside the tar is the absolute path without the leading slash
+TAR_PROJECT_ROOT="${PATH_TO_ODOO#/}"
+
 TAR_FILE_NAME=snapshot-$SERVICE_NAME.tar.zst
 TEMP_DIR=/tmp/snapshot-$SERVICE_NAME
 
 # --- Logging Functions & Colors ---
-# Define colors for log messages
 readonly COLOR_RESET="\033[0m"
 readonly COLOR_INFO="\033[0;34m"
 readonly COLOR_SUCCESS="\033[0;32m"
 readonly COLOR_WARN="\033[0;33m"
 readonly COLOR_ERROR="\033[0;31m"
 
-# Function to log messages with a specific color and emoji
 log() {
   local color="$1"
   local emoji="$2"
@@ -29,7 +30,6 @@ log_info() { log "${COLOR_INFO}" "ℹ️" "$1"; }
 log_success() { log "${COLOR_SUCCESS}" "✅" "$1"; }
 log_warn() { log "${COLOR_WARN}" "⚠️" "$1"; }
 log_error() { log "${COLOR_ERROR}" "❌" "$1"; }
-# ------------------------------------
 
 function areYouReallySure() {
   echo -e "\nAre you sure?\n⚠️ This script will replace your current Odoo data and deployment files. ⚠️\nType 'yes I am sure' and press enter to continue.\n"
@@ -69,37 +69,65 @@ function isZstdInstalled() {
 }
 
 function restoreDBCredentials() {
-  log_info "Restore .secrets/db_user"
-  cp -f "$TEMP_DIR/.secrets/db_user" .secrets/db_user || { log_error "Can't restore .secrets/db_user"; }
-  chown odoo: .secrets/db_user
-  chmod 400 .secrets/db_user
+  log_info "Restore .secrets directory"
+  # Try the project-relative path inside tar
+  local secrets_tar_dir="$TEMP_DIR/$TAR_PROJECT_ROOT/.secrets"
 
-  log_info "Restore .secrets/db_password"
-  cp -f "$TEMP_DIR/.secrets/db_password" .secrets/db_password || { log_error "Can't restore .secrets/db_password"; }
-  chown odoo: .secrets/db_password
-  chmod 400 .secrets/db_password
+  if [ -d "$secrets_tar_dir" ]; then
+    mkdir -p "$PATH_TO_ODOO/.secrets"
+    cp -rf "$secrets_tar_dir/." "$PATH_TO_ODOO/.secrets/" || { log_error "Can't restore .secrets directory"; }
+    chown -R "$REPOSITORY_OWNER": "$PATH_TO_ODOO/.secrets"
+    chmod 700 "$PATH_TO_ODOO/.secrets"
+    chmod 600 "$PATH_TO_ODOO/.secrets"/*
+  else
+    log_warn "Secrets directory not found in snapshot at $secrets_tar_dir"
+  fi
 }
 
 function restoreOdooData() {
-  ODOO_DATABASE_NAME_PRD=$(find "$TEMP_DIR/var/lib/odoo/$SERVICE_NAME/filestore/" -mindepth 1 -maxdepth 1 -type d -print | head -n 1 | xargs -n 1 basename)
-  ODOO_DATABASE_USER=$(cat "$PATH_TO_ODOO/.secrets/db_user")
+  # Discover database name from filestore path structure inside tar
+  # Path in tar: var/lib/odoo/$SERVICE_NAME/filestore/[DB_NAME]
+  local filestore_base_in_tar="$TEMP_DIR/var/lib/odoo/$SERVICE_NAME/filestore"
+
+  if [ ! -d "$filestore_base_in_tar" ]; then
+    log_error "Filestore structure not found in snapshot: $filestore_base_in_tar"
+    return 1
+  fi
+
+  ODOO_DATABASE_NAME_PRD=$(find "$filestore_base_in_tar" -mindepth 1 -maxdepth 1 -type d -print | head -n 1 | xargs -n 1 basename)
+
+  if [ -z "$ODOO_DATABASE_NAME_PRD" ]; then
+    log_error "Could not determine database name from filestore."
+    return 1
+  fi
+
+  # Discover SQL dump file (supports randomized filename)
+  local sql_dump_file=$(find "$TEMP_DIR/tmp" -name "${ODOO_DATABASE_NAME_PRD}_*.sql" -print | head -n 1)
+
+  if [ -z "$sql_dump_file" ]; then
+    log_error "SQL dump file for $ODOO_DATABASE_NAME_PRD not found in /tmp/ directory of snapshot."
+    return 1
+  fi
+
+  ODOO_DATABASE_USER=$(cat "$PATH_TO_ODOO/.secrets/db_user" 2>/dev/null || echo "odoo")
 
   log_info "Restore odoo filestore /var/lib/odoo/$SERVICE_NAME/filestore/$ODOO_DATABASE_NAME_PRD"
-  if [ -d "/var/lib/odoo/$SERVICE_NAME/filestore/$ODOO_DATABASE_NAME_PRD" ]; then
-    rm -rf "/var/lib/odoo/$SERVICE_NAME/filestore/$ODOO_DATABASE_NAME_PRD"
-  else
-    mkdir -p "/var/lib/odoo/$SERVICE_NAME/filestore/$ODOO_DATABASE_NAME_PRD"
-  fi
-  mv "$TEMP_DIR/var/lib/odoo/$SERVICE_NAME/filestore/$ODOO_DATABASE_NAME_PRD" "/var/lib/odoo/$SERVICE_NAME/filestore/" || { log_error "Can't restore /var/lib/odoo/$SERVICE_NAME/filestore/$ODOO_DATABASE_NAME_PRD"; }
+  local target_filestore="/var/lib/odoo/$SERVICE_NAME/filestore/$ODOO_DATABASE_NAME_PRD"
+
+  rm -rf "$target_filestore"
+  mkdir -p "$(dirname "$target_filestore")"
+
+  mv "$filestore_base_in_tar/$ODOO_DATABASE_NAME_PRD" "$target_filestore" || { log_error "Can't restore filestore"; }
   chown -R odoo: "/var/lib/odoo/$SERVICE_NAME"
 
-  log_info "Restore database $ODOO_DATABASE_NAME_PRD from $TEMP_DIR/tmp/$ODOO_DATABASE_NAME_PRD.sql"
-  sudo -u postgres psql -c "DROP DATABASE IF EXISTS \"$ODOO_DATABASE_NAME_PRD\"" --quiet -t -P pager=off 2> /dev/null > /dev/null || log_error "Can't drop database $ODOO_DATABASE_NAME_PRD"
-  sudo -u postgres psql -c "CREATE DATABASE \"$ODOO_DATABASE_NAME_PRD\"" --quiet -t -P pager=off 2> /dev/null > /dev/null || log_error "Can't create database $ODOO_DATABASE_NAME_PRD"
-  sudo -u postgres psql -d "$ODOO_DATABASE_NAME_PRD" -f "$TEMP_DIR/tmp/$ODOO_DATABASE_NAME_PRD.sql" --quiet -t -P pager=off 2> /dev/null > /dev/null || log_error "Can't restore database $ODOO_DATABASE_NAME_PRD"
+  log_info "Restore database $ODOO_DATABASE_NAME_PRD from $(basename "$sql_dump_file")"
+  sudo -u postgres psql -c "DROP DATABASE IF EXISTS \"$ODOO_DATABASE_NAME_PRD\"" --quiet -t -P pager=off 2> /dev/null > /dev/null || log_error "Can't drop database"
+  sudo -u postgres psql -c "CREATE DATABASE \"$ODOO_DATABASE_NAME_PRD\"" --quiet -t -P pager=off 2> /dev/null > /dev/null || log_error "Can't create database"
+  sudo -u postgres psql -d "$ODOO_DATABASE_NAME_PRD" -f "$sql_dump_file" --quiet -t -P pager=off 2> /dev/null > /dev/null || log_error "Can't restore database"
 
-  log_info "Change the owner of the database."
+  log_info "Fixing database ownership for user: $ODOO_DATABASE_USER"
   sudo -u postgres psql -c "ALTER DATABASE \"$ODOO_DATABASE_NAME_PRD\" OWNER TO \"$ODOO_DATABASE_USER\"" --quiet -t -P pager=off 2> /dev/null > /dev/null || log_error "Can't change the owner of the database $ODOO_DATABASE_NAME_PRD"
+
   sudo -u postgres psql --quiet -t -P pager=off -d "$ODOO_DATABASE_NAME_PRD" -c "
     -- Change the owner of all tables
     DO \$\$
@@ -136,12 +164,8 @@ function restoreOdooData() {
 function main() {
   log_info "Start restore utility for $SERVICE_NAME"
 
-  # Self-elevate to root if not already
   if [ "$(id -u)" -ne 0 ]; then
-      log_info "Elevating permissions to root..."
-      # shellcheck disable=SC2093
-      exec sudo "$0" "$@" # Re-run the script with sudo
-      log_error "Failed to elevate to root. Please run with sudo." # This will only run if exec fails
+      exec sudo "$0" "$@"
       exit 1
   fi
 
@@ -149,103 +173,55 @@ function main() {
   isZstdInstalled
   isSnapshotFileExist
 
-  if ! cd "$PATH_TO_ODOO"; then
-    log_error "Can't change directory to $PATH_TO_ODOO"
+  log_info "Extracting snapshot..."
+  rm -rf "$TEMP_DIR" && mkdir -p "$TEMP_DIR"
+  if ! tar -xaf "/tmp/$TAR_FILE_NAME" -C "$TEMP_DIR"; then
+    log_error "Failed to extract snapshot."
     exit 1
   fi
 
-  log_info "Extract /tmp/$TAR_FILE_NAME to $TEMP_DIR"
-  if ! mkdir "$TEMP_DIR"; then
-    log_error "Can't create $TEMP_DIR. Maybe the directory already exists."
-    exit 1
-  fi
-  if ! tar -xaf "/tmp/$TAR_FILE_NAME" -C "/tmp/snapshot-$SERVICE_NAME"; then
-    log_error "Can't extract /tmp/$TAR_FILE_NAME"
-    exit 1
-  fi
+  # Path aliases for readability
+  local src_root="$TEMP_DIR/$TAR_PROJECT_ROOT"
 
-  log_info "Restore conf/odoo.conf"
-  if ! cp -f "$TEMP_DIR/conf/odoo.conf" "conf/odoo.conf"; then
-    log_error "Can't restore conf/odoo.conf"
-  fi
-  chown "$REPOSITORY_OWNER": "conf/odoo.conf"
+  log_info "Restoring configuration and environment..."
+  [ -f "$src_root/conf/odoo.conf" ] && cp -f "$src_root/conf/odoo.conf" "$PATH_TO_ODOO/conf/odoo.conf"
+  [ -f "$src_root/.env" ] && cp -f "$src_root/.env" "$PATH_TO_ODOO/.env"
+  [ -f "$src_root/requirements.txt" ] && cp -f "$src_root/requirements.txt" "$PATH_TO_ODOO/requirements.txt"
 
-  log_info "Restore environment file (.env)"
-  if ! cp -f "$TEMP_DIR/.env" .env; then
-    log_error "Can't restore .env"
-  fi
-  chown "$REPOSITORY_OWNER": .env
+  chown -R "$REPOSITORY_OWNER": "$PATH_TO_ODOO/conf/odoo.conf" "$PATH_TO_ODOO/.env" "$PATH_TO_ODOO/requirements.txt" 2>/dev/null
 
   restoreDBCredentials
 
-  log_info "Stop $SERVICE_NAME service"
-  if ! docker compose down > /dev/null 2>&1; then
-    log_warn "Failed to stop docker compose service. It might not be running."
-  fi
+  log_info "Stopping services..."
+  (cd "$PATH_TO_ODOO" && docker compose down > /dev/null 2>&1)
 
-  log_info "Restore backupdata script scripts/backupdata-$SERVICE_NAME"
-  if ! cp -f "$TEMP_DIR/scripts/backupdata-$SERVICE_NAME" "scripts/backupdata-$SERVICE_NAME"; then
-    log_error "Can't restore scripts/backupdata-$SERVICE_NAME"
-  fi
-  if ! ln -s "$PATH_TO_ODOO/scripts/backupdata-$SERVICE_NAME" /usr/local/sbin/backupdata-"$SERVICE_NAME" > /dev/null 2>&1; then
-    log_warn "Can't create symlink on /usr/local/sbin/backupdata-$SERVICE_NAME. Maybe the symlink already exists."
-  fi
-  chown "$REPOSITORY_OWNER": "scripts/backupdata-$SERVICE_NAME"
-  chmod 755 "scripts/backupdata-$SERVICE_NAME"
-
-  log_info "Restore databasecloner script scripts/databasecloner-$SERVICE_NAME"
-  if ! cp -f "$TEMP_DIR/scripts/databasecloner-$SERVICE_NAME" "scripts/databasecloner-$SERVICE_NAME"; then
-    log_error "Can't restore scripts/databasecloner-$SERVICE_NAME"
-  fi
-  if ! ln -s "$PATH_TO_ODOO/scripts/databasecloner-$SERVICE_NAME" /usr/local/sbin/databasecloner-"$SERVICE_NAME" > /dev/null 2>&1; then
-    log_warn "Can't create symlink on /usr/local/sbin/databasecloner-$SERVICE_NAME. Maybe the symlink already exists."
-  fi
-  chown "$REPOSITORY_OWNER": "scripts/databasecloner-$SERVICE_NAME"
-  chmod 755 "scripts/databasecloner-$SERVICE_NAME"
-
-  log_info "Restore the snapshot script scripts/snapshot-$SERVICE_NAME"
-  if ! cp -f "$TEMP_DIR/scripts/snapshot-$SERVICE_NAME" "scripts/snapshot-$SERVICE_NAME"; then
-    log_error "Can't restore scripts/snapshot-$SERVICE_NAME"
-  fi
-  if ! ln -s "$PATH_TO_ODOO/scripts/snapshot-$SERVICE_NAME" /usr/local/sbin/snapshot-"$SERVICE_NAME" > /dev/null 2>&1; then
-    log_warn "Can't create symlink on /usr/local/sbin/snapshot-$SERVICE_NAME. Maybe the symlink already exists."
-  fi
-  chown "$REPOSITORY_OWNER": "scripts/snapshot-$SERVICE_NAME"
-  chmod 755 "scripts/snapshot-$SERVICE_NAME"
-
-  log_info "Restore requirements.txt"
-  if ! cp -f "$TEMP_DIR/requirements.txt" ./requirements.txt; then
-    log_error "Can't restore requirements.txt"
-  fi
-  chown "$REPOSITORY_OWNER": ./requirements.txt
+  # Restore scripts
+  log_info "Restoring utility scripts..."
+  for script in "backupdata-$SERVICE_NAME" "databasecloner-$SERVICE_NAME" "snapshot-$SERVICE_NAME"; do
+    if [ -f "$src_root/scripts/$script" ]; then
+        cp -f "$src_root/scripts/$script" "$PATH_TO_ODOO/scripts/$script"
+        chown "$REPOSITORY_OWNER": "$PATH_TO_ODOO/scripts/$script"
+        chmod 755 "$PATH_TO_ODOO/scripts/$script"
+        ln -sf "$PATH_TO_ODOO/scripts/$script" "/usr/local/sbin/$script"
+    fi
+  done
 
   restoreOdooData
 
-  log_info "Restore Odoo modules without git."
-  if ! find "$TEMP_DIR/git/" -mindepth 1 -maxdepth 1 -type d -exec cp -r {} ./git/ \;; then
-    log_error "Can't restore Odoo modules without git."
+  # Git hashes display
+  local hash_file=$(find "$TEMP_DIR/tmp" -name "git_hashes_*.txt" -print | head -n 1)
+  if [ -n "$hash_file" ]; then
+    echo -e "\n==========================================================================="
+    log_info "Git Version Information from Snapshot:"
+    cat "$hash_file"
+    echo "==========================================================================="
   fi
-  chown -R "$REPOSITORY_OWNER": ./git/
-
-  echo -e "\n==========================================================================="
-
-  log_warn "git Odoo modules used by the previous snapshot."
-  log_warn "You need to clone these repositories manually into git directory. If you want to rebuild the image."
-  cat "$TEMP_DIR/git/git_hashes.txt"
-
-  echo -e "\n==========================================================================="
-
-  log_warn "odoo-base git hashes used by the previous snapshot."
-  log_warn "You need to clone these repositories manually into git directory. If you want to rebuild the image."
-  cat "$TEMP_DIR/odoo-base/git_hashes.txt"
-
-  echo -e "\n==========================================================================="
 
   cleanup
 
-  log_warn "You need to run the following command then follow the instruction whether you want to rebuild or pull the Odoo image."
-  echo -e "The script is located at the root of this repository.\n"
-  echo -e "     'sudo ./_install.sh'\n"
+  log_success "Restoration complete."
+  log_warn "Run 'sudo ./setup.sh' to rebuild or pull the Odoo image as needed."
 }
 
-main "@"
+main "$@"
+

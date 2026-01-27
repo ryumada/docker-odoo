@@ -56,25 +56,18 @@ function areYouReallySure() {
 }
 
 function getGitHash() {
-  # _inherit = writeGitHash
+  local git_path=$1
+  local output_file=$2
+  local git_real_owner=$(stat -c '%U' "$git_path")
 
-  git_path=$1
-  git_real_owner=$(stat -c '%U' "$git_path")
-  repository_owner=$(stat -c '%U' "$PATH_TO_ODOO")
-
-  chown -R "$repository_owner": "$git_path"
-
-  OUTPUT_GIT_HASHES_FILE="$git_path/../git_hashes.txt"
-
-  cat <<EOF >> "$OUTPUT_GIT_HASHES_FILE"
-  Updated at [$(date +"%Y-%m-%d %H:%M:%S")]
-  Git Directory: $git_path
-  Git Remote: $(git -C "$git_path" remote get-url origin)
-  Git Branch: $(git -C "$git_path" branch --show-current)
-  Git Hashes: $(git -C "$git_path" rev-parse HEAD)
-EOF
-
-  chown -R "$git_real_owner": "$git_path"
+  {
+      echo "  Updated at [$(date +"%Y-%m-%d %H:%M:%S")]"
+      echo "  Git Directory: $git_path"
+      echo "  Git Remote: $(sudo -u "$git_real_owner" git -C "$git_path" remote get-url origin)"
+      echo "  Git Branch: $(sudo -u "$git_real_owner" git -C "$git_path" branch --show-current)"
+      echo "  Git Hashes: $(sudo -u "$git_real_owner" git -C "$git_path" rev-parse HEAD)"
+      echo ""
+  } >> "$output_file"
 }
 
 function getSubDirectories() {
@@ -123,31 +116,17 @@ function moveSnapshotFileToTempDir() {
   log_success "The snapshot File Created Successfully named $tar_file_name. File Backed up at $temp_dir/$tar_file_name"
 }
 
-function resetGitHashFile(){
-  # _inherit = writeGitHash
-
-  git_path=$1
-  OUTPUT_GIT_HASHES_FILE="$git_path/../git_hashes.txt"
-
-  cat <<EOF > "$OUTPUT_GIT_HASHES_FILE"
-
-EOF
-}
 
 function writeGitHash() {
-  dir=$1
-  subdirs="$(getSubDirectories "$dir")"
+  local search_dir=$1
+  local output_file=$2
+  local subdirs
 
-  flag=0
+  subdirs="$(getSubDirectories "$search_dir")"
+
   for dir in $subdirs; do
-
-    if [ $flag -eq 0 ]; then
-      resetGitHashFile "$dir"
-      flag=1
-    fi
-
     if isDirectoryGitRepository "$dir"; then
-      getGitHash "$dir"
+      getGitHash "$dir" "$output_file"
     else
       log_warn "$dir is not a git repository. You need to backup this directory by adding it to your snapshot utilities."
     fi
@@ -184,7 +163,7 @@ function main() {
 
   # enter the production database name this is required to backup the database
   # Robust parsing for DB_NAME
-  ODOO_DATABASE_NAME_PRD=$(grep "^DB_NAME=" "$PATH_TO_ODOO/.env" | cut -d '=' -f2- | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//')
+  ODOO_DATABASE_NAME_PRD=$(grep "^DB_NAME=" "$PATH_TO_ODOO/.env" | cut -d '=' -f2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//')
 
   if [ -z "$ODOO_DATABASE_NAME_PRD" ]; then
     log_error "Please setup DB_NAME in your .env file!"
@@ -193,10 +172,13 @@ function main() {
 
   # ask to replace the existing snapshot file
   # enter "Y" to add question to replace the existing snapshot file
-  ASK_TO_REPLACE_EXISTING_SNAPSHOT=$(grep "^ASK_TO_REPLACE_EXISTING_SNAPSHOT=" "$PATH_TO_ODOO/.env" | cut -d '=' -f2- | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//')
+  ASK_TO_REPLACE_EXISTING_SNAPSHOT=$(grep "^ASK_TO_REPLACE_EXISTING_SNAPSHOT=" "$PATH_TO_ODOO/.env" | cut -d '=' -f2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//')
+
+  # Custom directories to backup (semicolon separated)
+  SNAPSHOT_CUSTOM_DIRS=$(grep "^SNAPSHOT_CUSTOM_DIRS=" "$PATH_TO_ODOO/.env" | cut -d '=' -f2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//')
 
   # you can leave it as is to back up to the /tmp directory instead of Google Cloud Storage (GCS)
-  GCS_BUCKET_NAME=$(grep "^GCS_BUCKET_NAME=" "$PATH_TO_ODOO/.env" | cut -d '=' -f2- | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//')
+  GCS_BUCKET_NAME=$(grep "^GCS_BUCKET_NAME=" "$PATH_TO_ODOO/.env" | cut -d '=' -f2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//')
 
   ## This variable below to define the new variable (DON'T EDIT)
   # Use array for files
@@ -205,11 +187,16 @@ function main() {
   ## Add Directory (ADD MORE VARIABLE TO ADD NEW DIRECTORY for the archive by uncommenting and adding.)
   # files_dirs_to_tar+=("enter_path_to_directory")
 
-  ## Make sure that the git directory and odoo base directory has git_hashes.txt file.
-  ## If not, you need to change this to the directory of odoo modules and odoo-base instead of git_hashes.txt.
-  ## enter the correct path
-  files_dirs_to_tar+=("git/git_hashes.txt")
-  files_dirs_to_tar+=("odoo-base/git_hashes.txt")
+  # Generate Git Hashes to a temporary file
+  GIT_HASHES_FILE=$(mktemp --tmpdir "git_hashes_XXXXXX.txt")
+  chmod 644 "$GIT_HASHES_FILE"
+  # Clean up git hash file on exit
+  trap 'rm -f "$GIT_HASHES_FILE"' EXIT
+
+  writeGitHash "$PATH_TO_ODOO/git" "$GIT_HASHES_FILE"
+  writeGitHash "$PATH_TO_ODOO/odoo-base" "$GIT_HASHES_FILE"
+
+  files_dirs_to_tar+=("$GIT_HASHES_FILE")
 
   ## Add the additional odoo module directory that don't use git (uncomment and add the path of the directory)
   # files_dirs_to_tar+=("git/enter_additional_git_odoo_module_directory")
@@ -217,10 +204,23 @@ function main() {
   ## Make sure that the datadir location is correct (enter the correct one)
   files_dirs_to_tar+=("/var/lib/odoo/$SERVICE_NAME/filestore/$ODOO_DATABASE_NAME_PRD")
 
-  log_info "Change WORKDIR to $PATH_TO_ODOO."
-  if ! cd "$PATH_TO_ODOO"; then
-    log_error "Can't change directory to $PATH_TO_ODOO"
-    exit 1
+
+  # Add custom directories if defined
+  if [ -n "$SNAPSHOT_CUSTOM_DIRS" ]; then
+    log_info "Processing custom backup directories..."
+    IFS=';' read -ra ADDR <<< "$SNAPSHOT_CUSTOM_DIRS"
+    for dir in "${ADDR[@]}"; do
+        # Trim whitespace
+        dir=$(echo "$dir" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+        if [ -n "$dir" ]; then
+            if [ -e "$dir" ]; then
+                log_info "Adding custom directory: $dir"
+                files_dirs_to_tar+=("$dir")
+            else
+                log_warn "Custom directory not found: $dir"
+            fi
+        fi
+    done
   fi
 
   TAR_FILE_NAME=snapshot-$SERVICE_NAME.tar.zst
@@ -228,32 +228,35 @@ function main() {
 
   areYouReallySure "$TAR_FILE_PATH" "$ASK_TO_REPLACE_EXISTING_SNAPSHOT"
 
-  files_dirs_to_tar+=(".secrets/db_user")
-  files_dirs_to_tar+=(".secrets/db_password")
-  files_dirs_to_tar+=("conf/odoo.conf")
-  files_dirs_to_tar+=(".env")
-  files_dirs_to_tar+=("requirements.txt")
+  # Use absolute paths for consistency
+  files_dirs_to_tar+=("$PATH_TO_ODOO/.secrets")
+  files_dirs_to_tar+=("$PATH_TO_ODOO/conf/odoo.conf")
+  files_dirs_to_tar+=("$PATH_TO_ODOO/.env")
+  files_dirs_to_tar+=("$PATH_TO_ODOO/requirements.txt")
 
   # Use secure temp file for SQL dump
   SQL_DUMP_FILE=$(mktemp --tmpdir "${ODOO_DATABASE_NAME_PRD}_XXXXXX.sql")
   chown postgres "$SQL_DUMP_FILE"
   files_dirs_to_tar+=("$SQL_DUMP_FILE")
 
+  # Update trap to clean up both files
+  trap 'rm -f "$SQL_DUMP_FILE" "$GIT_HASHES_FILE"' EXIT
+
   # These files not backupped to the snapshot file
-  ## crontab or /etc.cron.d directory is the place where docker-odoo cron jobs are stored.
+  ## crontab or /etc/cron.d directory is the place where docker-odoo cron jobs are stored.
   ## /etc/nginx/sites-available is the place where nginx configuration files are stored.
   ## /etc/logrotate.d is the place where logrotate configuration files are stored.
 
-  if [ -f "scripts/backupdata-$SERVICE_NAME" ]; then
-    files_dirs_to_tar+=("scripts/backupdata-$SERVICE_NAME")
+  if [ -f "$PATH_TO_ODOO/scripts/backupdata-$SERVICE_NAME" ]; then
+    files_dirs_to_tar+=("$PATH_TO_ODOO/scripts/backupdata-$SERVICE_NAME")
   fi
 
-  if [ -f "scripts/databasecloner-$SERVICE_NAME" ]; then
-    files_dirs_to_tar+=("scripts/databasecloner-$SERVICE_NAME")
+  if [ -f "$PATH_TO_ODOO/scripts/databasecloner-$SERVICE_NAME" ]; then
+    files_dirs_to_tar+=("$PATH_TO_ODOO/scripts/databasecloner-$SERVICE_NAME")
   fi
 
-  if [ -f "scripts/snapshot-$SERVICE_NAME" ]; then
-    files_dirs_to_tar+=("scripts/snapshot-$SERVICE_NAME")
+  if [ -f "$PATH_TO_ODOO/scripts/snapshot-$SERVICE_NAME" ]; then
+    files_dirs_to_tar+=("$PATH_TO_ODOO/scripts/snapshot-$SERVICE_NAME")
   fi
 
   if ! command -v zstd >/dev/null 2>&1; then
@@ -262,9 +265,6 @@ function main() {
     echo "For CentOS: sudo yum install zstd"
     exit 1
   fi
-
-  writeGitHash "$PATH_TO_ODOO/git"
-  writeGitHash "$PATH_TO_ODOO/odoo-base"
 
   log_info "Dumping $ODOO_DATABASE_NAME_PRD database to $SQL_DUMP_FILE..."
   # Use the secure temp file
