@@ -1,10 +1,10 @@
 #!/bin/bash
 
 # ==============================================================================
-# SCRIPT: docker_install_font.sh
+# SCRIPT: install_font.sh
 # DESCRIPTION: Extracts a comma-separated list of font URLs from the FONT_URLS
 #              variable in the .env file and installs each font via Docker.
-# USAGE: ./docker_install_font.sh
+# USAGE: ./install_font.sh
 # ==============================================================================
 
 # --- Logging Functions & Colors ---
