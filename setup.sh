@@ -244,11 +244,6 @@ EOF
     done
   fi
 
-  log_info "Bind mounts enabled for Development and Builder modes."
-  sed -i '/volumes/a \
-     - ./git:/opt/odoo/git\
-     - ./odoo-base:/opt/odoo/odoo-base' docker-compose.yml
-
   generateDockerFile
 }
 
@@ -919,11 +914,12 @@ function main() {
 
   isDockerInstalled
   isLogRotateInstalled
-  isUserExist "$ODOO_LINUX_USER" 8069
 
-  setupAutoDevops
-
-  installDockerServiceRestartorScript
+  if [ "$mode_number" -ne 2 ]; then
+    isUserExist "$ODOO_LINUX_USER" 8069
+    setupAutoDevops
+    installDockerServiceRestartorScript
+  fi
 
   if [ "$1" != "auto" ]; then
     read -rp "❓ Do you want to renew odoo-shell and odoo-module-upgrade scripts? [y/N] : " response
@@ -945,25 +941,27 @@ function main() {
   generateDockerComposeAndDockerfile
 
   if isFileExists "$ENV_FILE" "Please create a .env file by folowing the .env.example file."; then
-    createLogDir
-    createDataDir
+    if [ "$mode_number" -ne 2 ]; then
+      createLogDir
+      createDataDir
 
-    DB_HOST=$(grep 'DB_HOST' $ENV_FILE | grep -v '#' | grep -o 'DB_HOST=\([^)]*\)' | sed 's/DB_HOST=//')
+      DB_HOST=$(grep 'DB_HOST' $ENV_FILE | grep -v '#' | grep -o 'DB_HOST=\([^)]*\)' | sed 's/DB_HOST=//')
 
-    if [ "$DB_HOST" == "" ]; then
-      if isPostgresInstalled; then
-        DB_REGENERATE_SECRETS=$(grep 'DB_REGENERATE_SECRETS' $ENV_FILE | grep -v '#' | grep -o 'DB_REGENERATE_SECRETS=\([^)]*\)' | sed 's/DB_REGENERATE_SECRETS=//')
-        if [ "$DB_REGENERATE_SECRETS" == "Y" ]; then
-          log_info "Regenerate Postgres secrets..."
-          generatePostgresSecrets "$DB_REGENERATE_SECRETS"
+      if [ "$DB_HOST" == "" ]; then
+        if isPostgresInstalled; then
+          DB_REGENERATE_SECRETS=$(grep 'DB_REGENERATE_SECRETS' $ENV_FILE | grep -v '#' | grep -o 'DB_REGENERATE_SECRETS=\([^)]*\)' | sed 's/DB_REGENERATE_SECRETS=//')
+          if [ "$DB_REGENERATE_SECRETS" == "Y" ]; then
+            log_info "Regenerate Postgres secrets..."
+            generatePostgresSecrets "$DB_REGENERATE_SECRETS"
+          fi
+          sed -i "s/DB_REGENERATE_SECRETS=Y/DB_REGENERATE_SECRETS=N/" "$ENV_FILE"
+
+          installPostgresRestartorScript
         fi
-        sed -i "s/DB_REGENERATE_SECRETS=Y/DB_REGENERATE_SECRETS=N/" "$ENV_FILE"
-
-        installPostgresRestartorScript
+      else
+        log_warn "DB_HOST found on .env file. That means you have a separate postgresql server."
+        log_warn "Please make sure that the postgresql server is running and the user and password are setup successfully. See '.secrets' directory to setup the username and password of your postgres user."
       fi
-    else
-      log_warn "DB_HOST found on .env file. That means you have a separate postgresql server."
-      log_warn "Please make sure that the postgresql server is running and the user and password are setup successfully. See '.secrets' directory to setup the username and password of your postgres user."
     fi
 
     checkImportantEnvVariable "PYTHON_VERSION" $ENV_FILE
@@ -974,14 +972,16 @@ function main() {
     checkImportantEnvVariable "WKHTMLTOPDF_DIRECT_DOWNLOAD_URL" $ENV_FILE
   fi
 
-  ODOO_ADMIN_PASSWD=$(grep "^ADMIN_PASSWD=" "$REPOSITORY_DIRPATH/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
-  ODOO_ADDONS_PATH=$(grep "^ADDONS_PATH=" "$REPOSITORY_DIRPATH/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
+  if [ "$mode_number" -ne 2 ]; then
+    ODOO_ADMIN_PASSWD=$(grep "^ADMIN_PASSWD=" "$REPOSITORY_DIRPATH/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
+    ODOO_ADDONS_PATH=$(grep "^ADDONS_PATH=" "$REPOSITORY_DIRPATH/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
 
-  if [ -n "$ODOO_ADMIN_PASSWD" ] && [ -n "$ODOO_ADDONS_PATH" ]; then
-    log_info "Updating odoo.conf file..."
-    "$REPOSITORY_DIRPATH/scripts/update-odoo-config.sh"
-  else
-    log_error "You need to fill ADMIN_PASSWD and ADDONS_PATH variables in your .env file."
+    if [ -n "$ODOO_ADMIN_PASSWD" ] && [ -n "$ODOO_ADDONS_PATH" ]; then
+      log_info "Updating odoo.conf file..."
+      "$REPOSITORY_DIRPATH/scripts/update-odoo-config.sh"
+    else
+      log_error "You need to fill ADMIN_PASSWD and ADDONS_PATH variables in your .env file."
+    fi
   fi
 
   isFileExists "$DOCKER_COMPOSE_FILE" "Please create a docker-compose.yml file by following the docker-compose.yml.example file." || true
@@ -991,8 +991,10 @@ function main() {
 
   # MODE 1: DEVELOPMENT or MODE 2: BUILDER
   if [ "$mode_number" -eq 1 ] || [ "$mode_number" -eq 2 ]; then
-    if isFileExists "$ODOO_CONF_FILE" "Please create an odoo.conf file by following the odoo.conf.example file."; then
-      checkAddonsPathOnOdooConfFile
+    if [ "$mode_number" -ne 2 ]; then
+      if isFileExists "$ODOO_CONF_FILE" "Please create an odoo.conf file by following the odoo.conf.example file."; then
+        checkAddonsPathOnOdooConfFile
+      fi
     fi
 
     if isSubDirectoryExists "$GIT_DIR" "" "No directories found inside $GIT_DIR. That means no Odoo custom module will be added to your Odoo image."; then
@@ -1003,8 +1005,11 @@ function main() {
       writeGitHash "$ODOO_BASE_DIR"
 
       ODOO_BASE_DIRECTORY=$(find $ODOO_BASE_DIR -mindepth 1 -maxdepth 1 -type d -print -quit)
-      log_info "Add execute permission to odoo-bin binary"
-      chmod +x "$ODOO_BASE_DIRECTORY"/odoo-bin
+
+      if [ "$mode_number" -ne 2 ]; then
+        log_info "Add execute permission to odoo-bin binary"
+        chmod +x "$ODOO_BASE_DIRECTORY"/odoo-bin
+      fi
 
       if ! isFileExists "$REQUIREMENTS_FILE" "Please copy your requirements.txt file from your 'odoo-base' or create the file by following the requirements.txt.example file."; then
         log_info "Copying $REQUIREMENTS_FILE file..."
@@ -1046,24 +1051,26 @@ function main() {
     fi
   fi
 
-  "$REPOSITORY_DIRPATH/scripts/installer/install-backupdata.sh"
-  "$REPOSITORY_DIRPATH/scripts/installer/install-deploy_release_candidate.sh"
-  "$REPOSITORY_DIRPATH/scripts/installer/install-restore_backupdata.sh"
-  "$REPOSITORY_DIRPATH/scripts/installer/install_sudoers.sh"
+  if [ "$mode_number" -ne 2 ]; then
+    "$REPOSITORY_DIRPATH/scripts/installer/install-backupdata.sh"
+    "$REPOSITORY_DIRPATH/scripts/installer/install-deploy_release_candidate.sh"
+    "$REPOSITORY_DIRPATH/scripts/installer/install-restore_backupdata.sh"
+    "$REPOSITORY_DIRPATH/scripts/installer/install_sudoers.sh"
 
-  ENABLE_DATABASE_CLONER=$(grep "^ENABLE_DATABASE_CLONER=" "$REPOSITORY_DIRPATH/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
-  if [ -n "$ENABLE_DATABASE_CLONER" ]; then
-    "$REPOSITORY_DIRPATH/scripts/installer/install-databasecloner.sh"
-  else
-    log_warn "databasecloner utility is not installed. Please fill ENABLE_DATABASE_CLONER variable in your .env file, then re-run this install script to install databasecloner utility."
-  fi
+    ENABLE_DATABASE_CLONER=$(grep "^ENABLE_DATABASE_CLONER=" "$REPOSITORY_DIRPATH/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
+    if [ -n "$ENABLE_DATABASE_CLONER" ]; then
+      "$REPOSITORY_DIRPATH/scripts/installer/install-databasecloner.sh"
+    else
+      log_warn "databasecloner utility is not installed. Please fill ENABLE_DATABASE_CLONER variable in your .env file, then re-run this install script to install databasecloner utility."
+    fi
 
-  ENABLE_SNAPSHOT=$(grep "^ENABLE_SNAPSHOT=" "$REPOSITORY_DIRPATH/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
-  ODOO_DB_NAME=$(grep "^DB_NAME=" "$REPOSITORY_DIRPATH/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
-  if [ -n "$ENABLE_SNAPSHOT" ] && [ -n "$ODOO_DB_NAME" ]; then
-    "$REPOSITORY_DIRPATH/scripts/installer/install-snapshot.sh"
-  else
-    log_warn "snapshot utility is not installed. Please fill ENABLE_SNAPSHOT and DB_NAME variables in your .env file, then re-run this install script to install snapshot utility."
+    ENABLE_SNAPSHOT=$(grep "^ENABLE_SNAPSHOT=" "$REPOSITORY_DIRPATH/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
+    ODOO_DB_NAME=$(grep "^DB_NAME=" "$REPOSITORY_DIRPATH/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
+    if [ -n "$ENABLE_SNAPSHOT" ] && [ -n "$ODOO_DB_NAME" ]; then
+      "$REPOSITORY_DIRPATH/scripts/installer/install-snapshot.sh"
+    else
+      log_warn "snapshot utility is not installed. Please fill ENABLE_SNAPSHOT and DB_NAME variables in your .env file, then re-run this install script to install snapshot utility."
+    fi
   fi
 
   if printTodo; then

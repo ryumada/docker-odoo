@@ -89,7 +89,7 @@ RUN export MAKEFLAGS="-j $(nproc)"; \
 USER root
 
 # Copy configurations and static utilities
-COPY --chown=odoo:odoo ./conf/odoo.conf /etc/odoo/odoo.conf
+# Copy configurations and static utilities
 COPY --chown=odoo:odoo ./entrypoint.sh /opt/odoo/entrypoint.sh
 COPY --chown=odoo:odoo ./utilities/odoo-shell /usr/local/bin/odoo-shell
 COPY --chown=odoo:odoo ./utilities/odoo-module-upgrade /usr/local/bin/odoo-module-upgrade

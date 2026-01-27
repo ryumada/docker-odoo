@@ -31,6 +31,9 @@ services:
     volumes:
      - ${ODOO_DATADIR_SERVICE}:${ODOO_DATADIR_SERVICE}
      - ${ODOO_LOG_DIR_SERVICE}:${ODOO_LOG_DIR_SERVICE}
+     - ./git:/opt/odoo/git
+     - ./odoo-base:/opt/odoo/odoo-base
+     - ./conf/odoo.conf:/etc/odoo/odoo.conf
     logging:
       driver: "json-file"
       options:
