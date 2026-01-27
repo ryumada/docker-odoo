@@ -14,14 +14,22 @@ A Dockerfile to create a custom Odoo docker image.
 
 There are some points you should know:
 
-- First, you need to execute `sudo ./setup.sh` script to check if all of your files and directories are ready to build the image. This script will guide you through the setup process.
+- **First**, you need to execute `sudo ./setup.sh` script to check if all of your files and directories are ready and to configure the deployment mode.
   ```bash
   sudo ./setup.sh
   ```
 
-  > ⚠️ When you are asked to enter whether you want to build or pull container image, choose the `build` option.
+  > ⚠️ When asked, select the deployment mode:
+  > - **1. Development**: Builds locally. Uses bind-mounts for `odoo-base` and `git` directories to allow real-time code changes.
+  > - **2. Builder**: Builds the image, tags it, and prepares it for pushing to a registry. Includes bind-mounts for verification.
+  > - **3. Production**: Pulls the pre-built image from the configured registry. No bind-mounts for code.
 
-- Please follow the instruction after you run that script above, before continue the process below.
+- **Configuration**:
+  Check the `.env` file for important variables, especially:
+  - `DOCKER_BUILD_MODE`: 1=Dev, 2=Builder, 3=Prod.
+  - `ODOO_IMAGE_NAME`: Image name (e.g., `ghcr.io/username/project`).
+  - `ODOO_IMAGE_VERSION`: Image tag (e.g., `16.0-v1`).
+  - `ODOO_IMAGE_SOURCE`: Source git repo (for GHCR labels).
 
 - [`Odoo Base`] You should add your Odoo base, whether it is Odoo Community, Odoo Enterprise, or your custom Odoo base, to the `odoo-base` directory (⚠️ Only add one directory to `odoo-base` as this will be read automatically by the `entrypoint.sh` script, for the name of the directory is no need to be `odoo` ⚠️).
 
@@ -33,137 +41,43 @@ There are some points you should know:
   > - `/opt/odoo/git/odoo-custom-modules/subdir-1`
   > - `/opt/odoo/git/odoo-custom-modules/subdir-2`
 
-- [`Odoo Static Data`] Odoo `datadir` is placed on `/var/lib/odoo` and Odoo `log` is placed on `/var/log/odoo`. These directories will be used by Odoo for static data storage and logging. It will be called in docker-compose (⚠️ These directories are automatically created on your host machine after you run `sudo ./_install.sh` ⚠️).
+- [`Odoo Static Data`] Odoo `datadir` is placed on `/var/lib/odoo` and Odoo `log` is placed on `/var/log/odoo`. These directories will be used by Odoo for static data storage and logging. It will be called in docker-compose (⚠️ These directories are automatically created on your host machine after you run `sudo ./setup.sh` ⚠️).
 
-- `Build and Run` your odoo deployment with docker compose.
+- `Build and Run` your odoo deployment.
 
-  Build your Image using this command:
-
-  ```bash
-  docker compose build
-  ```
-
-  Run your Container Image using this command:
-
-  ```bash
-  docker compose up
-  ```
-
-  You can also run detach the docker compose stdout with this command:
-
-  ```bash
-  docker compose up -d
-  ```
-
-  Or you can up the container and build the image
-
+  **Development / Builder Mode**:
   ```bash
   docker compose up -d --build
   ```
 
-- If your Odoo module needs libreoffice you can install it using this command:
+  **Production Mode**:
+  ```bash
+  docker compose pull
+  docker compose up -d
+  ```
 
+- If your Odoo module needs libreoffice either:
+  1. Set `INSTALL_LIBREOFFICE=Y` in `.env`.
+  2. Or run:
   ```bash
   docker exec -itu root $CONTAINER_ID apt --no-install-recommends -y install libreoffice
   ```
 
-  or you can uncomment this `RUN` syntax on dockerfile to include the installation of libreoffice on your docker image.
-
-  ```dockerfile
-  ...
-  # install libreoffice only be needed if there is a module need to use libreoffice featrue
-  # RUN apt --no-install-recommends -y install libreoffice
-  ...
-  ```
-
-- Setup your container registry.
+- **Container Registry Workflow**:
   <details>
-  <summary>Setup your Docker container registry.</summary>
-    
-    > ⚠️ To use Github and Gitlab Container Registry, you need to generate a personal access token (PAT) and use it as a password.
-    
-    1. Login to Github Container Registry (ghcr.io) using your Github account.
+  <summary>Pushing to Container Registry</summary>
 
-        ```bash
-        # if using Github (ghcr.io)
-        ## using parameter
-        docker login ghcr.io -u your_github_username -p enter_your_personal_access_token
-        ## or just login then enter your username and password
-        docker login ghcr.io
-
-        # if using Gitlab (registry.gitlab.com)
-        ## using parameter
-        docker login registry.gitlab.com -u your_gitlab_username -p enter_your_personal_access_token
-        ## or just login and then enter your username and password
-        docker login registry.gitlab.com
-
-        # if using Docker Hub
-        docker login
-        ```
-
-  </details>
-  <details>
-    <summary>Push your Docker container registry.</summary>
-
-    1. Tag your image with the Github Container Registry (ghcr.io) repository. First, you need to edit `docker-compose.yml` file to add the image name and tag.
-
-        ```yaml
-        ...
-        # push the image to Container registry (enter and choose one)
-        ## Use the image from the GitHub Container Registry
-        # image: ghcr.io/enter_username/enter_project_name:enter_version
-        ## Use the image from the Docker Hub
-        # image: enter_username/enter_project_name:enter_version
-        ## Use the image from the Gitlab Container Registry
-        # image: registry.gitlab.com/enter_username/enter_project_name:enter_version  
-        ...
-        ```
-
-        > ⚠️ For Github Container Registry (ghcr.io). You need to add labels to the build section on your `docker-compose.yml` file.
-        > ```yaml
-        > ...
-        > # Add labels to connect to github repository (enter github)
-        > # labels:
-        >   # - org.opencontainers.image.source=https://github.com/enter_username/enter_repository
-        > ...
-        > ```
-
-    2. Build and push your image to the container registry.
-
-        ```bash
-        docker compose up --build -d
-        docker compose push
-        ```
-
-  </details>
-
-  <details>
-    <summary>Pull image from container registry</summary>
-
-    > ⚠️ Before you pull the image from the container registry, make sure the image name is set on your docker compose file.
-    
-    > ⚠️ You also need to run the `sudo ./_install.sh`. When the script asks you to enter whether you want to build or pull container image, choose the `pull` option.
-
-    1. Make sure the image name is set on your docker compose file.
-
-        ```yaml
-        ...
-        # push the image to Container registry (enter and choose one)
-        ## Use the image from the GitHub Container Registry
-        # image: ghcr.io/enter_username/enter_project_name:enter_version
-        ## Use the image from the Docker Hub
-        # image: enter_username/enter_project_name:enter_version
-        ## Use the image from the Gitlab Container Registry
-        # image: registry.gitlab.com/enter_username/enter_project_name:enter_version  
-        ...
-        ```
-
-    2. Pull the image from the container registry.
-
-        ```bash
-        docker compose up -d --pull
-        ```
-
+    1. Set `DOCKER_BUILD_MODE=2` (or select Builder mode in `setup.sh`).
+    2. Set `ODOO_IMAGE_NAME`, `ODOO_IMAGE_VERSION`, and `ODOO_IMAGE_SOURCE` in `.env`.
+    3. Login to your registry:
+       ```bash
+       docker login ghcr.io -u <username> -p <token>
+       ```
+    4. Build and Push:
+       ```bash
+       docker compose build
+       docker compose push
+       ```
   </details>
 
 # Maintenance
@@ -183,7 +97,7 @@ docker compose exec $SERVICE_NAME getinfo-odoo_base
 
   ```bash
   NAME                 IMAGE                COMMAND                  SERVICE   CREATED         STATUS         PORTS
-  docker-odoo-odoo-1   docker-odoo:latest   "/opt/odoo/entrypoin…"   odoo      2 minutes ago   Up 2 minutes   
+  docker-odoo-odoo-1   docker-odoo:latest   "/opt/odoo/entrypoin…"   odoo      2 minutes ago   Up 2 minutes
   ```
 
   As you can see in the `SERVICE` column, the service name is `odoo`.
@@ -203,14 +117,14 @@ docker compose exec $SERVICE_NAME getinfo-odoo_git_addons
 
   ```bash
   NAME                 IMAGE                COMMAND                  SERVICE   CREATED         STATUS         PORTS
-  docker-odoo-odoo-1   docker-odoo:latest   "/opt/odoo/entrypoin…"   odoo      2 minutes ago   Up 2 minutes   
+  docker-odoo-odoo-1   docker-odoo:latest   "/opt/odoo/entrypoin…"   odoo      2 minutes ago   Up 2 minutes
   ```
 
   As you can see in the `SERVICE` column, the service name is `odoo`.
 </details>
 
 ## Run Odoo shell
-Odoo shell has been created automatically after you run `sudo ./_install.sh` script. The shell is copied when the image is built. You can run the Odoo shell by running this command:
+Odoo shell has been created automatically after you run `sudo ./setup.sh` script. The shell is copied when the image is built. You can run the Odoo shell by running this command:
 
 ```bash
 # See help to see how to use the shell
@@ -227,14 +141,14 @@ docker compose exec odoo odoo-shell example_database_name
 
   ```bash
   NAME                 IMAGE                COMMAND                  SERVICE   CREATED         STATUS         PORTS
-  docker-odoo-odoo-1   docker-odoo:latest   "/opt/odoo/entrypoin…"   odoo      2 minutes ago   Up 2 minutes   
+  docker-odoo-odoo-1   docker-odoo:latest   "/opt/odoo/entrypoin…"   odoo      2 minutes ago   Up 2 minutes
   ```
 
   As you can see in the `SERVICE` column, the service name is `odoo`.
 </details>
 
 ## Run Odoo Module Upgrade tool
-Odoo Module Upgrade tool also has been created automatically after you run `sudo ./_install.sh`. The tool is copied when the image is built. You can run the tool by running one of these command examples:
+Odoo Module Upgrade tool also has been created automatically after you run `sudo ./setup.sh`. The tool is copied when the image is built. You can run the tool by running one of these command examples:
 
 ```bash
 # See help to see how to use the tool
@@ -256,7 +170,7 @@ docker compose exec odoo odoo-module-upgrade example_database_name --update=all
 
   ```bash
   NAME                 IMAGE                COMMAND                  SERVICE   CREATED         STATUS         PORTS
-  docker-odoo-odoo-1   docker-odoo:latest   "/opt/odoo/entrypoin…"   odoo      2 minutes ago   Up 2 minutes   
+  docker-odoo-odoo-1   docker-odoo:latest   "/opt/odoo/entrypoin…"   odoo      2 minutes ago   Up 2 minutes
   ```
 
   As you can see in the `SERVICE` column, the service name is `odoo`.
@@ -296,7 +210,7 @@ docker compose exec $SERVICE_NAME code serve-web --help
 
   ```bash
   NAME                 IMAGE                COMMAND                  SERVICE   CREATED         STATUS         PORTS
-  docker-odoo-odoo-1   docker-odoo:latest   "/opt/odoo/entrypoin…"   odoo      2 minutes ago   Up 2 minutes   
+  docker-odoo-odoo-1   docker-odoo:latest   "/opt/odoo/entrypoin…"   odoo      2 minutes ago   Up 2 minutes
   ```
 
   As you can see in the `SERVICE` column, the service name is `odoo`.
