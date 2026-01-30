@@ -315,27 +315,6 @@ function generatePostgresSecrets() {
   setPermissionFileToReadOnlyAndOnlyTo "$ODOO_LINUX_USER" "$DB_PASSWORD_SECRET"
 }
 
-function getGitHash() {
-  # _inherit = writeGitHash
-
-  git_path=$1
-  git_real_owner=$(stat -c '%U' "$git_path")
-  repository_owner=$(stat -c '%U' "$REPOSITORY_DIRPATH")
-
-  chown -R "$repository_owner": "$git_path"
-
-  OUTPUT_GIT_HASHES_FILE="$git_path/../git_hashes.txt"
-
-  cat <<EOF >> "$OUTPUT_GIT_HASHES_FILE"
-  Updated at [$(date +"%Y-%m-%d %H:%M:%S")]
-  Git Directory: $git_path
-  Git Remote: $(git -C "$git_path" remote get-url origin)
-  Git Branch: $(git -C "$git_path" branch --show-current)
-  Git Hashes: $(git -C "$git_path" rev-parse HEAD)
-EOF
-
-  chown -R "$git_real_owner": "$git_path"
-}
 
 function getSubDirectories() {
   # _inherit = writeGitHash
@@ -499,8 +478,6 @@ function selectMode() {
 }
 
 function isDirectoryGitRepository() {
-  # _inherit = writeGitHash
-
   dir=$1
 
   if [ -d "$dir/.git" ]; then
@@ -653,17 +630,6 @@ function printTodoMessage() {
   fi
 }
 
-function resetGitHashFile(){
-  # _inherit = writeGitHash
-
-  git_path=$1
-  OUTPUT_GIT_HASHES_FILE="$git_path/../git_hashes.txt"
-
-  cat <<EOF > "$OUTPUT_GIT_HASHES_FILE"
-
-EOF
-}
-
 function setPermissionFileToReadOnlyAndOnlyTo() {
   owner=$1
   file=$2
@@ -793,21 +759,12 @@ function validateDatetimeFormat() {
   return 0
 }
 
-function writeGitHash() {
+function checkGitRepositories() {
   dir=$1
   subdirs="$(getSubDirectories "$dir")"
 
-  flag=0
   for dir in $subdirs; do
-
-    if [ $flag -eq 0 ]; then
-      resetGitHashFile "$dir"
-      flag=1
-    fi
-
-    if isDirectoryGitRepository "$dir"; then
-      getGitHash "$dir"
-    else
+    if ! isDirectoryGitRepository "$dir"; then
       log_warn "$dir is not a git repository. You need to backup this directory by adding it to your snapshot utilities."
     fi
   done
@@ -872,6 +829,33 @@ function checkRegistryConnection() {
     fi
     # Proceed anyway, checking "if connection is already successful" implies we trust the environment or just try.
     log_info "Registry connection check passed (soft check)."
+}
+
+function prepareOdooSources() {
+  if isSubDirectoryExists "$GIT_DIR" "" "No directories found inside $GIT_DIR. That means no Odoo custom module will be added to your Odoo image."; then
+    checkGitRepositories "$GIT_DIR"
+  fi
+
+  if isSubDirectoryExists "$ODOO_BASE_DIR" "Please clone your odoo-base repository inside the odoo-base directory" "" "only-one"; then
+    checkGitRepositories "$ODOO_BASE_DIR"
+
+    ODOO_BASE_DIRECTORY=$(find $ODOO_BASE_DIR -mindepth 1 -maxdepth 1 -type d -print -quit)
+
+    log_info "Add execute permission to odoo-bin binary"
+    chmod +x "$ODOO_BASE_DIRECTORY"/odoo-bin
+
+    if ! isFileExists "$REQUIREMENTS_FILE" "Please copy your requirements.txt file from your 'odoo-base' or create the file by following the requirements.txt.example file."; then
+      if [ "$mode_number" -eq 1 ]; then
+        log_info "Copying $REQUIREMENTS_FILE file..."
+        cp "$ODOO_BASE_DIRECTORY/$REQUIREMENTS_FILE" "$REQUIREMENTS_FILE"
+        chown "$REPOSITORY_OWNER:$REPOSITORY_OWNER" "$REQUIREMENTS_FILE"
+        log_success "$REQUIREMENTS_FILE file copied."
+      else
+        log_error "You need to copy your requirements.txt file from your 'odoo-base' or create the file by following the requirements.txt.example file."
+        TODO+=("You need to copy your requirements.txt file from your 'odoo-base' or create the file by following the requirements.txt.example file.")
+      fi
+    fi
+  fi
 }
 
 function main() {
@@ -962,13 +946,14 @@ function main() {
         log_warn "DB_HOST found on .env file. That means you have a separate postgresql server."
         log_warn "Please make sure that the postgresql server is running and the user and password are setup successfully. See '.secrets' directory to setup the username and password of your postgres user."
       fi
+
+      checkImportantEnvVariable "PORT" $ENV_FILE
+      checkImportantEnvVariable "GEVENT_PORT" $ENV_FILE
+      checkImportantEnvVariable "ADMIN_PASSWD" $ENV_FILE
+      checkImportantEnvVariable "ADDONS_PATH" $ENV_FILE
     fi
 
     checkImportantEnvVariable "PYTHON_VERSION" $ENV_FILE
-    checkImportantEnvVariable "PORT" $ENV_FILE
-    checkImportantEnvVariable "GEVENT_PORT" $ENV_FILE
-    checkImportantEnvVariable "ADMIN_PASSWD" $ENV_FILE
-    checkImportantEnvVariable "ADDONS_PATH" $ENV_FILE
     checkImportantEnvVariable "WKHTMLTOPDF_DIRECT_DOWNLOAD_URL" $ENV_FILE
   fi
 
@@ -997,52 +982,34 @@ function main() {
       fi
     fi
 
-    if isSubDirectoryExists "$GIT_DIR" "" "No directories found inside $GIT_DIR. That means no Odoo custom module will be added to your Odoo image."; then
-      writeGitHash "$GIT_DIR"
+    prepareOdooSources
+
+    ODOO_IMAGE_NAME=$(grep "^ODOO_IMAGE_NAME=" "$REPOSITORY_DIRPATH/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
+    ODOO_IMAGE_VERSION=$(grep "^ODOO_IMAGE_VERSION=" "$REPOSITORY_DIRPATH/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
+
+    if [ -n "$ODOO_IMAGE_NAME" ] && [ -n "$ODOO_IMAGE_VERSION" ]; then
+      ODOO_IMAGE_NAME="${ODOO_IMAGE_NAME}:${ODOO_IMAGE_VERSION}"
+      log_info "Using automated tag: $ODOO_IMAGE_NAME"
+      export ODOO_IMAGE_NAME
+    elif [ -n "$ODOO_IMAGE_NAME" ]; then
+      export ODOO_IMAGE_NAME
     fi
 
-    if isSubDirectoryExists "$ODOO_BASE_DIR" "Please clone your odoo-base repository inside the odoo-base directory" "" "only-one"; then
-      writeGitHash "$ODOO_BASE_DIR"
-
-      ODOO_BASE_DIRECTORY=$(find $ODOO_BASE_DIR -mindepth 1 -maxdepth 1 -type d -print -quit)
-
-      if [ "$mode_number" -ne 2 ]; then
-        log_info "Add execute permission to odoo-bin binary"
-        chmod +x "$ODOO_BASE_DIRECTORY"/odoo-bin
-      fi
-
-      if ! isFileExists "$REQUIREMENTS_FILE" "Please copy your requirements.txt file from your 'odoo-base' or create the file by following the requirements.txt.example file."; then
-        log_info "Copying $REQUIREMENTS_FILE file..."
-        cp "$ODOO_BASE_DIRECTORY/$REQUIREMENTS_FILE" "$REQUIREMENTS_FILE"
-        chown "$REPOSITORY_OWNER:$REPOSITORY_OWNER" "$REQUIREMENTS_FILE"
-        log_success "$REQUIREMENTS_FILE file copied."
-      fi
-    fi
-
-  ODOO_IMAGE_NAME=$(grep "^ODOO_IMAGE_NAME=" "$REPOSITORY_DIRPATH/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
-  ODOO_IMAGE_VERSION=$(grep "^ODOO_IMAGE_VERSION=" "$REPOSITORY_DIRPATH/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
-
-  if [ -n "$ODOO_IMAGE_NAME" ] && [ -n "$ODOO_IMAGE_VERSION" ]; then
-    ODOO_IMAGE_NAME="${ODOO_IMAGE_NAME}:${ODOO_IMAGE_VERSION}"
-    log_info "Using automated tag: $ODOO_IMAGE_NAME"
-    export ODOO_IMAGE_NAME
-  elif [ -n "$ODOO_IMAGE_NAME" ]; then
-    export ODOO_IMAGE_NAME
-  fi
-
-  # Builder Mode Specifics
-  if [ "$mode_number" -eq 2 ]; then
+    # Builder Mode Specifics
+    if [ "$mode_number" -eq 2 ]; then
       if [ -z "$ODOO_IMAGE_NAME" ]; then
-          log_error "ODOO_IMAGE_NAME variable is not set in your .env file. Builder mode requires this."
-          TODO+=("Please set the ODOO_IMAGE_NAME variable in your .env file.")
+        log_error "ODOO_IMAGE_NAME variable is not set in your .env file. Builder mode requires this."
+        TODO+=("Please set the ODOO_IMAGE_NAME variable in your .env file.")
       else
-          log_success "ODOO_IMAGE_NAME variable is set to $ODOO_IMAGE_NAME"
-          checkRegistryConnection "$ODOO_IMAGE_NAME"
+        log_success "ODOO_IMAGE_NAME variable is set to $ODOO_IMAGE_NAME"
+        checkRegistryConnection "$ODOO_IMAGE_NAME"
       fi
-  fi
+    fi
 
   # MODE 3: PRODUCTION
   elif [ "$mode_number" -eq 3 ]; then
+    prepareOdooSources
+
     if [ -z "$ODOO_IMAGE_NAME" ]; then
       log_error "ODOO_IMAGE_NAME variable is not set in your .env file. Production mode requires this to pull the image."
       TODO+=("Please set the ODOO_IMAGE_NAME variable in your .env file.")
@@ -1105,15 +1072,6 @@ function main() {
 
         log_info "Running version checks on $TARGET_IMAGE..."
 
-        log_info "--- Odoo Base Version ---"
-        sudo -u "$REPOSITORY_OWNER" docker run --rm \
-            "$TARGET_IMAGE" \
-            getinfo-odoo_base || log_error "Failed to get Odoo base version"
-
-        log_info "--- Odoo Addons Version ---"
-        sudo -u "$REPOSITORY_OWNER" docker run --rm \
-            "$TARGET_IMAGE" \
-            getinfo-odoo_git_addons || log_error "Failed to get Addons version"
 
         log_info "3. Pushing image to $TARGET_IMAGE..."
         if sudo -u "$REPOSITORY_OWNER" docker push "$TARGET_IMAGE"; then
