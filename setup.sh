@@ -212,6 +212,9 @@ EOF
   # shellcheck disable=SC2016
   sed -i '/add_arg "logfile" "$ODOO_LOG_FILE"/d' "$odoo_utility_file"
 
+  # Remove the bypass command check as it conflicts with script arguments
+  sed -i '/# Check for bypass commands/,/esac/d' "$odoo_utility_file"
+
   chown "$REPOSITORY_OWNER": "$odoo_utility_file"
 }
 
