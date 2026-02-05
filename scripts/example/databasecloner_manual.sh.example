@@ -81,15 +81,27 @@ function promptWhichEnvironment() {
   echo "$ODOO_DEPLOYMENT_ENVIRONMENT"
 }
 
-function promptDBNameSuffix() {
-  local promptDBNameSuffix="$1"
+function generate_passphrase() {
+  local consonants="bcdfghjklmnpqrstvwxyz"
+  local vowels="aeiou"
+  local word=""
+  for i in {1..4}; do
+    word+="${consonants:RANDOM%21:1}"
+    word+="${vowels:RANDOM%5:1}"
+  done
+  echo "$word"
+}
+
+function promptClonedDBName() {
+  local use_date_suffix="$1"
   local ODOO_DEPLOYMENT_ENVIRONMENT="$2"
-
   local ODOO_DB_NAME_ENV
+  local PASSPHRASE
+  PASSPHRASE=$(generate_passphrase)
 
-  case "$promptDBNameSuffix" in
+  case "$use_date_suffix" in
     Y|y)
-      ODOO_DB_NAME_ENV="$ODOO_DATABASE_NAME_PRD-$ODOO_DEPLOYMENT_ENVIRONMENT-$(date +"%Y%m%d_%H%M")"
+      ODOO_DB_NAME_ENV="$PASSPHRASE-$ODOO_DEPLOYMENT_ENVIRONMENT-$(date +"%Y%m%d_%H%M")"
       ;;
     prompt)
       while true; do
@@ -97,16 +109,16 @@ function promptDBNameSuffix() {
 
         case "$USE_DATE_SUFFIX" in
           Y|y)
-            ODOO_DB_NAME_ENV="$ODOO_DATABASE_NAME_PRD-$ODOO_DEPLOYMENT_ENVIRONMENT-$(date +"%Y%m%d_%H%M")"; break ;;
+            ODOO_DB_NAME_ENV="$PASSPHRASE-$ODOO_DEPLOYMENT_ENVIRONMENT-$(date +"%Y%m%d_%H%M")"; break ;;
           N|n)
-            ODOO_DB_NAME_ENV="$ODOO_DATABASE_NAME_PRD-$ODOO_DEPLOYMENT_ENVIRONMENT"; break ;;
+            ODOO_DB_NAME_ENV="$PASSPHRASE-$ODOO_DEPLOYMENT_ENVIRONMENT"; break ;;
           *)
             log_error "Invalid option" ;;
         esac
       done
       ;;
     *)
-      ODOO_DB_NAME_ENV="$ODOO_DATABASE_NAME_PRD-$ODOO_DEPLOYMENT_ENVIRONMENT"
+      ODOO_DB_NAME_ENV="$PASSPHRASE-$ODOO_DEPLOYMENT_ENVIRONMENT"
       ;;
   esac
 
@@ -215,7 +227,7 @@ function main() {
         exit 1
     fi
 
-    ODOO_DB_NAME_ENV=$(promptDBNameSuffix "$USE_DATE_SUFFIX" "$ODOO_DEPLOYMENT_ENVIRONMENT")
+    ODOO_DB_NAME_ENV=$(promptClonedDBName "$USE_DATE_SUFFIX" "$ODOO_DEPLOYMENT_ENVIRONMENT")
 
     ODOO_FILESTORE_PATH_PRD="/var/lib/odoo/$SERVICE_NAME/filestore/$ODOO_DATABASE_NAME_PRD"
     ODOO_FILESTORE_PATH_ENV="/var/lib/odoo/$SERVICE_NAME-$ODOO_DEPLOYMENT_ENVIRONMENT/filestore/$ODOO_DB_NAME_ENV"

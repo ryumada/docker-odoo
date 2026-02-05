@@ -29,6 +29,17 @@ log_success() { log "${COLOR_SUCCESS}" "✅" "$1"; }
 log_warn() { log "${COLOR_WARN}" "⚠️" "$1"; }
 log_error() { log "${COLOR_ERROR}" "❌" "$1"; }
 log_stage() { log "${COLOR_CYAN}" "📋" "$1"; }
+
+function generate_passphrase() {
+    local consonants="bcdfghjklmnpqrstvwxyz"
+    local vowels="aeiou"
+    local word=""
+    for i in {1..4}; do
+        word+="${consonants:RANDOM%21:1}"
+        word+="${vowels:RANDOM%5:1}"
+    done
+    echo "$word"
+}
 # ------------------------------------
 
 # Self-elevate to root if not already
@@ -126,7 +137,7 @@ STG_DB_NAME="$STG_DB_NAME_FROM_ENV"
 # Fallback DB Name
 if [ -z "$STG_DB_NAME" ]; then
     # Fallback if .env is empty
-    STG_DB_NAME="$SERVICE_NAME-$(date +"%Y%m%d-%H%M%S")"
+    STG_DB_NAME="$(generate_passphrase)-stg-$(date +"%Y%m%d-%H%M%S")"
 fi
 
 case "${IS_RENEW_DB}" in

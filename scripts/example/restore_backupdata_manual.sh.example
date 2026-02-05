@@ -25,6 +25,17 @@ log_success() { log "${COLOR_SUCCESS}" "✅" "$1"; }
 log_warn() { log "${COLOR_WARN}" "⚠️" "$1"; }
 log_error() { log "${COLOR_ERROR}" "❌" "$1"; }
 
+function generate_passphrase() {
+  local consonants="bcdfghjklmnpqrstvwxyz"
+  local vowels="aeiou"
+  local word=""
+  for i in {1..4}; do
+    word+="${consonants:RANDOM%21:1}"
+    word+="${vowels:RANDOM%5:1}"
+  done
+  echo "$word"
+}
+
 error_handler() {
   log_error "An error occurred on line $1. Exiting..."
   exit 1
@@ -187,9 +198,9 @@ function main() {
     if [ -z "$PROMPT_FOR_DATABASE_NAME" ]; then
       ODOO_DATABASE_NAME_PRD=$(grep "^DB_NAME=" "$PATH_TO_ODOO/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
       if [ -z "$ODOO_DATABASE_NAME_PRD" ]; then
-        RESTORED_DB_NAME="$SERVICE_NAME-$(date +"%Y%m%d-%H%M%S")"
+        RESTORED_DB_NAME="$(generate_passphrase)-$(date +"%Y%m%d-%H%M%S")"
       else
-        RESTORED_DB_NAME="$ODOO_DATABASE_NAME_PRD-$(date +"%Y%m%d-%H%M%S")"
+        RESTORED_DB_NAME="$(generate_passphrase)-$(date +"%Y%m%d-%H%M%S")"
       fi
     else
       # Prompting logic
