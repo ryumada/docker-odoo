@@ -308,7 +308,7 @@ if [ "$IS_RENEW_DB" == "true" ]; then
     log_success "Backup of '$PRD_DB_NAME' completed successfully to $TEMP_BACKUP_FILE"
 
     # restore the database
-    NEUTRALIZE_DB=$(grep "^NEUTRALIZE_DATABASE=" "$PRD_ENV_FILE" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
+    NEUTRALIZE_DB=$(grep "^NEUTRALIZE_DATABASE=" "$PRD_ENV_FILE" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' | tr '[:upper:]' '[:lower:]')
     if [ -z "$NEUTRALIZE_DB" ]; then
         NEUTRALIZE_DB="true"
     fi
@@ -316,30 +316,42 @@ if [ "$IS_RENEW_DB" == "true" ]; then
     log_info "Requesting restore to destination Odoo instance..."
     log_info "Neutralize database option: $NEUTRALIZE_DB"
 
-    if [ "$NEUTRALIZE_DB" = "true" ]; then
-        response=$(curl -s -X POST \
-            -F "master_pwd=$STG_ADMIN_PASSWD" \
-            -F "name=$STG_DB_NAME" \
-            -F "backup_file=@$TEMP_BACKUP_FILE" \
-            -F "copy=true" \
-            -F "neutralize_database=$NEUTRALIZE_DB" \
-            "http://localhost:$STG_PORT/web/database/restore")
-    else
-        response=$(curl -s -X POST \
-            -F "master_pwd=$STG_ADMIN_PASSWD" \
-            -F "name=$STG_DB_NAME" \
-            -F "backup_file=@$TEMP_BACKUP_FILE" \
-            -F "copy=true" \
-            "http://localhost:$STG_PORT/web/database/restore")
-    fi
-
-    if [[ "$response" == *"error"* ]] || [[ "$response" == *"incorrect master password"* ]]; then
-        log_error "Failed to restore database to staging environment. Response: $response"
+    # Pre-check if Odoo is reachable
+    if ! curl -sS --connect-timeout 5 "http://localhost:$STG_PORT/web/database/manager" > /dev/null; then
+        log_error "Staging Odoo instance is not reachable at http://localhost:$STG_PORT/web/database/manager. Is the container running and healthy?"
         rm -f "$TEMP_BACKUP_FILE"
         exit 1
     fi
 
-    log_success "Database restore command sent successfully to destination."
+    # Build curl arguments
+    CURL_RESTORE_ARGS=(
+        -sS -X POST
+        -F "master_pwd=$STG_ADMIN_PASSWD"
+        -F "name=$STG_DB_NAME"
+        -F "backup_file=@$TEMP_BACKUP_FILE"
+        -F "copy=true"
+    )
+
+    # Always pass neutralize_database if it's set in config
+    if [ -n "$NEUTRALIZE_DB" ]; then
+        CURL_RESTORE_ARGS+=(-F "neutralize_database=$NEUTRALIZE_DB")
+    fi
+
+    # Execute restore with high timeout (database restore can be slow)
+    # --connect-timeout: max time to establish connection
+    # --max-time: max time for the entire operation (1 hour default)
+    response=$(curl "${CURL_RESTORE_ARGS[@]}" \
+        --connect-timeout 10 \
+        --max-time 3600 \
+        "http://localhost:$STG_PORT/web/database/restore")
+
+    if [[ "$response" == *"error"* ]] || [[ "$response" == *"incorrect master password"* ]] || [ -z "$response" ]; then
+        log_error "Failed to restore database to staging environment. Response: ${response:-'Empty response (Likely timeout)'}"
+        rm -f "$TEMP_BACKUP_FILE"
+        exit 1
+    fi
+
+    log_success "Database restore command completed successfully."
 else
     log_stage "[2/4] Skipping Database Clone (IS_RENEW_DB is false)."
 fi
