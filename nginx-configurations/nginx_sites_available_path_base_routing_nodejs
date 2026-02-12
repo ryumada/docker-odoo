@@ -1,0 +1,148 @@
+# Nginx sites-available configuration to deploy Odoo and Node.js on the same domain with path-based routing
+
+upstream $DOMAIN-odoo-backend {
+    server 127.0.0.1:8069;
+}
+upstream $DOMAIN-odoo-im {
+    server 127.0.0.1:8072;
+}
+
+upstream $DOMAIN-nodejs-backend {
+    server 127.0.0.1:3000;
+}
+
+server {
+    listen 80;
+    server_name $DOMAIN;
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl;
+    server_name $DOMAIN;
+
+    # SSL Config
+    ssl_certificate         /etc/letsencrypt/live/$DOMAIN/fullchain.pem;
+    ssl_certificate_key     /etc/letsencrypt/live/$DOMAIN/privkey.pem;
+    include                 /etc/letsencrypt/options-ssl-nginx.conf;
+    ssl_dhparam             /etc/letsencrypt/ssl-dhparams.pem;
+
+    # Global Logs
+    access_log              /var/log/nginx/unified.access.log;
+    error_log               /var/log/nginx/unified.error.log;
+
+    # Global Proxy Headers
+    proxy_set_header Connection             '';
+    proxy_set_header Host                   $host;
+    proxy_set_header X-Real-IP              $remote_addr;
+    proxy_set_header X-Forwarded-Host       $host;
+    proxy_set_header X-Forwarded-For        $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto      $scheme;
+
+    # ==========================================
+    # 1. NODE.JS APP
+    # ==========================================
+    location /onboarding {
+        proxy_pass http://$DOMAIN-nodejs-backend;
+
+        proxy_http_version      1.1;
+        proxy_set_header        Upgrade $http_upgrade;
+        proxy_set_header        Connection 'upgrade';
+        proxy_cache_bypass      $http_upgrade;
+        proxy_read_timeout      900s;
+    }
+
+    # ==========================================
+    # 2. ODOO APP (Root /)
+    # ==========================================
+
+    location /web/login {
+        proxy_redirect  off;
+        limit_except    GET POST { deny all; }
+
+        # for DDOS volumemetric protection
+        keepalive_timeout       60s;
+        client_body_timeout     30s;
+        client_max_body_size    2M;
+
+        proxy_connect_timeout   30s;
+        proxy_read_timeout      30s;
+        proxy_send_timeout      30s;
+
+        limit_req               zone=limitweblogin burst=10 delay=2;
+        limit_req_status        444;
+        limit_conn              addrweblogin 100;
+
+        proxy_pass http://$DOMAIN-odoo-backend;
+    }
+
+    location ~ /web/database/.* {
+        # to close access to database manager, please also disable it on the Odoo Configuration
+        # rewrite ^/web/database/.* /non-existent-page last;
+
+        proxy_redirect  off;
+        limit_except    GET POST { deny all; }
+
+        # for DDOS volumemetric protection
+        keepalive_timeout       300s;
+        client_body_timeout     300s;
+
+        proxy_connect_timeout   240s;
+        proxy_read_timeout      240s;
+        proxy_send_timeout      240s;
+
+        limit_req               zone=limitwebdatabase burst=10 delay=2;
+        limit_req_status        444;
+        limit_conn              addrwebdatabase 5;
+
+        proxy_pass http://$DOMAIN-odoo-backend;
+    }
+
+    location /websocket {
+        proxy_read_timeout      720s;
+        proxy_connect_timeout   720s;
+        proxy_send_timeout      720s;
+        proxy_http_version      1.1; #Force to http 1.1 to avoid possible http 2 issues.
+
+        limit_except            GET POST { deny all; }
+
+        proxy_set_header Upgrade                $http_upgrade;
+        proxy_set_header Connection             "upgrade";
+
+        proxy_pass http://$DOMAIN-odoo-im;
+    }
+
+    location ~* /web/static/ {
+        proxy_read_timeout      720s;
+        proxy_connect_timeout   720s;
+        proxy_send_timeout      720s;
+        proxy_http_version      1.1; #Force to http 1.1 to avoid possible http 2 issues.
+
+        limit_except            GET { deny all; }
+        proxy_cache_valid       200 90m;
+        proxy_buffering         on;
+        expires                 864000;
+        proxy_pass http://$DOMAIN-odoo-backend;
+    }
+
+    location /website/info {
+        proxy_read_timeout      720s;
+        proxy_connect_timeout   720s;
+        proxy_send_timeout      720s;
+        proxy_http_version      1.1; #Force to http 1.1 to avoid possible http 2 issues.
+
+        rewrite ^/web/database/.* /non-existent-page last;
+    }
+
+    location / {
+        proxy_read_timeout      720s;
+        proxy_connect_timeout   720s;
+        proxy_send_timeout      720s;
+        proxy_http_version      1.1; #Force to http 1.1 to avoid possible http 2 issues.
+
+        proxy_redirect          off;
+        limit_except            GET POST { deny all; }
+
+        proxy_pass http://$DOMAIN-odoo-backend;
+    }
+}
