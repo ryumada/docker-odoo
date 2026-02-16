@@ -162,9 +162,9 @@ function createOdooUtilitiesFromEntrypoint() {
   cp "$entrypoint_file" "$odoo_utility_file"
 
   # shellcheck disable=SC2016
-  sed -i 's/: "${PORT:=8069}"/PORT="$(shuf -i 55000-60000 -n 1)"/' "$odoo_utility_file"
+  sed -i 's/: "${PORT:=8069}"/PORT="$(get_free_port 55000 60000)"/' "$odoo_utility_file"
   # shellcheck disable=SC2016
-  sed -i 's/: "${GEVENT_PORT:=8072}"/GEVENT_PORT="$(shuf -i 50000-54999 -n 1)"/' "$odoo_utility_file"
+  sed -i 's/: "${GEVENT_PORT:=8072}"/GEVENT_PORT="$(get_free_port 50000 54999)"/' "$odoo_utility_file"
 
   # Use a temporary file and a "Here Document" to avoid complex sed escaping
   temp_header_file=$(mktemp)
@@ -190,6 +190,22 @@ case "$DATABASE_NAME_OR_HELP" in
   "") show_help; exit 1 ;;
   *) DB_NAME=$DATABASE_NAME_OR_HELP ;;
 esac
+
+function get_free_port() {
+  local start=\$1
+  local end=\$2
+  local port
+  # Try 200 distinct random ports from the range
+  for port in \$(shuf -i "\$start-\$end" -n 200); do
+    # Check TCP port availability using python (since it is installed)
+    if python3 -c "import socket; s = socket.socket(socket.AF_INET, socket.SOCK_STREAM); s.bind(('', \$port))" 2>/dev/null; then
+       echo "\$port"
+       return 0
+    fi
+  done
+  echo "Could not find a free port in range \$start-\$end after 200 attempts" >&2
+  return 1
+}
 EOF
 
   # Replace the PARAM placeholder with the actual script name (e.g., "shell")
