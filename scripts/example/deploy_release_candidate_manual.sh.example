@@ -41,16 +41,17 @@ log() {
 log_info() { log "${COLOR_INFO}" "ℹ️" "$1"; }
 log_success() { log "${COLOR_SUCCESS}" "✅" "$1"; }
 log_warn() { log "${COLOR_WARN}" "⚠️" "$1"; }
-log_error() { log "${COLOR_ERROR}" "❌" "$1"; }
+log_error() {
+    if [ "$JSON_MODE" = "true" ]; then
+        echo "{\"error\": \"$1\"}"
+    fi
+    log "${COLOR_ERROR}" "❌" "$1"
+}
 log_stage() { log "${COLOR_CYAN}" "📋" "$1"; }
 
 error_handler() {
     local line_number="$1"
-    if [ "$JSON_MODE" = "true" ]; then
-        log_error "An error occurred on line $line_number. Exiting..."
-    else
-        log_error "An error occurred on line $line_number. Exiting..."
-    fi
+    log_error "An error occurred on line $line_number. Exiting..."
     exit 1
 }
 
@@ -65,6 +66,12 @@ function generate_passphrase() {
         word+="${vowels:RANDOM%5:1}"
     done
     echo "$word"
+}
+
+function fail_with_json() {
+    local message="$1"
+    log_error "$message"
+    exit 1
 }
 
 function sanitize_database() {
@@ -219,8 +226,19 @@ esac
 
 STG_GIT_PATH="$STG_PATH_TO_ODOO/git/$GIT_REPO_NAME"
 if [ ! -d "$STG_GIT_PATH" ]; then
-    log_error "Git path not found at: $STG_GIT_PATH"
-    exit 1
+    fail_with_json "Git path not found at: $STG_GIT_PATH"
+fi
+
+# Check if remote branch exists
+log_info "Checking if remote branch '$RELEASE_BRANCH' exists..."
+if [ "$JSON_MODE" = "true" ]; then
+    GIT_LS_REMOTE_CMD="sudo -u $CURRENT_DIR_USER git -C $STG_GIT_PATH ls-remote --exit-code --heads origin $RELEASE_BRANCH > /dev/null 2>&1"
+else
+    GIT_LS_REMOTE_CMD="sudo -u $CURRENT_DIR_USER git -C $STG_GIT_PATH ls-remote --exit-code --heads origin $RELEASE_BRANCH > /dev/null"
+fi
+
+if ! eval "$GIT_LS_REMOTE_CMD"; then
+    fail_with_json "Remote branch '$RELEASE_BRANCH' not found in repository '$GIT_REPO_NAME'."
 fi
 
 log_info "🚀 Starting Deployment for Service: $SERVICE_NAME"

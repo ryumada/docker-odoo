@@ -44,16 +44,17 @@ log() {
 log_info() { log "${COLOR_INFO}" "ℹ️" "$1"; }
 log_success() { log "${COLOR_SUCCESS}" "✅" "$1"; }
 log_warn() { log "${COLOR_WARN}" "⚠️" "$1"; }
-log_error() { log "${COLOR_ERROR}" "❌" "$1"; }
+log_error() {
+  if [ "$JSON_MODE" = "true" ]; then
+      echo "{\"error\": \"$1\"}"
+  fi
+  log "${COLOR_ERROR}" "❌" "$1"
+}
 # ------------------------------------
 
 error_handler() {
   local line_number="$1"
-  if [ "$JSON_MODE" = "true" ]; then
-      log_error "An error occurred on line $line_number. Exiting..."
-  else
-      log_error "An error occurred on line $line_number. Exiting..."
-  fi
+  log_error "An error occurred on line $line_number. Exiting..."
   exit 1
 }
 
