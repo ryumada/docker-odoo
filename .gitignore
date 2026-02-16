@@ -44,6 +44,7 @@ utilities/*
 
 .env
 .env.bak*
+.env.backup*
 
 crontab
 requirements.txt
