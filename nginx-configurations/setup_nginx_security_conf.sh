@@ -1,6 +1,57 @@
-#!/bin/bash
+#!/usr/bin/env bash
+set -e
+# Category: Config
+# Description: Sets up Nginx security configuration.
+# Usage: ./nginx-configurations/setup_nginx_security_conf.sh
+# Dependencies: sudo, cat
 
-cat << 'EOF' > ~/01-sudo-nginx-security.conf
+# Detect Repository Owner to run non-root commands as that user
+CURRENT_DIR=$(dirname "$(readlink -f "$0")")
+CURRENT_DIR_USER=$(stat -c '%U' "$CURRENT_DIR")
+PATH_TO_ODOO=$(sudo -u "$CURRENT_DIR_USER" git -C "$(dirname "$(readlink -f "$0")")" rev-parse --show-toplevel)
+SERVICE_NAME=$(basename "$PATH_TO_ODOO")
+REPOSITORY_OWNER=$(stat -c '%U' "$PATH_TO_ODOO")
+
+# Configuration
+ENV_FILE=".env"
+UPDATE_SCRIPT="./scripts/update-env-file.sh"
+MAX_BACKUPS=3
+
+# --- Logging Functions & Colors ---
+# Define colors for log messages
+readonly COLOR_RESET="\033[0m"
+readonly COLOR_INFO="\033[0;34m"
+readonly COLOR_SUCCESS="\033[0;32m"
+readonly COLOR_WARN="\033[1;33m"
+readonly COLOR_ERROR="\033[0;31m"
+
+# Function to log messages with a specific color and emoji
+log() {
+  local color="$1"
+  local emoji="$2"
+  local message="$3"
+  echo -e "${color}[$(date +"%Y-%m-%d %H:%M:%S")] ${emoji} ${message}${COLOR_RESET}"
+}
+
+log_info() { log "${COLOR_INFO}" "ℹ️" "$1"; }
+log_success() { log "${COLOR_SUCCESS}" "✅" "$1"; }
+log_warn() { log "${COLOR_WARN}" "⚠️" "$1"; }
+log_error() { log "${COLOR_ERROR}" "❌" "$1"; }
+# ------------------------------------
+
+error_handler() {
+  log_error "An error occurred on line $1. Exiting..."
+  exit 1
+}
+
+trap 'error_handler $LINENO' ERR
+
+log_info "Creating Nginx security configuration..."
+
+# Use a temporary file instead of the user's home directory to avoid permission issues if run as root
+TEMP_CONF=$(mktemp)
+
+cat << 'EOF' > "$TEMP_CONF"
 ##
 # Security Settings
 ##
@@ -61,5 +112,23 @@ add_header Referrer-Policy "strict-origin-when-cross-origin";
 
 EOF
 
-sudo chown root: ~/01-sudo-nginx-security.conf
-sudo mv ~/01-sudo-nginx-security.conf /etc/nginx/conf.d/
+DEST_FILE="/etc/nginx/conf.d/01-sudo-nginx-security.conf"
+log_info "Installing configuration to $DEST_FILE"
+
+# Determine if we need sudo to move the file
+if [ -w "$(dirname "$DEST_FILE")" ]; then
+    mv "$TEMP_CONF" "$DEST_FILE"
+    chown root:root "$DEST_FILE" || log_warn "Could not allow root ownership. Current user: $(whoami)"
+else
+    if command -v sudo &> /dev/null; then
+        sudo mv "$TEMP_CONF" "$DEST_FILE"
+        sudo chown root:root "$DEST_FILE"
+    else
+        log_error "Cannot write to $DEST_FILE and sudo is not available."
+        rm -f "$TEMP_CONF"
+        exit 1
+    fi
+fi
+
+log_success "Nginx security configuration installed successfully."
+log_info "You may need to reload nginx for changes to take effect: sudo systemctl reload nginx"

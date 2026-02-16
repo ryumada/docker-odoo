@@ -1,17 +1,31 @@
-#!/bin/bash
-
-# This script will install the restore_backupdata utility based on .env configuration.
-
-# Exit immediately if a command exits with a non-zero status
+#!/usr/bin/env bash
 set -e
+# Category: Installer
+# Description: Installs the restore_backupdata utility based on .env configuration.
+# Usage: ./scripts/installer/install-restore_backupdata.sh
+# Dependencies: rsync, git, sudo
+
+# Detect Repository Owner to run non-root commands as that user
+CURRENT_DIR=$(dirname "$(readlink -f "$0")")
+CURRENT_DIR_USER=$(stat -c '%U' "$CURRENT_DIR")
+PATH_TO_ODOO=$(sudo -u "$CURRENT_DIR_USER" git -C "$(dirname "$(readlink -f "$0")")" rev-parse --show-toplevel)
+SERVICE_NAME=$(basename "$PATH_TO_ODOO")
+REPOSITORY_OWNER=$(stat -c '%U' "$PATH_TO_ODOO")
+
+# Configuration
+ENV_FILE=".env"
+UPDATE_SCRIPT="./scripts/update-env-file.sh"
+MAX_BACKUPS=3
 
 # --- Logging Functions & Colors ---
+# Define colors for log messages
 readonly COLOR_RESET="\033[0m"
 readonly COLOR_INFO="\033[0;34m"
 readonly COLOR_SUCCESS="\033[0;32m"
-readonly COLOR_WARN="\033[0;33m"
+readonly COLOR_WARN="\033[1;33m"
 readonly COLOR_ERROR="\033[0;31m"
 
+# Function to log messages with a specific color and emoji
 log() {
   local color="$1"
   local emoji="$2"
@@ -61,11 +75,6 @@ function install_script() {
 }
 
 function main() {
-    CURRENT_DIR=$(dirname "$(readlink -f "$0")")
-    CURRENT_DIR_USER=$(stat -c '%U' "$CURRENT_DIR")
-    PATH_TO_ODOO=$(sudo -u "$CURRENT_DIR_USER" git -C "$(dirname "$(readlink -f "$0")")" rev-parse --show-toplevel)
-    SERVICE_NAME=$(basename "$PATH_TO_ODOO")
-
     # Self-elevate to root if not already
     if [ "$(id -u)" -ne 0 ]; then
         log_info "Elevating permissions to root..."

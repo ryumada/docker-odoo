@@ -1,14 +1,19 @@
-#!/bin/bash
-
-# Exit immediately if a command exits with a non-zero status
+#!/usr/bin/env bash
 set -e
+# Category: Entrypoint
+# Description: Main entrypoint script for the Odoo container.
+# Usage: ./entrypoint.sh
+# Dependencies: bash, python
+
+# Note: This script runs INSIDE the container, so we do NOT use the standard host locator block.
+# We rely on environment variables and relative paths expected inside the Docker container.
 
 # --- Logging Functions & Colors ---
 # Define colors for log messages
 readonly COLOR_RESET="\033[0m"
 readonly COLOR_INFO="\033[0;34m"
 readonly COLOR_SUCCESS="\033[0;32m"
-readonly COLOR_WARN="\033[0;33m"
+readonly COLOR_WARN="\033[1;33m"
 readonly COLOR_ERROR="\033[0;31m"
 
 # Function to log messages with a specific color and emoji

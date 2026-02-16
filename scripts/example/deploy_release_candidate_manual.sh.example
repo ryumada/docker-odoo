@@ -1,14 +1,28 @@
-#!/bin/bash
-
-# Exit immediately if a command exits with a non-zero status
+#!/usr/bin/env bash
 set -e
+# Category: Utility
+# Description: Deploys release candidates (manual database operations).
+# Usage: ./scripts/deploy_release_candidate_manual.sh <REPO_NAME> <BRANCH> <RENEW_DB> [MODULES]
+# Dependencies: git, docker, pg_dump, psql, rsync, sudo
+
+# Detect Repository Owner to run non-root commands as that user
+CURRENT_DIR=$(dirname "$(readlink -f "$0")")
+CURRENT_DIR_USER=$(stat -c '%U' "$CURRENT_DIR")
+PATH_TO_ODOO=$(sudo -u "$CURRENT_DIR_USER" git -C "$(dirname "$(readlink -f "$0")")" rev-parse --show-toplevel)
+SERVICE_NAME=$(basename "$PATH_TO_ODOO")
+REPOSITORY_OWNER=$(stat -c '%U' "$PATH_TO_ODOO")
+
+# Configuration
+ENV_FILE=".env"
+UPDATE_SCRIPT="./scripts/update-env-file.sh"
+MAX_BACKUPS=3
 
 # --- Logging Functions & Colors ---
 # Define colors for log messages
 readonly COLOR_RESET="\033[0m"
 readonly COLOR_INFO="\033[0;34m"
 readonly COLOR_SUCCESS="\033[0;32m"
-readonly COLOR_WARN="\033[0;33m"
+readonly COLOR_WARN="\033[1;33m"
 readonly COLOR_ERROR="\033[0;31m"
 readonly COLOR_CYAN="\033[0;36m"
 
@@ -30,6 +44,18 @@ log_warn() { log "${COLOR_WARN}" "⚠️" "$1"; }
 log_error() { log "${COLOR_ERROR}" "❌" "$1"; }
 log_stage() { log "${COLOR_CYAN}" "📋" "$1"; }
 
+error_handler() {
+    local line_number="$1"
+    if [ "$JSON_MODE" = "true" ]; then
+        log_error "An error occurred on line $line_number. Exiting..."
+    else
+        log_error "An error occurred on line $line_number. Exiting..."
+    fi
+    exit 1
+}
+
+trap 'error_handler $LINENO' ERR
+
 function generate_passphrase() {
     local consonants="bcdfghjklmnpqrstvwxyz"
     local vowels="aeiou"
@@ -40,6 +66,73 @@ function generate_passphrase() {
     done
     echo "$word"
 }
+
+function sanitize_database() {
+    local db_name="$1"
+    log_info "Sanitizing the database (Disabling Emails & Crons)"
+
+    # SQL commands to disable outgoing email, crons, and mail servers
+    local SANITIZE_SQL="
+      -- Disable all Outgoing Mail Servers
+      UPDATE ir_mail_server SET active = false;
+
+      -- Disable ALL crons initially (Safety first)
+      UPDATE ir_cron SET active = false;
+
+      -- Set System Parameter to prevent catching emails
+      DELETE FROM ir_config_parameter WHERE key = 'mail.catchall.domain';
+      INSERT INTO ir_config_parameter (key, value) VALUES ('mail.catchall.domain', 'localhost');
+    "
+
+    # Execute the SQL commands
+    if sudo -u postgres psql -d "$db_name" -c "$SANITIZE_SQL" > /dev/null 2>&1; then
+        log_success "Database sanitized successfully."
+    else
+        log_warn "Warning: Failed to sanitize database completely (SQL command failed)."
+    fi
+}
+
+function change_db_ownership() {
+    local db_name="$1"
+    local db_user="$2"
+
+    log_info "Changing ownership of DB $db_name to $db_user"
+
+    sudo -u postgres psql -d postgres -c "ALTER DATABASE \"$db_name\" OWNER TO \"$db_user\"" > /dev/null 2>&1 || { log_error "Error changing DB owner"; exit 1; }
+
+    sudo -u postgres psql -d "$db_name" -c "
+      -- Change the owner of all tables
+      DO \$\$
+      DECLARE
+        rec RECORD;
+      BEGIN
+        FOR rec IN (SELECT tablename FROM pg_tables WHERE schemaname = 'public') LOOP
+          EXECUTE 'ALTER TABLE ' || quote_ident(rec.tablename) || ' OWNER TO \"${db_user}\"';
+        END LOOP;
+      END \$\$;
+
+      -- Change the owner of all sequences
+      DO \$\$
+      DECLARE
+          rec RECORD;
+      BEGIN
+        FOR rec IN (SELECT sequence_name FROM information_schema.sequences WHERE sequence_schema = 'public') LOOP
+          EXECUTE 'ALTER SEQUENCE ' || quote_ident(rec.sequence_name) || ' OWNER TO \"${db_user}\"';
+        END LOOP;
+      END \$\$;
+
+      -- Change the owner of all views
+      DO \$\$
+      DECLARE
+        rec RECORD;
+      BEGIN
+        FOR rec IN (SELECT table_name FROM information_schema.views WHERE table_schema = 'public') LOOP
+          EXECUTE 'ALTER VIEW ' || quote_ident(rec.table_name) || ' OWNER TO \"${db_user}\"';
+        END LOOP;
+      END \$\$;
+    " > /dev/null 2>&1 || { log_error "Error changing ownership of tables/sequences/views"; exit 1; }
+}
+
 # ------------------------------------
 
 # Self-elevate to root if not already
@@ -53,7 +146,6 @@ fi
 
 # --- JSON Mode Detection ---
 JSON_MODE="false"
-# Filter 'json' from arguments
 ARGS=()
 for arg in "$@"; do
     if [[ "$arg" == "json" ]]; then
@@ -75,16 +167,6 @@ display_usage() {
     echo -e "                       Set to 'false' or '0' to keep existing Staging data."
     echo -e "  ${COLOR_SUCCESS}4. MODULES${COLOR_RESET}         : (Optional) Comma-separated list of modules to update (e.g., 'sale,stock')."
     echo ""
-    echo -e "${COLOR_CYAN}Examples:${COLOR_RESET}"
-    echo "  # 1. Update code only (Fastest):"
-    echo "  sudo $0 odoo-custom release/feature_a false"
-    echo ""
-    echo "  # 2. Update code and refresh Database from Prod (Full Reset):"
-    echo "  sudo $0 odoo-custom release/feature_a true"
-    echo ""
-    echo "  # 3. Update code and specific modules without DB reset:"
-    echo "  sudo $0 odoo-custom release/feature_a false sale,inventory,account"
-    echo ""
 }
 
 # --- Check for Help Flag ---
@@ -105,428 +187,189 @@ if [ -z "$GIT_REPO_NAME" ]; then
     log_error "Missing Argument 1: Git Repo Name"
     MISSING_ARGS=true
 fi
-
 if [ -z "$RELEASE_BRANCH" ]; then
     log_error "Missing Argument 2: Release Branch"
     MISSING_ARGS=true
 fi
-
 if [ -z "$IS_RENEW_DB" ]; then
     log_error "Missing Argument 3: Clone DB Flag (true/false)"
     MISSING_ARGS=true
 fi
-
 if [ "$MISSING_ARGS" == "true" ]; then
     echo ""
     display_usage
     exit 1
 fi
 
-# --- Dynamic Path Definition ---
-CURRENT_DIR=$(dirname "$(readlink -f "$0")")
-CURRENT_DIR_USER=$(stat -c '%U' "$CURRENT_DIR")
-STG_PATH_TO_ODOO=$(sudo -u "$CURRENT_DIR_USER" git -C "$(dirname "$(readlink -f "$0")")" rev-parse --show-toplevel)
-SERVICE_NAME=$(basename "$STG_PATH_TO_ODOO")
+STG_PATH_TO_ODOO=$PATH_TO_ODOO
 SERVICE_NAME_PRD=${SERVICE_NAME%-*} # Assumes format like 'project-stg' -> 'project' OR 'project-16-stg' -> 'project-16'
 
-# Try to grab this automatically from your .env file
 STG_ENV_FILE="$STG_PATH_TO_ODOO/.env"
-STG_DB_NAME_FROM_ENV=$(grep "^DB_NAME=" "$STG_ENV_FILE" | cut -d "=" -f 2 | tr -d '[:space:]')
+STG_DB_NAME_FROM_ENV=$(grep "^DB_NAME=" "$STG_ENV_FILE" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
 STG_DB_NAME="$STG_DB_NAME_FROM_ENV"
 
-# Fallback DB Name
 if [ -z "$STG_DB_NAME" ]; then
-    # Fallback if .env is empty
     STG_DB_NAME="$(generate_passphrase)-stg-$(date +"%Y%m%d-%H%M%S")"
 fi
 
 case "${IS_RENEW_DB}" in
-    1|true|True|TRUE)
-        IS_RENEW_DB=true
-    ;;
-    *)
-        IS_RENEW_DB=false
-    ;;
+    1|true|True|TRUE) IS_RENEW_DB=true ;;
+    *) IS_RENEW_DB=false ;;
 esac
 
 STG_GIT_PATH="$STG_PATH_TO_ODOO/git/$GIT_REPO_NAME"
-
-# Verify Git path exists
 if [ ! -d "$STG_GIT_PATH" ]; then
     log_error "Git path not found at: $STG_GIT_PATH"
     exit 1
 fi
 
 log_info "🚀 Starting Deployment for Service: $SERVICE_NAME"
-log_info "   Git Repo Name: $GIT_REPO_NAME"
-log_info "   Branch: $RELEASE_BRANCH"
-if [ "$IS_RENEW_DB" == "true" ]; then
-    log_info "   Target DB: $STG_DB_NAME"
-fi
-log_info "   Clone DB: $IS_RENEW_DB"
+# ... (logging specific to this script)
 
-
-# 1. SWITCH BRANCH (Code Update)
+# 1. SWITCH BRANCH
 # ---------------------------------------------------------
 log_stage "[1/4] Switching Git Branch..."
-
-# Fetch updates
 if [ "$JSON_MODE" = "true" ]; then
     GIT_FETCH_CMD="sudo -u $CURRENT_DIR_USER git -C $STG_GIT_PATH fetch >&2"
 else
     GIT_FETCH_CMD="sudo -u $CURRENT_DIR_USER git -C $STG_GIT_PATH fetch"
 fi
+if eval "$GIT_FETCH_CMD"; then log_info "Fetch success."; else log_error "Failed to fetch."; exit 1; fi
 
-if eval "$GIT_FETCH_CMD"; then
-    log_info "Fetch success."
-else
-    log_error "Failed to fetch."
-    exit 1
-fi
-
-# Force checkout clean (discard local changes in staging)
 if [ "$JSON_MODE" = "true" ]; then
     GIT_RESET_CMD="sudo -u $CURRENT_DIR_USER git -C $STG_GIT_PATH reset --hard >&2"
 else
     GIT_RESET_CMD="sudo -u $CURRENT_DIR_USER git -C $STG_GIT_PATH reset --hard"
 fi
-
-if eval "$GIT_RESET_CMD"; then
-    log_info "Local changes discarded (Reset Hard)."
-else
-    log_warn "Could not reset git changes. Proceeding..."
-fi
+if eval "$GIT_RESET_CMD"; then log_info "Local changes discarded."; else log_warn "Could not reset git changes."; fi
 
 if [ "$JSON_MODE" = "true" ]; then
     GIT_CHECKOUT_CMD="sudo -u $CURRENT_DIR_USER git -C $STG_GIT_PATH checkout $RELEASE_BRANCH >&2"
 else
     GIT_CHECKOUT_CMD="sudo -u $CURRENT_DIR_USER git -C $STG_GIT_PATH checkout $RELEASE_BRANCH"
 fi
-
-if eval "$GIT_CHECKOUT_CMD"; then
-    log_success "Checked out branch: $RELEASE_BRANCH"
-else
-    log_error "Failed to checkout branch $RELEASE_BRANCH. Does it exist?"
-    exit 1
-fi
+if eval "$GIT_CHECKOUT_CMD"; then log_success "Checked out branch: $RELEASE_BRANCH"; else log_error "Failed to checkout."; exit 1; fi
 
 if [ "$JSON_MODE" = "true" ]; then
     GIT_PULL_CMD="sudo -u $CURRENT_DIR_USER git -C $STG_GIT_PATH pull >&2"
 else
     GIT_PULL_CMD="sudo -u $CURRENT_DIR_USER git -C $STG_GIT_PATH pull"
 fi
-
-if eval "$GIT_PULL_CMD"; then
-    log_success "Code is up to date."
-else
-    log_error "Failed to pull latest code."
-    exit 1
-fi
+if eval "$GIT_PULL_CMD"; then log_success "Code is up to date."; else log_error "Failed to pull code."; exit 1; fi
 
 
-# 2. CLONE DATABASE (Data Reset)
+# 2. CLONE DATABASE (Manual)
 # ---------------------------------------------------------
 if [ "$IS_RENEW_DB" == "true" ]; then
     PRD_PATH_TO_ODOO="$STG_PATH_TO_ODOO/../$SERVICE_NAME_PRD"
     PRD_ENV_FILE="$PRD_PATH_TO_ODOO/.env"
-
-    if [ ! -f "$PRD_ENV_FILE" ]; then
-        log_error "Production .env file not found at: $PRD_ENV_FILE"
-        exit 1
-    fi
+    if [ ! -f "$PRD_ENV_FILE" ]; then log_error "Prod .env not found."; exit 1; fi
 
     PRD_DB_NAME=$(grep "^DB_NAME=" "$PRD_ENV_FILE" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
+    if [ -z "$PRD_DB_NAME" ]; then log_error "DB_NAME not set in prod."; exit 1; fi
 
-    if [ -z "$PRD_DB_NAME" ]; then
-        log_error "DB_NAME is not set in the production environment. Please set it at: $PRD_ENV_FILE"
-        exit 1
+    log_stage "[2/4] Cloning Production Database to Staging (Manual Mode)..."
+
+    ODOO_FILESTORE_PATH_PRD="/var/lib/odoo/$SERVICE_NAME_PRD/filestore/$PRD_DB_NAME"
+    ODOO_FILESTORE_PATH_ENV="/var/lib/odoo/$SERVICE_NAME/filestore/$STG_DB_NAME"
+    ODOO_DB_USER_ENV=$(cat "$STG_PATH_TO_ODOO/.secrets/db_user")
+
+    log_info "Dump $PRD_DB_NAME to temporary file"
+    sudo -u postgres pg_dump -d "$PRD_DB_NAME" -f "/tmp/$STG_DB_NAME.sql" > /dev/null 2>&1 || { log_error "Error dumping database"; exit 1; }
+
+    # Sync Filestore
+    if [ -d "$ODOO_FILESTORE_PATH_ENV" ]; then
+        log_warn "Remove old filestore $STG_DB_NAME"
+        rm -rf "$ODOO_FILESTORE_PATH_ENV"
     fi
+    mkdir -p "$ODOO_FILESTORE_PATH_ENV"
+    rsync -a "$ODOO_FILESTORE_PATH_PRD/" "$ODOO_FILESTORE_PATH_ENV" > /dev/null 2>&1 || { log_error "Error copying filestore"; exit 1; }
+    chown -R odoo: "$ODOO_FILESTORE_PATH_ENV"
 
-    log_stage "[2/4] Cloning Production Database to Staging..."
+    # Stop Staging
+    docker compose -f "$STG_PATH_TO_ODOO/docker-compose.yml" stop > /dev/null 2>&1 || { log_error "Error stopping staging"; exit 1; }
 
-    # Determine DB User for Staging (for ownership)
-    # Check secrets file first (like reference script), then env, then default 'odoo'
-    if [ -f "$STG_PATH_TO_ODOO/.secrets/db_user" ]; then
-        STG_DB_USER=$(cat "$STG_PATH_TO_ODOO/.secrets/db_user")
-    else
-        STG_DB_USER=$(grep "^DB_USER=" "$STG_ENV_FILE" | cut -d "=" -f 2 | tr -d '[:space:]')
-        if [ -z "$STG_DB_USER" ]; then STG_DB_USER="odoo"; fi
-    fi
+    log_warn "Drop old database $STG_DB_NAME"
+    sudo -u postgres psql -d postgres -c "DROP DATABASE IF EXISTS \"$STG_DB_NAME\" WITH (FORCE)" > /dev/null 2>&1 || { log_warn "Error dropping DB, proceeding..."; }
 
-    # Define Filestore Paths
-    # Assumes standard Odoo Docker volume location: /var/lib/odoo/<service_name>/filestore/<db_name>
-    PRD_FILESTORE_PATH="/var/lib/odoo/$SERVICE_NAME_PRD/filestore/$PRD_DB_NAME"
-    STG_FILESTORE_PATH="/var/lib/odoo/$SERVICE_NAME/filestore/$STG_DB_NAME"
+    log_info "Create new database $STG_DB_NAME"
+    sudo -u postgres psql -d postgres -c "CREATE DATABASE \"$STG_DB_NAME\"" > /dev/null 2>&1 || { log_error "Error creating DB"; exit 1; }
 
-    DUMP_FILE="/tmp/${STG_DB_NAME}_clone.sql"
-    log_info "Dumping Production DB ($PRD_DB_NAME) to $DUMP_FILE..."
-    if [ "$JSON_MODE" = "true" ]; then
-        if sudo -u postgres pg_dump -d "$PRD_DB_NAME" -f "$DUMP_FILE" >&2; then
-            log_success "Dump created."
-        else
-            log_error "Failed to dump production database. Check postgres permissions or DB name."
-            exit 1
-        fi
-    else
-        if sudo -u postgres pg_dump -d "$PRD_DB_NAME" -f "$DUMP_FILE"; then
-            log_success "Dump created."
-        else
-            log_error "Failed to dump production database. Check postgres permissions or DB name."
-            exit 1
-        fi
-    fi
+    log_info "Restore $STG_DB_NAME from dump"
+    sudo -u postgres psql -d "$STG_DB_NAME" -f "/tmp/$STG_DB_NAME.sql" > /dev/null 2>&1 || { log_error "Error restoring DB"; exit 1; }
+    rm -f "/tmp/$STG_DB_NAME.sql"
 
-    log_info "Syncing Filestore..."
-    if [ -d "$STG_FILESTORE_PATH" ]; then
-        rm -rf "$STG_FILESTORE_PATH"
-    fi
-    mkdir -p "$STG_FILESTORE_PATH"
-
-    # Use rsync to copy data
-    if [ "$JSON_MODE" = "true" ]; then
-        RSYNC_CMD="rsync -a $PRD_FILESTORE_PATH/ $STG_FILESTORE_PATH >&2"
-    else
-        RSYNC_CMD="rsync -a $PRD_FILESTORE_PATH/ $STG_FILESTORE_PATH"
-    fi
-
-    if eval "$RSYNC_CMD"; then
-        log_success "Filestore copied."
-        # Fix ownership
-        chown -R odoo: "$STG_FILESTORE_PATH"
-    else
-        log_error "Failed to rsync filestore from $PRD_FILESTORE_PATH"
-        exit 1
-    fi
-
-    log_info "Stopping Staging container to release DB locks..."
-    cd "$STG_PATH_TO_ODOO"
-    if [ "$JSON_MODE" = "true" ]; then
-        docker compose stop odoo >&2
-    else
-        docker compose stop odoo
-    fi
-
-    log_info "Dropping and Recreating Database ($STG_DB_NAME)..."
-
-    # Drop (Force disconnects if necessary, though container stop usually suffices)
-    sudo -u postgres psql -d postgres -c "DROP DATABASE IF EXISTS \"$STG_DB_NAME\" WITH (FORCE)" > /dev/null
-
-    # Create
-    if [ "$JSON_MODE" = "true" ]; then
-        if sudo -u postgres psql -d postgres -c "CREATE DATABASE \"$STG_DB_NAME\"" >&2; then
-             log_success "Database created."
-        else
-             log_error "Failed to create database."
-             exit 1
-        fi
-    else
-        if sudo -u postgres psql -d postgres -c "CREATE DATABASE \"$STG_DB_NAME\""; then
-             log_success "Database created."
-        else
-             log_error "Failed to create database."
-             exit 1
-        fi
-    fi
-
-    log_info "Restoring Dump into Staging..."
-    if sudo -u postgres psql -d "$STG_DB_NAME" -f "$DUMP_FILE" > /dev/null; then
-        log_success "Restore complete."
-        rm -f "$DUMP_FILE"
-    else
-        log_error "Failed to restore SQL dump."
-        rm -f "$DUMP_FILE"
-        exit 1
-    fi
-
-    log_info "Sanitizing the database (Disabling Emails & Crons)"
-
-    # 1. Disable Crons and Emails (Important for Staging)
-    # SQL commands to disable outgoing email, crons, and mail servers
-    NEUTRALIZE_DB=$(grep "^NEUTRALIZE_DATABASE=" "$PRD_ENV_FILE" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
-    if [ -z "$NEUTRALIZE_DB" ]; then
-        NEUTRALIZE_DB="true"
-    fi
+    # Neutralize
+    NEUTRALIZE_DB=$(grep "^NEUTRALIZE_DATABASE=" "$PRD_ENV_FILE" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' | tr '[:upper:]' '[:lower:]')
+    if [ -z "$NEUTRALIZE_DB" ]; then NEUTRALIZE_DB="true"; fi
 
     if [ "$NEUTRALIZE_DB" = "true" ]; then
-        SANITIZE_SQL="
-            -- Disable all Outgoing Mail Servers
-            UPDATE ir_mail_server SET active = false;
-
-            -- Disable specific email-related cron jobs
-            UPDATE ir_cron SET active = false;
-
-            -- Set System Parameter to prevent catching emails
-            DELETE FROM ir_config_parameter WHERE key = 'mail.catchall.domain';
-            INSERT INTO ir_config_parameter (key, value) VALUES ('mail.catchall.domain', 'localhost');
-        "
-
-        # Execute the SQL commands
-        # Using || true to prevent script exit if a minor sql error occurs, but verifying execution via check
-        if sudo -u postgres psql -d "$STG_DB_NAME" -c "$SANITIZE_SQL" > /dev/null 2>&1; then
-            log_success "Database sanitized successfully."
-        else
-            log_warn "Warning: Failed to sanitize database completely (SQL command failed)."
-        fi
+        sanitize_database "$STG_DB_NAME"
     fi
 
-    # 2. Fix Ownership
-    log_info "Fixing DB Object Ownership to user: $STG_DB_USER"
+    change_db_ownership "$STG_DB_NAME" "$ODOO_DB_USER_ENV"
 
-    sudo -u postgres psql -d postgres -c "ALTER DATABASE \"$STG_DB_NAME\" OWNER TO \"$STG_DB_USER\"" > /dev/null
-
-    # Run the PL/pgSQL block to fix tables, sequences, and views
-    sudo -u postgres psql -d "$STG_DB_NAME" -c "
-        DO \$\$
-        DECLARE
-            rec RECORD;
-        BEGIN
-            -- Tables
-            FOR rec IN (SELECT tablename FROM pg_tables WHERE schemaname = 'public') LOOP
-                EXECUTE 'ALTER TABLE ' || quote_ident(rec.tablename) || ' OWNER TO \"${STG_DB_USER}\"';
-            END LOOP;
-            -- Sequences
-            FOR rec IN (SELECT sequence_name FROM information_schema.sequences WHERE sequence_schema = 'public') LOOP
-                EXECUTE 'ALTER SEQUENCE ' || quote_ident(rec.sequence_name) || ' OWNER TO \"${STG_DB_USER}\"';
-            END LOOP;
-            -- Views
-            FOR rec IN (SELECT table_name FROM information_schema.views WHERE table_schema = 'public') LOOP
-                EXECUTE 'ALTER VIEW ' || quote_ident(rec.table_name) || ' OWNER TO \"${STG_DB_USER}\"';
-            END LOOP;
-        END \$\$;
-    " > /dev/null 2>&1 || log_warn "Ownership fix script had minor issues, but proceeding."
-
+    log_success "Database clone complete."
 else
-    log_stage "[2/4] Skipping Database Clone (IS_RENEW_DB is false)."
+    log_stage "[2/4] Skipping Database Clone."
 fi
-
 
 # 3. RESTART CONTAINER
 # ---------------------------------------------------------
 log_stage "[3/4] Restarting Staging Container..."
-
-# Change directory to the dynamic STG_PATH_TO_ODOO
-if cd "$STG_PATH_TO_ODOO"; then
-    if [ "$JSON_MODE" = "true" ]; then
-        if docker compose restart odoo >&2; then
-            log_success "Container restarted."
-        else
-            log_error "Failed to restart docker container."
-            exit 1
-        fi
-    else
-        if docker compose restart odoo; then
-            log_success "Container restarted."
-        else
-            log_error "Failed to restart docker container."
-            exit 1
-        fi
-    fi
+cd "$STG_PATH_TO_ODOO"
+if [ "$JSON_MODE" = "true" ]; then
+    if docker compose restart odoo >&2; then log_success "Restarted."; else log_error "Restart failed."; exit 1; fi
 else
-    log_error "Could not find directory $STG_PATH_TO_ODOO"
-    exit 1
+    if docker compose restart odoo; then log_success "Restarted."; else log_error "Restart failed."; exit 1; fi
 fi
-
 
 # 4. UPDATE MODULES
 # ---------------------------------------------------------
 if [ -z "$MODULES_TO_UPDATE" ]; then
     log_stage "[4/4] Update module skipped..."
-    log_warn "No specific modules listed."
-    log_info "Tip: You can pass modules as the fourth argument: $0 $RELEASE_BRANCH $IS_RENEW_DB 'sale,inventory'"
 else
     log_stage "[4/4] Updating Odoo Modules..."
-    log_info "Waiting 10 seconds for Odoo to initialize..."
     sleep 10
-    log_info "Updating modules: $MODULES_TO_UPDATE"
-    # Using the 'odoo-module-upgrade' utility embedded in your image
     if [ "$JSON_MODE" = "true" ]; then
-        if docker compose exec odoo odoo-module-upgrade "$STG_DB_NAME" --update="$MODULES_TO_UPDATE" >&2; then
-            log_success "Modules updated successfully."
-        else
-            log_error "Failed to update modules."
-            exit 1
-        fi
+        if docker compose exec odoo odoo-module-upgrade "$STG_DB_NAME" --update="$MODULES_TO_UPDATE" >&2; then log_success "Modules updated."; else log_error "Update failed."; exit 1; fi
     else
-        if docker compose exec odoo odoo-module-upgrade "$STG_DB_NAME" --update="$MODULES_TO_UPDATE"; then
-            log_success "Modules updated successfully."
-        else
-            log_error "Failed to update modules."
-            exit 1
-        fi
+        if docker compose exec odoo odoo-module-upgrade "$STG_DB_NAME" --update="$MODULES_TO_UPDATE"; then log_success "Modules updated."; else log_error "Update failed."; exit 1; fi
     fi
 fi
 
 if [ "$JSON_MODE" = "false" ]; then
     echo ""
-    echo "=================================================="
     log_success "Deployment Complete!"
-    echo "   Service:     $SERVICE_NAME"
-    if [ "$IS_RENEW_DB" == "true" ]; then
-        echo "   Database:    $STG_DB_NAME (Cloned from $PRD_DB_NAME)"
-    fi
-    echo "   Branch:      $RELEASE_BRANCH"
-    echo "=================================================="
 fi
 
 # --- JSON Output Generation ---
 if [ "$JSON_MODE" = "true" ]; then
     echo "{"
     echo '  "repositories": ['
-
     GIT_ROOT="$STG_PATH_TO_ODOO/git"
     FIRST_REPO=1
-
     if [ -d "$GIT_ROOT" ]; then
         for repo_dir in "$GIT_ROOT"/*/; do
             [ -d "$repo_dir" ] || continue
             repo_name=$(basename "$repo_dir")
-
-            # Default values
-            status="clean"
-            # Note: We don't do full 'git status' check here to keep it fast,
-            # but we can assume existing is 'clean' or 'not_git' unless we want to run git status.
-            # The user asked for "list of current commit".
-
+            status="clean" # Simplified
             if [ -d "$repo_dir/.git" ]; then
                commit_hash=$(sudo -u "$CURRENT_DIR_USER" git -C "$repo_dir" rev-parse --short HEAD 2>/dev/null || echo "unknown")
                commit_subject=$(sudo -u "$CURRENT_DIR_USER" git -C "$repo_dir" log -1 --format="%s" 2>/dev/null | tr -d '"\\' || echo "")
             else
-               status="not_git"
-               commit_hash=""
-               commit_subject=""
+               status="not_git"; commit_hash=""; commit_subject=""
             fi
-
             if [ $FIRST_REPO -eq 0 ]; then echo ","; fi
             FIRST_REPO=0
-
-            echo "    {"
-            echo "      \"name\": \"$repo_name\","
-            echo "      \"status\": \"$status\","
-            echo "      \"commit\": \"$commit_hash\","
-            echo "      \"subject\": \"$commit_subject\","
-            echo "      \"files\": []"
-            echo -n "    }"
+            echo "    { \"name\": \"$repo_name\", \"status\": \"$status\", \"commit\": \"$commit_hash\", \"subject\": \"$commit_subject\", \"files\": [] }"
         done
     fi
+    echo ""
+    echo "  ],"
+    echo "  \"database_name\": \"$STG_DB_NAME\""
     if [ -n "$MODULES_TO_UPDATE" ]; then
-        echo "  ],"
-        echo "  \"database_name\": \"$STG_DB_NAME\","
-        echo '  "modules_to_upgrade": ['
-        IFS=',' read -ra MODULES <<< "$MODULES_TO_UPDATE"
-        FIRST_MODULE=1
-        for module in "${MODULES[@]}"; do
-            if [ $FIRST_MODULE -eq 0 ]; then echo ","; fi
-            # Trim whitespace just in case
-            module=$(echo "$module" | xargs)
-            echo -n "    \"$module\""
-            FIRST_MODULE=0
-        done
-        echo ""
-        echo "  ]"
-        echo "}"
-    else
-        echo "  ],"
-        echo "  \"database_name\": \"$STG_DB_NAME\""
-        echo "}"
+        echo ", \"modules_to_upgrade\": [ \"$MODULES_TO_UPDATE\" ]"
     fi
+    echo "}"
 fi

@@ -1,39 +1,28 @@
-#!/bin/bash
+#!/usr/bin/env bash
+set -e
+# Category: Configuration
+# Description: Appends the server's hostname to the 'btop' title bar (clock format) for all users.
+# Usage: ./scripts/add_hostname_to_btop_titlebar.sh
+# Dependencies: sudo, sed
 
-# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
-# Add Hostname to btop Title Bar Script                                       #
-# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
-#
-# Description:
-# This script customizes the 'btop' resource monitor configuration for users
-# on the system. Its primary goal is to append the server's hostname to the
-# 'btop' title bar (specifically, within the clock format string). This makes
-# it easier to identify which machine is being monitored when using btop,
-# especially when managing multiple servers.
-#
-# How it works:
-# 1. Iterates through all user home directories found under /home/.
-# 2. For each user, it locates their btop configuration file
-#    (expected at ~/.config/btop/btop.conf).
-# 3. If the configuration file exists, it uses 'sed' to modify the
-#    'clock_format' line, appending " - /host" before the closing quote.
-#    The '/host' is a btop special variable that gets replaced by the hostname.
-# 4. Logs its actions, indicating which users' configurations are checked
-#    and whether modifications were successful.
-#
-# Prerequisites:
-# - btop should be installed on the system.
-# - This script must be run with sudo privileges to modify user configuration
-#   files.
+# Detect Repository Owner to run non-root commands as that user
+CURRENT_DIR=$(dirname "$(readlink -f "$0")")
+CURRENT_DIR_USER=$(stat -c '%U' "$CURRENT_DIR")
+PATH_TO_ODOO=$(sudo -u "$CURRENT_DIR_USER" git -C "$(dirname "$(readlink -f "$0")")" rev-parse --show-toplevel)
+SERVICE_NAME=$(basename "$PATH_TO_ODOO")
+REPOSITORY_OWNER=$(stat -c '%U' "$PATH_TO_ODOO")
 
-set -euo pipefail
+# Configuration
+ENV_FILE=".env"
+UPDATE_SCRIPT="./scripts/update-env-file.sh"
+MAX_BACKUPS=3
 
 # --- Logging Functions & Colors ---
 # Define colors for log messages
 readonly COLOR_RESET="\033[0m"
 readonly COLOR_INFO="\033[0;34m"
 readonly COLOR_SUCCESS="\033[0;32m"
-readonly COLOR_WARN="\033[0;33m"
+readonly COLOR_WARN="\033[1;33m"
 readonly COLOR_ERROR="\033[0;31m"
 
 # Function to log messages with a specific color and emoji
@@ -49,6 +38,13 @@ log_success() { log "${COLOR_SUCCESS}" "✅" "$1"; }
 log_warn() { log "${COLOR_WARN}" "⚠️" "$1"; }
 log_error() { log "${COLOR_ERROR}" "❌" "$1"; }
 # ------------------------------------
+
+error_handler() {
+  log_error "An error occurred on line $1. Exiting..."
+  exit 1
+}
+
+trap 'error_handler $LINENO' ERR
 
 function main() {
   # Self-elevate to root if not already
@@ -86,4 +82,4 @@ function main() {
   log_success "Finished attempting to modify btop.conf for all users in /home."
 }
 
-main "@"
+main "$@"

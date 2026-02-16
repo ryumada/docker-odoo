@@ -1,3 +1,11 @@
+---
+title: Odoo Configuration Guide
+category: Guide
+description: Instructions for creating and editing the Odoo configuration file.
+context: Configuration
+maintainer: ryumada
+---
+
 # Create your Odoo Configuration file
 You can copy the example odoo configuration file and edit your config from there.
 

@@ -1,24 +1,31 @@
-#!/bin/bash
+#!/usr/bin/env bash
+set -e
+# Category: Utility
+# Description: Restores an Odoo snapshot (files and database) from a tar archive.
+# Usage: ./scripts/restore-snapshot.sh
+# Dependencies: tar, zstd, docker, sudo, psql
 
+# Detect Repository Owner to run non-root commands as that user
 CURRENT_DIR=$(dirname "$(readlink -f "$0")")
 CURRENT_DIR_USER=$(stat -c '%U' "$CURRENT_DIR")
 PATH_TO_ODOO=$(sudo -u "$CURRENT_DIR_USER" git -C "$(dirname "$(readlink -f "$0")")" rev-parse --show-toplevel)
 SERVICE_NAME=$(basename "$PATH_TO_ODOO")
 REPOSITORY_OWNER=$(stat -c '%U' "$PATH_TO_ODOO")
 
-# The path inside the tar is the absolute path without the leading slash
-TAR_PROJECT_ROOT="${PATH_TO_ODOO#/}"
-
-TAR_FILE_NAME=snapshot-$SERVICE_NAME.tar.zst
-TEMP_DIR=/tmp/snapshot-$SERVICE_NAME
+# Configuration
+ENV_FILE=".env"
+UPDATE_SCRIPT="./scripts/update-env-file.sh"
+MAX_BACKUPS=3
 
 # --- Logging Functions & Colors ---
+# Define colors for log messages
 readonly COLOR_RESET="\033[0m"
 readonly COLOR_INFO="\033[0;34m"
 readonly COLOR_SUCCESS="\033[0;32m"
-readonly COLOR_WARN="\033[0;33m"
+readonly COLOR_WARN="\033[1;33m"
 readonly COLOR_ERROR="\033[0;31m"
 
+# Function to log messages with a specific color and emoji
 log() {
   local color="$1"
   local emoji="$2"
@@ -30,6 +37,20 @@ log_info() { log "${COLOR_INFO}" "ℹ️" "$1"; }
 log_success() { log "${COLOR_SUCCESS}" "✅" "$1"; }
 log_warn() { log "${COLOR_WARN}" "⚠️" "$1"; }
 log_error() { log "${COLOR_ERROR}" "❌" "$1"; }
+# ------------------------------------
+
+error_handler() {
+  log_error "An error occurred on line $1. Exiting..."
+  exit 1
+}
+
+trap 'error_handler $LINENO' ERR
+
+# The path inside the tar is the absolute path without the leading slash
+TAR_PROJECT_ROOT="${PATH_TO_ODOO#/}"
+
+TAR_FILE_NAME=snapshot-$SERVICE_NAME.tar.zst
+TEMP_DIR=/tmp/snapshot-$SERVICE_NAME
 
 function areYouReallySure() {
   echo -e "\nAre you sure?\n⚠️ This script will replace your current Odoo data and deployment files. ⚠️\nType 'yes I am sure' and press enter to continue.\n"
@@ -195,8 +216,10 @@ function main() {
   log_info "Stopping services..."
   (cd "$PATH_TO_ODOO" && docker compose down > /dev/null 2>&1)
 
-  # Restore scripts
+  # Restore utility scripts
   log_info "Restoring utility scripts..."
+  # Note: scripts/backupdata-SERVICE_NAME etc are legacy? The plan is to standardize.
+  # But the snapshot contains them. I will allow restoration but they might be overwritten by setup.sh later if managed there.
   for script in "backupdata-$SERVICE_NAME" "databasecloner-$SERVICE_NAME" "snapshot-$SERVICE_NAME"; do
     if [ -f "$src_root/scripts/$script" ]; then
         cp -f "$src_root/scripts/$script" "$PATH_TO_ODOO/scripts/$script"
@@ -224,4 +247,3 @@ function main() {
 }
 
 main "$@"
-

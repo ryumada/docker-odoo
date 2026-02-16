@@ -1,23 +1,31 @@
-#!/bin/bash
+#!/usr/bin/env bash
+set -e
+# Category: Utility
+# Description: Updates git repositories in the ./git directory and restarts Docker containers if changes are pulled. Supports JSON output.
+# Usage: ./scripts/git_addons_updater.sh [json]
+# Dependencies: git, docker, sudo
 
+# Detect Repository Owner to run non-root commands as that user
 CURRENT_DIR=$(dirname "$(readlink -f "$0")")
 CURRENT_DIR_USER=$(stat -c '%U' "$CURRENT_DIR")
 PATH_TO_ODOO=$(sudo -u "$CURRENT_DIR_USER" git -C "$(dirname "$(readlink -f "$0")")" rev-parse --show-toplevel)
 SERVICE_NAME=$(basename "$PATH_TO_ODOO")
 REPOSITORY_OWNER=$(stat -c '%U' "$PATH_TO_ODOO")
 
-DOCKER_COMPOSE_FILE="docker-compose.yml"
-GIT_PATH="./git"
+# Configuration
+ENV_FILE=".env"
+UPDATE_SCRIPT="./scripts/update-env-file.sh"
+MAX_BACKUPS=3
 
 # --- Logging Functions & Colors ---
 # Define colors for log messages
 readonly COLOR_RESET="\033[0m"
 readonly COLOR_INFO="\033[0;34m"
 readonly COLOR_SUCCESS="\033[0;32m"
-readonly COLOR_WARN="\033[0;33m"
+readonly COLOR_WARN="\033[1;33m"
 readonly COLOR_ERROR="\033[0;31m"
 
-# Global JSON Mode flag
+# Global JSON Mode flag (Defaults to false)
 JSON_MODE="false"
 
 # Function to log messages with a specific color and emoji
@@ -38,6 +46,21 @@ log_success() { log "${COLOR_SUCCESS}" "✅" "$1"; }
 log_warn() { log "${COLOR_WARN}" "⚠️" "$1"; }
 log_error() { log "${COLOR_ERROR}" "❌" "$1"; }
 # ------------------------------------
+
+error_handler() {
+  local line_number="$1"
+  if [ "$JSON_MODE" = "true" ]; then
+      log_error "An error occurred on line $line_number. Exiting..."
+  else
+      log_error "An error occurred on line $line_number. Exiting..."
+  fi
+  exit 1
+}
+
+trap 'error_handler $LINENO' ERR
+
+DOCKER_COMPOSE_FILE="docker-compose.yml"
+GIT_PATH="./git"
 
 function isDirectoryGitRepository() {
   local dir=$1

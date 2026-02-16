@@ -1,3 +1,8 @@
+# Category: Build
+# Service: Odoo
+# Description: Dockerfile for building the Odoo image with custom dependencies.
+# Maintainer: ryumada
+
 # you can setup this variable to the version of python you want to use in .env file and build the image using docker-compose.yml file
 ARG PYTHON_VERSION=3.10-bookworm
 

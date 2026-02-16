@@ -1,3 +1,11 @@
+---
+title: Odoo Base Guide
+category: Guide
+description: Instructions for setting up the Odoo base directory.
+context: Odoo Source
+maintainer: ryumada
+---
+
 # Get your Odoo Base
 Place your odoo base directory in this path, `place only one directory`.
 

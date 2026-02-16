@@ -1,3 +1,9 @@
+# Category: Config
+# File: requirements.txt.example
+# Description: Python dependencies for Odoo.
+# Usage: pip install -r requirements.txt
+# Maintainer: ryumada
+
 # taken from: https://github.com/odoo/odoo/blob/16.0/requirements.txt
 
 # The officially supported versions of the following packages are their

@@ -1,3 +1,9 @@
+# Category: Config
+# File: nginx_sites_available
+# Description: Nginx server block configuration for Odoo (Standard).
+# Usage: Symlink to sites-enabled.
+# Maintainer: ryumada
+
 # PLEASE Enter the right Allowed Domain inside the map function
 map $http_origin $cors_origin_header {
         # Default is empty (i.e., blocked)

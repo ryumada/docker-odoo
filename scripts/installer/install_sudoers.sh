@@ -1,14 +1,28 @@
-#!/bin/bash
-
-# Exit immediately if a command exits with a non-zero status
+#!/usr/bin/env bash
 set -e
+# Category: Installer
+# Description: Configures sudoers rules for Odoo management scripts.
+# Usage: ./scripts/installer/install_sudoers.sh
+# Dependencies: sudo, git, visudo
+
+# Detect Repository Owner to run non-root commands as that user
+CURRENT_DIR=$(dirname "$(readlink -f "$0")")
+CURRENT_DIR_USER=$(stat -c '%U' "$CURRENT_DIR")
+PATH_TO_ODOO=$(sudo -u "$CURRENT_DIR_USER" git -C "$(dirname "$(readlink -f "$0")")" rev-parse --show-toplevel)
+SERVICE_NAME=$(basename "$PATH_TO_ODOO")
+REPOSITORY_OWNER=$(stat -c '%U' "$PATH_TO_ODOO")
+
+# Configuration
+ENV_FILE=".env"
+UPDATE_SCRIPT="./scripts/update-env-file.sh"
+MAX_BACKUPS=3
 
 # --- Logging Functions & Colors ---
 # Define colors for log messages
 readonly COLOR_RESET="\033[0m"
 readonly COLOR_INFO="\033[0;34m"
 readonly COLOR_SUCCESS="\033[0;32m"
-readonly COLOR_WARN="\033[0;33m"
+readonly COLOR_WARN="\033[1;33m"
 readonly COLOR_ERROR="\033[0;31m"
 
 # Function to log messages with a specific color and emoji
@@ -25,10 +39,14 @@ log_warn() { log "${COLOR_WARN}" "⚠️" "$1"; }
 log_error() { log "${COLOR_ERROR}" "❌" "$1"; }
 # ------------------------------------
 
-CURRENT_DIR=$(dirname "$(readlink -f "$0")")
-PATH_TO_ROOT_REPOSITORY=$(git -C "$CURRENT_DIR" rev-parse --show-toplevel)
-DOCKER_ODOO_APP_NAME=$(basename "$PATH_TO_ROOT_REPOSITORY")
-SERVICE_NAME=$(basename "$PATH_TO_ROOT_REPOSITORY")
+error_handler() {
+  log_error "An error occurred on line $1. Exiting..."
+  exit 1
+}
+
+trap 'error_handler $LINENO' ERR
+
+DOCKER_ODOO_APP_NAME=$SERVICE_NAME
 
 function create_sudoers_file() {
   local user="$1"
@@ -42,9 +60,9 @@ function create_sudoers_file() {
 
   local script_path
   if [ "$script_type" == "scripts" ]; then
-    script_path="$PATH_TO_ROOT_REPOSITORY/scripts/$SCRIPT_NAME.sh"
+    script_path="$PATH_TO_ODOO/scripts/$SCRIPT_NAME.sh"
   else
-    script_path="$PATH_TO_ROOT_REPOSITORY/$SCRIPT_NAME.sh"
+    script_path="$PATH_TO_ODOO/$SCRIPT_NAME.sh"
   fi
 
   if [ ! -f "$script_path" ]; then
@@ -97,6 +115,7 @@ function main() {
   create_sudoers_file "devops" "scripts" "git_addons_updater"
   create_sudoers_file "devops" "scripts" "git_odoo-base_updater"
   create_sudoers_file "devops" "scripts" "deploy_release_candidate-$SERVICE_NAME"
+  create_sudoers_file "devops" "scripts" "restore_backupdata-$SERVICE_NAME"
 
   # Create sudoers file for the user who ran the script, if they are not 'devops' or 'root'
   local logged_in_user
@@ -105,6 +124,7 @@ function main() {
     create_sudoers_file "$logged_in_user" "scripts" "git_addons_updater"
     create_sudoers_file "$logged_in_user" "scripts" "git_odoo-base_updater"
     create_sudoers_file "$logged_in_user" "scripts" "deploy_release_candidate-$SERVICE_NAME"
+    create_sudoers_file "$logged_in_user" "scripts" "restore_backupdata-$SERVICE_NAME"
     create_sudoers_file "$logged_in_user" "root" "setup"
   fi
 

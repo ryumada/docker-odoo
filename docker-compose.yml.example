@@ -1,3 +1,9 @@
+# Category: Orchestration
+# File: docker-compose.yml.example
+# Description: Example Docker Compose configuration for Odoo deployment.
+# Usage: Copy to docker-compose.yml and customize.
+# Maintainer: ryumada
+
 # press ctrl + f and search "enter" string to find which value should you change.
 
 services:

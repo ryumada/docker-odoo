@@ -1,12 +1,28 @@
-#!/bin/bash
+#!/usr/bin/env bash
+set -e
+# Category: Configuration
+# Description: Updates the .env file from .env.example, preserving existing values and backing up old configs.
+# Usage: ./scripts/update-env-file.sh [template_file]
+# Dependencies: git, sed, sudo
 
-# This script updates the .env file from .env.example then add the value from the old .env.
+# Detect Repository Owner to run non-root commands as that user
+CURRENT_DIR=$(dirname "$(readlink -f "$0")")
+CURRENT_DIR_USER=$(stat -c '%U' "$CURRENT_DIR")
+PATH_TO_ODOO=$(sudo -u "$CURRENT_DIR_USER" git -C "$(dirname "$(readlink -f "$0")")" rev-parse --show-toplevel)
+SERVICE_NAME=$(basename "$PATH_TO_ODOO")
+REPOSITORY_OWNER=$(stat -c '%U' "$PATH_TO_ODOO")
+
+# Configuration
+ENV_FILE=".env"
+UPDATE_SCRIPT="./scripts/update-env-file.sh"
+MAX_BACKUPS=3
 
 # --- Logging Functions & Colors ---
 # Define colors for log messages
 readonly COLOR_RESET="\033[0m"
 readonly COLOR_INFO="\033[0;34m"
 readonly COLOR_SUCCESS="\033[0;32m"
+readonly COLOR_WARN="\033[1;33m"
 readonly COLOR_ERROR="\033[0;31m"
 
 # Function to log messages with a specific color and emoji
@@ -23,29 +39,29 @@ log_warn() { log "${COLOR_WARN}" "⚠️" "$1"; }
 log_error() { log "${COLOR_ERROR}" "❌" "$1"; }
 # ------------------------------------
 
-function main() {
-  CURRENT_DIR=$(dirname "$(readlink -f "$0")")
-  CURRENT_DIR_USER=$(stat -c '%U' "$CURRENT_DIR")
-  PATH_TO_ROOT_REPOSITORY=$(sudo -u "$CURRENT_DIR_USER" git -C "$(dirname "$(readlink -f "$0")")" rev-parse --show-toplevel)
-  SERVICE_NAME=$(basename "$PATH_TO_ROOT_REPOSITORY")
-  REPOSITORY_OWNER=$(stat -c '%U' "$PATH_TO_ROOT_REPOSITORY")
+error_handler() {
+  log_error "An error occurred on line $1. Exiting..."
+  exit 1
+}
 
+trap 'error_handler $LINENO' ERR
+
+function main() {
   TEMPLATE_ENV_FILE=${1:-.env.example}
 
   echo "-------------------------------------------------------------------------------"
   echo " UPDATE ENV FILE FOR $SERVICE_NAME @ $(date +"%A, %d %B %Y %H:%M %Z")"
   echo "-------------------------------------------------------------------------------"
 
-  log_info "Path to Odoo: $PATH_TO_ROOT_REPOSITORY"
-  if ! cd "$PATH_TO_ROOT_REPOSITORY"; then
-    log_error "Failed to change directory to $PATH_TO_ROOT_REPOSITORY"
+  log_info "Path to Odoo: $PATH_TO_ODOO"
+  if ! cd "$PATH_TO_ODOO"; then
+    log_error "Failed to change directory to $PATH_TO_ODOO"
     exit 1
   fi
 
-  if [ -f "$PATH_TO_ROOT_REPOSITORY/.env" ]; then
+  if [ -f "$PATH_TO_ODOO/.env" ]; then
     TIMESTAMP=$(date +"%Y%m%d%H%M%S")
     BACKUP_NAME=".env.backup_${TIMESTAMP}"
-    MAX_BACKUPS=3
 
     log_info "Existing .env found. Creating persistent backup: ${BACKUP_NAME}"
     cp .env "$BACKUP_NAME"

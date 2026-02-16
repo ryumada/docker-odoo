@@ -1,3 +1,9 @@
+# Category: Config
+# File: nginx_sites_available-localhost
+# Description: Nginx server block configuration for Odoo (Localhost Proxy).
+# Usage: Symlink to sites-enabled.
+# Maintainer: ryumada
+
 # --- Main Server Block (Proxying to the Local Backend) ---
 server {
     # This must be the port your Nginx is listening on for client requests.

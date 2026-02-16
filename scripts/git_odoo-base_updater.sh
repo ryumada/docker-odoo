@@ -1,20 +1,28 @@
-#!/bin/bash
+#!/usr/bin/env bash
+set -e
+# Category: Utility
+# Description: Updates Odoo base git repositories and restarts containers.
+# Usage: ./scripts/git_odoo-base_updater.sh
+# Dependencies: git, docker, sudo
 
+# Detect Repository Owner to run non-root commands as that user
 CURRENT_DIR=$(dirname "$(readlink -f "$0")")
 CURRENT_DIR_USER=$(stat -c '%U' "$CURRENT_DIR")
 PATH_TO_ODOO=$(sudo -u "$CURRENT_DIR_USER" git -C "$(dirname "$(readlink -f "$0")")" rev-parse --show-toplevel)
 SERVICE_NAME=$(basename "$PATH_TO_ODOO")
 REPOSITORY_OWNER=$(stat -c '%U' "$PATH_TO_ODOO")
 
-DOCKER_COMPOSE_FILE="docker-compose.yml"
-GIT_PATH="./odoo-base"
+# Configuration
+ENV_FILE=".env"
+UPDATE_SCRIPT="./scripts/update-env-file.sh"
+MAX_BACKUPS=3
 
 # --- Logging Functions & Colors ---
 # Define colors for log messages
 readonly COLOR_RESET="\033[0m"
 readonly COLOR_INFO="\033[0;34m"
 readonly COLOR_SUCCESS="\033[0;32m"
-readonly COLOR_WARN="\033[0;33m"
+readonly COLOR_WARN="\033[1;33m"
 readonly COLOR_ERROR="\033[0;31m"
 
 # Function to log messages with a specific color and emoji
@@ -30,6 +38,16 @@ log_success() { log "${COLOR_SUCCESS}" "✅" "$1"; }
 log_warn() { log "${COLOR_WARN}" "⚠️" "$1"; }
 log_error() { log "${COLOR_ERROR}" "❌" "$1"; }
 # ------------------------------------
+
+error_handler() {
+  log_error "An error occurred on line $1. Exiting..."
+  exit 1
+}
+
+trap 'error_handler $LINENO' ERR
+
+DOCKER_COMPOSE_FILE="docker-compose.yml"
+GIT_PATH="./odoo-base"
 
 function isDirectoryGitRepository() {
   dir=$1
@@ -109,4 +127,4 @@ function main() {
   log_success "Finish checking updates for $SERVICE_NAME"
 }
 
-main "@"
+main "$@"

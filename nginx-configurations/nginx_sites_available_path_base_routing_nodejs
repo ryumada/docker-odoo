@@ -1,3 +1,9 @@
+# Category: Config
+# File: nginx_sites_available_path_base_routing_nodejs
+# Description: Nginx configuration for Odoo and Node.js with path-based routing.
+# Usage: Symlink to sites-enabled.
+# Maintainer: ryumada
+
 # Nginx sites-available configuration to deploy Odoo and Node.js on the same domain with path-based routing
 
 upstream $DOMAIN-odoo-backend {

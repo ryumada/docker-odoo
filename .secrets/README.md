@@ -1,3 +1,11 @@
+---
+title: Secrets Management Guide
+category: Guide
+description: Instructions for managing database secrets and credentials.
+context: Secrets
+maintainer: ryumada
+---
+
 # Manage your secrets
 Database secrets credentials should be automatically generated after you run the "_install.sh" script. If you want to create the secrets manually, you can follow these two methods below. There are two methods to create the secrets:
 

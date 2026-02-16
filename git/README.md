@@ -1,3 +1,11 @@
+---
+title: Git Addons Guide
+category: Guide
+description: Instructions for managing custom Odoo addons via git.
+context: Addons
+maintainer: ryumada
+---
+
 # Clone your custom git addons and add other extra addons to this directory.
 
 Add your custom Odoo Modules (Odoo Addons) to `git` directory and add the path to `addons_path` in `../conf/odoo.conf`. Don't add unused custom module directory to this directory as it will be added to your docker image and increased the image size.

@@ -22,6 +22,8 @@ scripts/*
 !scripts/add_hostname_to_btop_titlebar.sh
 !scripts/dataodoo-backupper.sh
 !scripts/dataodoo-remover.sh
+!scripts/generate_map.sh
+!scripts/generate_app_tree.sh
 !scripts/git_addons_updater.sh
 !scripts/git_odoo-base_updater.sh
 !scripts/installer
@@ -49,6 +51,7 @@ dockerfile
 docker-compose*
 !docker-compose.yml.example
 odools.toml
+REPO_MAP.md
 
 **.tar**
 **.swp

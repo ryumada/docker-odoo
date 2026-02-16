@@ -1,3 +1,11 @@
+---
+title: Scripts and Utilities Guide
+category: Guide
+description: Documentation for helper scripts and utilities.
+context: Scripts
+maintainer: ryumada
+---
+
 This directory contains utilities to help docker-odoo deployment.
 
 > Most of these utilities are installed automatically when you run the main `setup.sh` script from the root of the repository. The instructions below are for manual installation or for understanding how they work.

@@ -1,3 +1,9 @@
+# Category: Config
+# File: odoo.conf.example
+# Description: Odoo configuration file template.
+# Usage: Copy to odoo.conf and customize.
+# Maintainer: ryumada
+
 [options]
 # odoo 16
 # Find "enter" word to hightlight what should to setup

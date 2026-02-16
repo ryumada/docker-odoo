@@ -1,3 +1,9 @@
+# Category: Config
+# File: odools.toml.example
+# Description: Configuration for odools utility.
+# Usage: Copy to odools.toml and customize.
+# Maintainer: ryumada
+
 [[config]]
 name = "Docker-Odoo"
 file_cache = false

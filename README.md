@@ -1,3 +1,11 @@
+---
+title: Odoo Docker Image
+category: Guide
+description: Documentation for the Odoo Docker image and deployment.
+context: Project Root
+maintainer: ryumada
+---
+
 # Odoo Docker Image
 A Dockerfile to create a custom Odoo docker image.
 
