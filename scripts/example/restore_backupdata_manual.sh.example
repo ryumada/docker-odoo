@@ -220,14 +220,55 @@ function main() {
 
     log_info "Checking if the database exists..."
     if sudo -u postgres psql -c '\l' | grep -wq "$RESTORED_DB_NAME"; then
-      log_warn "Database $RESTORED_DB_NAME already exists."
-      if [ -z "$PROMPT_FOR_DATABASE_NAME" ]; then
-         # If automated, we can't loop forever with the same name, so we must error out or append random
-         log_error "Automated restore failed because DB exists. Please rename existing DB or enable PROMPT_FOR_DATABASE_NAME."
-         exit 1
-      else
-         log_info "Please enter a different database name."
+      log_warn "Database $RESTORED_DB_NAME already exists. Initiating safety backup..."
+
+      SAFETY_BACKUP_NAME="backupdata-$SERVICE_NAME-safety-backup-$(date +"%Y%m%d-%H%M%S").zip"
+      SAFETY_BACKUP_DIR="/tmp/safety_backup_tmp_$(date +"%Y%m%d-%H%M%S")"
+      SAFETY_ZIP_PATH="/tmp/$SAFETY_BACKUP_NAME"
+      EXISTING_FILESTORE="/var/lib/odoo/$SERVICE_NAME/filestore/$RESTORED_DB_NAME"
+
+      mkdir -p "$SAFETY_BACKUP_DIR"
+
+      log_info "Dumping database $RESTORED_DB_NAME to $SAFETY_BACKUP_DIR/dump.sql"
+      if ! sudo -u postgres pg_dump -f "$SAFETY_BACKUP_DIR/dump.sql" "$RESTORED_DB_NAME"; then
+          log_error "Failed to dump database $RESTORED_DB_NAME. Aborting restore."
+          rm -rf "$SAFETY_BACKUP_DIR"
+          exit 1
       fi
+
+      log_info "Copying filestore from $EXISTING_FILESTORE"
+      if [ -d "$EXISTING_FILESTORE" ]; then
+          mkdir -p "$SAFETY_BACKUP_DIR/filestore"
+          cp -r "$EXISTING_FILESTORE/." "$SAFETY_BACKUP_DIR/filestore/"
+      else
+          log_warn "Filestore not found at $EXISTING_FILESTORE. Proceeding with SQL dump only."
+      fi
+
+      log_info "Zipping safety backup to $SAFETY_ZIP_PATH"
+      if ! (cd "$SAFETY_BACKUP_DIR" && zip -r -q "$SAFETY_ZIP_PATH" .); then
+          log_error "Failed to zip safety backup. Aborting restore."
+          rm -rf "$SAFETY_BACKUP_DIR"
+          exit 1
+      fi
+
+      # Cleanup temp dir
+      rm -rf "$SAFETY_BACKUP_DIR"
+      chown "$SUDO_USER:$SUDO_USER" "$SAFETY_ZIP_PATH"
+      log_success "Safety backup created at $SAFETY_ZIP_PATH"
+
+      log_info "Dropping existing database $RESTORED_DB_NAME..."
+      if ! sudo -u postgres psql -c "DROP DATABASE \"$RESTORED_DB_NAME\" WITH (FORCE)"; then
+          log_error "Failed to drop database $RESTORED_DB_NAME. Aborting."
+          exit 1
+      fi
+
+      log_info "Removing existing filestore..."
+      if [ -d "$EXISTING_FILESTORE" ]; then
+          rm -rf "$EXISTING_FILESTORE"
+      fi
+
+      log_success "Existing database and filestore removed. Proceeding with restore."
+      break
     else
       log_success "Database name '$RESTORED_DB_NAME' is available."
       break
