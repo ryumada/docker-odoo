@@ -46,6 +46,21 @@ error_handler() {
 
 trap 'error_handler $LINENO' ERR
 
+function checkOdooEndpoint() {
+  log_info "Checking if Odoo endpoint is accessible on port $PORT..."
+  if curl --output /dev/null --silent --head --fail "http://localhost:$PORT"; then
+    log_success "Odoo endpoint is accessible."
+  else
+    log_warn "Odoo endpoint is NOT accessible at http://localhost:$PORT. Retrying with longer timeout..."
+    if curl --output /dev/null --silent --head --fail --connect-timeout 10 "http://localhost:$PORT"; then
+      log_success "Odoo endpoint is accessible."
+    else
+      log_error "Odoo endpoint is NOT accessible at http://localhost:$PORT. Please check if the service is running."
+      exit 1
+    fi
+  fi
+}
+
 ## ex. odoo-prd (replace with production database name or use read command to input the database name)
 ## Use only one of this command below
 ODOO_DATABASE_NAME_PRD=$(grep "^DB_NAME=" "$PATH_TO_ODOO/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
@@ -82,6 +97,8 @@ if [ -z "$ADMIN_PASSWD" ] || [ -z "$PORT" ]; then
     log_error "ADMIN_PASSWD and/or PORT not set in .env file. Cannot proceed with backup."
     exit 1
 fi
+
+checkOdooEndpoint
 
 log_info "Start backup for database '$ODOO_DATABASE_NAME_PRD' from service '$SERVICE_NAME'"
 

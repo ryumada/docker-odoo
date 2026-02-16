@@ -72,6 +72,21 @@ function isCurlInstalled() {
   fi
 }
 
+function checkOdooEndpoint() {
+  log_info "Checking if Odoo endpoint is accessible on port $PORT..."
+  if curl --output /dev/null --silent --head --fail "http://localhost:$PORT"; then
+    log_success "Odoo endpoint is accessible."
+  else
+    log_warn "Odoo endpoint is NOT accessible at http://localhost:$PORT. Retrying with longer timeout..."
+    if curl --output /dev/null --silent --head --fail --connect-timeout 10 "http://localhost:$PORT"; then
+      log_success "Odoo endpoint is accessible."
+    else
+      log_error "Odoo endpoint is NOT accessible at http://localhost:$PORT. Please check if the service is running."
+      exit 1
+    fi
+  fi
+}
+
 function restoreOdooDataViaEndpoint() {
   # Note: ENV_FILE_FULL_PATH is used here (which defaults to $PATH_TO_ODOO/.env)
   NEUTRALIZE_DB=$(grep "^NEUTRALIZE_DATABASE=" "$ENV_FILE_FULL_PATH" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
@@ -133,6 +148,7 @@ function main() {
 
   isBackupDataExists "$BACKUPDATA_FILE_PATH"
   isCurlInstalled
+  checkOdooEndpoint
 
   log_info "Start restoring backup data for $SERVICE_NAME"
 

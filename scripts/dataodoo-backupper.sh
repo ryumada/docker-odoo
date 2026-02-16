@@ -82,6 +82,21 @@ function whichData() {
   echo "$DB_LIST"
 }
 
+function checkOdooEndpoint() {
+  log_info "Checking if Odoo endpoint is accessible on port $PORT..."
+  if curl --output /dev/null --silent --head --fail "http://localhost:$PORT"; then
+    log_success "Odoo endpoint is accessible."
+  else
+    log_warn "Odoo endpoint is NOT accessible at http://localhost:$PORT. Retrying with longer timeout..."
+    if curl --output /dev/null --silent --head --fail --connect-timeout 10 "http://localhost:$PORT"; then
+      log_success "Odoo endpoint is accessible."
+    else
+      log_error "Odoo endpoint is NOT accessible at http://localhost:$PORT. Please check if the service is running."
+      exit 1
+    fi
+  fi
+}
+
 function main() {
   # Self-elevate to root if not already
   if [ "$(id -u)" -ne 0 ]; then
@@ -104,6 +119,8 @@ function main() {
     log_error "ADMIN_PASSWD and/or PORT not set in .env file. Cannot proceed with backup."
     exit 1
   fi
+
+  checkOdooEndpoint
 
   temporary_directory="/tmp/$(date +"%Y%m%d-%H%M%S")-dataodoo-backupper"
   if mkdir -p "$temporary_directory"; then
