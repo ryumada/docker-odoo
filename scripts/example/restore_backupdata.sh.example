@@ -179,7 +179,7 @@ function main() {
     if [ -z "$PROMPT_FOR_DATABASE_NAME" ]; then
       ODOO_DATABASE_NAME_PRD=$(grep "^DB_NAME=" "$PATH_TO_ODOO/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
       if [ -z "$ODOO_DATABASE_NAME_PRD" ]; then
-        RESTORED_DB_NAME="$(get_next_prefix "$ENV_FILE_FULL_PATH")-$(date +"%Y%m%d-%H%M%S")"
+        RESTORED_DB_NAME="$(get_next_prefix "$ENV_FILE_FULL_PATH")-$SERVICE_NAME-$(date +"%Y%m%d-%H%M%S")"
       else
         RESTORED_DB_NAME="$(get_next_prefix "$ENV_FILE")-$(date +"%Y%m%d-%H%M%S")"
       fi

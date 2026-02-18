@@ -133,13 +133,13 @@ function promptClonedDBName() {
   local use_date_suffix="$2"
   local ODOO_DEPLOYMENT_ENVIRONMENT="$3"
   local ODOO_DB_NAME_ENV
-  local PASSPHRASE
-  PASSPHRASE=$(generate_passphrase)
+  local DB_PREFIX
+  DB_PREFIX=$(get_next_prefix "$env_file")
   local USE_DATE_SUFFIX_INPUT
 
   case "$use_date_suffix" in
     Y|y)
-      ODOO_DB_NAME_ENV="$PASSPHRASE-$ODOO_DEPLOYMENT_ENVIRONMENT-$(date +"%Y%m%d_%H%M")"
+      ODOO_DB_NAME_ENV="$DB_PREFIX-$ODOO_DEPLOYMENT_ENVIRONMENT-$(date +"%Y%m%d_%H%M")"
       ;;
     prompt)
       while true; do
@@ -147,16 +147,16 @@ function promptClonedDBName() {
 
         case "$USE_DATE_SUFFIX_INPUT" in
           Y|y)
-            ODOO_DB_NAME_ENV="$PASSPHRASE-$ODOO_DEPLOYMENT_ENVIRONMENT-$(date +"%Y%m%d_%H%M")"; break ;;
+            ODOO_DB_NAME_ENV="$DB_PREFIX-$ODOO_DEPLOYMENT_ENVIRONMENT-$(date +"%Y%m%d_%H%M")"; break ;;
           N|n)
-            ODOO_DB_NAME_ENV="$PASSPHRASE-$ODOO_DEPLOYMENT_ENVIRONMENT"; break ;;
+            ODOO_DB_NAME_ENV="$DB_PREFIX-$ODOO_DEPLOYMENT_ENVIRONMENT"; break ;;
           *)
             log_error "Invalid option" ;;
         esac
       done
       ;;
     *)
-      ODOO_DB_NAME_ENV="$PASSPHRASE-$ODOO_DEPLOYMENT_ENVIRONMENT"
+      ODOO_DB_NAME_ENV="$DB_PREFIX-$ODOO_DEPLOYMENT_ENVIRONMENT"
       ;;
   esac
 
