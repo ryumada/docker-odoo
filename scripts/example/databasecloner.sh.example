@@ -235,6 +235,7 @@ function main() {
 
   # 1. Backup source database using curl
   # Check Source Health
+  log_info "Checking Source ($SERVICE_NAME) Health..."
   checkOdooEndpoint "$SOURCE_PORT"
 
   log_info "Requesting backup from source Odoo instance..."
@@ -258,6 +259,7 @@ function main() {
   fi
 
   # Check Destination Health
+  log_info "Checking Destination ($SERVICE_NAME-$ODOO_DEPLOYMENT_ENVIRONMENT) Health..."
   checkOdooEndpoint "$DEST_PORT"
 
   log_info "Dropping old database '$ODOO_DB_NAME_ENV' if it exists..."

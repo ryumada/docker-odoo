@@ -330,6 +330,7 @@ if [ "$IS_RENEW_DB" == "true" ]; then
     STG_ADMIN_PASSWD=$(grep "^ADMIN_PASSWD=" "$STG_ENV_FILE" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
 
     # Check Staging (Destination) Health
+    log_info "Checking Staging ($SERVICE_NAME) Health..."
     checkOdooEndpoint "$STG_PORT"
 
     if [ -n "$STG_DB_NAME_FROM_ENV" ]; then
@@ -353,6 +354,7 @@ if [ "$IS_RENEW_DB" == "true" ]; then
     PRD_ADMIN_PASSWD=$(grep "^ADMIN_PASSWD=" "$PRD_ENV_FILE" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
 
     # Check Production (Source) Health
+    log_info "Checking Production ($SERVICE_NAME_PRD) Health..."
     checkOdooEndpoint "$PRD_PORT"
 
     log_info "Requesting backup from production $SERVICE_NAME_PRD instance..."
