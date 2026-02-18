@@ -56,16 +56,38 @@ error_handler() {
 }
 
 trap 'error_handler $LINENO' ERR
+# ------------------------------------
 
-function generate_passphrase() {
-    local consonants="bcdfghjklmnpqrstvwxyz"
-    local vowels="aeiou"
-    local word=""
-    for i in {1..4}; do
-        word+="${consonants:RANDOM%21:1}"
-        word+="${vowels:RANDOM%5:1}"
-    done
-    echo "$word"
+function get_next_prefix() {
+    local env_file="$1"
+    local current_count
+    local next_count
+
+    # Read existing count
+    current_count=$(grep "^DB_PREFIX_COUNT=" "$env_file" | cut -d "=" -f 2 | tr -d '[:space:]')
+
+    # Initialize if empty or not a number
+    if [[ ! "$current_count" =~ ^[0-9]+$ ]]; then
+        current_count=-1
+    fi
+
+    # Increment
+    next_count=$((current_count + 1))
+
+    # Reset if > 999
+    if [ "$next_count" -gt 999 ]; then
+        next_count=0
+    fi
+
+    # Update .env file
+    if grep -q "^DB_PREFIX_COUNT=" "$env_file"; then
+        sed -i "s/^DB_PREFIX_COUNT=.*/DB_PREFIX_COUNT=$next_count/" "$env_file"
+    else
+        echo "DB_PREFIX_COUNT=$next_count" >> "$env_file"
+    fi
+
+    # Output formatted with leading zeros
+    printf "%03d" "$next_count"
 }
 
 function fail_with_json() {
@@ -216,7 +238,8 @@ STG_DB_NAME_FROM_ENV=$(grep "^DB_NAME=" "$STG_ENV_FILE" | cut -d "=" -f 2 | sed 
 STG_DB_NAME="$STG_DB_NAME_FROM_ENV"
 
 if [ -z "$STG_DB_NAME" ]; then
-    STG_DB_NAME="$(generate_passphrase)-stg-$(date +"%Y%m%d-%H%M%S")"
+    # Fallback if .env is empty
+    STG_DB_NAME="$(get_next_prefix "$STG_ENV_FILE")-stg-$(date +"%Y%m%d-%H%M%S")"
 fi
 
 case "${IS_RENEW_DB}" in

@@ -37,22 +37,45 @@ log_info() { log "${COLOR_INFO}" "ℹ️" "$1"; }
 log_success() { log "${COLOR_SUCCESS}" "✅" "$1"; }
 log_warn() { log "${COLOR_WARN}" "⚠️" "$1"; }
 log_error() { log "${COLOR_ERROR}" "❌" "$1"; }
-# ------------------------------------
-
-function generate_passphrase() {
-  local consonants="bcdfghjklmnpqrstvwxyz"
-  local vowels="aeiou"
-  local word=""
-  for i in {1..4}; do
-    word+="${consonants:RANDOM%21:1}"
-    word+="${vowels:RANDOM%5:1}"
-  done
-  echo "$word"
-}
 
 function error_handler() {
   log_error "Error on line $1"
   exit 1
+}
+
+trap 'error_handler $LINENO' ERR
+# ------------------------------------
+
+function get_next_prefix() {
+  local env_file="$1"
+  local current_count
+  local next_count
+
+  # Read existing count
+  current_count=$(grep "^DB_PREFIX_COUNT=" "$env_file" | cut -d "=" -f 2 | tr -d '[:space:]')
+
+  # Initialize if empty or not a number
+  if [[ ! "$current_count" =~ ^[0-9]+$ ]]; then
+    current_count=-1
+  fi
+
+  # Increment
+  next_count=$((current_count + 1))
+
+  # Reset if > 999
+  if [ "$next_count" -gt 999 ]; then
+    next_count=0
+  fi
+
+  # Update .env file
+  if grep -q "^DB_PREFIX_COUNT=" "$env_file"; then
+     sed -i "s/^DB_PREFIX_COUNT=.*/DB_PREFIX_COUNT=$next_count/" "$env_file"
+  else
+     echo "DB_PREFIX_COUNT=$next_count" >> "$env_file"
+  fi
+
+  # Output formatted with leading zeros
+  printf "%03d" "$next_count"
 }
 
 function isBackupDataExists() {
@@ -122,8 +145,6 @@ function restoreOdooDataViaEndpoint() {
   fi
 }
 
-trap 'error_handler $LINENO' ERR
-
 function main() {
   ENV_FILE_FULL_PATH="$PATH_TO_ODOO/.env"
   BACKUPDATA_FILE_NAME="backupdata-$SERVICE_NAME.zip"
@@ -158,9 +179,9 @@ function main() {
     if [ -z "$PROMPT_FOR_DATABASE_NAME" ]; then
       ODOO_DATABASE_NAME_PRD=$(grep "^DB_NAME=" "$PATH_TO_ODOO/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
       if [ -z "$ODOO_DATABASE_NAME_PRD" ]; then
-        RESTORED_DB_NAME="$(generate_passphrase)-$(date +"%Y%m%d-%H%M%S")"
+        RESTORED_DB_NAME="$(get_next_prefix "$ENV_FILE_FULL_PATH")-$(date +"%Y%m%d-%H%M%S")"
       else
-        RESTORED_DB_NAME="$(generate_passphrase)-$(date +"%Y%m%d-%H%M%S")"
+        RESTORED_DB_NAME="$(get_next_prefix "$ENV_FILE")-$(date +"%Y%m%d-%H%M%S")"
       fi
     else
       read -rp "Enter the new database name: " RESTORED_DB_NAME
@@ -204,7 +225,7 @@ function main() {
          log_warn "API drop might have failed or is slow. Attempting force drop via psql..."
          if sudo -u postgres psql -c "DROP DATABASE \"$RESTORED_DB_NAME\"" >/dev/null 2>&1; then
              log_success "Database dropped via psql."
-             
+
              # Also drop the filestore
              ODOO_FILESTORE_PATH="/var/lib/odoo/$SERVICE_NAME/filestore/$RESTORED_DB_NAME"
              if [ -d "$ODOO_FILESTORE_PATH" ]; then

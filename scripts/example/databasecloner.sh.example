@@ -96,20 +96,42 @@ function promptWhichEnvironment() {
   echo "$ODOO_DEPLOYMENT_ENVIRONMENT"
 }
 
-function generate_passphrase() {
-  local consonants="bcdfghjklmnpqrstvwxyz"
-  local vowels="aeiou"
-  local word=""
-  for i in {1..4}; do
-    word+="${consonants:RANDOM%21:1}"
-    word+="${vowels:RANDOM%5:1}"
-  done
-  echo "$word"
+function get_next_prefix() {
+  local env_file="$1"
+  local current_count
+  local next_count
+
+  # Read existing count
+  current_count=$(grep "^DB_PREFIX_COUNT=" "$env_file" | cut -d "=" -f 2 | tr -d '[:space:]')
+
+  # Initialize if empty or not a number
+  if [[ ! "$current_count" =~ ^[0-9]+$ ]]; then
+    current_count=-1
+  fi
+
+  # Increment
+  next_count=$((current_count + 1))
+
+  # Reset if > 999
+  if [ "$next_count" -gt 999 ]; then
+    next_count=0
+  fi
+
+  # Update .env file
+  if grep -q "^DB_PREFIX_COUNT=" "$env_file"; then
+     sed -i "s/^DB_PREFIX_COUNT=.*/DB_PREFIX_COUNT=$next_count/" "$env_file"
+  else
+     echo "DB_PREFIX_COUNT=$next_count" >> "$env_file"
+  fi
+
+  # Output formatted with leading zeros
+  printf "%03d" "$next_count"
 }
 
 function promptClonedDBName() {
-  local use_date_suffix="$1"
-  local ODOO_DEPLOYMENT_ENVIRONMENT="$2"
+  local env_file="$1"
+  local use_date_suffix="$2"
+  local ODOO_DEPLOYMENT_ENVIRONMENT="$3"
   local ODOO_DB_NAME_ENV
   local PASSPHRASE
   PASSPHRASE=$(generate_passphrase)
@@ -188,7 +210,7 @@ function main() {
     exit 1
   fi
 
-  ODOO_DB_NAME_ENV=$(promptClonedDBName "$USE_DATE_SUFFIX" "$ODOO_DEPLOYMENT_ENVIRONMENT")
+  ODOO_DB_NAME_ENV=$(promptClonedDBName "$ENV_FILE" "$USE_DATE_SUFFIX" "$ODOO_DEPLOYMENT_ENVIRONMENT")
 
   log_info "Start cloning database from '$ODOO_DATABASE_NAME_PRD' to '$ODOO_DB_NAME_ENV'"
 
