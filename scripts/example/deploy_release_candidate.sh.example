@@ -95,6 +95,25 @@ function fail_with_json() {
     log_error "$message"
     exit 1
 }
+
+function checkOdooEndpoint() {
+    local port="$1"
+    log_info "Checking if Odoo endpoint is accessible on port $port..."
+
+    if curl --output /dev/null --silent --head --fail "http://localhost:$port"; then
+        log_success "Odoo endpoint is accessible on port $port."
+        return 0
+    else
+        log_warn "Odoo endpoint is NOT accessible at http://localhost:$port. Retrying with longer timeout..."
+        if curl --output /dev/null --silent --head --fail --connect-timeout 10 "http://localhost:$port"; then
+            log_success "Odoo endpoint is accessible on port $port after retry."
+            return 0
+        else
+            log_error "Odoo endpoint is NOT accessible at http://localhost:$port. Please check if the service is running."
+            exit 1
+        fi
+    fi
+}
 # ------------------------------------
 
 # Self-elevate to root if not already
@@ -310,6 +329,9 @@ if [ "$IS_RENEW_DB" == "true" ]; then
     STG_PORT=$(grep "^PORT=" "$STG_ENV_FILE" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
     STG_ADMIN_PASSWD=$(grep "^ADMIN_PASSWD=" "$STG_ENV_FILE" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
 
+    # Check Staging (Destination) Health
+    checkOdooEndpoint "$STG_PORT"
+
     if [ -n "$STG_DB_NAME_FROM_ENV" ]; then
         log_info "Dropping old database '$STG_DB_NAME_FROM_ENV' if it exists..."
 
@@ -329,6 +351,9 @@ if [ "$IS_RENEW_DB" == "true" ]; then
     TEMP_BACKUP_FILE="/tmp/temp_backup_db-$SERVICE_NAME_PRD-$(date +"%Y%m%d_%H%M%S").zip"
     PRD_PORT=$(grep "^PORT=" "$PRD_ENV_FILE" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
     PRD_ADMIN_PASSWD=$(grep "^ADMIN_PASSWD=" "$PRD_ENV_FILE" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
+
+    # Check Production (Source) Health
+    checkOdooEndpoint "$PRD_PORT"
 
     log_info "Requesting backup from production $SERVICE_NAME_PRD instance..."
     if [ "$JSON_MODE" = "true" ]; then
@@ -377,13 +402,6 @@ if [ "$IS_RENEW_DB" == "true" ]; then
 
     log_info "Requesting restore to destination Odoo instance..."
     log_info "Neutralize database option: $NEUTRALIZE_DB"
-
-    # Pre-check if Odoo is reachable
-    if ! curl -sS --connect-timeout 5 "http://localhost:$STG_PORT/web/database/manager" > /dev/null; then
-        log_error "Staging Odoo instance is not reachable at http://localhost:$STG_PORT/web/database/manager. Is the container running and healthy?"
-        rm -f "$TEMP_BACKUP_FILE"
-        exit 1
-    fi
 
     # Build curl arguments
     CURL_RESTORE_ARGS=(

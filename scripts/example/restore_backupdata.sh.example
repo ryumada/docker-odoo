@@ -97,12 +97,15 @@ function isCurlInstalled() {
 
 function checkOdooEndpoint() {
   log_info "Checking if Odoo endpoint is accessible on port $PORT..."
+
   if curl --output /dev/null --silent --head --fail "http://localhost:$PORT"; then
     log_success "Odoo endpoint is accessible."
+    return 0
   else
     log_warn "Odoo endpoint is NOT accessible at http://localhost:$PORT. Retrying with longer timeout..."
     if curl --output /dev/null --silent --head --fail --connect-timeout 10 "http://localhost:$PORT"; then
-      log_success "Odoo endpoint is accessible."
+      log_success "Odoo endpoint is accessible after retry."
+      return 0
     else
       log_error "Odoo endpoint is NOT accessible at http://localhost:$PORT. Please check if the service is running."
       exit 1

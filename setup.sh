@@ -192,18 +192,18 @@ case "$DATABASE_NAME_OR_HELP" in
 esac
 
 function get_free_port() {
-  local start=\$1
-  local end=\$2
+  local start=$1
+  local end=$2
   local port
   # Try 200 distinct random ports from the range
-  for port in \$(shuf -i "\$start-\$end" -n 200); do
+  for port in $(shuf -i "$start-$end" -n 200); do
     # Check TCP port availability using python (since it is installed)
-    if python3 -c "import socket; s = socket.socket(socket.AF_INET, socket.SOCK_STREAM); s.bind(('', \$port))" 2>/dev/null; then
-       echo "\$port"
+    if python3 -c "import socket; s = socket.socket(socket.AF_INET, socket.SOCK_STREAM); s.bind(('', $port))" 2>/dev/null; then
+       echo "$port"
        return 0
     fi
   done
-  echo "Could not find a free port in range \$start-\$end after 200 attempts" >&2
+  echo "Could not find a free port in range $start-$end after 200 attempts" >&2
   return 1
 }
 EOF

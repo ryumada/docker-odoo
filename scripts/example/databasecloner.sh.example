@@ -39,6 +39,25 @@ log_warn() { log "${COLOR_WARN}" "⚠️" "$1"; }
 log_error() { log "${COLOR_ERROR}" "❌" "$1"; }
 # ------------------------------------
 
+function checkOdooEndpoint() {
+  local port="$1"
+  log_info "Checking if Odoo endpoint is accessible on port $port..."
+
+  if curl --output /dev/null --silent --head --fail "http://localhost:$port"; then
+    log_success "Odoo endpoint is accessible on port $port."
+    return 0
+  else
+    log_warn "Odoo endpoint is NOT accessible at http://localhost:$port. Retrying with longer timeout..."
+    if curl --output /dev/null --silent --head --fail --connect-timeout 10 "http://localhost:$port"; then
+      log_success "Odoo endpoint is accessible on port $port after retry."
+      return 0
+    else
+      log_error "Odoo endpoint is NOT accessible at http://localhost:$port. Please check if the service is running."
+      exit 1
+    fi
+  fi
+}
+
 error_handler() {
   log_error "An error occurred on line $1. Exiting..."
   exit 1
@@ -215,6 +234,9 @@ function main() {
   log_info "Start cloning database from '$ODOO_DATABASE_NAME_PRD' to '$ODOO_DB_NAME_ENV'"
 
   # 1. Backup source database using curl
+  # Check Source Health
+  checkOdooEndpoint "$SOURCE_PORT"
+
   log_info "Requesting backup from source Odoo instance..."
   curl -s -X POST \
        -F "master_pwd=$SOURCE_ADMIN_PASSWD" \
@@ -234,6 +256,9 @@ function main() {
   if ! docker compose -f "$PATH_TO_ODOO_ENV/docker-compose.yml" up -d > /dev/null 2>&1; then
     log_warn "Could not start destination environment. It might already be running or there could be an issue."
   fi
+
+  # Check Destination Health
+  checkOdooEndpoint "$DEST_PORT"
 
   log_info "Dropping old database '$ODOO_DB_NAME_ENV' if it exists..."
   drop_response=$(curl -s -X POST \
