@@ -1,28 +1,17 @@
-#!/usr/bin/env bash
-set -e
-# Category: Utility
-# Description: Manages Odoo snapshots (Create, List, Restore).
-# Usage: ./scripts/snapshot.sh {create|list|restore} [options]
-# Dependencies: docker, sudo, zstd, tar, pg_dump, psql
+#!/bin/bash
 
-# Detect Repository Owner to run non-root commands as that user
 CURRENT_DIR=$(dirname "$(readlink -f "$0")")
 CURRENT_DIR_USER=$(stat -c '%U' "$CURRENT_DIR")
 PATH_TO_ODOO=$(sudo -u "$CURRENT_DIR_USER" git -C "$(dirname "$(readlink -f "$0")")" rev-parse --show-toplevel)
 SERVICE_NAME=$(basename "$PATH_TO_ODOO")
 REPOSITORY_OWNER=$(stat -c '%U' "$PATH_TO_ODOO")
 
-# Configuration
-ENV_FILE=".env"
-UPDATE_SCRIPT="./scripts/update-env-file.sh"
-MAX_BACKUPS=3
-
 # --- Logging Functions & Colors ---
 # Define colors for log messages
 readonly COLOR_RESET="\033[0m"
 readonly COLOR_INFO="\033[0;34m"
 readonly COLOR_SUCCESS="\033[0;32m"
-readonly COLOR_WARN="\033[1;33m"
+readonly COLOR_WARN="\033[0;33m"
 readonly COLOR_ERROR="\033[0;31m"
 
 # Function to log messages with a specific color and emoji
@@ -39,179 +28,279 @@ log_warn() { log "${COLOR_WARN}" "⚠️" "$1"; }
 log_error() { log "${COLOR_ERROR}" "❌" "$1"; }
 # ------------------------------------
 
-# Self-elevate to root if not already
-if [ "$(id -u)" -ne 0 ]; then
-    log_info "Elevating permissions to root..."
-    # shellcheck disable=SC2093
-    exec sudo "$0" "$@" # Re-run the script with sudo
-    log_error "Failed to elevate to root. Please run with sudo." # This will only run if exec fails
+function areYouReallySure() {
+  tar_file_path=$1
+  ASK_TO_REPLACE_EXISTING_SNAPSHOT=$2
+  if [ -f "$tar_file_path" ]; then
+    if [ "$ASK_TO_REPLACE_EXISTING_SNAPSHOT" == "Y" ]; then
+      echo "current snapshot file already exists, do you want to overwrite it? ($tar_file_path)"
+      echo -e "type 'yes I am sure' to continue.\n"
+
+      read -rp ": " CONFIRMATION
+
+      case $CONFIRMATION in
+        "yes I am sure")
+          log_info "Overwriting the current snapshot file."
+          rm -f "$tar_file_path"
+          ;;
+        *)
+          log_error "You're not sure, okay. Now exiting the script."
+          exit 1
+          ;;
+      esac
+    else
+      log_info "Removing the existing snapshot file."
+      rm -f "$tar_file_path"
+    fi
+  fi
+}
+
+function getGitHash() {
+  local git_path=$1
+  local output_file=$2
+  local git_real_owner=$(stat -c '%U' "$git_path")
+
+  {
+      echo "  Updated at [$(date +"%Y-%m-%d %H:%M:%S")]"
+      echo "  Git Directory: $git_path"
+      echo "  Git Remote: $(sudo -u "$git_real_owner" git -C "$git_path" remote get-url origin)"
+      echo "  Git Branch: $(sudo -u "$git_real_owner" git -C "$git_path" branch --show-current)"
+      echo "  Git Hashes: $(sudo -u "$git_real_owner" git -C "$git_path" rev-parse HEAD)"
+      echo ""
+  } >> "$output_file"
+}
+
+function getSubDirectories() {
+  dir=$1
+  subdirs="$(ls -d "$dir"/*/)"
+  echo "$subdirs"
+}
+
+function isDirectoryGitRepository() {
+  # _inherit = writeGitHash
+
+  dir=$1
+
+  if [ -d "$dir/.git" ]; then
+    if git rev-parse --is-inside-work-tree &>/dev/null; then
+      return 0
+    else
+      return 1
+    fi
+  else
+    return 1
+  fi
+}
+
+function moveSnapshotFileToTempDir() {
+  local tar_file_path=$1
+  local tar_file_name=$2
+
+  local temp_dir
+  temp_dir="$tar_file_path-$(date +"%Y%m%d-%H%M%S")"
+  if ! OUTPUT_mkdir=$(mkdir "$temp_dir" 2>&1); then
+    log_error "Can't create the temporary directory: $OUTPUT_mkdir"
     exit 1
-fi
+  else
+    log_success "Create the temporary directory"
+  fi
 
-error_handler() {
-    log_error "An error occurred on line $1"
-}
-trap 'error_handler $LINENO' ERR
+  log_info "Moving the snapshot file to the temporary directory."
+  mv "$tar_file_path" "$temp_dir/"
 
-# --- Configuration ---
-SNAPSHOT_DIR="$PATH_TO_ODOO/snapshots"
-DB_NAME=$(grep "^DB_NAME=" "$PATH_TO_ODOO/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
-DATA_DIR="/var/lib/odoo"
-FILESTORE_DIR="$DATA_DIR/$SERVICE_NAME/filestore/$DB_NAME"
+  log_info "change the permission and owner of the temporary directory"
+  chmod 755 "$temp_dir"
+  chmod 644 "$temp_dir/$tar_file_name"
+  chown -R "$REPOSITORY_OWNER": "$temp_dir"
 
-# Check dependencies
-for cmd in docker sudo zstd tar pg_dump psql; do
-    if ! command -v $cmd &> /dev/null; then
-        log_error "$cmd could not be found. Please install it."
-        exit 1
-    fi
-done
-
-mkdir -p "$SNAPSHOT_DIR"
-chown "$REPOSITORY_OWNER:$REPOSITORY_OWNER" "$SNAPSHOT_DIR"
-
-# --- Functions ---
-
-function create_snapshot() {
-    local snapshot_name="snapshot_$(date +%Y%m%d_%H%M%S)"
-    local snapshot_path="$SNAPSHOT_DIR/$snapshot_name"
-    
-    log_info "Creating snapshot: $snapshot_name"
-    mkdir -p "$snapshot_path"
-
-    # Database Dump
-    log_info "Dumping database $DB_NAME..."
-    if sudo -u postgres pg_dump -F c -b -v -f "$snapshot_path/db_dump.sql" "$DB_NAME"; then
-        log_success "Database dump successful."
-    else
-        log_error "Database dump failed."
-        rm -rf "$snapshot_path"
-        exit 1
-    fi
-
-    # Filestore Backup
-    if [ -d "$FILESTORE_DIR" ]; then
-        log_info "Backing up filestore..."
-        tar --use-compress-program=zstd -cf "$snapshot_path/filestore.tar.zst" -C "$(dirname "$FILESTORE_DIR")" "$(basename "$FILESTORE_DIR")"
-        log_success "Filestore backup successful."
-    else
-        log_warn "Filestore directory not found at $FILESTORE_DIR. Skipping filestore backup."
-    fi
-
-    # Metadata
-    echo "Date: $(date)" > "$snapshot_path/metadata.txt"
-    echo "Database: $DB_NAME" >> "$snapshot_path/metadata.txt"
-    echo "Service: $SERVICE_NAME" >> "$snapshot_path/metadata.txt"
-
-    # Compress the entire snapshot directory
-    log_info "Compressing snapshot..."
-    tar --use-compress-program=zstd -cf "$SNAPSHOT_DIR/$snapshot_name.tar.zst" -C "$SNAPSHOT_DIR" "$snapshot_name"
-    rm -rf "$snapshot_path"
-
-    log_success "Snapshot created at: $SNAPSHOT_DIR/$snapshot_name.tar.zst"
-    
-    # Cleanup old snapshots
-    # (Optional: remove older than N days or keep only latest N)
+  log_success "The snapshot File Created Successfully named $tar_file_name. File Backed up at $temp_dir/$tar_file_name"
 }
 
-function list_snapshots() {
-    log_info "Available Snapshots:"
-    ls -lh "$SNAPSHOT_DIR"/*.tar.zst 2>/dev/null || log_warn "No snapshots found."
+
+function writeGitHash() {
+  local search_dir=$1
+  local output_file=$2
+  local subdirs
+
+  subdirs="$(getSubDirectories "$search_dir")"
+
+  for dir in $subdirs; do
+    if isDirectoryGitRepository "$dir"; then
+      getGitHash "$dir" "$output_file"
+    else
+      log_warn "$dir is not a git repository. You need to backup this directory by adding it to your snapshot utilities."
+    fi
+  done
 }
 
-function restore_snapshot() {
-    local snapshot_file="$1"
-    
-    if [ -z "$snapshot_file" ]; then
-        list_snapshots
-        read -rp "Enter the filename of the snapshot to restore: " snapshot_file
-    fi
+function main() {
+  LOG_PATH=/var/log/odoo/_utilities/snapshot-$SERVICE_NAME.log
 
-    if [[ ! "$snapshot_file" == /* ]]; then
-        snapshot_file="$SNAPSHOT_DIR/$snapshot_file"
-    fi
+  # Redirect stdout and stderr to tee
+  exec > >(tee -a "$LOG_PATH") 2>&1
 
-    if [ ! -f "$snapshot_file" ]; then
-        log_error "Snapshot file not found: $snapshot_file"
-        exit 1
-    fi
+  # Self-elevate to root if not already
+  if [ "$(id -u)" -ne 0 ]; then
+      log_info "Elevating permissions to root..."
+      # shellcheck disable=SC2093
+      exec sudo "$0" "$@" # Re-run the script with sudo
+      log_error "Failed to elevate to root. Please run with sudo." # This will only run if exec fails
+      exit 1
+  fi
 
-    log_warn "WARNING: This will overwrite the current database '$DB_NAME' and filestore."
-    read -rp "Are you sure? [y/N]: " confirm
-    if [[ "$confirm" != "y" && "$confirm" != "Y" ]]; then
-        log_info "Restore cancelled."
-        exit 0
-    fi
+  # Setup cleanup trap
+  SQL_DUMP_FILE=""
+  cleanup() {
+      if [[ -n "$SQL_DUMP_FILE" && -f "$SQL_DUMP_FILE" ]]; then
+          rm -f "$SQL_DUMP_FILE"
+      fi
+  }
+  trap cleanup EXIT
 
-    log_info "Restoring from $snapshot_file..."
-    
-    local temp_dir
-    temp_dir=$(mktemp -d)
-    
-    log_info "Extracting snapshot..."
-    tar --use-compress-program=zstd -xf "$snapshot_file" -C "$temp_dir"
-    
-    local snapshot_folder
-    snapshot_folder=$(ls "$temp_dir")
-    local snapshot_root="$temp_dir/$snapshot_folder"
+  echo "-------------------------------------------------------------------------------"
+  echo " DAILY SNAPSHOT FOR $SERVICE_NAME @ $(date +"%A, %d %B %Y %H:%M %Z")"
+  echo "-------------------------------------------------------------------------------"
 
-    # Restore Database
-    log_info "Dropping existing database..."
-    if sudo -u postgres psql -c "DROP DATABASE IF EXISTS \"$DB_NAME\""; then
-         log_success "Database dropped."
+  # enter the production database name this is required to backup the database
+  # Robust parsing for DB_NAME
+  ODOO_DATABASE_NAME_PRD=$(grep "^DB_NAME=" "$PATH_TO_ODOO/.env" | cut -d '=' -f2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//')
+
+  if [ -z "$ODOO_DATABASE_NAME_PRD" ]; then
+    log_error "Please setup DB_NAME in your .env file!"
+    exit 1
+  fi
+
+  # ask to replace the existing snapshot file
+  # enter "Y" to add question to replace the existing snapshot file
+  ASK_TO_REPLACE_EXISTING_SNAPSHOT=$(grep "^ASK_TO_REPLACE_EXISTING_SNAPSHOT=" "$PATH_TO_ODOO/.env" | cut -d '=' -f2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//')
+
+  # Custom directories to backup (semicolon separated)
+  SNAPSHOT_CUSTOM_DIRS=$(grep "^SNAPSHOT_CUSTOM_DIRS=" "$PATH_TO_ODOO/.env" | cut -d '=' -f2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//')
+
+  # you can leave it as is to back up to the /tmp directory instead of Google Cloud Storage (GCS)
+  GCS_BUCKET_NAME=$(grep "^GCS_BUCKET_NAME=" "$PATH_TO_ODOO/.env" | cut -d '=' -f2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//')
+
+  ## This variable below to define the new variable (DON'T EDIT)
+  # Use array for files
+  files_dirs_to_tar=()
+
+  ## Add Directory (ADD MORE VARIABLE TO ADD NEW DIRECTORY for the archive by uncommenting and adding.)
+  # files_dirs_to_tar+=("enter_path_to_directory")
+
+  # Generate Git Hashes to a temporary file
+  GIT_HASHES_FILE=$(mktemp --tmpdir "git_hashes_XXXXXX.txt")
+  chmod 644 "$GIT_HASHES_FILE"
+  # Clean up git hash file on exit
+  trap 'rm -f "$GIT_HASHES_FILE"' EXIT
+
+  writeGitHash "$PATH_TO_ODOO/git" "$GIT_HASHES_FILE"
+  writeGitHash "$PATH_TO_ODOO/odoo-base" "$GIT_HASHES_FILE"
+
+  files_dirs_to_tar+=("$GIT_HASHES_FILE")
+
+  ## Add the additional odoo module directory that don't use git (uncomment and add the path of the directory)
+  # files_dirs_to_tar+=("git/enter_additional_git_odoo_module_directory")
+
+  ## Make sure that the datadir location is correct (enter the correct one)
+  files_dirs_to_tar+=("/var/lib/odoo/$SERVICE_NAME/filestore/$ODOO_DATABASE_NAME_PRD")
+
+
+  # Add custom directories if defined
+  if [ -n "$SNAPSHOT_CUSTOM_DIRS" ]; then
+    log_info "Processing custom backup directories..."
+    IFS=';' read -ra ADDR <<< "$SNAPSHOT_CUSTOM_DIRS"
+    for dir in "${ADDR[@]}"; do
+        # Trim whitespace
+        dir=$(echo "$dir" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+        if [ -n "$dir" ]; then
+            if [ -e "$dir" ]; then
+                log_info "Adding custom directory: $dir"
+                files_dirs_to_tar+=("$dir")
+            else
+                log_warn "Custom directory not found: $dir"
+            fi
+        fi
+    done
+  fi
+
+  TAR_FILE_NAME=snapshot-$SERVICE_NAME.tar.zst
+  TAR_FILE_PATH=/tmp/$TAR_FILE_NAME
+
+  areYouReallySure "$TAR_FILE_PATH" "$ASK_TO_REPLACE_EXISTING_SNAPSHOT"
+
+  # Use absolute paths for consistency
+  files_dirs_to_tar+=("$PATH_TO_ODOO/.secrets")
+  files_dirs_to_tar+=("$PATH_TO_ODOO/conf/odoo.conf")
+  files_dirs_to_tar+=("$PATH_TO_ODOO/.env")
+  files_dirs_to_tar+=("$PATH_TO_ODOO/requirements.txt")
+
+  # Use secure temp file for SQL dump
+  SQL_DUMP_FILE=$(mktemp --tmpdir "${ODOO_DATABASE_NAME_PRD}_XXXXXX.sql")
+  chown postgres "$SQL_DUMP_FILE"
+  files_dirs_to_tar+=("$SQL_DUMP_FILE")
+
+  # Update trap to clean up both files
+  trap 'rm -f "$SQL_DUMP_FILE" "$GIT_HASHES_FILE"' EXIT
+
+  # These files not backupped to the snapshot file
+  ## crontab or /etc/cron.d directory is the place where docker-odoo cron jobs are stored.
+  ## /etc/nginx/sites-available is the place where nginx configuration files are stored.
+  ## /etc/logrotate.d is the place where logrotate configuration files are stored.
+
+  if [ -f "$PATH_TO_ODOO/scripts/backupdata-$SERVICE_NAME" ]; then
+    files_dirs_to_tar+=("$PATH_TO_ODOO/scripts/backupdata-$SERVICE_NAME")
+  fi
+
+  if [ -f "$PATH_TO_ODOO/scripts/databasecloner-$SERVICE_NAME" ]; then
+    files_dirs_to_tar+=("$PATH_TO_ODOO/scripts/databasecloner-$SERVICE_NAME")
+  fi
+
+  if [ -f "$PATH_TO_ODOO/scripts/snapshot-$SERVICE_NAME" ]; then
+    files_dirs_to_tar+=("$PATH_TO_ODOO/scripts/snapshot-$SERVICE_NAME")
+  fi
+
+  if ! command -v zstd >/dev/null 2>&1; then
+    log_error "zstd is not installed. Please install zstd first."
+    echo "For Ubuntu: sudo apt install zstd"
+    echo "For CentOS: sudo yum install zstd"
+    exit 1
+  fi
+
+  log_info "Dumping $ODOO_DATABASE_NAME_PRD database to $SQL_DUMP_FILE..."
+  # Use the secure temp file
+  if ! sudo -u postgres pg_dump -f "$SQL_DUMP_FILE" "$ODOO_DATABASE_NAME_PRD" > /dev/null 2>&1; then
+    log_error "pg_dump failed to dump the database."
+    exit 1
+  fi
+
+  log_info "Backing up the database and its datadir..."
+  # Use array expansion
+  if ! tar -cf "$TAR_FILE_PATH" -I "zstd -vT0 -7 --ultra" "${files_dirs_to_tar[@]}" > /dev/null 2>&1; then
+    log_error "tar failed to backup the database and its datadir."
+    exit 1
+  fi
+
+  log_info "Changing the ownership of the snapshot file..."
+  chown "$REPOSITORY_OWNER": "$TAR_FILE_PATH"
+
+  if [ "$GCS_BUCKET_NAME" != "" ]; then
+    if sudo -u "$REPOSITORY_OWNER" gsutil ls "gs://$GCS_BUCKET_NAME" > /dev/null 2>&1; then
+      log_info "Moving the snapshot file to Google Cloud Storage bucket: gs://$GCS_BUCKET_NAME."
+      if sudo -u "$REPOSITORY_OWNER" gsutil -m mv "$TAR_FILE_PATH" "gs://$GCS_BUCKET_NAME/$TAR_FILE_NAME"; then
+        log_success "The snapshot File Created Successfully named $TAR_FILE_NAME. File Backed up at gs://$GCS_BUCKET_NAME/$TAR_FILE_NAME."
+      else
+        log_error "Error can't move the snapshot file to gs://$GCS_BUCKET_NAME. Exit code: $?"
+        moveSnapshotFileToTempDir "$TAR_FILE_PATH" "$TAR_FILE_NAME"
+      fi
     else
-         log_error "Failed to drop database."
-         rm -rf "$temp_dir"
-         exit 1
+      log_error "Error cannot move the snapshot file to Google Cloud Storage (GCS). Exit code: $?"
+      log_error "Please make sure the GCS_BUCKET_NAME on your .env file is the valid GCS Bucket Name."
+      moveSnapshotFileToTempDir "$TAR_FILE_PATH" "$TAR_FILE_NAME"
     fi
-
-    log_info "Creating database..."
-    if sudo -u postgres psql -c "CREATE DATABASE \"$DB_NAME\""; then
-         log_success "Database created."
-    else
-         log_error "Failed to create database."
-         rm -rf "$temp_dir"
-         exit 1
-    fi
-
-    log_info "Restoring database dump..."
-    if sudo -u postgres pg_restore -d "$DB_NAME" -v "$snapshot_root/db_dump.sql"; then
-         log_success "Database restored."
-    else
-         log_warn "pg_restore finished with errors (check output). proceeding..."
-    fi
-
-    # Restore Filestore
-    if [ -f "$snapshot_root/filestore.tar.zst" ]; then
-        log_info "Restoring filestore..."
-        rm -rf "$FILESTORE_DIR"
-        mkdir -p "$(dirname "$FILESTORE_DIR")"
-        tar --use-compress-program=zstd -xf "$snapshot_root/filestore.tar.zst" -C "$(dirname "$FILESTORE_DIR")"
-        chown -R odoo:odoo "$FILESTORE_DIR"
-        log_success "Filestore restored."
-    fi
-
-    rm -rf "$temp_dir"
-    
-    log_info "Restarting Odoo..."
-    docker compose restart odoo
-
-    log_success "Restore complete."
+  else
+    moveSnapshotFileToTempDir "$TAR_FILE_PATH" "$TAR_FILE_NAME"
+  fi
+  echo
 }
 
-# --- Main ---
-case "$1" in
-    create)
-        create_snapshot
-        ;;
-    list)
-        list_snapshots
-        ;;
-    restore)
-        restore_snapshot "$2"
-        ;;
-    *)
-        echo "Usage: $0 {create|list|restore}"
-        exit 1
-        ;;
-esac
+main "$@"
