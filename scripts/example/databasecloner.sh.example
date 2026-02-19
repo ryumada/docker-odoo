@@ -300,15 +300,15 @@ function main() {
       "http://localhost:$DEST_PORT/web/database/restore")
   fi
 
+  log_info "Removing temporary backup file: $TEMP_BACKUP_FILE"
+  rm -f "$TEMP_BACKUP_FILE"
+
   if [[ "$response" == *"error"* ]] || [[ "$response" == *"incorrect master password"* ]]; then
     log_error "Failed to restore database to destination. Response: $response"
-    rm -f "$TEMP_BACKUP_FILE"
     exit 1
   fi
-  log_success "Database restore command sent successfully to destination."
 
-  log_info "Cleaning up temporary backup file..."
-  rm -f "$TEMP_BACKUP_FILE"
+  log_success "Database restore command sent successfully to destination."
 
   log_info "Restarting the destination environment '$ODOO_DEPLOYMENT_ENVIRONMENT'..."
   docker compose -f "$PATH_TO_ODOO_ENV/docker-compose.yml" up -d > /dev/null 2>&1 || { log_error "Error restarting $ODOO_DEPLOYMENT_ENVIRONMENT"; exit 1; }
