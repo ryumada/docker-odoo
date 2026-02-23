@@ -57,6 +57,8 @@ ODOO_CONF_EXAMPLE="$PATH_TO_ODOO/conf/odoo.conf.example"
 ODOO_CONF="$PATH_TO_ODOO/conf/odoo.conf"
 ENV_FILE_PATH="$PATH_TO_ODOO/.env"
 
+ODOO_LINUX_USER="odoo"
+
 log_info "Updating Odoo configuration file..."
 
 # Copy the example configuration file to the final configuration file
@@ -118,6 +120,13 @@ if [ -f "$ENV_FILE_PATH" ]; then
   fi
 else
   log_warn ".env file not found. Using default values from odoo.conf.example."
+fi
+
+# Ensure correct ownership of the generated configuration files
+log_info "Ensuring correct ownership of configuration files..."
+chown "$ODOO_LINUX_USER:$ODOO_LINUX_USER" "$ODOO_CONF"
+if [ -f "$ODOO_CONF.bak" ]; then
+  chown "$ODOO_LINUX_USER:$ODOO_LINUX_USER" "$ODOO_CONF.bak"
 fi
 
 log_success "Odoo configuration file has been updated."
