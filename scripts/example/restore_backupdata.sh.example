@@ -140,11 +140,17 @@ function restoreOdooDataViaEndpoint() {
       "http://localhost:$PORT/web/database/restore")
   fi
 
-  if [[ "$response" != *"error"* ]] && [[ "$response" != *"incorrect master password"* ]]; then
-    log_success "Database restore command sent successfully."
-  else
-    log_error "Failed to restore database via endpoint. Response: $response"
+  response_lower="${response,,}"
+
+  if [[ "$response_lower" == *"error"* ]] || \
+     [[ "$response_lower" == *"incorrect master password"* ]] || \
+     [[ "$response_lower" == *"no space left"* ]] || \
+     [[ "$response_lower" == *"<html"* ]] || \
+     [ -z "$response" ]; then
+    log_error "Failed to restore database via endpoint. Response: ${response:-'Empty response (Likely timeout or bad gateway)'}"
     exit 1
+  else
+    log_success "Database restore command sent successfully."
   fi
 }
 
@@ -223,6 +229,8 @@ function main() {
         "http://localhost:$PORT/web/database/drop")
 
       # Verify Drop - if API returned valid HTML/JSON it might still have failed, so we check existence again or check response
+      drop_response_lower="${drop_response,,}"
+
       # Simplest is to check existence via psql again
       if sudo -u postgres psql -lqt | cut -d \| -f 1 | grep -qw "$RESTORED_DB_NAME"; then
          log_warn "API drop might have failed or is slow. Attempting force drop via psql..."

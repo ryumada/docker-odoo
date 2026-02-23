@@ -274,7 +274,11 @@ function main() {
     -d "name=$ODOO_DB_NAME_ENV" \
     "http://localhost:$DEST_PORT/web/database/drop")
 
-  if [[ "$drop_response" == *"error"* ]] && [[ "$drop_response" != *"does not exist"* ]]; then
+  drop_response_lower="${drop_response,,}"
+
+  if [[ "$drop_response_lower" == *"error"* ]] && [[ "$drop_response_lower" != *"does not exist"* ]] || \
+     [[ "$drop_response_lower" == *"no space left"* ]] || \
+     [[ "$drop_response_lower" == *"<html"* ]]; then
       log_warn "Could not drop database '$ODOO_DB_NAME_ENV'. It might not exist or another error occurred. Response: $drop_response"
   else
       log_info "Drop database command sent for '$ODOO_DB_NAME_ENV'."
@@ -309,8 +313,14 @@ function main() {
   log_info "Removing temporary backup file: $TEMP_BACKUP_FILE"
   rm -f "$TEMP_BACKUP_FILE"
 
-  if [[ "$response" == *"error"* ]] || [[ "$response" == *"incorrect master password"* ]]; then
-    log_error "Failed to restore database to destination. Response: $response"
+  response_lower="${response,,}"
+
+  if [[ "$response_lower" == *"error"* ]] || \
+     [[ "$response_lower" == *"incorrect master password"* ]] || \
+     [[ "$response_lower" == *"no space left"* ]] || \
+     [[ "$response_lower" == *"<html"* ]] || \
+     [ -z "$response" ]; then
+    log_error "Failed to restore database to destination. Response: ${response:-'Empty response (Likely timeout or bad gateway)'}"
     exit 1
   fi
 

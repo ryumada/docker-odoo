@@ -346,7 +346,11 @@ if [ "$IS_RENEW_DB" == "true" ]; then
             -d "name=$STG_DB_NAME_FROM_ENV" \
             "http://localhost:$STG_PORT/web/database/drop")
 
-        if [[ "$drop_response" == *"error"* ]] && [[ "$drop_response" != *"does not exist"* ]]; then
+        drop_response_lower="${drop_response,,}"
+
+        if [[ "$drop_response_lower" == *"error"* ]] && [[ "$drop_response_lower" != *"does not exist"* ]] || \
+           [[ "$drop_response_lower" == *"no space left"* ]] || \
+           [[ "$drop_response_lower" == *"<html"* ]]; then
             log_warn "Could not drop database '$STG_DB_NAME_FROM_ENV'. It might not exist or another error occurred. Response: $drop_response"
         else
             log_success "Drop database command completed for '$STG_DB_NAME_FROM_ENV'."
@@ -435,8 +439,15 @@ if [ "$IS_RENEW_DB" == "true" ]; then
     log_info "Removing temporary backup file: $TEMP_BACKUP_FILE"
     rm -f "$TEMP_BACKUP_FILE"
 
-    if [[ "$response" == *"error"* ]] || [[ "$response" == *"incorrect master password"* ]] || [ -z "$response" ]; then
-        log_error "Failed to restore database to staging environment. Response: ${response:-'Empty response (Likely timeout)'}"
+    response_lower="${response,,}"
+
+    # Catch empty responses, explicit errors, or any HTML error pages
+    if [[ "$response_lower" == *"error"* ]] || \
+       [[ "$response_lower" == *"incorrect master password"* ]] || \
+       [[ "$response_lower" == *"no space left"* ]] || \
+       [[ "$response_lower" == *"<html"* ]] || \
+       [ -z "$response" ]; then
+        log_error "Failed to restore database to staging environment. Server Response: ${response:-'Empty response (Likely timeout or bad gateway)'}"
         exit 1
     fi
 
