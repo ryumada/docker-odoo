@@ -109,6 +109,28 @@ function fail_with_json() {
     exit 1
 }
 
+function list_databases() {
+    local db_user_file="$PATH_TO_ODOO/.secrets/db_user"
+    if [ ! -f "$db_user_file" ]; then
+        log_error "Secrets file not found: $db_user_file"
+        exit 1
+    fi
+
+    local db_user
+    db_user=$(cat "$db_user_file" | tr -d '[:space:]')
+
+    if [ -z "$db_user" ]; then
+        log_error "Database user is empty in $db_user_file"
+        exit 1
+    fi
+
+    log_info "Listing databases owned by user: $db_user"
+    echo "--------------------------------------------------"
+    sudo -u postgres psql -t -c "SELECT datname FROM pg_database WHERE datdba = (SELECT oid FROM pg_roles WHERE rolname = '$db_user');" | awk '{$1=$1};1' | grep -v '^\s*$' || echo "No databases found."
+    echo "--------------------------------------------------"
+    exit 0
+}
+
 function checkOdooEndpoint() {
     local port="$1"
     log_info "Checking if Odoo endpoint is accessible on port $port..."
@@ -153,38 +175,64 @@ set -- "${ARGS[@]}"
 
 # --- Usage / Help Function ---
 display_usage() {
-    echo -e "${COLOR_INFO}Usage:${COLOR_RESET} sudo $0 <REPO_NAME> <BRANCH> <RENEW_DB> [MODULES]"
+    echo -e "${COLOR_INFO}Usage:${COLOR_RESET} sudo $0 <REPO_NAME> <BRANCH> <RENEW_DB> [DB_NAME] [MODULES]"
+    echo -e "       sudo $0 --list-db"
     echo ""
     echo -e "${COLOR_CYAN}Arguments:${COLOR_RESET}"
     echo -e "  ${COLOR_SUCCESS}1. REPO_NAME${COLOR_RESET}       : The directory name of the git repository (inside stg/git/)."
     echo -e "  ${COLOR_SUCCESS}2. BRANCH${COLOR_RESET}          : The target Git branch to checkout (e.g., 'staging', 'main')."
     echo -e "  ${COLOR_SUCCESS}3. RENEW_DB${COLOR_RESET}        : Set to 'true' or '1' to drop Staging DB and clone from Production."
     echo -e "                       Set to 'false' or '0' to keep existing Staging data."
-    echo -e "  ${COLOR_SUCCESS}4. MODULES${COLOR_RESET}         : (Optional) Comma-separated list of modules to update (e.g., 'sale,stock')."
+    echo -e "  ${COLOR_SUCCESS}4. DB_NAME${COLOR_RESET}         : (Required if RENEW_DB is false) The name of the target database."
+    echo -e "  ${COLOR_SUCCESS}5. MODULES${COLOR_RESET}         : (Optional) Comma-separated list of modules to update (e.g., 'sale,stock')."
+    echo ""
+    echo -e "${COLOR_CYAN}Options:${COLOR_RESET}"
+    echo -e "  ${COLOR_SUCCESS}-h, --help${COLOR_RESET}         : Show this help message and exit."
+    echo -e "  ${COLOR_SUCCESS}-l, --list-db${COLOR_RESET}      : List all databases owned by the project's pg user and exit."
     echo ""
     echo -e "${COLOR_CYAN}Examples:${COLOR_RESET}"
     echo "  # 1. Update code only (Fastest):"
-    echo "  sudo $0 odoo-custom release/feature_a false"
+    echo "  sudo $0 odoo-custom release/feature_a false my_existing_db"
     echo ""
     echo "  # 2. Update code and refresh Database from Prod (Full Reset):"
     echo "  sudo $0 odoo-custom release/feature_a true"
     echo ""
     echo "  # 3. Update code and specific modules without DB reset:"
-    echo "  sudo $0 odoo-custom release/feature_a false sale,inventory,account"
+    echo "  sudo $0 odoo-custom release/feature_a false my_existing_db sale,inventory,account"
     echo ""
 }
 
-# --- Check for Help Flag ---
+# --- Check for Help or List Flags ---
 if [[ "$1" == "-h" || "$1" == "--help" ]]; then
     display_usage
     exit 0
+elif [[ "$1" == "-l" || "$1" == "--list-db" ]]; then
+    list_databases
 fi
 
 # --- Inputs ---
 GIT_REPO_NAME=$1
 RELEASE_BRANCH=$2
 IS_RENEW_DB=$3
-MODULES_TO_UPDATE=$4
+
+case "${IS_RENEW_DB}" in
+    1|true|True|TRUE)
+        IS_RENEW_DB=true
+    ;;
+    *)
+        IS_RENEW_DB=false
+    ;;
+esac
+
+TARGET_DB=""
+MODULES_TO_UPDATE=""
+
+if [ "$IS_RENEW_DB" = "true" ]; then
+    MODULES_TO_UPDATE=$4
+else
+    TARGET_DB=$4
+    MODULES_TO_UPDATE=$5
+fi
 
 # --- Validation ---
 MISSING_ARGS=false
@@ -203,6 +251,11 @@ if [ -z "$IS_RENEW_DB" ]; then
     MISSING_ARGS=true
 fi
 
+if [ "$IS_RENEW_DB" = "false" ] && [ -z "$TARGET_DB" ]; then
+    log_error "Missing Argument 4: Target Database Name (Required when RENEW_DB is false)"
+    MISSING_ARGS=true
+fi
+
 if [ "$MISSING_ARGS" == "true" ]; then
     echo ""
     display_usage
@@ -214,23 +267,19 @@ SERVICE_NAME_PRD=${SERVICE_NAME%-*} # Assumes format like 'project-stg' -> 'proj
 
 # Try to grab this automatically from your .env file
 STG_ENV_FILE="$STG_PATH_TO_ODOO/.env"
-STG_DB_NAME_FROM_ENV=$(grep "^DB_NAME=" "$STG_ENV_FILE" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
-STG_DB_NAME="$STG_DB_NAME_FROM_ENV"
 
-# Fallback DB Name
-if [ -z "$STG_DB_NAME" ]; then
-    # Fallback if .env is empty
-    STG_DB_NAME="$(get_next_prefix "$STG_ENV_FILE")-$SERVICE_NAME-$(date +"%Y%m%d-%H%M%S")"
+if [ "$IS_RENEW_DB" = "true" ]; then
+    STG_DB_NAME_FROM_ENV=$(grep "^DB_NAME=" "$STG_ENV_FILE" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
+    STG_DB_NAME="$STG_DB_NAME_FROM_ENV"
+
+    # Fallback DB Name
+    if [ -z "$STG_DB_NAME" ]; then
+        # Fallback if .env is empty
+        STG_DB_NAME="$(get_next_prefix "$STG_ENV_FILE")-$SERVICE_NAME-$(date +"%Y%m%d-%H%M%S")"
+    fi
+else
+    STG_DB_NAME="$TARGET_DB"
 fi
-
-case "${IS_RENEW_DB}" in
-    1|true|True|TRUE)
-        IS_RENEW_DB=true
-    ;;
-    *)
-        IS_RENEW_DB=false
-    ;;
-esac
 
 STG_GIT_PATH="$STG_PATH_TO_ODOO/git/$GIT_REPO_NAME"
 
@@ -599,7 +648,20 @@ if [ "$JSON_MODE" = "true" ]; then
             FIRST_MODULE=0
         done
         echo ""
-        echo "  ]"
+        
+        if [ "$MODULE_UPDATE_ERROR" = "true" ]; then
+            echo "  ],"
+            echo "  \"error\": true,"
+            if command -v python3 >/dev/null 2>&1; then
+                JSON_SAFE_LOG=$(python3 -c 'import json, sys; print(json.dumps(sys.stdin.read()))' <<< "$UPDATE_OUTPUT")
+            else
+                ESCAPED=$(echo "$UPDATE_OUTPUT" | sed 's/\\/\\\\/g' | sed 's/"/\\"/g' | awk '{printf "%s\\n", $0}' | sed 's/\\n$//')
+                JSON_SAFE_LOG="\"$ESCAPED\""
+            fi
+            echo "  \"module_upgrade_log\": $JSON_SAFE_LOG"
+        else
+            echo "  ]"
+        fi
         echo "}"
     else
         echo "  ],"
