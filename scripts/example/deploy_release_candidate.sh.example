@@ -503,21 +503,33 @@ else
     sleep 10
     log_info "Updating modules: $MODULES_TO_UPDATE"
     # Using the 'odoo-module-upgrade' utility embedded in your image
+    MODULE_UPDATE_ERROR=false
+    UPDATE_OUTPUT=""
+    TEMP_UPDATE_LOG=$(mktemp)
     if [ "$JSON_MODE" = "true" ]; then
-        if docker compose exec odoo odoo-module-upgrade "$STG_DB_NAME" --update="$MODULES_TO_UPDATE" >&2; then
+        docker compose exec odoo odoo-module-upgrade "$STG_DB_NAME" --update="$MODULES_TO_UPDATE" 2>&1 | tee "$TEMP_UPDATE_LOG" >&2
+        if [ ${PIPESTATUS[0]} -ne 0 ]; then MODULE_UPDATE_ERROR=true; fi
+        UPDATE_OUTPUT=$(cat "$TEMP_UPDATE_LOG")
+        if [ "$MODULE_UPDATE_ERROR" = "false" ]; then
             log_success "Modules updated successfully."
         else
-            log_error "Failed to update modules."
-            exit 1
+            log_warn "Process complete, but the module update encountered an error."
+            log "${COLOR_ERROR}" "❌" "Odoo module upgrade log (Summary):"
+            echo "$UPDATE_OUTPUT" >&2
         fi
     else
-        if docker compose exec odoo odoo-module-upgrade "$STG_DB_NAME" --update="$MODULES_TO_UPDATE"; then
+        docker compose exec odoo odoo-module-upgrade "$STG_DB_NAME" --update="$MODULES_TO_UPDATE" 2>&1 | tee "$TEMP_UPDATE_LOG"
+        if [ ${PIPESTATUS[0]} -ne 0 ]; then MODULE_UPDATE_ERROR=true; fi
+        UPDATE_OUTPUT=$(cat "$TEMP_UPDATE_LOG")
+        if [ "$MODULE_UPDATE_ERROR" = "false" ]; then
             log_success "Modules updated successfully."
         else
-            log_error "Failed to update modules."
-            exit 1
+            log_warn "Process complete, but the module update encountered an error."
+            log "${COLOR_ERROR}" "❌" "Odoo module upgrade log (Summary):"
+            echo "$UPDATE_OUTPUT"
         fi
     fi
+    rm -f "$TEMP_UPDATE_LOG"
 fi
 
 if [ "$JSON_MODE" = "false" ]; then
