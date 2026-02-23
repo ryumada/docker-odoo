@@ -41,11 +41,17 @@ log_error() { log "${COLOR_ERROR}" "❌" "$1"; }
 
 # Error handler
 error_handler() {
-  log_error "An error occurred on line $1. Exiting..."
-  exit 1
+  local exit_code=$1
+  local line_no=$2
+  local command_name=$3
+  log_error "An error occurred on line $line_no."
+  log_error "Exit Code: $exit_code"
+  log_error "Command: $command_name"
+  log_error "Note: The specific error message should be printed in the lines above this error."
+  exit "$exit_code"
 }
 
-trap 'error_handler $LINENO' ERR
+trap 'error_handler $? $LINENO "$BASH_COMMAND"' ERR
 
 FILEPATHS_TO_REMOVE=(
   "/etc/sudoers.d/00-devops_as_devopsadmin"
