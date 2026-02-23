@@ -61,6 +61,14 @@ error_handler() {
 }
 
 trap 'error_handler $? $LINENO "$BASH_COMMAND"' ERR
+
+# --- Centralized Cleanup Hook ---
+cleanup_temp_files() {
+    if [ -n "$TEMP_BACKUP_FILE" ] && [ -f "$TEMP_BACKUP_FILE" ]; then
+        rm -f "$TEMP_BACKUP_FILE"
+    fi
+}
+trap cleanup_temp_files EXIT
 # ------------------------------------
 
 function get_next_prefix() {
@@ -399,7 +407,6 @@ if [ "$IS_RENEW_DB" == "true" ]; then
         log_error "Backup failed! Odoo returned an HTML error page instead of a ZIP file."
         log_error "Odoo Message: $ODOO_ERROR_MSG"
 
-        rm -f "$TEMP_BACKUP_FILE"
         exit 1
     fi
 

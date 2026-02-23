@@ -71,6 +71,14 @@ error_handler() {
 
 trap 'error_handler $? $LINENO "$BASH_COMMAND"' ERR
 
+# --- Centralized Cleanup Hook ---
+cleanup_temp_files() {
+    if [ -n "$TEMP_BACKUP_FILE" ] && [ -f "$TEMP_BACKUP_FILE" ]; then
+        rm -f "$TEMP_BACKUP_FILE"
+    fi
+}
+trap cleanup_temp_files EXIT
+
 function promptWhichEnvironment() {
   local environment="$1"
   local ODOO_DEPLOYMENT_ENVIRONMENT
@@ -309,9 +317,6 @@ function main() {
       -F "copy=true" \
       "http://localhost:$DEST_PORT/web/database/restore")
   fi
-
-  log_info "Removing temporary backup file: $TEMP_BACKUP_FILE"
-  rm -f "$TEMP_BACKUP_FILE"
 
   response_lower="${response,,}"
 

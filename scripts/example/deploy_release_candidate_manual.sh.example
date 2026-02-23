@@ -61,6 +61,15 @@ error_handler() {
 }
 
 trap 'error_handler $? $LINENO "$BASH_COMMAND"' ERR
+
+# --- Centralized Cleanup Hook ---
+cleanup_temp_files() {
+    local sql_file="/tmp/$STG_DB_NAME.sql"
+    if [ -n "$STG_DB_NAME" ] && [ -f "$sql_file" ]; then
+        rm -f "$sql_file"
+    fi
+}
+trap cleanup_temp_files EXIT
 # ------------------------------------
 
 function get_next_prefix() {
@@ -343,7 +352,6 @@ if [ "$IS_RENEW_DB" == "true" ]; then
 
     log_info "Restore $STG_DB_NAME from dump"
     sudo -u postgres psql -d "$STG_DB_NAME" -f "/tmp/$STG_DB_NAME.sql" > /dev/null 2>&1 || { log_error "Error restoring DB"; exit 1; }
-    rm -f "/tmp/$STG_DB_NAME.sql"
 
     # Neutralize
     NEUTRALIZE_DB=$(grep "^NEUTRALIZE_DATABASE=" "$PRD_ENV_FILE" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' | tr '[:upper:]' '[:lower:]')

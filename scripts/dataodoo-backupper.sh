@@ -52,6 +52,17 @@ error_handler() {
 
 trap 'error_handler $? $LINENO "$BASH_COMMAND"' ERR
 
+# --- Centralized Cleanup Hook ---
+cleanup_on_error() {
+    local exit_code=$?
+    if [ $exit_code -ne 0 ]; then
+        if [ -n "$temporary_directory" ] && [ -d "$temporary_directory" ]; then
+            rm -rf "$temporary_directory"
+        fi
+    fi
+}
+trap cleanup_on_error EXIT
+
 function isCurlInstalled() {
   if ! command -v curl &>/dev/null; then
     log_error "curl is not installed. Please install curl."

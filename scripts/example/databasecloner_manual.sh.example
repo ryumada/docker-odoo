@@ -52,6 +52,15 @@ error_handler() {
 
 trap 'error_handler $? $LINENO "$BASH_COMMAND"' ERR
 
+# --- Centralized Cleanup Hook ---
+cleanup_temp_files() {
+    local sql_file="/tmp/$ODOO_DB_NAME_ENV.sql"
+    if [ -n "$ODOO_DB_NAME_ENV" ] && [ -f "$sql_file" ]; then
+        rm -f "$sql_file"
+    fi
+}
+trap cleanup_temp_files EXIT
+
 function promptWhichEnvironment() {
   local environment="$1"
   local ODOO_DEPLOYMENT_ENVIRONMENT
@@ -307,7 +316,6 @@ function main() {
 
     log_info "Restore $ODOO_DB_NAME_ENV from $ODOO_DATABASE_NAME_PRD"
     sudo -u postgres psql -d "$ODOO_DB_NAME_ENV" -f "/tmp/$ODOO_DB_NAME_ENV.sql" > /dev/null 2>&1 || { log_error "Error restoring $ODOO_DB_NAME_ENV"; exit 1; }
-    rm "/tmp/$ODOO_DB_NAME_ENV.sql"
 
     NEUTRALIZE_DB=$(grep "^NEUTRALIZE_DATABASE=" "$PATH_TO_ODOO_ENV/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
     if [ -z "$NEUTRALIZE_DB" ]; then

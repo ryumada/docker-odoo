@@ -52,6 +52,18 @@ error_handler() {
 
 trap 'error_handler $? $LINENO "$BASH_COMMAND"' ERR
 
+# --- Centralized Cleanup Hook ---
+cleanup_on_error() {
+    local exit_code=$?
+    if [ $exit_code -ne 0 ]; then
+        # Only clean up the file if the script failed (so we don't delete successful backups)
+        if [ -n "$BACKUP_FILE_PATH" ] && [ -f "$BACKUP_FILE_PATH" ]; then
+            rm -f "$BACKUP_FILE_PATH"
+        fi
+    fi
+}
+trap cleanup_on_error EXIT
+
 function checkOdooEndpoint() {
   log_info "Checking if Odoo endpoint is accessible on port $PORT..."
   if curl --output /dev/null --silent --head --fail "http://localhost:$PORT"; then
@@ -117,24 +129,34 @@ curl -s -X POST \
      "http://localhost:$PORT/web/database/backup"
 
 if [ -s "$BACKUP_FILE_PATH" ]; then
-    if grep -q -i "<html" "$BACKUP_FILE_PATH"; then
-        ODOO_ERROR_MSG=$(grep '<div class="alert alert-danger">' "$BACKUP_FILE_PATH" | sed -n 's/.*<div class="alert alert-danger">\(.*\)<\/div>.*/\1/p')
+    MIME_TYPE=$(file -b --mime-type "$BACKUP_FILE_PATH")
+    if [[ "$MIME_TYPE" != "application/zip" ]]; then
+        response=$(head -c 5000 "$BACKUP_FILE_PATH")
+        response_lower="${response,,}"
 
-        if [ -z "$ODOO_ERROR_MSG" ]; then
-            ODOO_ERROR_MSG="Unknown error (The response was an HTML page, but the specific error message could not be parsed)."
+        if [[ "$response_lower" == *"error"* ]] && [[ "$response_lower" != *"does not exist"* ]] || \
+           [[ "$response_lower" == *"no space left"* ]] || \
+           [[ "$response_lower" == *"<html"* ]]; then
+
+            if [[ "$response_lower" == *"<html"* ]]; then
+                ODOO_ERROR_MSG=$(grep -a '<div class="alert alert-danger">' "$BACKUP_FILE_PATH" | sed -n 's/.*<div class="alert alert-danger">\(.*\)<\/div>.*/\1/p')
+
+                if [ -z "$ODOO_ERROR_MSG" ]; then
+                    ODOO_ERROR_MSG="Unknown error (The response was an HTML page, but the specific error message could not be parsed)."
+                fi
+
+                log_error "Backup failed! Odoo returned an HTML error page instead of a ZIP file."
+                log_error "Odoo Message: $ODOO_ERROR_MSG"
+            else
+                log_error "Backup failed! Response: $response"
+            fi
+            exit 1
         fi
-
-        log_error "Backup failed! Odoo returned an HTML error page instead of a ZIP file."
-        log_error "Odoo Message: $ODOO_ERROR_MSG"
-
-        rm -f "$BACKUP_FILE_PATH"
-        exit 1
     fi
 
     chown "$SUDO_USER:$SUDO_USER" "$BACKUP_FILE_PATH"
     log_success "Backup for '$ODOO_DATABASE_NAME_PRD' is completed. The backup file is located at $BACKUP_FILE_PATH."
 else
     log_error "Backup failed. The output file is empty. Check Odoo logs for details. Is the master password correct?"
-    rm -f "$BACKUP_FILE_PATH" # Clean up empty file
     exit 1
 fi

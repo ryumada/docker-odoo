@@ -148,14 +148,24 @@ function main() {
       exit 1
   fi
 
-  # Setup cleanup trap
   SQL_DUMP_FILE=""
-  cleanup() {
+  GIT_HASHES_FILE=""
+
+  cleanup_temp_files() {
+      local exit_code=$?
       if [[ -n "$SQL_DUMP_FILE" && -f "$SQL_DUMP_FILE" ]]; then
           rm -f "$SQL_DUMP_FILE"
       fi
+      if [[ -n "$GIT_HASHES_FILE" && -f "$GIT_HASHES_FILE" ]]; then
+          rm -f "$GIT_HASHES_FILE"
+      fi
+      if [ $exit_code -ne 0 ]; then
+          if [[ -n "$TAR_FILE_PATH" && -f "$TAR_FILE_PATH" ]]; then
+              rm -f "$TAR_FILE_PATH"
+          fi
+      fi
   }
-  trap cleanup EXIT
+  trap cleanup_temp_files EXIT
 
   echo "-------------------------------------------------------------------------------"
   echo " DAILY SNAPSHOT FOR $SERVICE_NAME @ $(date +"%A, %d %B %Y %H:%M %Z")"
@@ -190,8 +200,6 @@ function main() {
   # Generate Git Hashes to a temporary file
   GIT_HASHES_FILE=$(mktemp --tmpdir "git_hashes_XXXXXX.txt")
   chmod 644 "$GIT_HASHES_FILE"
-  # Clean up git hash file on exit
-  trap 'rm -f "$GIT_HASHES_FILE"' EXIT
 
   writeGitHash "$PATH_TO_ODOO/git" "$GIT_HASHES_FILE"
   writeGitHash "$PATH_TO_ODOO/odoo-base" "$GIT_HASHES_FILE"
@@ -239,8 +247,7 @@ function main() {
   chown postgres "$SQL_DUMP_FILE"
   files_dirs_to_tar+=("$SQL_DUMP_FILE")
 
-  # Update trap to clean up both files
-  trap 'rm -f "$SQL_DUMP_FILE" "$GIT_HASHES_FILE"' EXIT
+  # The trap function cleanup_temp_files handles cleanup securely
 
   # These files not backupped to the snapshot file
   ## crontab or /etc/cron.d directory is the place where docker-odoo cron jobs are stored.

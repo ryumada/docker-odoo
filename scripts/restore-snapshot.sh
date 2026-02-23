@@ -75,9 +75,9 @@ function areYouReallySure() {
 }
 
 function cleanup() {
-  log_info "Cleanup the temporary directory."
   rm -rf "$TEMP_DIR"
 }
+trap cleanup EXIT
 
 function isSnapshotFileExist() {
   if [ ! -f "/tmp/$TAR_FILE_NAME" ]; then
@@ -245,9 +245,6 @@ function main() {
     cat "$hash_file"
     echo "==========================================================================="
   fi
-
-  cleanup
-
   log_success "Restoration complete."
   log_warn "Run 'sudo ./setup.sh' to rebuild or pull the Odoo image as needed."
 }

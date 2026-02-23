@@ -52,6 +52,20 @@ error_handler() {
 
 trap 'error_handler $? $LINENO "$BASH_COMMAND"' ERR
 
+# --- Centralized Cleanup Hook ---
+cleanup_temp_files() {
+    local temp_dir="/tmp/backupdata-$SERVICE_NAME"
+    local temp_sql="/tmp/dump.sql"
+
+    if [ -d "$temp_dir" ]; then
+        rm -rf "$temp_dir"
+    fi
+    if [ -f "$temp_sql" ]; then
+        rm -f "$temp_sql"
+    fi
+}
+trap cleanup_temp_files EXIT
+
 ## ex. odoo-prd (replace with production database name or use read command to input the database name)
 ## Use only one of this command below
 ODOO_DATABASE_NAME_PRD=$(grep "^DB_NAME=" "$PATH_TO_ODOO/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
@@ -113,9 +127,6 @@ cd "/tmp/backupdata-$SERVICE_NAME" > /dev/null 2>&1 || { log_error "Can't change
 log_info "Compress all files to $ZIP_FILE_NAME"
 zip -r "/tmp/$ZIP_FILE_NAME" ./dump.sql filestore ./git_hashes.txt ./odoo-base_git_hashes.txt > /dev/null 2>&1 || { log_error "Error compressing files to /tmp/$ZIP_FILE_NAME"; exit 1; }
 chown "$SUDO_USER":"$SUDO_USER" "/tmp/$ZIP_FILE_NAME"
-
-log_info "Remove temporary directory"
-rm -rf "/tmp/backupdata-$SERVICE_NAME"
 
 log_success "Backup data for $SERVICE_NAME is completed. The backup file is located at /tmp/$ZIP_FILE_NAME."
 exit 0

@@ -52,6 +52,12 @@ error_handler() {
 
 trap 'error_handler $? $LINENO "$BASH_COMMAND"' ERR
 
+# --- Centralized Cleanup Hook ---
+cleanup_temp_files() {
+    rm -f /tmp/docker_* 2>/dev/null || true
+}
+trap cleanup_temp_files EXIT
+
 function installLogrotator() {
   containers=$(docker ps --format '{{.ID}}')
   container_ids=$(docker inspect --format '{{.Id}}' "$containers")

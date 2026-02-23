@@ -51,6 +51,17 @@ error_handler() {
 }
 
 trap 'error_handler $? $LINENO "$BASH_COMMAND"' ERR
+
+# --- Centralized Cleanup Hook ---
+cleanup_temp_files() {
+    if [ -n "$TEMP_DIR" ] && [ -d "$TEMP_DIR" ]; then
+        rm -rf "$TEMP_DIR"
+    fi
+    if [ -n "$SAFETY_BACKUP_DIR" ] && [ -d "$SAFETY_BACKUP_DIR" ]; then
+        rm -rf "$SAFETY_BACKUP_DIR"
+    fi
+}
+trap cleanup_temp_files EXIT
 # ------------------------------------
 
 function get_next_prefix() {
@@ -260,7 +271,6 @@ function main() {
       log_info "Dumping database $RESTORED_DB_NAME to $SAFETY_BACKUP_DIR/dump.sql"
       if ! sudo -u postgres pg_dump -f "$SAFETY_BACKUP_DIR/dump.sql" "$RESTORED_DB_NAME"; then
           log_error "Failed to dump database $RESTORED_DB_NAME. Aborting restore."
-          rm -rf "$SAFETY_BACKUP_DIR"
           exit 1
       fi
 
@@ -275,12 +285,9 @@ function main() {
       log_info "Zipping safety backup to $SAFETY_ZIP_PATH"
       if ! (cd "$SAFETY_BACKUP_DIR" && zip -r -q "$SAFETY_ZIP_PATH" .); then
           log_error "Failed to zip safety backup. Aborting restore."
-          rm -rf "$SAFETY_BACKUP_DIR"
           exit 1
       fi
 
-      # Cleanup temp dir
-      rm -rf "$SAFETY_BACKUP_DIR"
       chown "$SUDO_USER:$SUDO_USER" "$SAFETY_ZIP_PATH"
       log_success "Safety backup created at $SAFETY_ZIP_PATH"
 
@@ -332,9 +339,6 @@ function main() {
   if [ "$NEUTRALIZE_DB" = "true" ]; then
     sanitizeDatabase "$RESTORED_DB_NAME"
   fi
-
-  log_info "Cleaning up the temporary directory"
-  rm -rf "$TEMP_DIR"
 
   log_success "Finished restoring backup data for $SERVICE_NAME"
 }
