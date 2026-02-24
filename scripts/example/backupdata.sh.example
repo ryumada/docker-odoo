@@ -120,6 +120,11 @@ checkOdooEndpoint
 
 log_info "Start backup for database '$ODOO_DATABASE_NAME_PRD' from service '$SERVICE_NAME'"
 
+if [ -f "$BACKUP_FILE_PATH" ]; then
+    log_warn "Backup file already exists. Removing it..."
+    rm -f "$BACKUP_FILE_PATH"
+fi
+
 log_info "Requesting backup from Odoo..."
 curl -s -X POST \
      -F "master_pwd=$ADMIN_PASSWD" \

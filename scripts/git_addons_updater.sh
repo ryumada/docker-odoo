@@ -97,25 +97,33 @@ function process_repo() {
     local ret_updated=0
 
     if isDirectoryGitRepository "$subdir"; then
+        log_info "Attempting to update $repo_name..."
+
+        local old_commit
+        old_commit=$(sudo -u "$REPOSITORY_OWNER" git -C "$subdir" rev-parse HEAD 2>/dev/null || true)
+
         log_info "Fetching $repo_name..."
         # Fetch updates silently
         if ! sudo -u "$REPOSITORY_OWNER" git -C "$subdir" fetch -q 2>/dev/null; then
-             log_warn "Failed to fetch $repo_name"
-             status="fetch_failed"
+          log_warn "Failed to fetch $repo_name"
+          status="fetch_failed"
         else
-             # Check for changes
-             # @{u} refers to upstream
-             changed_files=$(sudo -u "$REPOSITORY_OWNER" git -C "$subdir" diff --name-only HEAD..@{u} 2>/dev/null)
+        log_info "Pulling updates for $repo_name..."
+          if ! sudo -u "$REPOSITORY_OWNER" git -C "$subdir" pull -q 2>/dev/null; then
+              log_warn "Failed to pull $repo_name"
+              status="clean_failed"
+          else
+            local new_commit
+            new_commit=$(sudo -u "$REPOSITORY_OWNER" git -C "$subdir" rev-parse HEAD 2>/dev/null || true)
 
-             if [ -n "$changed_files" ]; then
-                 log_info "Pulling updates for $repo_name..."
-                 if sudo -u "$REPOSITORY_OWNER" git -C "$subdir" pull -q; then
-                     status="success"
-                     ret_updated=1
-                 else
-                     status="clean_failed"
-                 fi
-             fi
+            if [ -n "$old_commit" ] && [ -n "$new_commit" ] && [ "$old_commit" != "$new_commit" ]; then
+              status="success"
+              ret_updated=1
+              changed_files=$(sudo -u "$REPOSITORY_OWNER" git -C "$subdir" diff --name-only "$old_commit" "$new_commit" 2>/dev/null || true)
+            else
+              status="clean"
+            fi
+          fi
         fi
     else
         log_warn "$subdir is not a git repository."
