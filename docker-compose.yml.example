@@ -15,6 +15,7 @@ services:
       dockerfile: dockerfile
       args:
         - APT_ADDITIONAL_PACKAGES=${APT_ADDITIONAL_PACKAGES}
+        - PIP_ADDITIONAL_PACKAGES=${PIP_ADDITIONAL_PACKAGES}
         - FAKETIME=${FAKETIME}
         - INSTALL_LIBREOFFICE=${INSTALL_LIBREOFFICE}
         - PYTHON_VERSION=${PYTHON_VERSION:-3.10-bookworm}
@@ -47,6 +48,7 @@ services:
         max-file: "3"
     environment:
       - APT_ADDITIONAL_PACKAGES
+      - PIP_ADDITIONAL_PACKAGES
       - DB_HOST
       - DB_MAXCONN
       - DB_NAME

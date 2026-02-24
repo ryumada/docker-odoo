@@ -87,13 +87,19 @@ RUN mkdir -p /var/log/odoo; \
 COPY --chown=odoo:odoo ./requirements.txt /opt/odoo/requirements.txt
 USER odoo
 WORKDIR /opt/odoo
+ARG PIP_ADDITIONAL_PACKAGES
 RUN export MAKEFLAGS="-j $(nproc)"; \
+    if [ -n "$PIP_ADDITIONAL_PACKAGES" ]; then \
+        echo "$PIP_ADDITIONAL_PACKAGES" | tr ' ' '\n' > /tmp/pip-constraint.txt; \
+        export PIP_CONSTRAINT=/tmp/pip-constraint.txt; \
+        pip install $PIP_ADDITIONAL_PACKAGES; \
+    fi; \
+    pip install --upgrade pip; \
     pip install -r ./requirements.txt
 
 # Switch back to root for further setup
 USER root
 
-# Copy configurations and static utilities
 # Copy configurations and static utilities
 COPY --chown=odoo:odoo ./entrypoint.sh /opt/odoo/entrypoint.sh
 COPY --chown=odoo:odoo ./utilities/odoo-shell /usr/local/bin/odoo-shell
