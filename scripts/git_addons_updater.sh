@@ -94,7 +94,7 @@ function process_repo() {
     repo_name=$(basename "$subdir")
     local status="clean"
     local changed_files=""
-    local ret_updated=0
+    local repo_updated=1 # false
 
     if isDirectoryGitRepository "$subdir"; then
         local current_branch
@@ -123,10 +123,12 @@ function process_repo() {
 
                 if [ -n "$old_commit" ] && [ -n "$new_commit" ] && [ "$old_commit" != "$new_commit" ]; then
                     status="success"
-                    ret_updated=1
+                    repo_updated=0 # true
+                    log_success "Updated $repo_name successfully."
                     changed_files=$(sudo -u "$REPOSITORY_OWNER" git -C "$subdir" diff --name-only "$old_commit" "$new_commit" 2>/dev/null || true)
                 else
                     status="clean"
+                    repo_updated=1 # false
                 fi
             fi
         fi
@@ -174,7 +176,7 @@ function process_repo() {
         fi
     fi
 
-    return $ret_updated
+    return $repo_updated
 }
 
 function main() {

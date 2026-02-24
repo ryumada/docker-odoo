@@ -104,44 +104,84 @@ function main() {
     exit 1
   fi
 
+function process_repo() {
+    local subdir=$1
+    local repo_name
+    repo_name=$(basename "$subdir")
+    local repo_updated=1 # false
+
+    if isDirectoryGitRepository "$subdir"; then
+        local current_branch
+        current_branch=$(sudo -u "$REPOSITORY_OWNER" git -C "$subdir" branch --show-current 2>/dev/null || true)
+        if [ -z "$current_branch" ]; then
+            current_branch="HEAD"
+        fi
+
+        log_info "Attempting to update $repo_name (Branch: $current_branch)..."
+
+        local old_commit
+        old_commit=$(sudo -u "$REPOSITORY_OWNER" git -C "$subdir" rev-parse "$current_branch" 2>/dev/null || true)
+
+        log_info "Fetching $repo_name..."
+        if ! sudo -u "$REPOSITORY_OWNER" git -C "$subdir" fetch -q 2>/dev/null; then
+            log_warn "Failed to fetch $repo_name"
+        else
+            log_info "Pulling updates for $repo_name..."
+            if ! sudo -u "$REPOSITORY_OWNER" git -C "$subdir" pull -q 2>/dev/null; then
+                log_warn "Failed to pull $repo_name"
+            else
+                local new_commit
+                new_commit=$(sudo -u "$REPOSITORY_OWNER" git -C "$subdir" rev-parse "$current_branch" 2>/dev/null || true)
+
+                if [ -n "$old_commit" ] && [ -n "$new_commit" ] && [ "$old_commit" != "$new_commit" ]; then
+                    log_success "Updated $repo_name successfully."
+                    repo_updated=0 # true
+                else
+                    log_info "$repo_name is already up to date."
+                fi
+            fi
+        fi
+    else
+        log_error "$subdir is not a git repository."
+        log_error "Please make sure you have added $subdir directory to your snapshot script to backup the addons manually."
+    fi
+
+    return $repo_updated
+}
+
+function main() {
+  # Self-elevate to root if not already
+  if [ "$(id -u)" -ne 0 ]; then
+      log_info "Elevating permissions to root..."
+      # shellcheck disable=SC2093
+      exec sudo "$0" "$@" # Re-run the script with sudo
+      log_error "Failed to elevate to root. Please run with sudo." # This will only run if exec fails
+      exit 1
+  fi
+
+  log_info "Change Directory to $PATH_TO_ODOO"
+  if ! cd "$PATH_TO_ODOO"; then
+    log_error "Can't change directory to $PATH_TO_ODOO"
+    exit 1
+  fi
+
+  log_info "Start checking git repositories"
+  GIT_SUBDIRS=$(getSubDirectories "$GIT_PATH")
+
+  if wc -l <<< "$GIT_SUBDIRS" | grep -q "0"; then
+    log_error "No git repositories found in $GIT_PATH"
+    exit 1
+  fi
+
+  if ! wc -l <<< "$GIT_SUBDIRS" | grep -q "1"; then
+    log_warn "Please make sure there is only one git repository in $GIT_PATH"
+    exit 1
+  fi
+
   pulledrepositories=0
   for subdir in $GIT_SUBDIRS; do
-    if isDirectoryGitRepository "$subdir"; then
-      local repo_name
-      repo_name=$(basename "$subdir")
-      local current_branch
-      current_branch=$(sudo -u "$REPOSITORY_OWNER" git -C "$subdir" branch --show-current 2>/dev/null || true)
-      if [ -z "$current_branch" ]; then
-          current_branch="HEAD"
-      fi
-
-      log_info "Attempting to update $repo_name (Branch: $current_branch)..."
-
-      local old_commit
-      old_commit=$(sudo -u "$REPOSITORY_OWNER" git -C "$subdir" rev-parse "$current_branch" 2>/dev/null || true)
-
-      log_info "Fetching $repo_name..."
-      if ! sudo -u "$REPOSITORY_OWNER" git -C "$subdir" fetch -q 2>/dev/null; then
-          log_warn "Failed to fetch $repo_name"
-      else
-          log_info "Pulling updates for $repo_name..."
-          if ! sudo -u "$REPOSITORY_OWNER" git -C "$subdir" pull -q 2>/dev/null; then
-              log_warn "Failed to pull $repo_name"
-          else
-              local new_commit
-              new_commit=$(sudo -u "$REPOSITORY_OWNER" git -C "$subdir" rev-parse "$current_branch" 2>/dev/null || true)
-
-              if [ -n "$old_commit" ] && [ -n "$new_commit" ] && [ "$old_commit" != "$new_commit" ]; then
-                  log_success "Updated $repo_name successfully."
-                  pulledrepositories=$((pulledrepositories+1))
-              else
-                  log_info "$repo_name is already up to date."
-              fi
-          fi
-      fi
-    else
-      log_error "$subdir is not a git repository."
-      log_error "Please make sure you have added $subdir directory to your snapshot script to backup the addons manually."
+    if process_repo "$subdir"; then
+      pulledrepositories=$((pulledrepositories+1))
     fi
   done
 
