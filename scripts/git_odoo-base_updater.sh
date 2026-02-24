@@ -107,10 +107,37 @@ function main() {
   pulledrepositories=0
   for subdir in $GIT_SUBDIRS; do
     if isDirectoryGitRepository "$subdir"; then
-      log_info "Fetch and pull $subdir"
-      sudo -u "$REPOSITORY_OWNER" git -C "$subdir" fetch
-      if sudo -u "$REPOSITORY_OWNER" git -C "$subdir" pull | grep -v "up to date" ;then
-        pulledrepositories=$((pulledrepositories+1))
+      local repo_name
+      repo_name=$(basename "$subdir")
+      local current_branch
+      current_branch=$(sudo -u "$REPOSITORY_OWNER" git -C "$subdir" branch --show-current 2>/dev/null || true)
+      if [ -z "$current_branch" ]; then
+          current_branch="HEAD"
+      fi
+
+      log_info "Attempting to update $repo_name (Branch: $current_branch)..."
+
+      local old_commit
+      old_commit=$(sudo -u "$REPOSITORY_OWNER" git -C "$subdir" rev-parse "$current_branch" 2>/dev/null || true)
+
+      log_info "Fetching $repo_name..."
+      if ! sudo -u "$REPOSITORY_OWNER" git -C "$subdir" fetch -q 2>/dev/null; then
+          log_warn "Failed to fetch $repo_name"
+      else
+          log_info "Pulling updates for $repo_name..."
+          if ! sudo -u "$REPOSITORY_OWNER" git -C "$subdir" pull -q 2>/dev/null; then
+              log_warn "Failed to pull $repo_name"
+          else
+              local new_commit
+              new_commit=$(sudo -u "$REPOSITORY_OWNER" git -C "$subdir" rev-parse "$current_branch" 2>/dev/null || true)
+
+              if [ -n "$old_commit" ] && [ -n "$new_commit" ] && [ "$old_commit" != "$new_commit" ]; then
+                  log_success "Updated $repo_name successfully."
+                  pulledrepositories=$((pulledrepositories+1))
+              else
+                  log_info "$repo_name is already up to date."
+              fi
+          fi
       fi
     else
       log_error "$subdir is not a git repository."

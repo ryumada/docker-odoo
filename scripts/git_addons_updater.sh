@@ -97,33 +97,38 @@ function process_repo() {
     local ret_updated=0
 
     if isDirectoryGitRepository "$subdir"; then
-        log_info "Attempting to update $repo_name..."
+        local current_branch
+        current_branch=$(sudo -u "$REPOSITORY_OWNER" git -C "$subdir" branch --show-current 2>/dev/null || true)
+        if [ -z "$current_branch" ]; then
+            current_branch="HEAD"
+        fi
+
+        log_info "Attempting to update $repo_name (Branch: $current_branch)..."
 
         local old_commit
-        old_commit=$(sudo -u "$REPOSITORY_OWNER" git -C "$subdir" rev-parse HEAD 2>/dev/null || true)
+        old_commit=$(sudo -u "$REPOSITORY_OWNER" git -C "$subdir" rev-parse "$current_branch" 2>/dev/null || true)
 
         log_info "Fetching $repo_name..."
-        # Fetch updates silently
         if ! sudo -u "$REPOSITORY_OWNER" git -C "$subdir" fetch -q 2>/dev/null; then
-          log_warn "Failed to fetch $repo_name"
-          status="fetch_failed"
+            log_warn "Failed to fetch $repo_name"
+            status="fetch_failed"
         else
-        log_info "Pulling updates for $repo_name..."
-          if ! sudo -u "$REPOSITORY_OWNER" git -C "$subdir" pull -q 2>/dev/null; then
-              log_warn "Failed to pull $repo_name"
-              status="clean_failed"
-          else
-            local new_commit
-            new_commit=$(sudo -u "$REPOSITORY_OWNER" git -C "$subdir" rev-parse HEAD 2>/dev/null || true)
-
-            if [ -n "$old_commit" ] && [ -n "$new_commit" ] && [ "$old_commit" != "$new_commit" ]; then
-              status="success"
-              ret_updated=1
-              changed_files=$(sudo -u "$REPOSITORY_OWNER" git -C "$subdir" diff --name-only "$old_commit" "$new_commit" 2>/dev/null || true)
+            log_info "Pulling updates for $repo_name..."
+            if ! sudo -u "$REPOSITORY_OWNER" git -C "$subdir" pull -q 2>/dev/null; then
+                log_warn "Failed to pull $repo_name"
+                status="clean_failed"
             else
-              status="clean"
+                local new_commit
+                new_commit=$(sudo -u "$REPOSITORY_OWNER" git -C "$subdir" rev-parse "$current_branch" 2>/dev/null || true)
+
+                if [ -n "$old_commit" ] && [ -n "$new_commit" ] && [ "$old_commit" != "$new_commit" ]; then
+                    status="success"
+                    ret_updated=1
+                    changed_files=$(sudo -u "$REPOSITORY_OWNER" git -C "$subdir" diff --name-only "$old_commit" "$new_commit" 2>/dev/null || true)
+                else
+                    status="clean"
+                fi
             fi
-          fi
         fi
     else
         log_warn "$subdir is not a git repository."
