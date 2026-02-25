@@ -119,7 +119,7 @@ function list_databases() {
 
     local db_user
     db_user=$(cat "$db_user_file" | tr -d '[:space:]')
-    
+
     if [ -z "$db_user" ]; then
         log_error "Database user is empty in $db_user_file"
         exit 1
@@ -282,8 +282,8 @@ if [ -z "$IS_RENEW_DB" ]; then
     log_error "Missing Argument 3: Clone DB Flag (true/false)"
     MISSING_ARGS=true
 fi
-if [ "$IS_RENEW_DB" = "false" ] && [ -z "$TARGET_DB" ]; then
-    log_error "Missing Argument 4: Target Database Name (Required when RENEW_DB is false)"
+if [ "$IS_RENEW_DB" = "false" ] && [ -z "$TARGET_DB" ] && [ -n "$MODULES_TO_UPDATE" ]; then
+    log_error "Missing Argument 4: Target Database Name (Required when RENEW_DB is false and modules are provided)"
     MISSING_ARGS=true
 fi
 if [ "$MISSING_ARGS" == "true" ]; then

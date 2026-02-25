@@ -251,8 +251,8 @@ if [ -z "$IS_RENEW_DB" ]; then
     MISSING_ARGS=true
 fi
 
-if [ "$IS_RENEW_DB" = "false" ] && [ -z "$TARGET_DB" ]; then
-    log_error "Missing Argument 4: Target Database Name (Required when RENEW_DB is false)"
+if [ "$IS_RENEW_DB" = "false" ] && [ -z "$TARGET_DB" ] && [ -n "$MODULES_TO_UPDATE" ]; then
+    log_error "Missing Argument 4: Target Database Name (Required when RENEW_DB is false and modules are provided)"
     MISSING_ARGS=true
 fi
 
@@ -648,7 +648,7 @@ if [ "$JSON_MODE" = "true" ]; then
             FIRST_MODULE=0
         done
         echo ""
-        
+
         if [ "$MODULE_UPDATE_ERROR" = "true" ]; then
             echo "  ],"
             echo "  \"error\": true,"
