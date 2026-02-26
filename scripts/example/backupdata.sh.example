@@ -79,15 +79,9 @@ function checkOdooEndpoint() {
   fi
 }
 
-## ex. odoo-prd (replace with production database name or use read command to input the database name)
-## Use only one of this command below
 ODOO_DATABASE_NAME_PRD=$(grep "^DB_NAME=" "$PATH_TO_ODOO/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
 ADMIN_PASSWD=$(grep "^ADMIN_PASSWD=" "$PATH_TO_ODOO/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
 PORT=$(grep "^PORT=" "$PATH_TO_ODOO/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
-
-# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
-# DON'T change these codes below
-# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 ZIP_FILE_NAME=backupdata-$SERVICE_NAME.zip
 BACKUP_FILE_PATH="/tmp/$ZIP_FILE_NAME"
 

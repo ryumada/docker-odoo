@@ -52,7 +52,7 @@ error_handler() {
 
 trap 'error_handler $? $LINENO "$BASH_COMMAND"' ERR
 
-# --- Centralized Cleanup Hook ---
+# --- Centralized Cleanup Hooks ---
 cleanup_temp_files() {
     local temp_dir="/tmp/backupdata-$SERVICE_NAME"
     local temp_sql="/tmp/dump.sql"
@@ -64,25 +64,32 @@ cleanup_temp_files() {
         rm -f "$temp_sql"
     fi
 }
-trap cleanup_temp_files EXIT
 
-## ex. odoo-prd (replace with production database name or use read command to input the database name)
-## Use only one of this command below
+cleanup_on_error() {
+    local exit_code=$1
+    if [ "$exit_code" -ne 0 ]; then
+        # Only clean up the file if the script failed (so we don't delete successful backups)
+        if [ -n "$BACKUP_FILE_PATH" ] && [ -f "$BACKUP_FILE_PATH" ]; then
+            rm -f "$BACKUP_FILE_PATH"
+        fi
+    fi
+}
+
+master_cleanup_hook() {
+    local exit_code=$?
+    
+    # Run the unconditional temp file cleanup
+    cleanup_temp_files
+    
+    # Pass the captured exit code to the conditional error cleanup
+    cleanup_on_error "$exit_code"
+}
+
+trap master_cleanup_hook EXIT
+
 ODOO_DATABASE_NAME_PRD=$(grep "^DB_NAME=" "$PATH_TO_ODOO/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
-
-if [ -z "$ODOO_DATABASE_NAME_PRD" ]; then
-  log_warn "Database name not found in .env"
-  read -rp "Enter the database name: " ODOO_DATABASE_NAME_PRD
-fi
-
-ODOO_FILESTORE_PATH="/var/lib/odoo/$SERVICE_NAME/filestore/$ODOO_DATABASE_NAME_PRD"
-
-# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
-# DON'T change these codes below
-# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 ZIP_FILE_NAME=backupdata-$SERVICE_NAME.zip
-
-log_info "Start backup data for $SERVICE_NAME"
+BACKUP_FILE_PATH="/tmp/$ZIP_FILE_NAME"
 
 # Check for zip utility
 if ! command -v zip &> /dev/null; then
@@ -92,10 +99,26 @@ if ! command -v zip &> /dev/null; then
   exit 1
 fi
 
-# Check for root
+# Self-elevate to root if not already
 if [ "$(id -u)" -ne 0 ]; then
-  log_error "Please run this script as root or using sudo"
-  exit 1
+    log_info "Elevating permissions to root..."
+    # shellcheck disable=SC2093
+    exec sudo "$0" "$@" # Re-run the script with sudo
+    log_error "Failed to elevate to root. Please run with sudo." # This will only run if exec fails
+    exit 1
+fi
+
+if [ -z "$ODOO_DATABASE_NAME_PRD" ]; then
+  read -rp "Enter the database name: " ODOO_DATABASE_NAME_PRD
+fi
+
+ODOO_FILESTORE_PATH="/var/lib/odoo/$SERVICE_NAME/filestore/$ODOO_DATABASE_NAME_PRD"
+
+log_info "Start backup data for $SERVICE_NAME"
+
+if [ -f "$BACKUP_FILE_PATH" ]; then
+    log_warn "Backup file already exists. Removing it..."
+    rm -f "$BACKUP_FILE_PATH"
 fi
 
 log_info "Change Directory to $PATH_TO_ODOO"
@@ -125,8 +148,8 @@ log_info "Change Directory to /tmp/backupdata-$SERVICE_NAME"
 cd "/tmp/backupdata-$SERVICE_NAME" > /dev/null 2>&1 || { log_error "Can't change directory to /tmp/backupdata-$SERVICE_NAME"; exit 1; }
 
 log_info "Compress all files to $ZIP_FILE_NAME"
-zip -r "/tmp/$ZIP_FILE_NAME" ./dump.sql filestore ./git_hashes.txt ./odoo-base_git_hashes.txt > /dev/null 2>&1 || { log_error "Error compressing files to /tmp/$ZIP_FILE_NAME"; exit 1; }
-chown "$SUDO_USER":"$SUDO_USER" "/tmp/$ZIP_FILE_NAME"
+zip -r "$BACKUP_FILE_PATH" ./dump.sql filestore ./git_hashes.txt ./odoo-base_git_hashes.txt > /dev/null 2>&1 || { log_error "Error compressing files to $BACKUP_FILE_PATH"; exit 1; }
+chown "$SUDO_USER:$SUDO_USER" "$BACKUP_FILE_PATH"
 
-log_success "Backup data for $SERVICE_NAME is completed. The backup file is located at /tmp/$ZIP_FILE_NAME."
+log_success "Backup data for $SERVICE_NAME is completed. The backup file is located at $BACKUP_FILE_PATH."
 exit 0
