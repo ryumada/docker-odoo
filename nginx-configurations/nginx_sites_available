@@ -25,7 +25,7 @@ server {
                 return 403;
         }
 
-        rewrite ^(.*) https://$host$1 permanent;
+        return 301 https://$host$request_uri;
 }
 
 upstream $DOMAIN {
@@ -146,14 +146,49 @@ server {
 
         location ~* /web/static/ {
                 limit_except GET {deny all; }
-                proxy_cache_valid 200 90m;
-                proxy_buffering on;
-                expires 864000;
+
                 proxy_pass http://$DOMAIN;
+                proxy_buffering on;
+
+                proxy_cache $DOMAIN_static_cache;
+                proxy_cache_key "$scheme$request_method$host$request_uri";
+                proxy_ignore_headers Cache-Control Expires Set-Cookie;
+                proxy_hide_header Set-Cookie;
+
+                proxy_cache_valid 200 6h;
+                proxy_cache_use_stale error timeout updating http_500 http_502 http_503 http_504;
+                proxy_cache_lock on;
+
+                expires 10d;
+                add_header Cache-Control "public, no-transform";
+                add_header X-Cache-Status $upstream_cache_status;
+        }
+
+        location ~* /web/image {
+                proxy_pass http://$DOMAIN;
+
+                # Force caching even if Odoo sends "Private" or "Set-Cookie" headers
+                proxy_ignore_headers Cache-Control Expires Set-Cookie;
+                proxy_hide_header Set-Cookie;
+
+                proxy_cache $DOMAIN_image_cache;
+
+                proxy_cache_valid 200 301 302 24h;
+                proxy_cache_valid 404 1m;
+
+                proxy_cache_use_stale error timeout updating http_500 http_502 http_503 http_504;
+                proxy_cache_lock on; # Prevents multiple requests for the same image hitting the backend at once
+                proxy_cache_lock_timeout 15s;
+
+                add_header X-Cache-Status $upstream_cache_status;
+
+                # Optimization for image delivery
+                tcp_nodelay on;
+                keepalive_timeout 65;
         }
 
         location /website/info {
-                rewrite ^/web/database/.* /non-existent-page last;
+                rewrite ^ /non-existent-page last;
         }
 }
 
