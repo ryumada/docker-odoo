@@ -102,7 +102,7 @@ OUTPUT_FILE="${PROJECT_ROOT}/REPO_MAP.md"
 FORCE_INCLUDE=()
 # If we are at the GIT_ROOT, we might want to include "app"
 if [ "$PROJECT_ROOT" == "$PATH_TO_ODOO" ]; then
-    FORCE_INCLUDE=("app")
+    FORCE_INCLUDE=("git")
 fi
 
 # Files or Patterns to ALWAYS exclude from the map, regardless of source.
@@ -127,6 +127,7 @@ FORCE_EXCLUDE=(
 # Files or Patterns to exclude ONLY from the signature extraction phase.
 # Use this for large assets, images, or files where the signature isn't helpful.
 FORCE_EXCLUDE_SIGNATURE=(
+    "*.gif"
     "*.png"
     "*.svg"
     "*.ico"
@@ -137,6 +138,8 @@ FORCE_EXCLUDE_SIGNATURE=(
     "*.woff2"
     "*.ttf"
     "*.otf"
+    "*.min.css"
+    "*.min.js"
 )
 
 # 1. Check for Prerequisites
