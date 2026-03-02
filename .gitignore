@@ -20,6 +20,7 @@ odoo-base/*
 scripts/*
 !scripts/example
 !scripts/add_hostname_to_btop_titlebar.sh
+!scripts/bump_image_version.sh
 !scripts/dataodoo-backupper.sh
 !scripts/dataodoo-remover.sh
 !scripts/generate_map.sh

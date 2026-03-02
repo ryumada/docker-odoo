@@ -1119,6 +1119,14 @@ function main() {
                     log_error "Failed to create 'latest' tag."
                 fi
             fi
+
+            log_info "4. Bumping image version..."
+            if sudo -u "$REPOSITORY_OWNER" ./scripts/bump_image_version.sh; then
+                log_success "Image version bump completed!"
+            else
+                log_error "Failed to bump image version."
+                exit 1
+            fi
         else
             log_error "Detailed push error usually involves authentication or permission."
             log_error "Failed to push image."
