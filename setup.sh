@@ -1011,10 +1011,11 @@ function main() {
     prepareOdooSources
 
     ODOO_IMAGE_NAME=$(grep "^ODOO_IMAGE_NAME=" "$REPOSITORY_DIRPATH/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
-    ODOO_IMAGE_VERSION=$(grep "^ODOO_IMAGE_VERSION=" "$REPOSITORY_DIRPATH/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
+    NEXT_IMAGE_VERSION=$(grep "^NEXT_IMAGE_VERSION=" "$REPOSITORY_DIRPATH/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
 
-    if [ -n "$ODOO_IMAGE_NAME" ] && [ -n "$ODOO_IMAGE_VERSION" ]; then
-      ODOO_IMAGE_NAME="${ODOO_IMAGE_NAME}:${ODOO_IMAGE_VERSION}"
+    export CURRENT_IMAGE_VERSION=$NEXT_IMAGE_VERSION
+    if [ -n "$ODOO_IMAGE_NAME" ] && [ -n "$NEXT_IMAGE_VERSION" ]; then
+      ODOO_IMAGE_NAME="${ODOO_IMAGE_NAME}:${NEXT_IMAGE_VERSION}"
       log_info "Using automated tag: $ODOO_IMAGE_NAME"
       export ODOO_IMAGE_NAME
     elif [ -n "$ODOO_IMAGE_NAME" ]; then
@@ -1104,7 +1105,7 @@ function main() {
             log_success "Image pushed successfully!"
 
             # Dual Tagging: If we pushed a specific version, also update 'latest'
-            if [ -n "$ODOO_IMAGE_VERSION" ] && [ "$ODOO_IMAGE_VERSION" != "latest" ]; then
+            if [ -n "$NEXT_IMAGE_VERSION" ] && [ "$NEXT_IMAGE_VERSION" != "latest" ]; then
                 BASIC_IMAGE_NAME=$(echo "$TARGET_IMAGE" | cut -d: -f1)
                 LATEST_TAG="${BASIC_IMAGE_NAME}:latest"
                 log_info "Dual Tagging: Also pushing $LATEST_TAG..."

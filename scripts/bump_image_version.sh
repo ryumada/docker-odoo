@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -e
 # Category: Utility
-# Description: Automatically increments the ODOO_IMAGE_VERSION integer in the .env file.
+# Description: Automatically increments the NEXT_IMAGE_VERSION integer in the .env file and sets CURRENT_IMAGE_VERSION to NEXT_IMAGE_VERSION.
 # Usage: ./scripts/bump_image_version.sh
 # Dependencies: awk, sed, stat, git
 
@@ -39,23 +39,25 @@ if [ ! -f "$ENV_FILE" ]; then
 fi
 
 # Extract the current version, defaulting to 0 if it's empty or unset
-CURRENT_VERSION=$(awk -F '=' '/^ODOO_IMAGE_VERSION=/ {print $2; exit}' "$ENV_FILE" | tr -d ' "''' )
+CURRENT_VERSION=$(awk -F '=' '/^NEXT_IMAGE_VERSION=/ {print $2; exit}' "$ENV_FILE" | tr -d ' "''' )
 if [ -z "$CURRENT_VERSION" ]; then
     CURRENT_VERSION=0
 fi
 
 # Validate that the current version is actually an integer
 if ! [[ "$CURRENT_VERSION" =~ ^[0-9]+$ ]]; then
-    log_error "Current ODOO_IMAGE_VERSION ('$CURRENT_VERSION') is not an integer. Cannot automatically increment."
+    log_error "Current NEXT_IMAGE_VERSION ('$CURRENT_VERSION') is not an integer. Cannot automatically increment."
     exit 1
 fi
 
 # Increment the version
 NEW_VERSION=$(( CURRENT_VERSION + 1 ))
 
-log_info "Bumping ODOO_IMAGE_VERSION from ${CURRENT_VERSION} to ${NEW_VERSION}..."
+log_info "Bumping NEXT_IMAGE_VERSION from ${CURRENT_VERSION} to ${NEW_VERSION} and updating CURRENT_IMAGE_VERSION..."
 
 # Update the .env file in place
-sed -i "s/^ODOO_IMAGE_VERSION=.*/ODOO_IMAGE_VERSION=$NEW_VERSION/" "$ENV_FILE"
+sed -i "s/^CURRENT_IMAGE_VERSION=.*/CURRENT_IMAGE_VERSION=$CURRENT_VERSION/" "$ENV_FILE"
+# Update the .env file in place
+sed -i "s/^NEXT_IMAGE_VERSION=.*/NEXT_IMAGE_VERSION=$NEW_VERSION/" "$ENV_FILE"
 
-log_success "Successfully updated ODOO_IMAGE_VERSION to $NEW_VERSION"
+log_success "Successfully updated NEXT_IMAGE_VERSION to $NEW_VERSION and CURRENT_IMAGE_VERSION to $CURRENT_VERSION"

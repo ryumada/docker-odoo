@@ -36,7 +36,7 @@ There are some points you should know:
   Check the `.env` file for important variables, especially:
   - `DOCKER_BUILD_MODE`: 1=Dev, 2=Builder, 3=Prod.
   - `ODOO_IMAGE_NAME`: Image name (e.g., `ghcr.io/username/project`).
-  - `ODOO_IMAGE_VERSION`: Image tag (e.g., `16.0-v1`).
+  - `CURRENT_IMAGE_VERSION and NEXT_IMAGE_VERSION`: Image tag (e.g., `16.0-v1`).
   - `ODOO_IMAGE_SOURCE`: Source git repo (for GHCR labels).
 
 - [`Odoo Base`] You should add your Odoo base, whether it is Odoo Community, Odoo Enterprise, or your custom Odoo base, to the `odoo-base` directory (⚠️ Only add one directory to `odoo-base` as this will be read automatically by the `entrypoint.sh` script, for the name of the directory is no need to be `odoo` ⚠️).
@@ -76,7 +76,7 @@ There are some points you should know:
   <summary>Pushing to Container Registry</summary>
 
     1. Set `DOCKER_BUILD_MODE=2` (or select Builder mode in `setup.sh`).
-    2. Set `ODOO_IMAGE_NAME`, `ODOO_IMAGE_VERSION`, and `ODOO_IMAGE_SOURCE` in `.env`.
+    2. Set `ODOO_IMAGE_NAME`, `CURRENT_IMAGE_VERSION and NEXT_IMAGE_VERSION`, and `ODOO_IMAGE_SOURCE` in `.env`.
     3. Login to your registry:
        ```bash
        docker login ghcr.io -u <username> -p <token>
