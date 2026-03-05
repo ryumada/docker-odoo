@@ -842,19 +842,25 @@ function checkRegistryConnection() {
     if [[ "$registry" == *"index.docker.io"* ]] || [[ "$registry" != *"."* ]]; then
         # Docker Hub or official library
         if ! grep -q "index.docker.io" ~/.docker/config.json 2>/dev/null; then
-             log_warn "It seems you are not logged into Docker Hub. Please ensure you are logged in ('docker login') if the repository is private."
+             log_warn "It seems you are not logged into Docker Hub. Please ensure you are logged in ('docker login') if the repository is private." >&2
         fi
     elif [[ "$registry" == *"ghcr.io"* ]]; then
          if ! grep -q "ghcr.io" ~/.docker/config.json 2>/dev/null; then
-             log_warn "It seems you are not logged into GitHub Container Registry. Please ensure you are logged in."
+             log_warn "It seems you are not logged into GitHub Container Registry. Please ensure you are logged in." >&2
          fi
     elif [[ "$registry" == *"gitlab.com"* ]]; then
          if ! grep -q "gitlab.com" ~/.docker/config.json 2>/dev/null; then
-             log_warn "It seems you are not logged into GitLab Registry. Please ensure you are logged in."
+             log_warn "It seems you are not logged into GitLab Registry. Please ensure you are logged in." >&2
          fi
+    else
+        local error_message="Cannot determine the registry provider. Please check your DOCKER_IMAGE_NAME in .env file."
+        log_error "$error_message" >&2
+        TODO+=("$error_message")
+        return 1
     fi
     # Proceed anyway, checking "if connection is already successful" implies we trust the environment or just try.
-    log_info "Registry connection check passed (soft check)."
+    log_info "Registry connection check passed (soft check)." >&2
+    echo "$registry"
 }
 
 function prepareOdooSources() {
@@ -884,7 +890,26 @@ function prepareOdooSources() {
   fi
 }
 
+function show_usage() {
+  echo -e "\nUsage: ./setup.sh [SETUP_MODE] [ENFORCE_BUILD_MODE] [DOCKER_USERNAME] [DOCKER_PUSH_KEY] [DOCKER_PULL_KEY]\n"
+  echo "Arguments:"
+  echo "  SETUP_MODE          - Optional. Use 'auto' to bypass confirmation prompts."
+  echo "  ENFORCE_BUILD_MODE  - Optional. Override the mode set in .env (1=Dev, 2=Builder, 3=Prod)."
+  echo "  DOCKER_USERNAME     - Required if ENFORCE_BUILD_MODE is set. The container registry username."
+  echo "  DOCKER_PUSH_KEY     - Required if ENFORCE_BUILD_MODE is set. The token to push images."
+  echo "  DOCKER_PULL_KEY     - Required if ENFORCE_BUILD_MODE is set. The token to pull images."
+  echo ""
+  echo "Example:"
+  echo "  ./setup.sh auto 2 myUser push_token_123 pull_token_456"
+  echo -e "===================================================================\n"
+}
+
 function main() {
+  if [[ "$1" == "-h" || "$1" == "--help" ]]; then
+    show_usage
+    exit 0
+  fi
+
   # Self-elevate to root if not already
   if [ "$(id -u)" -ne 0 ]; then
       log_info "Elevating permissions to root..."
@@ -899,13 +924,40 @@ function main() {
   echo "Deployment name will be    : $SERVICE_NAME"
   echo -e "===================================================================\n"
 
-  if [ "$1" != "auto" ]; then
+  local SETUP_MODE="$1"
+  local ENFORCE_BUILD_MODE="$2"
+  local DOCKER_PUSHPULL_USERNAME="$3"
+  local DOCKER_PUSH_KEY="$4"
+  local DOCKER_PULL_KEY="$5"
+
+  local DOCKER_REGISTRY_PROVIDER
+
+  if [ "$SETUP_MODE" != "auto" ]; then
     read -rp "Press enter key to continue..."
   fi
 
   "$REPOSITORY_DIRPATH/scripts/update-env-file.sh"
 
-  DOCKER_BUILD_MODE=$(grep "^DOCKER_BUILD_MODE=" "$REPOSITORY_DIRPATH/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
+  if [ -z "$ENFORCE_BUILD_MODE" ]; then
+    DOCKER_BUILD_MODE=$(grep "^DOCKER_BUILD_MODE=" "$REPOSITORY_DIRPATH/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
+  else
+    DOCKER_BUILD_MODE="$ENFORCE_BUILD_MODE"
+    if [ -z "$DOCKER_PUSHPULL_USERNAME" ] && [ "$DOCKER_BUILD_MODE" = "2" ]; then
+      log_error "Docker pushpull username is required when enforcing build mode."
+      show_usage
+      exit 1
+    fi
+    if [ -z "$DOCKER_PUSH_KEY" ] && [ "$DOCKER_BUILD_MODE" = "2" ]; then
+      log_error "Docker push key is required when enforcing build mode."
+      show_usage
+      exit 1
+    fi
+    if [ -z "$DOCKER_PULL_KEY" ] && [ "$DOCKER_BUILD_MODE" = "2" ]; then
+      log_error "Docker pull key is required when enforcing build mode."
+      show_usage
+      exit 1
+    fi
+  fi
 
   if [ -z "$DOCKER_BUILD_MODE" ]; then
     mode_selection=$(selectMode)
@@ -931,7 +983,7 @@ function main() {
     installDockerServiceRestartorScript
   fi
 
-  if [ "$1" != "auto" ]; then
+  if [ "$SETUP_MODE" != "auto" ]; then
     read -rp "❓ Do you want to renew odoo-shell and odoo-module-upgrade scripts? [y/N] : " response
 
     if [[ "$response" =~ ^([yY][eE][sS]|[yY])+$ ]]; then
@@ -1000,16 +1052,14 @@ function main() {
   # Extract ODOO_IMAGE_NAME early as it's used in 2 and 3
   ODOO_IMAGE_NAME=$(grep "^ODOO_IMAGE_NAME=" "$ENV_FILE" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
 
+  if isFileExists "$ODOO_CONF_FILE" "Please create an odoo.conf file by following the odoo.conf.example file."; then
+    checkAddonsPathOnOdooConfFile
+  fi
+
+  prepareOdooSources
+
   # MODE 1: DEVELOPMENT or MODE 2: BUILDER
   if [ "$mode_number" -eq 1 ] || [ "$mode_number" -eq 2 ]; then
-    if [ "$mode_number" -ne 2 ]; then
-      if isFileExists "$ODOO_CONF_FILE" "Please create an odoo.conf file by following the odoo.conf.example file."; then
-        checkAddonsPathOnOdooConfFile
-      fi
-    fi
-
-    prepareOdooSources
-
     ODOO_IMAGE_NAME=$(grep "^ODOO_IMAGE_NAME=" "$REPOSITORY_DIRPATH/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
     NEXT_IMAGE_VERSION=$(grep "^NEXT_IMAGE_VERSION=" "$REPOSITORY_DIRPATH/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
 
@@ -1029,14 +1079,12 @@ function main() {
         TODO+=("Please set the ODOO_IMAGE_NAME variable in your .env file.")
       else
         log_success "ODOO_IMAGE_NAME variable is set to $ODOO_IMAGE_NAME"
-        checkRegistryConnection "$ODOO_IMAGE_NAME"
+        DOCKER_REGISTRY_PROVIDER=$(checkRegistryConnection "$ODOO_IMAGE_NAME")
       fi
     fi
 
   # MODE 3: PRODUCTION
   elif [ "$mode_number" -eq 3 ]; then
-    prepareOdooSources
-
     if [ -z "$ODOO_IMAGE_NAME" ]; then
       log_error "ODOO_IMAGE_NAME variable is not set in your .env file. Production mode requires this to pull the image."
       TODO+=("Please set the ODOO_IMAGE_NAME variable in your .env file.")
@@ -1067,6 +1115,7 @@ function main() {
     fi
   fi
 
+  # Check if there are any TODOs. If no todos (true) run the completion script.
   if printTodo; then
     echo
     echo
@@ -1085,6 +1134,17 @@ function main() {
 
     elif [ "$mode_number" -eq 2 ]; then
         log_info "MODE: BUILDER"
+
+        if [ -n "$ENFORCE_BUILD_MODE" ]; then
+            log_info "0. Setting up Docker Push Key..."
+            if sudo -u $REPOSITORY_OWNER docker login $DOCKER_REGISTRY_PROVIDER -u $DOCKER_PUSHPULL_USERNAME -p $DOCKER_PUSH_KEY; then
+                log_success "Docker Push Key set successfully."
+            else
+                log_error "Failed to set Docker Push Key."
+                exit 1
+            fi
+        fi
+
         log_info "1. Building image..."
         if sudo -u "$REPOSITORY_OWNER" docker compose build; then
             log_success "Image built successfully."
@@ -1127,6 +1187,16 @@ function main() {
             else
                 log_error "Failed to bump image version."
                 exit 1
+            fi
+
+            if [ -n "$ENFORCE_BUILD_MODE" ]; then
+                log_info "5. Logging in to pull key..."
+                if sudo -u $REPOSITORY_OWNER docker login $DOCKER_REGISTRY_PROVIDER -u $DOCKER_PUSHPULL_USERNAME -p $DOCKER_PULL_KEY; then
+                    log_success "Docker pull key successful."
+                else
+                    log_error "Failed to login of Docker pull key."
+                    exit 1
+                fi
             fi
         else
             log_error "Detailed push error usually involves authentication or permission."
