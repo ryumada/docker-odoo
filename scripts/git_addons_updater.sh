@@ -275,9 +275,13 @@ function main() {
     log_success "No updates found"
   fi
 
-  log_success "Finish checking updates for $SERVICE_NAME"
   if [ "$HAS_ERROR" -eq 1 ]; then
+    # Use log directly instead of log_error to prevent appending an extra JSON object to stdout
+    log "${COLOR_ERROR}" "❌" "Finished checking updates with errors for $SERVICE_NAME"
     exit 1
+  else
+    log_success "Finish checking updates for $SERVICE_NAME"
+    exit 0
   fi
 }
 
