@@ -27,6 +27,7 @@ readonly COLOR_ERROR="\033[0;31m"
 
 # Global JSON Mode flag (Defaults to false)
 JSON_MODE="false"
+HAS_ERROR=0
 
 # Function to log messages with a specific color and emoji
 log() {
@@ -112,11 +113,13 @@ function process_repo() {
         if ! sudo -u "$REPOSITORY_OWNER" git -C "$subdir" fetch -q 2>/dev/null; then
             log_warn "Failed to fetch $repo_name"
             status="fetch_failed"
+            HAS_ERROR=1
         else
             log_info "Pulling updates for $repo_name..."
             if ! sudo -u "$REPOSITORY_OWNER" git -C "$subdir" pull -q 2>/dev/null; then
                 log_warn "Failed to pull $repo_name"
                 status="clean_failed"
+                HAS_ERROR=1
             else
                 local new_commit
                 new_commit=$(sudo -u "$REPOSITORY_OWNER" git -C "$subdir" rev-parse "$current_branch" 2>/dev/null || true)
@@ -260,6 +263,9 @@ function main() {
   fi
 
   log_success "Finish checking updates for $SERVICE_NAME"
+  if [ "$HAS_ERROR" -eq 1 ]; then
+    exit 1
+  fi
 }
 
 main "$@"
