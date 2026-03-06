@@ -69,6 +69,10 @@ server {
         proxy_redirect off;
         limit_except GET POST { deny all; }
 
+        proxy_buffers 16 64k;
+        proxy_buffer_size 128k;
+        proxy_busy_buffers_size 256k;
+
         # Direct Proxy Pass to the main backend port
         proxy_pass http://127.0.0.1:$HTTP_PORT;
     }
