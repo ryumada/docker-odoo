@@ -71,18 +71,18 @@ limit_req_zone $binary_remote_addr zone=limitwebdatabase:10m rate=30r/m;
 limit_conn_zone $binary_remote_addr zone=addrwebdatabase:10m;
 
 # these settings can impact ram usage of nginx the buffers saved on RAM
-client_body_buffer_size         2k;
-client_header_buffer_size       2k;
-large_client_header_buffers     8 16k;
+client_body_buffer_size         4096k;
+client_header_buffer_size       16k;
+large_client_header_buffers     8 128k;
 
 # Save the request body to a file which beneficial for handling large requests
-client_body_in_file_only on;
+client_body_in_file_only off;
 client_body_temp_path /var/tmp/nginx;
 
 # file upload can be received by nginx. If you have file upload feature with POST method
 client_max_body_size            500M;
 
-keepalive_timeout               2700s;
+keepalive_timeout               3600s;
 tcp_nodelay                     on;
 
 # disable display nginx server version

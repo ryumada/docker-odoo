@@ -95,6 +95,7 @@ function process_repo() {
     repo_name=$(basename "$subdir")
     local status="clean"
     local changed_files=""
+    local error_message=""
     local repo_updated=1 # false
 
     if isDirectoryGitRepository "$subdir"; then
@@ -113,12 +114,21 @@ function process_repo() {
         if ! sudo -u "$REPOSITORY_OWNER" git -C "$subdir" fetch -q 2>/dev/null; then
             log_warn "Failed to fetch $repo_name"
             status="fetch_failed"
+            error_message="Failed to fetch updates from remote."
             HAS_ERROR=1
         else
             log_info "Pulling updates for $repo_name..."
-            if ! sudo -u "$REPOSITORY_OWNER" git -C "$subdir" pull -q 2>/dev/null; then
+            local pull_output
+            pull_output=$(sudo -u "$REPOSITORY_OWNER" git -C "$subdir" pull -q 2>&1)
+            local pull_exit_code=$?
+            if [ $pull_exit_code -ne 0 ]; then
                 log_warn "Failed to pull $repo_name"
                 status="clean_failed"
+                # Remove ANSI colour codes and escape quotes/newlines
+                local clean_err
+                clean_err=$(echo "$pull_output" | sed -r 's/\x1B\[[0-9;]*[mK]//g' | sed 's/"/\\"/g' | awk '{printf "%s\\n", $0}')
+                # Clean up the trailing '\n' added by awk
+                error_message="${clean_err%\\n}"
                 HAS_ERROR=1
             else
                 local new_commit
@@ -151,6 +161,9 @@ function process_repo() {
         echo '    {'
         echo "      \"name\": \"$repo_name\","
         echo "      \"status\": \"$status\","
+        if [ -n "$error_message" ]; then
+            echo "      \"error_message\": \"$error_message\","
+        fi
         echo '      "files": ['
 
         local first_file=1
