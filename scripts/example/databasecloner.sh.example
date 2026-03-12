@@ -253,7 +253,7 @@ function main() {
   checkOdooEndpoint "$SOURCE_PORT"
 
   log_info "Requesting backup from source Odoo instance..."
-  curl -s -X POST \
+  curl -L -s -X POST \
        -F "master_pwd=$SOURCE_ADMIN_PASSWD" \
        -F "name=$ODOO_DATABASE_NAME_PRD" \
        -F "backup_format=zip" \
@@ -277,7 +277,7 @@ function main() {
   checkOdooEndpoint "$DEST_PORT"
 
   log_info "Dropping old database '$ODOO_DB_NAME_ENV' if it exists..."
-  drop_response=$(curl -s -X POST \
+  drop_response=$(curl -L -s -X POST \
     -d "master_pwd=$DEST_ADMIN_PASSWD" \
     -d "name=$ODOO_DB_NAME_ENV" \
     "http://localhost:$DEST_PORT/web/database/drop")
@@ -302,7 +302,7 @@ function main() {
   log_info "Neutralize database option: $NEUTRALIZE_DB"
 
   if [ "$NEUTRALIZE_DB" = "true" ]; then
-    response=$(curl -s -X POST \
+    response=$(curl -L -s -X POST \
       -F "master_pwd=$DEST_ADMIN_PASSWD" \
       -F "name=$ODOO_DB_NAME_ENV" \
       -F "backup_file=@$TEMP_BACKUP_FILE" \
@@ -310,7 +310,7 @@ function main() {
       -F "neutralize_database=true" \
       "http://localhost:$DEST_PORT/web/database/restore")
   else
-    response=$(curl -s -X POST \
+    response=$(curl -L -s -X POST \
       -F "master_pwd=$DEST_ADMIN_PASSWD" \
       -F "name=$ODOO_DB_NAME_ENV" \
       -F "backup_file=@$TEMP_BACKUP_FILE" \
