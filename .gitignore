@@ -37,6 +37,7 @@ scripts/*
 !scripts/.uninstall-odoo.sh
 !scripts/update-env-file.sh
 !scripts/update-odoo-config.sh
+!scripts/lib/
 
 utilities/*
 !utilities/README.md

@@ -37,6 +37,10 @@ ODOO_LOG_DIR="/var/log/odoo"
 ODOO_LOG_DIR_SERVICE="$ODOO_LOG_DIR/$SERVICE_NAME"
 REQUIREMENTS_FILE="./requirements.txt"
 
+# Source OS detection library (sets OS_FAMILY and PKG_MANAGER)
+# shellcheck source=scripts/lib/os_detect.sh
+source "$CURRENT_DIR/scripts/lib/os_detect.sh"
+
 # --- Logging Functions & Colors ---
 # Define colors for log messages
 readonly COLOR_RESET="\033[0m"
@@ -529,7 +533,11 @@ function isDockerInstalled() {
 function isPostgresInstalled() {
   if ! command -v psql &>/dev/null; then
     log_error "psql command not found."
-    TODO+=("Please install postgresql by running the following command: 'sudo apt install postgresql'")
+    if [ "$OS_FAMILY" = "rhel" ]; then
+      TODO+=("Please install postgresql by running the following command: 'sudo $PKG_MANAGER install postgresql-server'")
+    else
+      TODO+=("Please install postgresql by running the following command: 'sudo apt install postgresql'")
+    fi
     return 1
   else
     log_success "psql command found"
@@ -545,7 +553,11 @@ function isInteger() {
 function isLogRotateInstalled() {
   if ! command -v logrotate &>/dev/null; then
     log_error "logrotate command not found."
-    TODO+=("Please install logrotate by running the following command: 'sudo apt install logrotate'")
+    if [ "$OS_FAMILY" = "rhel" ]; then
+      TODO+=("Please install logrotate by running the following command: 'sudo $PKG_MANAGER install logrotate'")
+    else
+      TODO+=("Please install logrotate by running the following command: 'sudo apt install logrotate'")
+    fi
   else
     log_success "logrotate command found"
   fi

@@ -11,14 +11,58 @@ A Dockerfile to create a custom Odoo docker image.
 
 | Specification | Version |
 |----|----|
-|OS|Ubuntu 22.04 (Linux/Debian)|
+|Host OS|Ubuntu 22.04 / Debian 12 / **CentOS 8-9 Stream** (Linux)|
 |Python|`'3.7'` (recommended) or `'3.10'`|
-|Odoo version|`'16' (tested)`|
-|PostgreSQL|`'14' (tested)`|
+|Odoo version|`'16,17,18,19' (tested)`|
+|PostgreSQL|`'14' (tested)`, and `'15, 16, 17'` (requires matching `POSTGRESQL_VERSION` in `.env` to the host version)|
 
 | Python `'3.10'` has slower build time and not compatible with ks_dashboard.
 
 | ⚠️ You need to read this README.md file thoroughly. ⚠️
+
+
+## Host OS Prerequisites
+
+Install the required packages on your **host machine** before running `setup.sh`.
+
+> ⚠️ The Docker container always uses a Debian-based image regardless of host OS — these packages are for the host only.
+
+<details>
+<summary><strong>Debian / Ubuntu</strong></summary>
+
+```bash
+sudo apt update
+sudo apt install -y docker.io docker-compose-plugin logrotate postgresql
+```
+</details>
+
+<details>
+<summary><strong>CentOS 8 / 9 Stream</strong></summary>
+
+```bash
+# Install Docker CE
+sudo dnf install -y dnf-plugins-core
+sudo dnf config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
+sudo dnf install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
+sudo systemctl enable --now docker
+
+# Install Logrotate and PostgreSQL
+sudo dnf install -y logrotate postgresql-server
+sudo postgresql-setup --initdb
+sudo systemctl enable --now postgresql
+```
+
+> **SELinux Note:** If Docker bind-mounts to `/var/lib/odoo` or `/var/log/odoo` fail with permission errors, relabel those directories:
+> ```bash
+> sudo chcon -R -t container_file_t /var/lib/odoo /var/log/odoo
+> ```
+> Alternatively, allow Docker to use SELinux labels via volume options in `docker-compose.yml`:
+> ```yaml
+> volumes:
+>   - /var/lib/odoo:/var/lib/odoo:z
+> ```
+
+</details>
 
 There are some points you should know:
 
