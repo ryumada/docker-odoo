@@ -113,6 +113,23 @@ function checkOdooEndpoint() {
   fi
 }
 
+function run_psql() {
+  local env_file="${PSQL_ENV_FILE:-$ENV_FILE_FULL_PATH}"
+  local db_host=$(grep "^DB_HOST=" "$env_file" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
+  if [ -n "$db_host" ] && [ "$db_host" != "localhost" ]; then
+    local db_port=$(grep "^DB_PORT=" "$env_file" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
+    local db_user=$(cat "$PATH_TO_ODOO/.secrets/db_user" 2>/dev/null || true)
+    local db_pass=$(cat "$PATH_TO_ODOO/.secrets/db_password" 2>/dev/null || true)
+    local docker_net=$(grep "^DOCKER_NETWORK_MODE=" "$env_file" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
+    [ -z "$db_port" ] && db_port="5432"
+    [ -z "$docker_net" ] && docker_net="host"
+    local net=$(echo "$docker_net" | cut -d "," -f 1)
+    docker run -i --rm --network="$net" -e PGPASSWORD="$db_pass" postgres psql -h "$db_host" -p "$db_port" -U "$db_user" "$@"
+  else
+    sudo -u postgres psql "$@"
+  fi
+}
+
 function restoreOdooDataViaEndpoint() {
   # Note: ENV_FILE_FULL_PATH is used here (which defaults to $PATH_TO_ODOO/.env)
   NEUTRALIZE_DB=$(grep "^NEUTRALIZE_DATABASE=" "$ENV_FILE_FULL_PATH" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
@@ -199,7 +216,7 @@ function main() {
     log_info "Database name would be $RESTORED_DB_NAME"
 
     log_info "Checking if the database exists"
-    if sudo -u postgres psql -lqt | cut -d \| -f 1 | grep -qw "$RESTORED_DB_NAME"; then
+    if run_psql -lqt | cut -d \| -f 1 | grep -qw "$RESTORED_DB_NAME"; then
       log_warn "Database $RESTORED_DB_NAME exists. Initiating safety backup..."
 
       SAFETY_BACKUP_NAME="backupdata-$SERVICE_NAME-safety-backup-$(date +"%Y%m%d-%H%M%S").zip"
@@ -232,9 +249,9 @@ function main() {
       drop_response_lower="${drop_response,,}"
 
       # Simplest is to check existence via psql again
-      if sudo -u postgres psql -lqt | cut -d \| -f 1 | grep -qw "$RESTORED_DB_NAME"; then
+      if run_psql -lqt | cut -d \| -f 1 | grep -qw "$RESTORED_DB_NAME"; then
          log_warn "API drop might have failed or is slow. Attempting force drop via psql..."
-         if sudo -u postgres psql -c "DROP DATABASE \"$RESTORED_DB_NAME\"" >/dev/null 2>&1; then
+         if run_psql -c "DROP DATABASE \"$RESTORED_DB_NAME\"" >/dev/null 2>&1; then
              log_success "Database dropped via psql."
 
              # Also drop the filestore

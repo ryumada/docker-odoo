@@ -138,6 +138,40 @@ function isUnZipInstalled() {
   fi
 }
 
+function run_psql() {
+  local env_file="${PSQL_ENV_FILE:-$PATH_TO_ODOO/.env}"
+  local db_host=$(grep "^DB_HOST=" "$env_file" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
+  if [ -n "$db_host" ] && [ "$db_host" != "localhost" ]; then
+    local db_port=$(grep "^DB_PORT=" "$env_file" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
+    local db_user=$(cat "$(dirname "$env_file")/.secrets/db_user" 2>/dev/null || true)
+    local db_pass=$(cat "$(dirname "$env_file")/.secrets/db_password" 2>/dev/null || true)
+    local docker_net=$(grep "^DOCKER_NETWORK_MODE=" "$env_file" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
+    [ -z "$db_port" ] && db_port="5432"
+    [ -z "$docker_net" ] && docker_net="host"
+    local net=$(echo "$docker_net" | cut -d "," -f 1)
+    docker run -i --rm --network="$net" -e PGPASSWORD="$db_pass" postgres psql -h "$db_host" -p "$db_port" -U "$db_user" "$@"
+  else
+    sudo -u postgres psql "$@"
+  fi
+}
+
+function run_pg_dump() {
+  local env_file="${PSQL_ENV_FILE:-$PATH_TO_ODOO/.env}"
+  local db_host=$(grep "^DB_HOST=" "$env_file" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
+  if [ -n "$db_host" ] && [ "$db_host" != "localhost" ]; then
+    local db_port=$(grep "^DB_PORT=" "$env_file" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
+    local db_user=$(cat "$(dirname "$env_file")/.secrets/db_user" 2>/dev/null || true)
+    local db_pass=$(cat "$(dirname "$env_file")/.secrets/db_password" 2>/dev/null || true)
+    local docker_net=$(grep "^DOCKER_NETWORK_MODE=" "$env_file" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
+    [ -z "$db_port" ] && db_port="5432"
+    [ -z "$docker_net" ] && docker_net="host"
+    local net=$(echo "$docker_net" | cut -d "," -f 1)
+    docker run -i --rm --network="$net" -e PGPASSWORD="$db_pass" postgres pg_dump -h "$db_host" -p "$db_port" -U "$db_user" "$@"
+  else
+    sudo -u postgres pg_dump "$@"
+  fi
+}
+
 function sanitizeDatabase() {
   local restored_db_name="$1"
   log_info "Sanitizing the database (Disabling Emails & Crons)"
@@ -157,7 +191,7 @@ function sanitizeDatabase() {
 
   # Execute the SQL commands
   # Using || true to prevent script exit if a minor sql error occurs, but verifying execution via check
-  if sudo -u postgres psql -d "$restored_db_name" -c "$SANITIZE_SQL" > /dev/null 2>&1; then
+  if run_psql -d "$restored_db_name" -c "$SANITIZE_SQL" > /dev/null 2>&1; then
     log_success "Database sanitized successfully."
   else
     log_warn "Warning: Failed to sanitize database completely (SQL command failed)."
@@ -169,19 +203,19 @@ function restoreOdooData() {
   local odoo_db_user="$2"
 
   log_info "Creating the '$restored_db_name' database"
-  sudo -u postgres psql -c "CREATE DATABASE \"$restored_db_name\"" > /dev/null 2>&1
+  run_psql -c "CREATE DATABASE \"$restored_db_name\"" > /dev/null 2>&1
 
   log_info "Restoring the database schema and data"
-  sudo -u postgres psql -d "$restored_db_name" -f "$TEMP_DIR/dump.sql" > /dev/null 2>&1
+  run_psql -d "$restored_db_name" < "$TEMP_DIR/dump.sql" > /dev/null 2>&1
 
   log_info "Changing the owner of the database"
-  if ! sudo -u postgres psql -c "ALTER DATABASE \"$restored_db_name\" OWNER TO \"$odoo_db_user\"" --quiet -t -P pager=off 2> /dev/null > /dev/null; then
+  if ! run_psql -c "ALTER DATABASE \"$restored_db_name\" OWNER TO \"$odoo_db_user\"" --quiet -t -P pager=off 2> /dev/null > /dev/null; then
      log_error "Can't change the owner of the database $restored_db_name"
      exit 1
   fi
 
   log_info "Changing the owner of tables, sequences, and views"
-  if ! sudo -u postgres psql --quiet -t -P pager=off -d "$restored_db_name" -c "
+  if ! run_psql --quiet -t -P pager=off -d "$restored_db_name" -c "
     -- Change the owner of all tables
     DO \$\$
     DECLARE
@@ -258,7 +292,7 @@ function main() {
     log_info "Database name would be: $RESTORED_DB_NAME"
 
     log_info "Checking if the database exists..."
-    if sudo -u postgres psql -c '\l' | grep -wq "$RESTORED_DB_NAME"; then
+    if run_psql -c '\l' | grep -wq "$RESTORED_DB_NAME"; then
       log_warn "Database $RESTORED_DB_NAME already exists. Initiating safety backup..."
 
       SAFETY_BACKUP_NAME="backupdata-$SERVICE_NAME-safety-backup-$(date +"%Y%m%d-%H%M%S").zip"
@@ -269,7 +303,7 @@ function main() {
       mkdir -p "$SAFETY_BACKUP_DIR"
 
       log_info "Dumping database $RESTORED_DB_NAME to $SAFETY_BACKUP_DIR/dump.sql"
-      if ! sudo -u postgres pg_dump -f "$SAFETY_BACKUP_DIR/dump.sql" "$RESTORED_DB_NAME"; then
+      if ! run_pg_dump "$RESTORED_DB_NAME" > "$SAFETY_BACKUP_DIR/dump.sql"; then
           log_error "Failed to dump database $RESTORED_DB_NAME. Aborting restore."
           exit 1
       fi
@@ -292,7 +326,7 @@ function main() {
       log_success "Safety backup created at $SAFETY_ZIP_PATH"
 
       log_info "Dropping existing database $RESTORED_DB_NAME..."
-      if ! sudo -u postgres psql -c "DROP DATABASE \"$RESTORED_DB_NAME\" WITH (FORCE)"; then
+      if ! run_psql -c "DROP DATABASE \"$RESTORED_DB_NAME\" WITH (FORCE)"; then
           log_error "Failed to drop database $RESTORED_DB_NAME. Aborting."
           exit 1
       fi
