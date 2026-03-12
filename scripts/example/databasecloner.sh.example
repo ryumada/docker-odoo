@@ -253,7 +253,7 @@ function main() {
   checkOdooEndpoint "$SOURCE_PORT"
 
   log_info "Requesting backup from source Odoo instance..."
-  curl -L -s -X POST \
+  curl -s -X POST \
        -F "master_pwd=$SOURCE_ADMIN_PASSWD" \
        -F "name=$ODOO_DATABASE_NAME_PRD" \
        -F "backup_format=zip" \
@@ -277,14 +277,16 @@ function main() {
   checkOdooEndpoint "$DEST_PORT"
 
   log_info "Dropping old database '$ODOO_DB_NAME_ENV' if it exists..."
-  drop_response=$(curl -L -s -X POST \
+  drop_response=$(curl -s -X POST \
     -d "master_pwd=$DEST_ADMIN_PASSWD" \
     -d "name=$ODOO_DB_NAME_ENV" \
     "http://localhost:$DEST_PORT/web/database/drop")
 
   drop_response_lower="${drop_response,,}"
 
-  if [[ "$drop_response_lower" == *"error"* ]] && [[ "$drop_response_lower" != *"does not exist"* ]] || \
+  if [[ "$drop_response_lower" == *"redirecting"* ]] && [[ "$drop_response_lower" == *"/web/database/manager"* ]]; then
+      log_info "Drop database command sent for '$ODOO_DB_NAME_ENV'. (Redirect received)"
+  elif [[ "$drop_response_lower" == *"error"* ]] && [[ "$drop_response_lower" != *"does not exist"* ]] || \
      [[ "$drop_response_lower" == *"no space left"* ]] || \
      [[ "$drop_response_lower" == *"<html"* ]]; then
       log_warn "Could not drop database '$ODOO_DB_NAME_ENV'. It might not exist or another error occurred. Response: $drop_response"
@@ -302,7 +304,7 @@ function main() {
   log_info "Neutralize database option: $NEUTRALIZE_DB"
 
   if [ "$NEUTRALIZE_DB" = "true" ]; then
-    response=$(curl -L -s -X POST \
+    response=$(curl -s -X POST \
       -F "master_pwd=$DEST_ADMIN_PASSWD" \
       -F "name=$ODOO_DB_NAME_ENV" \
       -F "backup_file=@$TEMP_BACKUP_FILE" \
@@ -310,7 +312,7 @@ function main() {
       -F "neutralize_database=true" \
       "http://localhost:$DEST_PORT/web/database/restore")
   else
-    response=$(curl -L -s -X POST \
+    response=$(curl -s -X POST \
       -F "master_pwd=$DEST_ADMIN_PASSWD" \
       -F "name=$ODOO_DB_NAME_ENV" \
       -F "backup_file=@$TEMP_BACKUP_FILE" \
@@ -320,16 +322,18 @@ function main() {
 
   response_lower="${response,,}"
 
-  if [[ "$response_lower" == *"error"* ]] || \
+  if [[ "$response_lower" == *"redirecting"* ]] && [[ "$response_lower" == *"/web/database/manager"* ]]; then
+    log_success "Database restore command sent successfully to destination. (Redirect received)"
+  elif [[ "$response_lower" == *"error"* ]] || \
      [[ "$response_lower" == *"incorrect master password"* ]] || \
      [[ "$response_lower" == *"no space left"* ]] || \
      [[ "$response_lower" == *"<html"* ]] || \
      [ -z "$response" ]; then
     log_error "Failed to restore database to destination. Response: ${response:-'Empty response (Likely timeout or bad gateway)'}"
     exit 1
+  else
+    log_success "Database restore command sent successfully to destination."
   fi
-
-  log_success "Database restore command sent successfully to destination."
 
   log_info "Restarting the destination environment '$ODOO_DEPLOYMENT_ENVIRONMENT'..."
   docker compose -f "$PATH_TO_ODOO_ENV/docker-compose.yml" up -d > /dev/null 2>&1 || { log_error "Error restarting $ODOO_DEPLOYMENT_ENVIRONMENT"; exit 1; }

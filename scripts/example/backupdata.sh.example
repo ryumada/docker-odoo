@@ -120,7 +120,7 @@ if [ -f "$BACKUP_FILE_PATH" ]; then
 fi
 
 log_info "Requesting backup from Odoo..."
-curl -L -s -X POST \
+curl -s -X POST \
      -F "master_pwd=$ADMIN_PASSWD" \
      -F "name=$ODOO_DATABASE_NAME_PRD" \
      -F "backup_format=zip" \

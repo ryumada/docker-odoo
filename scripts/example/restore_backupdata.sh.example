@@ -141,7 +141,7 @@ function restoreOdooDataViaEndpoint() {
   log_info "Neutralize database option: $NEUTRALIZE_DB"
 
   if [ "$NEUTRALIZE_DB" = "true" ]; then
-    response=$(curl -L -s -X POST \
+    response=$(curl -s -X POST \
       -F "master_pwd=$ADMIN_PASSWD" \
       -F "name=$RESTORED_DB_NAME" \
       -F "backup_file=@$BACKUPDATA_FILE_PATH" \
@@ -149,7 +149,7 @@ function restoreOdooDataViaEndpoint() {
       -F "neutralize_database=$NEUTRALIZE_DB" \
       "http://localhost:$PORT/web/database/restore")
   else
-    response=$(curl -L -s -X POST \
+    response=$(curl -s -X POST \
       -F "master_pwd=$ADMIN_PASSWD" \
       -F "name=$RESTORED_DB_NAME" \
       -F "backup_file=@$BACKUPDATA_FILE_PATH" \
@@ -159,7 +159,9 @@ function restoreOdooDataViaEndpoint() {
 
   response_lower="${response,,}"
 
-  if [[ "$response_lower" == *"error"* ]] || \
+  if [[ "$response_lower" == *"redirecting"* ]] && [[ "$response_lower" == *"/web/database/manager"* ]]; then
+    log_success "Database restore command sent successfully. (Redirect received)"
+  elif [[ "$response_lower" == *"error"* ]] || \
      [[ "$response_lower" == *"incorrect master password"* ]] || \
      [[ "$response_lower" == *"no space left"* ]] || \
      [[ "$response_lower" == *"<html"* ]] || \
