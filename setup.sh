@@ -309,6 +309,8 @@ EOF
   # Configure Traefik Labels
   REVERSE_PROXY_TYPE=$(grep "^REVERSE_PROXY_TYPE=" "$REPOSITORY_DIRPATH/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
   TRAEFIK_DOMAIN=$(grep "^TRAEFIK_DOMAIN=" "$REPOSITORY_DIRPATH/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
+  TRAEFIK_CERTRESOLVER=$(grep "^TRAEFIK_CERTRESOLVER=" "$REPOSITORY_DIRPATH/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
+  [ -z "$TRAEFIK_CERTRESOLVER" ] && TRAEFIK_CERTRESOLVER="myresolver"
   ODOO_VERSION=$(grep "^ODOO_VERSION=" "$REPOSITORY_DIRPATH/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
 
   if [[ "$REVERSE_PROXY_TYPE" == "traefik" ]]; then
@@ -334,7 +336,7 @@ EOF
     local traefik_labels="        - \"traefik.enable=true\"\n"
     traefik_labels+="        - \"traefik.http.routers.odoo-${SERVICE_NAME}.rule=Host(\\\`${TRAEFIK_DOMAIN}\\\`)\"\n"
     traefik_labels+="        - \"traefik.http.routers.odoo-${SERVICE_NAME}.entrypoints=websecure\"\n"
-    traefik_labels+="        - \"traefik.http.routers.odoo-${SERVICE_NAME}.tls.certresolver=myresolver\"\n"
+    traefik_labels+="        - \"traefik.http.routers.odoo-${SERVICE_NAME}.tls.certresolver=${TRAEFIK_CERTRESOLVER}\"\n"
     traefik_labels+="        - \"traefik.http.routers.odoo-${SERVICE_NAME}.service=odoo-service-${SERVICE_NAME}\"\n"
     traefik_labels+="        - \"traefik.http.services.odoo-service-${SERVICE_NAME}.loadbalancer.server.port=${TARGET_PORT}\"\n"
     traefik_labels+="        - \"traefik.http.routers.odoo-ws-${SERVICE_NAME}.rule=Host(\\\`${TRAEFIK_DOMAIN}\\\`) \\&\\& PathPrefix(\\\`${ws_path}\\\`)\"\n"

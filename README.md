@@ -298,6 +298,9 @@ REVERSE_PROXY_TYPE=traefik
 
 # Set the domain here
 TRAEFIK_DOMAIN=odoo.yourdomain.com
+
+# Set the Let's Encrypt / TLS resolver name configured in your Traefik instance
+TRAEFIK_CERTRESOLVER=letsencrypt
 ```
 
 3. Ensure you have properly bound your Traefik proxy network so the containers can communicate locally.
