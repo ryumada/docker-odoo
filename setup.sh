@@ -326,17 +326,22 @@ EOF
     fi
     log_info "Detected Odoo Version $ODOO_VERSION. Using $ws_path for Traefik WS routing."
 
+    local TARGET_PORT=$(grep "^PORT=" "$REPOSITORY_DIRPATH/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
+    local TARGET_GEVENT_PORT=$(grep "^GEVENT_PORT=" "$REPOSITORY_DIRPATH/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
+    [ -z "$TARGET_PORT" ] && TARGET_PORT="8069"
+    [ -z "$TARGET_GEVENT_PORT" ] && TARGET_GEVENT_PORT="8072"
+
     local traefik_labels="        - \"traefik.enable=true\"\n"
     traefik_labels+="        - \"traefik.http.routers.odoo-${SERVICE_NAME}.rule=Host(\\\`${TRAEFIK_DOMAIN}\\\`)\"\n"
     traefik_labels+="        - \"traefik.http.routers.odoo-${SERVICE_NAME}.entrypoints=websecure\"\n"
     traefik_labels+="        - \"traefik.http.routers.odoo-${SERVICE_NAME}.tls.certresolver=myresolver\"\n"
     traefik_labels+="        - \"traefik.http.routers.odoo-${SERVICE_NAME}.service=odoo-service-${SERVICE_NAME}\"\n"
-    traefik_labels+="        - \"traefik.http.services.odoo-service-${SERVICE_NAME}.loadbalancer.server.port=\${PORT}\"\n"
+    traefik_labels+="        - \"traefik.http.services.odoo-service-${SERVICE_NAME}.loadbalancer.server.port=${TARGET_PORT}\"\n"
     traefik_labels+="        - \"traefik.http.routers.odoo-ws-${SERVICE_NAME}.rule=Host(\\\`${TRAEFIK_DOMAIN}\\\`) \\&\\& PathPrefix(\\\`${ws_path}\\\`)\"\n"
     traefik_labels+="        - \"traefik.http.routers.odoo-ws-${SERVICE_NAME}.entrypoints=websecure\"\n"
     traefik_labels+="        - \"traefik.http.routers.odoo-ws-${SERVICE_NAME}.tls=true\"\n"
     traefik_labels+="        - \"traefik.http.routers.odoo-ws-${SERVICE_NAME}.service=odoo-ws-service-${SERVICE_NAME}\"\n"
-    traefik_labels+="        - \"traefik.http.services.odoo-ws-service-${SERVICE_NAME}.loadbalancer.server.port=\${GEVENT_PORT}\""
+    traefik_labels+="        - \"traefik.http.services.odoo-ws-service-${SERVICE_NAME}.loadbalancer.server.port=${TARGET_GEVENT_PORT}\""
 
     sed -i "s|.*# <<TRAEFIK_LABELS_PLACEHOLDER>>.*|${traefik_labels}|" docker-compose.yml
   else
