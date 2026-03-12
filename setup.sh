@@ -269,6 +269,44 @@ function generateDockerComposeAndDockerfile() {
   cp docker-compose.yml.example docker-compose.yml
   chown "$REPOSITORY_OWNER": docker-compose.yml
 
+  # Configure Docker Network Mode
+  DOCKER_NETWORK_MODE=$(grep "^DOCKER_NETWORK_MODE=" "$REPOSITORY_DIRPATH/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
+  if [ -z "$DOCKER_NETWORK_MODE" ] || [ "$DOCKER_NETWORK_MODE" = "host" ]; then
+    log_info "Configuring docker-compose for 'host' network mode..."
+    sed -i 's/# <<NETWORK_MODE_PLACEHOLDER>>/network_mode: "host"/' docker-compose.yml
+    sed -i '/# <<NETWORKS_PLACEHOLDER>>/d' docker-compose.yml
+    sed -i '/# <<TOP_LEVEL_NETWORKS_PLACEHOLDER>>/d' docker-compose.yml
+  else
+    log_info "Configuring docker-compose for external network(s): $DOCKER_NETWORK_MODE"
+    # Uncomment ports since we are not in host mode
+    sed -i -E 's/^([ \t]*)#ports:/\1ports:/' docker-compose.yml
+    sed -i -E 's/^([ \t]*)#  - "\$\{PORT\}:/\1  - "${PORT}:/' docker-compose.yml
+    sed -i -E 's/^([ \t]*)#  - "\$\{GEVENT_PORT\}:/\1  - "${GEVENT_PORT}:/' docker-compose.yml
+
+    # Remove network_mode placeholder
+    sed -i '/# <<NETWORK_MODE_PLACEHOLDER>>/d' docker-compose.yml
+    
+    # Inject service networks block
+    sed -i 's/# <<NETWORKS_PLACEHOLDER>>/networks:/' docker-compose.yml
+    IFS=',' read -ra NET_ADDR <<< "$DOCKER_NETWORK_MODE"
+    for net in "${NET_ADDR[@]}"; do
+      # Avoid leading spaces in variable expansion
+      net=$(echo "$net" | xargs)
+      sed -i "/networks:/a \      - ${net}" docker-compose.yml
+    done
+    
+    # Inject top-level networks block
+    sed -i 's/# <<TOP_LEVEL_NETWORKS_PLACEHOLDER>>/networks:/' docker-compose.yml
+    for net in "${NET_ADDR[@]}"; do
+      net=$(echo "$net" | xargs)
+      cat <<EOF >> docker-compose.yml
+  ${net}:
+    external: true
+EOF
+    done
+  fi
+
+
   # Inject Custom Secrets from .env
   custom_secrets=$(grep "^CUSTOM_SECRETS_FILES=" "$REPOSITORY_DIRPATH/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
   if [ -n "$custom_secrets" ]; then
@@ -329,6 +367,26 @@ function generatePostgresPassword() {
 
 function generatePostgresSecrets() {
   POSTGRES_ODOO_USERNAME=$SERVICE_NAME
+
+  DB_HOST=$(grep "^DB_HOST=" "$REPOSITORY_DIRPATH/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
+  
+  if [ -n "$DB_HOST" ] && [ "$DB_HOST" != "localhost" ]; then
+    log_info "DB_HOST is set to '$DB_HOST'. Skipping automatic PostgreSQL user creation."
+    
+    POSTGRES_ODOO_PASSWORD=$(openssl rand -base64 64 | tr -d '\n')
+    writeTextFile "$POSTGRES_ODOO_USERNAME" "$DB_USER_SECRET" "username"
+    writeTextFile "$POSTGRES_ODOO_PASSWORD" "$DB_PASSWORD_SECRET" "password"
+    setPermissionFileToReadOnlyAndOnlyTo "$ODOO_LINUX_USER" "$DB_USER_SECRET"
+    setPermissionFileToReadOnlyAndOnlyTo "$ODOO_LINUX_USER" "$DB_PASSWORD_SECRET"
+
+    echo -e "\n${COLOR_WARN}===================================================================${COLOR_RESET}"
+    echo -e "${COLOR_WARN}MANUAL DATABASE SETUP REQUIRED${COLOR_RESET}"
+    echo -e "You are connecting to a remote/containerized PostgreSQL database ($DB_HOST)."
+    echo -e "Please run the following SQL command in your PostgreSQL instance as a superuser:\n"
+    echo -e "${COLOR_SUCCESS}CREATE ROLE \"$POSTGRES_ODOO_USERNAME\" LOGIN CREATEDB PASSWORD '$POSTGRES_ODOO_PASSWORD';${COLOR_RESET}"
+    echo -e "\n${COLOR_WARN}===================================================================${COLOR_RESET}\n"
+    return
+  fi
 
   if sudo -u postgres psql -tAc "SELECT 1 FROM pg_roles WHERE rolname='$POSTGRES_ODOO_USERNAME'" 2>/dev/null | grep -q 1; then
     log_success "User $POSTGRES_ODOO_USERNAME already exists."
@@ -531,6 +589,12 @@ function isDockerInstalled() {
 }
 
 function isPostgresInstalled() {
+  DB_HOST=$(grep "^DB_HOST=" "$REPOSITORY_DIRPATH/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
+  if [ -n "$DB_HOST" ] && [ "$DB_HOST" != "localhost" ]; then
+    log_info "DB_HOST is set to '$DB_HOST'. Skipping local psql check."
+    return 0
+  fi
+
   if ! command -v psql &>/dev/null; then
     log_error "psql command not found."
     if [ "$OS_FAMILY" = "rhel" ]; then

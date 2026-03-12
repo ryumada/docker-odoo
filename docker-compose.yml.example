@@ -31,9 +31,10 @@ services:
     # Please make sure there are no ports collide. (sudo netstat -tulpn)
     # Set the ports below the same as you have set in your .env file.
     #ports:
-    #  - "9000:8069"
-    #  - "19001:8072"
-    network_mode: "host"
+    #  - "${PORT}:8069"
+    #  - "${GEVENT_PORT}:8072"
+    # <<NETWORK_MODE_PLACEHOLDER>>
+    # <<NETWORKS_PLACEHOLDER>>
     entrypoint: [ "/opt/odoo/entrypoint.sh" ]
     volumes:
      - ${ODOO_DATADIR_SERVICE}:${ODOO_DATADIR_SERVICE}
@@ -91,3 +92,5 @@ secrets:
     file: .secrets/db_user
   db_password:
     file: .secrets/db_password
+
+# <<TOP_LEVEL_NETWORKS_PLACEHOLDER>>
