@@ -285,7 +285,7 @@ function generateDockerComposeAndDockerfile() {
 
     # Remove network_mode placeholder
     sed -i '/# <<NETWORK_MODE_PLACEHOLDER>>/d' docker-compose.yml
-    
+
     # Inject service networks block
     sed -i 's/# <<NETWORKS_PLACEHOLDER>>/networks:/' docker-compose.yml
     IFS=',' read -ra NET_ADDR <<< "$DOCKER_NETWORK_MODE"
@@ -294,7 +294,7 @@ function generateDockerComposeAndDockerfile() {
       net=$(echo "$net" | xargs)
       sed -i "/networks:/a \      - ${net}" docker-compose.yml
     done
-    
+
     # Inject top-level networks block
     sed -i 's/# <<TOP_LEVEL_NETWORKS_PLACEHOLDER>>/networks:/' docker-compose.yml
     for net in "${NET_ADDR[@]}"; do
@@ -369,10 +369,10 @@ function generatePostgresSecrets() {
   POSTGRES_ODOO_USERNAME=$SERVICE_NAME
 
   DB_HOST=$(grep "^DB_HOST=" "$REPOSITORY_DIRPATH/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
-  
+
   if [ -n "$DB_HOST" ] && [ "$DB_HOST" != "localhost" ]; then
     log_info "DB_HOST is set to '$DB_HOST'. Skipping automatic PostgreSQL user creation."
-    
+
     POSTGRES_ODOO_PASSWORD=$(openssl rand -base64 64 | tr -d '\n')
     writeTextFile "$POSTGRES_ODOO_USERNAME" "$DB_USER_SECRET" "username"
     writeTextFile "$POSTGRES_ODOO_PASSWORD" "$DB_PASSWORD_SECRET" "password"
@@ -382,8 +382,10 @@ function generatePostgresSecrets() {
     echo -e "\n${COLOR_WARN}===================================================================${COLOR_RESET}"
     echo -e "${COLOR_WARN}MANUAL DATABASE SETUP REQUIRED${COLOR_RESET}"
     echo -e "You are connecting to a remote/containerized PostgreSQL database ($DB_HOST)."
-    echo -e "Please run the following SQL command in your PostgreSQL instance as a superuser:\n"
-    echo -e "${COLOR_SUCCESS}CREATE ROLE \"$POSTGRES_ODOO_USERNAME\" LOGIN CREATEDB PASSWORD '$POSTGRES_ODOO_PASSWORD';${COLOR_RESET}"
+    echo -e "The local .secrets files have been generated, but the database role was not automatically created."
+    echo -e "Please copy and paste the following credentials into your docker-postgresql create user script:\n"
+    echo -e "  ${COLOR_SUCCESS}DB USERNAME:${COLOR_RESET} $POSTGRES_ODOO_USERNAME"
+    echo -e "  ${COLOR_SUCCESS}DB PASSWORD:${COLOR_RESET} $POSTGRES_ODOO_PASSWORD"
     echo -e "\n${COLOR_WARN}===================================================================${COLOR_RESET}\n"
     return
   fi
@@ -1085,20 +1087,22 @@ function main() {
 
       DB_HOST=$(grep 'DB_HOST' $ENV_FILE | grep -v '#' | grep -o 'DB_HOST=\([^)]*\)' | sed 's/DB_HOST=//')
 
-      if [ "$DB_HOST" == "" ]; then
-        if isPostgresInstalled; then
-          DB_REGENERATE_SECRETS=$(grep 'DB_REGENERATE_SECRETS' $ENV_FILE | grep -v '#' | grep -o 'DB_REGENERATE_SECRETS=\([^)]*\)' | sed 's/DB_REGENERATE_SECRETS=//')
-          if [ "$DB_REGENERATE_SECRETS" == "Y" ]; then
-            log_info "Regenerate Postgres secrets..."
-            generatePostgresSecrets "$DB_REGENERATE_SECRETS"
-          fi
-          sed -i "s/DB_REGENERATE_SECRETS=Y/DB_REGENERATE_SECRETS=N/" "$ENV_FILE"
+      DB_REGENERATE_SECRETS=$(grep 'DB_REGENERATE_SECRETS' $ENV_FILE | grep -v '#' | grep -o 'DB_REGENERATE_SECRETS=\([^)]*\)' | sed 's/DB_REGENERATE_SECRETS=//')
+      if [ "$DB_REGENERATE_SECRETS" == "Y" ]; then
+        log_info "Regenerate Postgres secrets..."
+        generatePostgresSecrets "$DB_REGENERATE_SECRETS"
+        sed -i "s/DB_REGENERATE_SECRETS=Y/DB_REGENERATE_SECRETS=N/" "$ENV_FILE"
+      fi
 
+      if [ "$DB_HOST" == "" ] || [ "$DB_HOST" == "localhost" ]; then
+        if isPostgresInstalled; then
           installPostgresRestartorScript
         fi
       else
         log_warn "DB_HOST found on .env file. That means you have a separate postgresql server."
-        log_warn "Please make sure that the postgresql server is running and the user and password are setup successfully. See '.secrets' directory to setup the username and password of your postgres user."
+        if [ "$DB_REGENERATE_SECRETS" != "Y" ]; then
+          log_warn "Please make sure that the postgresql server is running and the user and password are setup successfully. See '.secrets' directory to setup the username and password of your postgres user."
+        fi
       fi
 
       checkImportantEnvVariable "PORT" $ENV_FILE
