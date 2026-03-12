@@ -268,6 +268,46 @@ docker compose exec $SERVICE_NAME code serve-web --help
   As you can see in the `SERVICE` column, the service name is `odoo`.
 </details>
 
+## Remote or Containerized PostgreSQL
+By default, `docker-odoo` assumes PostgreSQL is running natively on the host machine. However, it fully supports connecting to remote PostgreSQL servers or containerized database instances (e.g., another Docker container like `docker-postgresql`).
+
+### Configuration
+1. Open up your `.env` file.
+2. Change `DB_HOST` from `localhost` to the target IP address, domain name, or Docker container name (e.g., `docker-postgresql-postgres-1`).
+3. Set `DOCKER_NETWORK_MODE` to the name of the Docker network shared between Odoo and your target database (e.g., `db-net`).
+
+### Automatic Credential Generation
+When `setup.sh` detects a non-local `DB_HOST`, it skips local database provisioning. Instead, it securely generates a strong PostgreSQL username and password, saving them into your local `.secrets/` directory.
+
+The setup script will then print a precise `CREATE ROLE` SQL command to your terminal. Simply copy and execute this command manually within your target PostgreSQL instance to grant Odoo the necessary authenticated access!
+
+*Note: All auxiliary tools (such as `scripts/example/restore_backupdata.sh.example` and `databasecloner.sh.example`) dynamically adapt to remote targets by spinning up lightweight `docker run --rm postgres` query runners to execute cross-network SQL commands safely, avoiding the need for host credentials!*
+
+## Reverse Proxy (Traefik Support)
+Deploying Odoo securely over the web with automated SSL generation and isolated internal traffic is strongly recommended. `docker-odoo` supports both NGINX and Traefik workflows out of the box.
+
+If you are using **Traefik**, the `setup.sh` script will automatically map routing paths (including Longpolling and WebSockets logic for Odoo 16+) and mount all the necessary Docker labels onto your deployment!
+
+### Configuration
+1. Open up your `.env` file.
+2. Ensure you have the following variables populated:
+
+```env
+# Choose your reverse proxy type (NGINX or Traefik)
+REVERSE_PROXY_TYPE=traefik
+
+# Set the domain here
+TRAEFIK_DOMAIN=odoo.yourdomain.com
+```
+
+3. Ensure you have properly bound your Traefik proxy network so the containers can communicate locally.
+```env
+# Point this to your Traefik web network name
+DOCKER_NETWORK_MODE=proxy
+```
+4. Simply run `sudo ./setup.sh`!
+5. The `docker-compose.yml` file is immediately generated with fully baked isolation routing for `odoo.yourdomain.com` targeting both Standard HTTP traffic and `PathPrefix(\`/websocket\`)` longpolling traffic concurrently!
+
 ---
 
 Copyright © 2024 ryumada. All Rights Reserved.

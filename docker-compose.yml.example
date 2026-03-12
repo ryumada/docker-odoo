@@ -27,6 +27,7 @@ services:
       # Add labels to connect to github repository (enter github)
       labels:
         - org.opencontainers.image.source=${ODOO_IMAGE_SOURCE:-"no source"}
+        # <<TRAEFIK_LABELS_PLACEHOLDER>>
     # Because we use host network, the port opened by your container will be automatically opened.
     # Please make sure there are no ports collide. (sudo netstat -tulpn)
     # Set the ports below the same as you have set in your .env file.

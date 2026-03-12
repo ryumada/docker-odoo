@@ -306,6 +306,42 @@ EOF
     done
   fi
 
+  # Configure Traefik Labels
+  REVERSE_PROXY_TYPE=$(grep "^REVERSE_PROXY_TYPE=" "$REPOSITORY_DIRPATH/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
+  TRAEFIK_DOMAIN=$(grep "^TRAEFIK_DOMAIN=" "$REPOSITORY_DIRPATH/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
+  ODOO_VERSION=$(grep "^ODOO_VERSION=" "$REPOSITORY_DIRPATH/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
+
+  if [[ "$REVERSE_PROXY_TYPE" == "traefik" ]]; then
+    log_info "Configuring docker-compose for Traefik reverse proxy..."
+    if [[ -z "$TRAEFIK_DOMAIN" ]]; then
+      log_error "TRAEFIK_DOMAIN is empty in .env but REVERSE_PROXY_TYPE is set to traefik."
+      log_error "Please define TRAEFIK_DOMAIN in your .env file to continue."
+      exit 1
+    fi
+
+    local ws_path="/longpolling"
+    # Check if ODOO_VERSION is 16.0 or higher, or latest
+    if [[ "$ODOO_VERSION" == "16.0" || "$ODOO_VERSION" == "17.0" || "$ODOO_VERSION" == "18.0" || "$ODOO_VERSION" == "latest" ]] || [[ "$ODOO_VERSION" > "16" ]]; then
+      ws_path="/websocket"
+    fi
+    log_info "Detected Odoo Version $ODOO_VERSION. Using $ws_path for Traefik WS routing."
+
+    local traefik_labels="        - \"traefik.enable=true\"\n"
+    traefik_labels+="        - \"traefik.http.routers.odoo-${SERVICE_NAME}.rule=Host(\\\`${TRAEFIK_DOMAIN}\\\`)\"\n"
+    traefik_labels+="        - \"traefik.http.routers.odoo-${SERVICE_NAME}.entrypoints=websecure\"\n"
+    traefik_labels+="        - \"traefik.http.routers.odoo-${SERVICE_NAME}.tls.certresolver=myresolver\"\n"
+    traefik_labels+="        - \"traefik.http.routers.odoo-${SERVICE_NAME}.service=odoo-service-${SERVICE_NAME}\"\n"
+    traefik_labels+="        - \"traefik.http.services.odoo-service-${SERVICE_NAME}.loadbalancer.server.port=${PORT}\"\n"
+    traefik_labels+="        - \"traefik.http.routers.odoo-ws-${SERVICE_NAME}.rule=Host(\\\`${TRAEFIK_DOMAIN}\\\`) && PathPrefix(\\\`${ws_path}\\\`)\"\n"
+    traefik_labels+="        - \"traefik.http.routers.odoo-ws-${SERVICE_NAME}.entrypoints=websecure\"\n"
+    traefik_labels+="        - \"traefik.http.routers.odoo-ws-${SERVICE_NAME}.tls=true\"\n"
+    traefik_labels+="        - \"traefik.http.routers.odoo-ws-${SERVICE_NAME}.service=odoo-ws-service-${SERVICE_NAME}\"\n"
+    traefik_labels+="        - \"traefik.http.services.odoo-ws-service-${SERVICE_NAME}.loadbalancer.server.port=${GEVENT_PORT}\""
+
+    sed -i "s|.*# <<TRAEFIK_LABELS_PLACEHOLDER>>.*|${traefik_labels}|" docker-compose.yml
+  else
+    sed -i '/# <<TRAEFIK_LABELS_PLACEHOLDER>>/d' docker-compose.yml
+  fi
 
   # Inject Custom Secrets from .env
   custom_secrets=$(grep "^CUSTOM_SECRETS_FILES=" "$REPOSITORY_DIRPATH/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
