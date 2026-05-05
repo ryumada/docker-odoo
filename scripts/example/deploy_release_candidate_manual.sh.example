@@ -12,6 +12,9 @@ PATH_TO_ODOO=$(sudo -u "$CURRENT_DIR_USER" git -C "$(dirname "$(readlink -f "$0"
 SERVICE_NAME=$(basename "$PATH_TO_ODOO")
 REPOSITORY_OWNER=$(stat -c '%U' "$PATH_TO_ODOO")
 
+# Source common utilities
+source "$CURRENT_DIR/scripts/lib/odoo_utils.sh"
+
 # Configuration
 ENV_FILE=".env"
 UPDATE_SCRIPT="./scripts/update-env-file.sh"
@@ -412,7 +415,7 @@ if [ "$IS_RENEW_DB" == "true" ]; then
     ODOO_DB_USER_ENV=$(cat "$STG_PATH_TO_ODOO/.secrets/db_user")
 
     log_info "Dump $PRD_DB_NAME to temporary file"
-    run_pg_dump -d "$PRD_DB_NAME" > "/tmp/$STG_DB_NAME.sql" 2>/dev/null || { log_error "Error dumping database"; exit 1; }
+    run_pg_dump --no-owner -d "$PRD_DB_NAME" > "/tmp/$STG_DB_NAME.sql" 2>/dev/null || { log_error "Error dumping database"; exit 1; }
 
     # Sync Filestore
     if [ -d "$ODOO_FILESTORE_PATH_ENV" ]; then
@@ -430,7 +433,10 @@ if [ "$IS_RENEW_DB" == "true" ]; then
     run_psql -d postgres -c "DROP DATABASE IF EXISTS \"$STG_DB_NAME\" WITH (FORCE)" > /dev/null 2>&1 || { log_warn "Error dropping DB, proceeding..."; }
 
     log_info "Create new database $STG_DB_NAME"
-    run_psql -d postgres -c "CREATE DATABASE \"$STG_DB_NAME\"" > /dev/null 2>&1 || { log_error "Error creating DB"; exit 1; }
+    run_psql -d postgres -c "CREATE DATABASE \"$STG_DB_NAME\" OWNER \"$ODOO_DB_USER_ENV\"" > /dev/null 2>&1 || { log_error "Error creating DB"; exit 1; }
+
+    log_info "Setting role to $ODOO_DB_USER_ENV in dump to ensure proper ownership"
+    sed -i "1i SET ROLE \"$ODOO_DB_USER_ENV\";" "/tmp/$STG_DB_NAME.sql"
 
     log_info "Restore $STG_DB_NAME from dump"
     run_psql -d "$STG_DB_NAME" < "/tmp/$STG_DB_NAME.sql" > /dev/null 2>&1 || { log_error "Error restoring DB"; exit 1; }
@@ -443,7 +449,7 @@ if [ "$IS_RENEW_DB" == "true" ]; then
         sanitize_database "$STG_DB_NAME"
     fi
 
-    change_db_ownership "$STG_DB_NAME" "$ODOO_DB_USER_ENV"
+    trigger_registry_reload "$STG_DB_NAME"
 
     log_success "Database clone complete."
 else

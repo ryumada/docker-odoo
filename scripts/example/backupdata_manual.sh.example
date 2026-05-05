@@ -104,6 +104,69 @@ function run_pg_dump() {
   fi
 }
 
+function run_psql() {
+  local env_file="${PSQL_ENV_FILE:-$PATH_TO_ODOO/.env}"
+  local db_host=$(grep "^DB_HOST=" "$env_file" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
+  if [ -n "$db_host" ] && [ "$db_host" != "localhost" ]; then
+    local db_port=$(grep "^DB_PORT=" "$env_file" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
+    local db_user=$(cat "$(dirname "$env_file")/.secrets/db_user" 2>/dev/null || true)
+    local db_pass=$(cat "$(dirname "$env_file")/.secrets/db_password" 2>/dev/null || true)
+    local docker_net=$(grep "^DOCKER_NETWORK_MODE=" "$env_file" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
+    [ -z "$db_port" ] && db_port="5432"
+    [ -z "$docker_net" ] && docker_net="host"
+    local net=$(echo "$docker_net" | cut -d "," -f 1)
+    docker run -i --rm --network="$net" -e PGPASSWORD="$db_pass" postgres psql -h "$db_host" -p "$db_port" -U "$db_user" "$@"
+  else
+    sudo -u postgres psql "$@"
+  fi
+}
+
+function generate_manifest() {
+  local db_name="$1"
+  local target_file="$2"
+
+  log_info "Gathering exact metadata for manifest.json..."
+
+  # SQL query to reconstruct the manifest structure similar to Odoo's dump_db_manifest
+  local MANIFEST_SQL="
+    WITH installed_modules AS (
+        SELECT json_object_agg(name, latest_version) as modules
+        FROM ir_module_module 
+        WHERE state = 'installed'
+    ),
+    pg_v AS (
+        SELECT setting FROM pg_settings WHERE name = 'server_version_num'
+    )
+    SELECT json_build_object(
+        'odoo_dump', '1',
+        'db_name', '$db_name',
+        'version', split_part(latest_version, '.', 1) || '.' || split_part(latest_version, '.', 2),
+        'major_version', split_part(latest_version, '.', 1),
+        'pg_version', (SELECT floor(setting::int / 10000) || '.' || floor((setting::int % 10000) / 100) FROM pg_v),
+        'modules', (SELECT modules FROM installed_modules),
+        'version_info', json_build_array(
+            split_part(latest_version, '.', 1)::int,
+            split_part(latest_version, '.', 2)::int,
+            0, 'final', 0, ''
+        )
+    ) FROM ir_module_module WHERE name = 'base';
+  "
+
+  if ! run_psql -d "$db_name" -t -A -c "$MANIFEST_SQL" > "$target_file" 2>/dev/null; then
+    log_warn "Could not query database for manifest. Falling back to basic manifest."
+    cat <<EOF > "$target_file"
+{
+    "odoo_dump": "1",
+    "db_name": "$db_name",
+    "version": "16.0",
+    "version_info": [16, 0, 0, "final", 0, ""],
+    "major_version": "16",
+    "modules": {}
+}
+EOF
+  fi
+}
+
 ODOO_DATABASE_NAME_PRD=$(grep "^DB_NAME=" "$PATH_TO_ODOO/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
 ZIP_FILE_NAME=backupdata-$SERVICE_NAME.zip
 BACKUP_FILE_PATH="/tmp/$ZIP_FILE_NAME"
@@ -145,8 +208,10 @@ log_info "Create temporary directory"
 mkdir -p "/tmp/backupdata-$SERVICE_NAME" > /dev/null 2>&1 || { log_warn "/tmp/backupdata-$SERVICE_NAME may already exist."; true; }
 
 log_info "Backup database $ODOO_DATABASE_NAME_PRD"
-run_pg_dump "$ODOO_DATABASE_NAME_PRD" > "/tmp/dump.sql" 2>/dev/null || { log_error "Error backup database $ODOO_DATABASE_NAME_PRD"; exit 1; }
+run_pg_dump --no-owner "$ODOO_DATABASE_NAME_PRD" > "/tmp/dump.sql" 2>/dev/null || { log_error "Error backup database $ODOO_DATABASE_NAME_PRD"; exit 1; }
 mv /tmp/dump.sql "/tmp/backupdata-$SERVICE_NAME/dump.sql" > /dev/null 2>&1 || { log_error "Error moving dump.sql to /tmp/backupdata-$SERVICE_NAME"; exit 1; }
+
+generate_manifest "$ODOO_DATABASE_NAME_PRD" "/tmp/backupdata-$SERVICE_NAME/manifest.json"
 
 log_info "Copy filestore files to temporary directory"
 cp -r "$ODOO_FILESTORE_PATH" "/tmp/backupdata-$SERVICE_NAME/filestore" > /dev/null 2>&1 || { log_error "Error copying filestore to /tmp/backupdata-$SERVICE_NAME"; exit 1; }
@@ -165,7 +230,14 @@ log_info "Change Directory to /tmp/backupdata-$SERVICE_NAME"
 cd "/tmp/backupdata-$SERVICE_NAME" > /dev/null 2>&1 || { log_error "Can't change directory to /tmp/backupdata-$SERVICE_NAME"; exit 1; }
 
 log_info "Compress all files to $ZIP_FILE_NAME"
-zip -r "$BACKUP_FILE_PATH" ./dump.sql filestore ./git_hashes.txt ./odoo-base_git_hashes.txt > /dev/null 2>&1 || { log_error "Error compressing files to $BACKUP_FILE_PATH"; exit 1; }
+# Create a list of files to include, starting with mandatory ones
+FILES_TO_ZIP=("dump.sql" "filestore" "manifest.json")
+
+# Add optional files if they exist
+[ -f "git_hashes.txt" ] && FILES_TO_ZIP+=("git_hashes.txt")
+[ -f "odoo-base_git_hashes.txt" ] && FILES_TO_ZIP+=("odoo-base_git_hashes.txt")
+
+zip -r "$BACKUP_FILE_PATH" "${FILES_TO_ZIP[@]}" > /dev/null 2>&1 || { log_error "Error compressing files to $BACKUP_FILE_PATH"; exit 1; }
 chown "$SUDO_USER:$SUDO_USER" "$BACKUP_FILE_PATH"
 
 log_success "Backup data for $SERVICE_NAME is completed. The backup file is located at $BACKUP_FILE_PATH."

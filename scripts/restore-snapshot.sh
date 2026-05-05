@@ -12,6 +12,9 @@ PATH_TO_ODOO=$(sudo -u "$CURRENT_DIR_USER" git -C "$(dirname "$(readlink -f "$0"
 SERVICE_NAME=$(basename "$PATH_TO_ODOO")
 REPOSITORY_OWNER=$(stat -c '%U' "$PATH_TO_ODOO")
 
+# Source common utilities
+source "$CURRENT_DIR/scripts/lib/odoo_utils.sh"
+
 # Configuration
 ENV_FILE=".env"
 UPDATE_SCRIPT="./scripts/update-env-file.sh"
@@ -149,43 +152,12 @@ function restoreOdooData() {
 
   log_info "Restore database $ODOO_DATABASE_NAME_PRD from $(basename "$sql_dump_file")"
   sudo -u postgres psql -c "DROP DATABASE IF EXISTS \"$ODOO_DATABASE_NAME_PRD\"" --quiet -t -P pager=off 2> /dev/null > /dev/null || log_error "Can't drop database"
-  sudo -u postgres psql -c "CREATE DATABASE \"$ODOO_DATABASE_NAME_PRD\"" --quiet -t -P pager=off 2> /dev/null > /dev/null || log_error "Can't create database"
+  sudo -u postgres psql -c "CREATE DATABASE \"$ODOO_DATABASE_NAME_PRD\" OWNER \"$ODOO_DATABASE_USER\"" --quiet -t -P pager=off 2> /dev/null > /dev/null || log_error "Can't create database"
+  
+  log_info "Setting role to $ODOO_DATABASE_USER in dump to ensure proper ownership"
+  sed -i "1i SET ROLE \"$ODOO_DATABASE_USER\";" "$sql_dump_file"
+
   sudo -u postgres psql -d "$ODOO_DATABASE_NAME_PRD" -f "$sql_dump_file" --quiet -t -P pager=off 2> /dev/null > /dev/null || log_error "Can't restore database"
-
-  log_info "Fixing database ownership for user: $ODOO_DATABASE_USER"
-  sudo -u postgres psql -c "ALTER DATABASE \"$ODOO_DATABASE_NAME_PRD\" OWNER TO \"$ODOO_DATABASE_USER\"" --quiet -t -P pager=off 2> /dev/null > /dev/null || log_error "Can't change the owner of the database $ODOO_DATABASE_NAME_PRD"
-
-  sudo -u postgres psql --quiet -t -P pager=off -d "$ODOO_DATABASE_NAME_PRD" -c "
-    -- Change the owner of all tables
-    DO \$\$
-    DECLARE
-        rec RECORD;
-    BEGIN
-        FOR rec IN (SELECT tablename FROM pg_tables WHERE schemaname = 'public') LOOP
-            EXECUTE 'ALTER TABLE ' || quote_ident(rec.tablename) || ' OWNER TO \"${ODOO_DATABASE_USER}\"';
-        END LOOP;
-    END \$\$;
-
-    -- Change the owner of all sequences
-    DO \$\$
-    DECLARE
-        rec RECORD;
-    BEGIN
-        FOR rec IN (SELECT sequence_name FROM information_schema.sequences WHERE sequence_schema = 'public') LOOP
-            EXECUTE 'ALTER SEQUENCE ' || quote_ident(rec.sequence_name) || ' OWNER TO \"${ODOO_DATABASE_USER}\"';
-        END LOOP;
-    END \$\$;
-
-    -- Change the owner of all views
-    DO \$\$
-    DECLARE
-        rec RECORD;
-    BEGIN
-        FOR rec IN (SELECT table_name FROM information_schema.views WHERE table_schema = 'public') LOOP
-            EXECUTE 'ALTER VIEW ' || quote_ident(rec.table_name) || ' OWNER TO \"${ODOO_DATABASE_USER}\"';
-        END LOOP;
-    END \$\$;
-  " 2> /dev/null > /dev/null || log_error "Can't change the owner of the tables, sequences, and views of the database $ODOO_DATABASE_NAME_PRD"
 }
 
 function main() {
@@ -236,6 +208,8 @@ function main() {
   done
 
   restoreOdooData
+
+  trigger_registry_reload "$ODOO_DATABASE_NAME_PRD"
 
   # Git hashes display
   local hash_file=$(find "$TEMP_DIR/tmp" -name "git_hashes_*.txt" -print | head -n 1)

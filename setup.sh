@@ -249,6 +249,15 @@ EOF
     # shellcheck disable=SC2016
     sed -i '/ODOO_BASE_DIRECTORY=\$(basename "\$ODOO_BASE_DIRECTORY")/r '"$temp_upgrade_logic" "$odoo_utility_file"
     rm "$temp_upgrade_logic"
+  elif [[ "$param" == "registry-reload" ]]; then
+    temp_registry_logic=$(mktemp)
+    cat <<'EOF' > "$temp_registry_logic"
+add_arg "shell" # This ensures the Odoo environment is set up for a shell command
+add_arg "--eval=import odoo.modules.registry; odoo.modules.registry.Registry.new(odoo.tools.config['db_name'])"
+EOF
+    sed -i "s/PARAM/$param/g" "$temp_registry_logic"
+    sed -i '/ODOO_BASE_DIRECTORY=\$(basename "\$ODOO_BASE_DIRECTORY")/r '"$temp_registry_logic" "$odoo_utility_file"
+    rm "$temp_registry_logic"
   fi
 
   # delete line on pattern
@@ -1110,10 +1119,12 @@ function main() {
     if [[ "$response" =~ ^([yY][eE][sS]|[yY])+$ ]]; then
       createOdooUtilitiesFromEntrypoint "shell"
       createOdooUtilitiesFromEntrypoint "module-upgrade"
+      createOdooUtilitiesFromEntrypoint "registry-reload"
     fi
   else
     createOdooUtilitiesFromEntrypoint "shell"
     createOdooUtilitiesFromEntrypoint "module-upgrade"
+    createOdooUtilitiesFromEntrypoint "registry-reload"
   fi
 
   echo -e "\n==================================================================="

@@ -12,6 +12,9 @@ PATH_TO_ODOO=$(sudo -u "$CURRENT_DIR_USER" git -C "$(dirname "$(readlink -f "$0"
 SERVICE_NAME=$(basename "$PATH_TO_ODOO")
 REPOSITORY_OWNER=$(stat -c '%U' "$PATH_TO_ODOO")
 
+# Source common utilities
+source "$CURRENT_DIR/scripts/lib/odoo_utils.sh"
+
 # Configuration
 ENV_FILE=".env"
 UPDATE_SCRIPT="./scripts/update-env-file.sh"
@@ -203,53 +206,15 @@ function restoreOdooData() {
   local odoo_db_user="$2"
 
   log_info "Creating the '$restored_db_name' database"
-  run_psql -c "CREATE DATABASE \"$restored_db_name\"" > /dev/null 2>&1
+  run_psql -c "CREATE DATABASE \"$restored_db_name\" OWNER \"$odoo_db_user\"" > /dev/null 2>&1
+
+  log_info "Setting role to $odoo_db_user in dump.sql to ensure proper ownership"
+  sed -i "1i SET ROLE \"$odoo_db_user\";" "$TEMP_DIR/dump.sql"
 
   log_info "Restoring the database schema and data"
   run_psql -d "$restored_db_name" < "$TEMP_DIR/dump.sql" > /dev/null 2>&1
-
-  log_info "Changing the owner of the database"
-  if ! run_psql -c "ALTER DATABASE \"$restored_db_name\" OWNER TO \"$odoo_db_user\"" --quiet -t -P pager=off 2> /dev/null > /dev/null; then
-     log_error "Can't change the owner of the database $restored_db_name"
-     exit 1
-  fi
-
-  log_info "Changing the owner of tables, sequences, and views"
-  if ! run_psql --quiet -t -P pager=off -d "$restored_db_name" -c "
-    -- Change the owner of all tables
-    DO \$\$
-    DECLARE
-        rec RECORD;
-    BEGIN
-        FOR rec IN (SELECT tablename FROM pg_tables WHERE schemaname = 'public') LOOP
-            EXECUTE 'ALTER TABLE ' || quote_ident(rec.tablename) || ' OWNER TO \"${odoo_db_user}\"';
-        END LOOP;
-    END \$\$;
-
-    -- Change the owner of all sequences
-    DO \$\$
-    DECLARE
-        rec RECORD;
-    BEGIN
-        FOR rec IN (SELECT sequence_name FROM information_schema.sequences WHERE sequence_schema = 'public') LOOP
-            EXECUTE 'ALTER SEQUENCE ' || quote_ident(rec.sequence_name) || ' OWNER TO \"${odoo_db_user}\"';
-        END LOOP;
-    END \$\$;
-
-    -- Change the owner of all views
-    DO \$\$
-    DECLARE
-        rec RECORD;
-    BEGIN
-        FOR rec IN (SELECT table_name FROM information_schema.views WHERE table_schema = 'public') LOOP
-            EXECUTE 'ALTER VIEW ' || quote_ident(rec.table_name) || ' OWNER TO \"${odoo_db_user}\"';
-        END LOOP;
-    END \$\$;
-  " 2> /dev/null > /dev/null; then
-     log_error "Can't change the owner of the tables, sequences, and views of the database $restored_db_name"
-     exit 1
-  fi
 }
+
 
 function main() {
   # Ensure secret file exists
@@ -356,7 +321,11 @@ function main() {
   mkdir -p "$FILESTORE_PATH"
 
   log_info "Restoring the filestore files..."
-  rsync -a "$TEMP_DIR/filestore/" "$FILESTORE_PATH"
+  if [ -d "$TEMP_DIR/filestore" ]; then
+    rsync -a "$TEMP_DIR/filestore/" "$FILESTORE_PATH"
+  else
+    log_warn "Filestore not found in backup. Skipping filestore restore."
+  fi
 
   log_info "Changing the ownership of $FILESTORE_PATH to odoo user"
   chown -R odoo: "$FILESTORE_PATH"
@@ -374,7 +343,11 @@ function main() {
     sanitizeDatabase "$RESTORED_DB_NAME"
   fi
 
+  trigger_registry_reload "$RESTORED_DB_NAME"
+
   log_success "Finished restoring backup data for $SERVICE_NAME"
 }
+
+
 
 main "$@"

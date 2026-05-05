@@ -104,12 +104,14 @@ USER root
 COPY --chown=odoo:odoo ./entrypoint.sh /opt/odoo/entrypoint.sh
 COPY --chown=odoo:odoo ./utilities/odoo-shell /usr/local/bin/odoo-shell
 COPY --chown=odoo:odoo ./utilities/odoo-module-upgrade /usr/local/bin/odoo-module-upgrade
+COPY --chown=odoo:odoo ./utilities/odoo-registry-reload /usr/local/bin/odoo-registry-reload
 COPY ./utilities/install-font.sh /usr/local/bin/install-font
 
 # Set permissions
 RUN chmod 550 /opt/odoo/entrypoint.sh; \
     chmod 550 /usr/local/bin/odoo-shell; \
     chmod 550 /usr/local/bin/odoo-module-upgrade; \
+    chmod 550 /usr/local/bin/odoo-registry-reload; \
     chmod 555 /usr/local/bin/install-font
 
 

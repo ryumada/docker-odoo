@@ -275,7 +275,7 @@ function main() {
 
   log_info "Dumping $ODOO_DATABASE_NAME_PRD database to $SQL_DUMP_FILE..."
   # Use the secure temp file
-  if ! sudo -u postgres pg_dump -f "$SQL_DUMP_FILE" "$ODOO_DATABASE_NAME_PRD" > /dev/null 2>&1; then
+  if ! sudo -u postgres pg_dump --no-owner -f "$SQL_DUMP_FILE" "$ODOO_DATABASE_NAME_PRD" > /dev/null 2>&1; then
     log_error "pg_dump failed to dump the database."
     exit 1
   fi

@@ -12,6 +12,9 @@ PATH_TO_ODOO=$(sudo -u "$CURRENT_DIR_USER" git -C "$(dirname "$(readlink -f "$0"
 SERVICE_NAME=$(basename "$PATH_TO_ODOO")
 REPOSITORY_OWNER=$(stat -c '%U' "$PATH_TO_ODOO")
 
+# Source common utilities
+source "$CURRENT_DIR/scripts/lib/odoo_utils.sh"
+
 # Configuration
 ENV_FILE=".env"
 UPDATE_SCRIPT="./scripts/update-env-file.sh"
@@ -323,7 +326,7 @@ function main() {
     log_info "Start cloning database from $ODOO_DATABASE_NAME_PRD to $ODOO_DB_NAME_ENV"
 
     log_info "Dump $ODOO_DATABASE_NAME_PRD to temporary file"
-    run_pg_dump -d "$ODOO_DATABASE_NAME_PRD" > "/tmp/$ODOO_DB_NAME_ENV.sql" 2>/dev/null || { log_error "Error dumping $ODOO_DATABASE_NAME_PRD"; exit 1; }
+    run_pg_dump --no-owner -d "$ODOO_DATABASE_NAME_PRD" > "/tmp/$ODOO_DB_NAME_ENV.sql" 2>/dev/null || { log_error "Error dumping $ODOO_DATABASE_NAME_PRD"; exit 1; }
 
     if [ -d "$ODOO_FILESTORE_PATH_ENV" ]; then
         log_warn "Remove the old filestore of $ODOO_DB_NAME_ENV"
@@ -346,7 +349,10 @@ function main() {
     fi
 
     log_info "Create new database $ODOO_DB_NAME_ENV"
-    run_psql -d postgres -c "CREATE DATABASE \"$ODOO_DB_NAME_ENV\"" > /dev/null 2>&1 || { log_error "Error creating $ODOO_DB_NAME_ENV"; exit 1; }
+    run_psql -d postgres -c "CREATE DATABASE \"$ODOO_DB_NAME_ENV\" OWNER \"$ODOO_DB_USER_ENV\"" > /dev/null 2>&1 || { log_error "Error creating $ODOO_DB_NAME_ENV"; exit 1; }
+
+    log_info "Setting role to $ODOO_DB_USER_ENV in dump to ensure proper ownership"
+    sed -i "1i SET ROLE \"$ODOO_DB_USER_ENV\";" "/tmp/$ODOO_DB_NAME_ENV.sql"
 
     log_info "Restore $ODOO_DB_NAME_ENV from $ODOO_DATABASE_NAME_PRD"
     run_psql -d "$ODOO_DB_NAME_ENV" < "/tmp/$ODOO_DB_NAME_ENV.sql" > /dev/null 2>&1 || { log_error "Error restoring $ODOO_DB_NAME_ENV"; exit 1; }
@@ -360,7 +366,7 @@ function main() {
         sanitize_database "$ODOO_DB_NAME_ENV"
     fi
 
-    change_db_ownership "$ODOO_DB_NAME_ENV" "$ODOO_DB_USER_ENV"
+    trigger_registry_reload "$ODOO_DB_NAME_ENV"
 
     log_info "Restart the $ODOO_DEPLOYMENT_ENVIRONMENT environment"
     docker compose -f "$PATH_TO_ODOO_ENV/docker-compose.yml" restart > /dev/null 2>&1 || { log_error "Error restarting $ODOO_DEPLOYMENT_ENVIRONMENT"; exit 1; }
