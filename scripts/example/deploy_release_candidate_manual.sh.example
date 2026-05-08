@@ -13,11 +13,10 @@ SERVICE_NAME=$(basename "$PATH_TO_ODOO")
 REPOSITORY_OWNER=$(stat -c '%U' "$PATH_TO_ODOO")
 
 # Source common utilities
-source "$CURRENT_DIR/scripts/lib/odoo_utils.sh"
+source "$CURRENT_DIR/lib/odoo_utils.sh"
 
 # Configuration
 ENV_FILE=".env"
-UPDATE_SCRIPT="./scripts/update-env-file.sh"
 MAX_BACKUPS=3
 
 # --- Logging Functions & Colors ---

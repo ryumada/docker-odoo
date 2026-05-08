@@ -250,14 +250,9 @@ EOF
     sed -i '/ODOO_BASE_DIRECTORY=\$(basename "\$ODOO_BASE_DIRECTORY")/r '"$temp_upgrade_logic" "$odoo_utility_file"
     rm "$temp_upgrade_logic"
   elif [[ "$param" == "registry-reload" ]]; then
-    temp_registry_logic=$(mktemp)
-    cat <<'EOF' > "$temp_registry_logic"
-add_arg "shell" # This ensures the Odoo environment is set up for a shell command
-add_arg "--eval=import odoo.modules.registry; odoo.modules.registry.Registry.new(odoo.tools.config['db_name'])"
-EOF
-    sed -i "s/PARAM/$param/g" "$temp_registry_logic"
-    sed -i '/ODOO_BASE_DIRECTORY=\$(basename "\$ODOO_BASE_DIRECTORY")/r '"$temp_registry_logic" "$odoo_utility_file"
-    rm "$temp_registry_logic"
+    # shellcheck disable=SC2016
+    sed -i 's|"/opt/odoo/odoo-base/$ODOO_BASE_DIRECTORY/odoo-bin"|"/opt/odoo/odoo-base/$ODOO_BASE_DIRECTORY/odoo-bin\" shell|' "$odoo_utility_file"
+    sed -i "s|exec python|echo \"import odoo.modules.registry; odoo.modules.registry.Registry.new(odoo.tools.config['db_name'])\" \| exec python|" "$odoo_utility_file"
   fi
 
   # delete line on pattern

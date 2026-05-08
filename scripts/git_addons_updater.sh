@@ -122,14 +122,20 @@ function process_repo() {
             pull_output=$(sudo -u "$REPOSITORY_OWNER" git -C "$subdir" pull -q 2>&1)
             local pull_exit_code=$?
             if [ $pull_exit_code -ne 0 ]; then
-                log_warn "Failed to pull $repo_name"
-                status="clean_failed"
-                # Remove ANSI colour codes and escape quotes/newlines
-                local clean_err
-                clean_err=$(echo "$pull_output" | sed -r 's/\x1B\[[0-9;]*[mK]//g' | sed 's/"/\\"/g' | awk '{printf "%s\\n", $0}')
-                # Clean up the trailing '\n' added by awk
-                error_message="${clean_err%\\n}"
-                HAS_ERROR=1
+                if echo "$pull_output" | grep -q "You are not currently on a branch"; then
+                    log_warn "Skipping pull for $repo_name: Not currently on a branch."
+                    status="not_on_branch"
+                    repo_updated=1 # false
+                else
+                    log_warn "Failed to pull $repo_name"
+                    status="clean_failed"
+                    # Remove ANSI colour codes and escape quotes/newlines
+                    local clean_err
+                    clean_err=$(echo "$pull_output" | sed -r 's/\x1B\[[0-9;]*[mK]//g' | sed 's/"/\\"/g' | awk '{printf "%s\\n", $0}')
+                    # Clean up the trailing '\n' added by awk
+                    error_message="${clean_err%\\n}"
+                    HAS_ERROR=1
+                fi
             else
                 local new_commit
                 new_commit=$(sudo -u "$REPOSITORY_OWNER" git -C "$subdir" rev-parse "$current_branch" 2>/dev/null || true)
