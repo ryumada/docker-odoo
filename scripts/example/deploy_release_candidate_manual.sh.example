@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 set -e
 # Category: Utility
-# Description: Deploys release candidates (manual database operations).
+# Description: Deploys release candidates using rsync for filestore and native localhost endpoint for SQL dump.
 # Usage: ./scripts/deploy_release_candidate_manual.sh <REPO_NAME> <BRANCH> <RENEW_DB> [MODULES]
-# Dependencies: git, docker, pg_dump, psql, rsync, sudo
+# Dependencies: git, docker, pg_dump, psql, rsync, zip, curl, sudo
 
 # Detect Repository Owner to run non-root commands as that user
 CURRENT_DIR=$(dirname "$(readlink -f "$0")")
@@ -66,10 +66,7 @@ trap 'error_handler $? $LINENO "$BASH_COMMAND"' ERR
 
 # --- Centralized Cleanup Hook ---
 cleanup_temp_files() {
-    local sql_file="/tmp/$STG_DB_NAME.sql"
-    if [ -n "$STG_DB_NAME" ] && [ -f "$sql_file" ]; then
-        rm -f "$sql_file"
-    fi
+    rm -f "/tmp/$STG_DB_NAME.sql" "/tmp/dump.sql" "/tmp/db_dump_only_$STG_DB_NAME.zip" 2>/dev/null || true
 }
 trap cleanup_temp_files EXIT
 # ------------------------------------
@@ -168,71 +165,7 @@ function list_databases() {
     exit 0
 }
 
-function sanitize_database() {
-    local db_name="$1"
-    log_info "Sanitizing the database (Disabling Emails & Crons)"
 
-    # SQL commands to disable outgoing email, crons, and mail servers
-    local SANITIZE_SQL="
-      -- Disable all Outgoing Mail Servers
-      UPDATE ir_mail_server SET active = false;
-
-      -- Disable ALL crons initially (Safety first)
-      UPDATE ir_cron SET active = false;
-
-      -- Set System Parameter to prevent catching emails
-      DELETE FROM ir_config_parameter WHERE key = 'mail.catchall.domain';
-      INSERT INTO ir_config_parameter (key, value) VALUES ('mail.catchall.domain', 'localhost');
-    "
-
-    # Execute the SQL commands
-    if run_psql -d "$db_name" -c "$SANITIZE_SQL" > /dev/null 2>&1; then
-        log_success "Database sanitized successfully."
-    else
-        log_warn "Warning: Failed to sanitize database completely (SQL command failed)."
-    fi
-}
-
-function change_db_ownership() {
-    local db_name="$1"
-    local db_user="$2"
-
-    log_info "Changing ownership of DB $db_name to $db_user"
-
-    run_psql -d postgres -c "ALTER DATABASE \"$db_name\" OWNER TO \"$db_user\"" > /dev/null 2>&1 || { log_error "Error changing DB owner"; exit 1; }
-
-    run_psql -d "$db_name" -c "
-      -- Change the owner of all tables
-      DO \$\$
-      DECLARE
-        rec RECORD;
-      BEGIN
-        FOR rec IN (SELECT tablename FROM pg_tables WHERE schemaname = 'public') LOOP
-          EXECUTE 'ALTER TABLE ' || quote_ident(rec.tablename) || ' OWNER TO \"${db_user}\"';
-        END LOOP;
-      END \$\$;
-
-      -- Change the owner of all sequences
-      DO \$\$
-      DECLARE
-          rec RECORD;
-      BEGIN
-        FOR rec IN (SELECT sequence_name FROM information_schema.sequences WHERE sequence_schema = 'public') LOOP
-          EXECUTE 'ALTER SEQUENCE ' || quote_ident(rec.sequence_name) || ' OWNER TO \"${db_user}\"';
-        END LOOP;
-      END \$\$;
-
-      -- Change the owner of all views
-      DO \$\$
-      DECLARE
-        rec RECORD;
-      BEGIN
-        FOR rec IN (SELECT table_name FROM information_schema.views WHERE table_schema = 'public') LOOP
-          EXECUTE 'ALTER VIEW ' || quote_ident(rec.table_name) || ' OWNER TO \"${db_user}\"';
-        END LOOP;
-      END \$\$;
-    " > /dev/null 2>&1 || { log_error "Error changing ownership of tables/sequences/views"; exit 1; }
-}
 
 # ------------------------------------
 
@@ -407,11 +340,17 @@ if [ "$IS_RENEW_DB" == "true" ]; then
     PRD_DB_NAME=$(grep "^DB_NAME=" "$PRD_ENV_FILE" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
     if [ -z "$PRD_DB_NAME" ]; then log_error "DB_NAME not set in prod."; exit 1; fi
 
-    log_stage "[2/4] Cloning Production Database to Staging (Manual Mode)..."
+    STG_ADMIN_PASSWD=$(grep "^ADMIN_PASSWD=" "$STG_ENV_FILE" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
+    STG_PORT=$(grep "^PORT=" "$STG_ENV_FILE" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
+    if [ -z "$STG_ADMIN_PASSWD" ] || [ -z "$STG_PORT" ]; then
+        log_error "ADMIN_PASSWD and/or PORT not set in staging .env file. Cannot proceed with endpoint cloning."
+        exit 1
+    fi
+
+    log_stage "[2/4] Cloning Production Database to Staging (Endpoint Mode)..."
 
     ODOO_FILESTORE_PATH_PRD="/var/lib/odoo/$SERVICE_NAME_PRD/filestore/$PRD_DB_NAME"
     ODOO_FILESTORE_PATH_ENV="/var/lib/odoo/$SERVICE_NAME/filestore/$STG_DB_NAME"
-    ODOO_DB_USER_ENV=$(cat "$STG_PATH_TO_ODOO/.secrets/db_user")
 
     log_info "Dump $PRD_DB_NAME to temporary file"
     run_pg_dump --no-owner -d "$PRD_DB_NAME" > "/tmp/$STG_DB_NAME.sql" 2>/dev/null || { log_error "Error dumping database"; exit 1; }
@@ -425,30 +364,41 @@ if [ "$IS_RENEW_DB" == "true" ]; then
     rsync -a "$ODOO_FILESTORE_PATH_PRD/" "$ODOO_FILESTORE_PATH_ENV" > /dev/null 2>&1 || { log_error "Error copying filestore"; exit 1; }
     chown -R odoo: "$ODOO_FILESTORE_PATH_ENV"
 
-    # Stop Staging
-    docker compose -f "$STG_PATH_TO_ODOO/docker-compose.yml" stop > /dev/null 2>&1 || { log_error "Error stopping staging"; exit 1; }
-
     log_warn "Drop old database $STG_DB_NAME"
     run_psql -d postgres -c "DROP DATABASE IF EXISTS \"$STG_DB_NAME\" WITH (FORCE)" > /dev/null 2>&1 || { log_warn "Error dropping DB, proceeding..."; }
 
-    log_info "Create new database $STG_DB_NAME"
-    run_psql -d postgres -c "CREATE DATABASE \"$STG_DB_NAME\" OWNER \"$ODOO_DB_USER_ENV\"" > /dev/null 2>&1 || { log_error "Error creating DB"; exit 1; }
+    log_info "Ensuring staging environment is running to receive endpoint restore command..."
+    docker compose -f "$STG_PATH_TO_ODOO/docker-compose.yml" up -d > /dev/null 2>&1 || true
 
-    log_info "Setting role to $ODOO_DB_USER_ENV in dump to ensure proper ownership"
-    sed -i "1i SET ROLE \"$ODOO_DB_USER_ENV\";" "/tmp/$STG_DB_NAME.sql"
-
-    log_info "Restore $STG_DB_NAME from dump"
-    run_psql -d "$STG_DB_NAME" < "/tmp/$STG_DB_NAME.sql" > /dev/null 2>&1 || { log_error "Error restoring DB"; exit 1; }
-
-    # Neutralize
-    NEUTRALIZE_DB=$(grep "^NEUTRALIZE_DATABASE=" "$PRD_ENV_FILE" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' | tr '[:upper:]' '[:lower:]')
+    NEUTRALIZE_DB=$(grep "^NEUTRALIZE_DATABASE=" "$PRD_ENV_FILE" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' | tr '[:upper:]' '[:lower:]' || true)
     if [ -z "$NEUTRALIZE_DB" ]; then NEUTRALIZE_DB="true"; fi
 
-    if [ "$NEUTRALIZE_DB" = "true" ]; then
-        sanitize_database "$STG_DB_NAME"
-    fi
+    log_info "Preparing db_dump_only.zip archive containing dump.sql for staging endpoint import..."
+    rm -f "/tmp/dump.sql" "/tmp/db_dump_only_$STG_DB_NAME.zip"
+    mv "/tmp/$STG_DB_NAME.sql" "/tmp/dump.sql"
+    (cd /tmp && zip -q "db_dump_only_$STG_DB_NAME.zip" dump.sql)
+    rm -f "/tmp/dump.sql"
 
-    trigger_registry_reload "$STG_DB_NAME"
+    log_info "Restoring database schema/data and neutralizing via direct localhost endpoint..."
+    response=$(curl -s -X POST \
+      -F "master_pwd=$STG_ADMIN_PASSWD" \
+      -F "name=$STG_DB_NAME" \
+      -F "backup_file=@/tmp/db_dump_only_$STG_DB_NAME.zip" \
+      -F "copy=true" \
+      -F "neutralize_database=$NEUTRALIZE_DB" \
+      "http://localhost:$STG_PORT/web/database/restore")
+
+    response_lower="${response,,}"
+    if [[ "$response_lower" == *"redirecting"* ]] && [[ "$response_lower" == *"/web/database/manager"* ]]; then
+      log_success "Database clone command completed successfully."
+    elif [[ "$response_lower" == *"error"* ]] || \
+         [[ "$response_lower" == *"incorrect master password"* ]] || \
+         [ -z "$response" ]; then
+      log_error "Failed to clone database via endpoint. Response: ${response:-'Empty response'}"
+      exit 1
+    else
+      log_success "Database clone command completed."
+    fi
 
     log_success "Database clone complete."
 else

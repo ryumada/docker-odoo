@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 set -e
 # Category: Utility
-# Description: Manually restores Odoo data (PostgreSQL dump + filestore).
+# Description: Restores Odoo data using rsync for filestore and native localhost endpoint for SQL dump.
 # Usage: ./scripts/restore_backupdata_manual.sh
-# Dependencies: zip, pg_restore, rsync, unzip, sudo, git
+# Dependencies: zip, pg_restore, rsync, unzip, curl, sudo, git
 
 # Detect Repository Owner to run non-root commands as that user
 CURRENT_DIR=$(dirname "$(readlink -f "$0")")
@@ -175,47 +175,6 @@ function run_pg_dump() {
   fi
 }
 
-function sanitizeDatabase() {
-  local restored_db_name="$1"
-  log_info "Sanitizing the database (Disabling Emails & Crons)"
-
-  # SQL commands to disable outgoing email, crons, and mail servers
-  local SANITIZE_SQL="
-    -- Disable all Outgoing Mail Servers
-    UPDATE ir_mail_server SET active = false;
-
-    -- Disable specific email-related cron jobs
-    UPDATE ir_cron SET active = false;
-
-    -- Set System Parameter to prevent catching emails
-    DELETE FROM ir_config_parameter WHERE key = 'mail.catchall.domain';
-    INSERT INTO ir_config_parameter (key, value) VALUES ('mail.catchall.domain', 'localhost');
-  "
-
-  # Execute the SQL commands
-  # Using || true to prevent script exit if a minor sql error occurs, but verifying execution via check
-  if run_psql -d "$restored_db_name" -c "$SANITIZE_SQL" > /dev/null 2>&1; then
-    log_success "Database sanitized successfully."
-  else
-    log_warn "Warning: Failed to sanitize database completely (SQL command failed)."
-  fi
-}
-
-function restoreOdooData() {
-  local restored_db_name="$1"
-  local odoo_db_user="$2"
-
-  log_info "Creating the '$restored_db_name' database"
-  run_psql -c "CREATE DATABASE \"$restored_db_name\" OWNER \"$odoo_db_user\"" > /dev/null 2>&1
-
-  log_info "Setting role to $odoo_db_user in dump.sql to ensure proper ownership"
-  sed -i "1i SET ROLE \"$odoo_db_user\";" "$TEMP_DIR/dump.sql"
-
-  log_info "Restoring the database schema and data"
-  run_psql -d "$restored_db_name" < "$TEMP_DIR/dump.sql" > /dev/null 2>&1
-}
-
-
 function main() {
   # Ensure secret file exists
   if [ ! -f "$PATH_TO_ODOO/.secrets/db_user" ]; then
@@ -223,6 +182,13 @@ function main() {
     exit 1
   fi
   ODOO_DB_USER=$(cat "$PATH_TO_ODOO/.secrets/db_user")
+
+  ADMIN_PASSWD=$(grep "^ADMIN_PASSWD=" "$PATH_TO_ODOO/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
+  PORT=$(grep "^PORT=" "$PATH_TO_ODOO/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
+  if [ -z "$ADMIN_PASSWD" ] || [ -z "$PORT" ]; then
+    log_error "ADMIN_PASSWD and/or PORT not set in .env file. Cannot proceed with endpoint restore."
+    exit 1
+  fi
 
   BACKUPDATA_FILE_NAME="backupdata-$SERVICE_NAME.zip"
   BACKUPDATA_FILE_PATH="/tmp/$BACKUPDATA_FILE_NAME"
@@ -330,20 +296,41 @@ function main() {
   log_info "Changing the ownership of $FILESTORE_PATH to odoo user"
   chown -R odoo: "$FILESTORE_PATH"
 
-  restoreOdooData "$RESTORED_DB_NAME" "$ODOO_DB_USER"
-
-  NEUTRALIZE_DB=$(grep "^NEUTRALIZE_DATABASE=" "$PATH_TO_ODOO/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]]*//g' | sed 's/[[:space:]]*$//g')
+  NEUTRALIZE_DB=$(grep "^NEUTRALIZE_DATABASE=" "$PATH_TO_ODOO/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]]*//g' | sed 's/[[:space:]]*$//g' || true)
   if [ -z "$NEUTRALIZE_DB" ]; then
     NEUTRALIZE_DB="true"
   fi
 
   log_info "Neutralize database option: $NEUTRALIZE_DB"
 
-  if [ "$NEUTRALIZE_DB" = "true" ]; then
-    sanitizeDatabase "$RESTORED_DB_NAME"
+  log_info "Compressing dump.sql into db_dump_only.zip for Odoo endpoint import..."
+  if [ -f "$TEMP_DIR/dump.sql" ]; then
+    (cd "$TEMP_DIR" && zip -q db_dump_only.zip dump.sql)
+  else
+    log_error "dump.sql not found in extracted backup. Aborting."
+    exit 1
   fi
 
-  trigger_registry_reload "$RESTORED_DB_NAME"
+  log_info "Restoring database schema/data and neutralizing via direct localhost endpoint..."
+  response=$(curl -s -X POST \
+    -F "master_pwd=$ADMIN_PASSWD" \
+    -F "name=$RESTORED_DB_NAME" \
+    -F "backup_file=@$TEMP_DIR/db_dump_only.zip" \
+    -F "copy=true" \
+    -F "neutralize_database=$NEUTRALIZE_DB" \
+    "http://localhost:$PORT/web/database/restore")
+
+  response_lower="${response,,}"
+  if [[ "$response_lower" == *"redirecting"* ]] && [[ "$response_lower" == *"/web/database/manager"* ]]; then
+    log_success "Database restore command completed successfully."
+  elif [[ "$response_lower" == *"error"* ]] || \
+       [[ "$response_lower" == *"incorrect master password"* ]] || \
+       [ -z "$response" ]; then
+    log_error "Failed to restore database via endpoint. Response: ${response:-'Empty response'}"
+    exit 1
+  else
+    log_success "Database restore command completed."
+  fi
 
   log_success "Finished restoring backup data for $SERVICE_NAME"
 }
