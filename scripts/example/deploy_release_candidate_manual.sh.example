@@ -167,6 +167,31 @@ function list_databases() {
 
 
 
+function sanitize_database() {
+    local db_name="$1"
+    log_info "Sanitizing the database (Disabling Emails & Crons)"
+
+    # SQL commands to disable outgoing email, crons, and mail servers
+    local SANITIZE_SQL="
+      -- Disable all Outgoing Mail Servers
+      UPDATE ir_mail_server SET active = false;
+
+      -- Disable ALL crons initially (Safety first)
+      UPDATE ir_cron SET active = false;
+
+      -- Set System Parameter to prevent catching emails
+      DELETE FROM ir_config_parameter WHERE key = 'mail.catchall.domain';
+      INSERT INTO ir_config_parameter (key, value) VALUES ('mail.catchall.domain', 'localhost');
+    "
+
+    # Execute the SQL commands
+    if run_psql -d "$db_name" -c "$SANITIZE_SQL" > /dev/null 2>&1; then
+        log_success "Database sanitized successfully."
+    else
+        log_warn "Warning: Failed to sanitize database completely (SQL command failed)."
+    fi
+}
+
 # ------------------------------------
 
 # Self-elevate to root if not already
@@ -379,14 +404,34 @@ if [ "$IS_RENEW_DB" == "true" ]; then
     (cd /tmp && zip -q "db_dump_only_$STG_DB_NAME.zip" dump.sql)
     rm -f "/tmp/dump.sql"
 
-    log_info "Restoring database schema/data and neutralizing via direct localhost endpoint..."
-    response=$(curl -s -X POST \
-      -F "master_pwd=$STG_ADMIN_PASSWD" \
-      -F "name=$STG_DB_NAME" \
-      -F "backup_file=@/tmp/db_dump_only_$STG_DB_NAME.zip" \
-      -F "copy=true" \
-      -F "neutralize_database=$NEUTRALIZE_DB" \
-      "http://localhost:$STG_PORT/web/database/restore")
+    ODOO_VERSION=$(grep "^ODOO_VERSION=" "$STG_ENV_FILE" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
+    ODOO_VERSION_NUM=${ODOO_VERSION%%.*}
+    if [[ ! "$ODOO_VERSION_NUM" =~ ^[0-9]+$ ]]; then
+      if [[ "$ODOO_VERSION" == "latest" ]]; then
+        ODOO_VERSION_NUM=18
+      else
+        ODOO_VERSION_NUM=16
+      fi
+    fi
+    log_info "Detected staging Odoo Version: ${ODOO_VERSION:-16} (Numeric: $ODOO_VERSION_NUM)"
+
+    log_info "Restoring database schema/data via direct localhost endpoint..."
+    if [ "$ODOO_VERSION_NUM" -ge 16 ]; then
+      response=$(curl -s -X POST \
+        -F "master_pwd=$STG_ADMIN_PASSWD" \
+        -F "name=$STG_DB_NAME" \
+        -F "backup_file=@/tmp/db_dump_only_$STG_DB_NAME.zip" \
+        -F "copy=true" \
+        -F "neutralize_database=$NEUTRALIZE_DB" \
+        "http://localhost:$STG_PORT/web/database/restore")
+    else
+      response=$(curl -s -X POST \
+        -F "master_pwd=$STG_ADMIN_PASSWD" \
+        -F "name=$STG_DB_NAME" \
+        -F "backup_file=@/tmp/db_dump_only_$STG_DB_NAME.zip" \
+        -F "copy=true" \
+        "http://localhost:$STG_PORT/web/database/restore")
+    fi
 
     response_lower="${response,,}"
     if [[ "$response_lower" == *"redirecting"* ]] && [[ "$response_lower" == *"/web/database/manager"* ]]; then
@@ -398,6 +443,11 @@ if [ "$IS_RENEW_DB" == "true" ]; then
       exit 1
     else
       log_success "Database clone command completed."
+    fi
+
+    if [ "$NEUTRALIZE_DB" = "true" ] && [ "$ODOO_VERSION_NUM" -lt 16 ]; then
+      log_info "Staging Odoo version < 16 detected. Performing manual SQL database neutralization fallback..."
+      sanitize_database "$STG_DB_NAME"
     fi
 
     log_success "Database clone complete."

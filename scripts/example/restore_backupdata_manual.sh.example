@@ -175,6 +175,31 @@ function run_pg_dump() {
   fi
 }
 
+function sanitizeDatabase() {
+  local restored_db_name="$1"
+  log_info "Sanitizing the database (Disabling Emails & Crons)"
+
+  # SQL commands to disable outgoing email, crons, and mail servers
+  local SANITIZE_SQL="
+    -- Disable all Outgoing Mail Servers
+    UPDATE ir_mail_server SET active = false;
+
+    -- Disable specific email-related cron jobs
+    UPDATE ir_cron SET active = false;
+
+    -- Set System Parameter to prevent catching emails
+    DELETE FROM ir_config_parameter WHERE key = 'mail.catchall.domain';
+    INSERT INTO ir_config_parameter (key, value) VALUES ('mail.catchall.domain', 'localhost');
+  "
+
+  # Execute the SQL commands
+  if run_psql -d "$restored_db_name" -c "$SANITIZE_SQL" > /dev/null 2>&1; then
+    log_success "Database sanitized successfully."
+  else
+    log_warn "Warning: Failed to sanitize database completely (SQL command failed)."
+  fi
+}
+
 function main() {
   # Ensure secret file exists
   if [ ! -f "$PATH_TO_ODOO/.secrets/db_user" ]; then
@@ -311,14 +336,34 @@ function main() {
     exit 1
   fi
 
-  log_info "Restoring database schema/data and neutralizing via direct localhost endpoint..."
-  response=$(curl -s -X POST \
-    -F "master_pwd=$ADMIN_PASSWD" \
-    -F "name=$RESTORED_DB_NAME" \
-    -F "backup_file=@$TEMP_DIR/db_dump_only.zip" \
-    -F "copy=true" \
-    -F "neutralize_database=$NEUTRALIZE_DB" \
-    "http://localhost:$PORT/web/database/restore")
+  ODOO_VERSION=$(grep "^ODOO_VERSION=" "$PATH_TO_ODOO/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
+  ODOO_VERSION_NUM=${ODOO_VERSION%%.*}
+  if [[ ! "$ODOO_VERSION_NUM" =~ ^[0-9]+$ ]]; then
+    if [[ "$ODOO_VERSION" == "latest" ]]; then
+      ODOO_VERSION_NUM=18
+    else
+      ODOO_VERSION_NUM=16
+    fi
+  fi
+  log_info "Detected target Odoo Version: ${ODOO_VERSION:-16} (Numeric: $ODOO_VERSION_NUM)"
+
+  log_info "Restoring database schema/data via direct localhost endpoint..."
+  if [ "$ODOO_VERSION_NUM" -ge 16 ]; then
+    response=$(curl -s -X POST \
+      -F "master_pwd=$ADMIN_PASSWD" \
+      -F "name=$RESTORED_DB_NAME" \
+      -F "backup_file=@$TEMP_DIR/db_dump_only.zip" \
+      -F "copy=true" \
+      -F "neutralize_database=$NEUTRALIZE_DB" \
+      "http://localhost:$PORT/web/database/restore")
+  else
+    response=$(curl -s -X POST \
+      -F "master_pwd=$ADMIN_PASSWD" \
+      -F "name=$RESTORED_DB_NAME" \
+      -F "backup_file=@$TEMP_DIR/db_dump_only.zip" \
+      -F "copy=true" \
+      "http://localhost:$PORT/web/database/restore")
+  fi
 
   response_lower="${response,,}"
   if [[ "$response_lower" == *"redirecting"* ]] && [[ "$response_lower" == *"/web/database/manager"* ]]; then
@@ -330,6 +375,11 @@ function main() {
     exit 1
   else
     log_success "Database restore command completed."
+  fi
+
+  if [ "$NEUTRALIZE_DB" = "true" ] && [ "$ODOO_VERSION_NUM" -lt 16 ]; then
+    log_info "Odoo version < 16 detected. Performing manual SQL database neutralization fallback..."
+    sanitizeDatabase "$RESTORED_DB_NAME"
   fi
 
   log_success "Finished restoring backup data for $SERVICE_NAME"
