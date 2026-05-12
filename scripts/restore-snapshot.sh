@@ -13,7 +13,7 @@ SERVICE_NAME=$(basename "$PATH_TO_ODOO")
 REPOSITORY_OWNER=$(stat -c '%U' "$PATH_TO_ODOO")
 
 # Source common utilities
-source "$CURRENT_DIR/scripts/lib/odoo_utils.sh"
+source "$CURRENT_DIR/lib/odoo_utils.sh"
 
 # Configuration
 ENV_FILE=".env"
@@ -153,7 +153,7 @@ function restoreOdooData() {
   log_info "Restore database $ODOO_DATABASE_NAME_PRD from $(basename "$sql_dump_file")"
   sudo -u postgres psql -c "DROP DATABASE IF EXISTS \"$ODOO_DATABASE_NAME_PRD\"" --quiet -t -P pager=off 2> /dev/null > /dev/null || log_error "Can't drop database"
   sudo -u postgres psql -c "CREATE DATABASE \"$ODOO_DATABASE_NAME_PRD\" OWNER \"$ODOO_DATABASE_USER\"" --quiet -t -P pager=off 2> /dev/null > /dev/null || log_error "Can't create database"
-  
+
   log_info "Setting role to $ODOO_DATABASE_USER in dump to ensure proper ownership"
   sed -i "1i SET ROLE \"$ODOO_DATABASE_USER\";" "$sql_dump_file"
 
