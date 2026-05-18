@@ -1,0 +1,32 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Odoo: Run Server",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceRoot}/odoo-bin",
+            "console": "integratedTerminal",
+            "python": "${command:python.interpreterPath}",
+            "args": [
+                "--config=${workspaceRoot}/odoo.conf",
+            ],
+            "cwd": "${workspaceRoot}"
+        },
+        {
+            "name": "Odoo: Update Module",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceRoot}/odoo-bin",
+            "console": "integratedTerminal",
+            "python": "${command:python.interpreterPath}",
+            "args": [
+                "--config=${workspaceRoot}/odoo.conf",
+                "-u",
+                "custom_module_name",
+                "--stop-after-init"
+            ],
+            "cwd": "${workspaceRoot}"
+        }
+    ]
+}

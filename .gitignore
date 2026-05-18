@@ -6,6 +6,7 @@
 .vscode/*
 !.vscode/launch.json
 !.vscode/extensions.json
+!.vscode/launch.json.template
 
 conf/*
 !conf/odoo.conf.example
