@@ -6,7 +6,16 @@
 
 [[config]]
 name = "Docker-Odoo"
-file_cache = false
 "$version" = "18.0"
 odoo_path = "./odoo-base/enter_odoo_base_repo"
 addons_paths = ["./git/enter_odoo_addons_git/custom_addons", "./git/enter_odoo_addons_git/external_addons"]
+python_path = "/home/user/.venv/bin/python"
+auto_refresh_delay = 2000
+
+# Diag Missing Imports
+# "none"	Suppresses all missing-import warnings
+# "only_odoo"	Reports missing imports only within the Odoo source tree
+# "all"	Reports all missing imports (default)
+diag_missing_imports = "only_odoo"
+
+file_cache = false
