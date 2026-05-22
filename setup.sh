@@ -182,18 +182,52 @@ function createOdooUtilitiesFromEntrypoint() {
   # The 'EOF' is quoted to prevent any variable expansion within the block.
   # This is crucial because variables like $1 need to be interpreted by the
   # generated script, not by this setup script.
-  cat <<'EOF' > "$temp_header_file"
+  if [[ "$param" == "shell" ]]; then
+    cat <<'EOF' > "$temp_header_file"
 DATABASE_NAME_OR_HELP=$1
 UPDATE_MODULES=$2
 
 function show_help() {
-  echo "Usage: odoo-PARAM [database_name|help] [--update=module1,module2,...]"
+  echo "Usage: odoo-shell [database_name|help]"
   echo "Parameters:"
-  echo "  database_name: The name of the database you want to connect to"
+  echo "  database_name: The name of the database you want to start the Odoo shell with"
   echo ""
   echo "  help:"
   echo "    help, -h, --help: Show this help message and exit"
 }
+EOF
+  elif [[ "$param" == "module-upgrade" ]]; then
+    cat <<'EOF' > "$temp_header_file"
+DATABASE_NAME_OR_HELP=$1
+UPDATE_MODULES=$2
+
+function show_help() {
+  echo "Usage: odoo-module-upgrade [database_name|help] --update=module1,module2,..."
+  echo "Parameters:"
+  echo "  database_name: The name of the database where the modules will be upgraded"
+  echo "  --update: Comma-separated list of modules to upgrade (REQUIRED)"
+  echo ""
+  echo "  help:"
+  echo "    help, -h, --help: Show this help message and exit"
+}
+EOF
+  elif [[ "$param" == "registry-reload" ]]; then
+    cat <<'EOF' > "$temp_header_file"
+DATABASE_NAME_OR_HELP=$1
+UPDATE_MODULES=$2
+
+function show_help() {
+  echo "Usage: odoo-registry-reload [database_name|help]"
+  echo "Parameters:"
+  echo "  database_name: The name of the database to reload the Odoo registry for"
+  echo ""
+  echo "  help:"
+  echo "    help, -h, --help: Show this help message and exit"
+}
+EOF
+  fi
+
+  cat <<'EOF' >> "$temp_header_file"
 
 case "$DATABASE_NAME_OR_HELP" in
   help|-h|--help) show_help; exit 1 ;;
