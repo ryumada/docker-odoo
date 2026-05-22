@@ -382,6 +382,8 @@ function main() {
     sanitizeDatabase "$RESTORED_DB_NAME"
   fi
 
+  trigger_registry_reload "$RESTORED_DB_NAME" "$PATH_TO_ODOO"
+
   log_success "Finished restoring backup data for $SERVICE_NAME"
 }
 

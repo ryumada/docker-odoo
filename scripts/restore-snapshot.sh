@@ -209,7 +209,7 @@ function main() {
 
   restoreOdooData
 
-  trigger_registry_reload "$ODOO_DATABASE_NAME_PRD"
+  trigger_registry_reload "$ODOO_DATABASE_NAME_PRD" "$PATH_TO_ODOO"
 
   # Git hashes display
   local hash_file=$(find "$TEMP_DIR/tmp" -name "git_hashes_*.txt" -print | head -n 1)

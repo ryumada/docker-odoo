@@ -15,11 +15,6 @@ REPOSITORY_OWNER=$(stat -c '%U' "$PATH_TO_ODOO")
 # Source common utilities
 source "$CURRENT_DIR/lib/odoo_utils.sh"
 
-# Configuration
-ENV_FILE=".env"
-UPDATE_SCRIPT="./scripts/update-env-file.sh"
-MAX_BACKUPS=3
-
 # --- Logging Functions & Colors ---
 # Define colors for log messages
 readonly COLOR_RESET="\033[0m"
@@ -368,7 +363,7 @@ function main() {
       sanitize_database "$ODOO_DB_NAME_ENV"
     fi
 
-    trigger_registry_reload "$ODOO_DB_NAME_ENV"
+    trigger_registry_reload "$ODOO_DB_NAME_ENV" "$PATH_TO_ODOO_ENV"
 
     log_info "Restart the $ODOO_DEPLOYMENT_ENVIRONMENT environment"
     docker compose -f "$PATH_TO_ODOO_ENV/docker-compose.yml" restart > /dev/null 2>&1 || { log_error "Error restarting $ODOO_DEPLOYMENT_ENVIRONMENT"; exit 1; }

@@ -15,10 +15,6 @@ REPOSITORY_OWNER=$(stat -c '%U' "$PATH_TO_ODOO")
 # Source common utilities
 source "$CURRENT_DIR/lib/odoo_utils.sh"
 
-# Configuration
-ENV_FILE=".env"
-MAX_BACKUPS=3
-
 # --- Logging Functions & Colors ---
 # Define colors for log messages
 readonly COLOR_RESET="\033[0m"
@@ -449,6 +445,8 @@ if [ "$IS_RENEW_DB" == "true" ]; then
       log_info "Staging Odoo version < 16 detected. Performing manual SQL database neutralization fallback..."
       sanitize_database "$STG_DB_NAME"
     fi
+
+    trigger_registry_reload "$STG_DB_NAME" "$STG_PATH_TO_ODOO"
 
     log_success "Database clone complete."
 else
