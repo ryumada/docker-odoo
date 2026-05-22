@@ -243,7 +243,7 @@ function main() {
     exit 1
   fi
 
-  ODOO_DB_NAME_ENV=$(promptClonedDBName "$ENV_FILE" "$USE_DATE_SUFFIX" "$ODOO_DEPLOYMENT_ENVIRONMENT")
+  ODOO_DB_NAME_ENV=$(promptClonedDBName "$ENV_FILE" "$USE_DATE_SUFFIX" "$SERVICE_NAME-$ODOO_DEPLOYMENT_ENVIRONMENT")
 
   log_info "Start cloning database from '$ODOO_DATABASE_NAME_PRD' to '$ODOO_DB_NAME_ENV'"
 
