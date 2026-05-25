@@ -83,10 +83,7 @@ trap 'error_handler $? $LINENO "$BASH_COMMAND"' ERR
 
 # --- Centralized Cleanup Hook ---
 cleanup_temp_files() {
-    # Delete local backup directory if exists
-    if [ -n "$BACKUP_DIR" ] && [ -d "$BACKUP_DIR" ]; then
-        rm -rf "$BACKUP_DIR"
-    fi
+    rm -f "/tmp/$STG_DB_NAME.sql" "/tmp/dump.sql" "/tmp/db_dump_only_$STG_DB_NAME.zip" 2>/dev/null || true
     # Delete temp stderr log
     if [ -n "${STDERR_LOG:-}" ] && [ -f "$STDERR_LOG" ]; then
         rm -f "$STDERR_LOG"
@@ -440,6 +437,13 @@ if [ "$IS_RENEW_DB" == "true" ]; then
     log_info "Detected staging Odoo Version: ${ODOO_VERSION:-16} (Numeric: $ODOO_VERSION_NUM)"
 
     log_info "Restoring database schema/data via direct localhost endpoint..."
+
+    curl -s -X POST \
+        -F "master_pwd=quinsial-durami-woxuenta" \
+        -F "name=016-mbs-dev-20260525-152124"-F "backup_file=@/tmp/db_dump_only_016-mbs-dev-20260525-152124.zip" \
+        -F "copy=true" \
+        -F "neutralize_database=true" "http://localhost:20001/web/database/restore"
+
     if [ "$ODOO_VERSION_NUM" -ge 16 ]; then
       response=$(curl -s -X POST \
         -F "master_pwd=$STG_ADMIN_PASSWD" \
