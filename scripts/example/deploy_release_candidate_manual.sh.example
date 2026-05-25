@@ -88,6 +88,10 @@ cleanup_temp_files() {
     if [ -n "${STDERR_LOG:-}" ] && [ -f "$STDERR_LOG" ]; then
         rm -f "$STDERR_LOG"
     fi
+    # Delete curl output temp file if it exists
+    if [ -n "${CURL_OUT:-}" ] && [ -f "$CURL_OUT" ]; then
+        rm -f "$CURL_OUT"
+    fi
 }
 trap cleanup_temp_files EXIT
 # ------------------------------------
@@ -438,28 +442,25 @@ if [ "$IS_RENEW_DB" == "true" ]; then
 
     log_info "Restoring database schema/data via direct localhost endpoint..."
 
-    curl -s -X POST \
-        -F "master_pwd=quinsial-durami-woxuenta" \
-        -F "name=016-mbs-dev-20260525-152124"-F "backup_file=@/tmp/db_dump_only_016-mbs-dev-20260525-152124.zip" \
-        -F "copy=true" \
-        -F "neutralize_database=true" "http://localhost:20001/web/database/restore"
-
+    CURL_OUT=$(mktemp)
     if [ "$ODOO_VERSION_NUM" -ge 16 ]; then
-      response=$(curl -s -X POST \
+      curl -s -X POST \
         -F "master_pwd=$STG_ADMIN_PASSWD" \
         -F "name=$STG_DB_NAME" \
         -F "backup_file=@/tmp/db_dump_only_$STG_DB_NAME.zip" \
         -F "copy=true" \
         -F "neutralize_database=$NEUTRALIZE_DB" \
-        "http://localhost:$STG_PORT/web/database/restore")
+        "http://localhost:$STG_PORT/web/database/restore" > "$CURL_OUT" 2>&1 || true
     else
-      response=$(curl -s -X POST \
+      curl -s -X POST \
         -F "master_pwd=$STG_ADMIN_PASSWD" \
         -F "name=$STG_DB_NAME" \
         -F "backup_file=@/tmp/db_dump_only_$STG_DB_NAME.zip" \
         -F "copy=true" \
-        "http://localhost:$STG_PORT/web/database/restore")
+        "http://localhost:$STG_PORT/web/database/restore" > "$CURL_OUT" 2>&1 || true
     fi
+    response=$(cat "$CURL_OUT")
+    rm -f "$CURL_OUT"
 
     response_lower="${response,,}"
     if [[ "$response_lower" == *"redirecting"* ]] && [[ "$response_lower" == *"/web/database/manager"* ]]; then
