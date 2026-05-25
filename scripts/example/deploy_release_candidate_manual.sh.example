@@ -418,7 +418,14 @@ if [ "$IS_RENEW_DB" == "true" ]; then
     run_psql -d postgres -c "DROP DATABASE IF EXISTS \"$STG_DB_NAME\" WITH (FORCE)" > /dev/null 2>&1 || { log_warn "Error dropping DB, proceeding..."; }
 
     log_info "Ensuring staging environment is running to receive endpoint restore command..."
-    docker compose -f "$STG_PATH_TO_ODOO/docker-compose.yml" up -d > /dev/null 2>&1 || true
+    if curl -s -o /dev/null http://localhost:$STG_PORT; then
+        log_success "Staging environment is running."
+    else
+        log_warn "Staging environment is not running. Starting it...";
+        docker compose -f "$STG_PATH_TO_ODOO/docker-compose.yml" up -d > /dev/null 2>&1 || true
+        log_info "Waiting for 15 seconds until the Odoo Instance is ready..."
+        sleep 15
+    fi
 
     NEUTRALIZE_DB=$(grep "^NEUTRALIZE_DATABASE=" "$PRD_ENV_FILE" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' | tr '[:upper:]' '[:lower:]' || true)
     if [ -z "$NEUTRALIZE_DB" ]; then NEUTRALIZE_DB="true"; fi
@@ -443,6 +450,7 @@ if [ "$IS_RENEW_DB" == "true" ]; then
     log_info "Restoring database schema/data via direct localhost endpoint..."
 
     CURL_OUT=$(mktemp)
+
     if [ "$ODOO_VERSION_NUM" -ge 16 ]; then
       curl -s -X POST \
         -F "master_pwd=$STG_ADMIN_PASSWD" \
