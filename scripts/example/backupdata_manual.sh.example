@@ -43,12 +43,33 @@ error_handler() {
   local exit_code=$1
   local line_no=$2
   local command_name=$3
+
+  # Restore stderr to the original descriptor to stop logging to the temp file
+  if [ -n "${STDERR_LOG:-}" ]; then
+    exec 2>&3
+  fi
+
   log_error "An error occurred on line $line_no."
   log_error "Exit Code: $exit_code"
   log_error "Command: $command_name"
-  log_error "Note: The specific error message should be printed in the lines above this error."
+
+  # Allow tee to finish flushing
+  sleep 0.2
+
+  if [ -f "${STDERR_LOG:-}" ] && [ -s "$STDERR_LOG" ]; then
+    log_error "Captured stderr output:"
+    while IFS= read -r line; do
+      log_error "  $line"
+    done < <(tail -n 20 "$STDERR_LOG")
+  fi
+
   exit "$exit_code"
 }
+
+# Save original stderr to file descriptor 3 and redirect to temp file & descriptor 3
+STDERR_LOG=$(mktemp)
+exec 3>&2
+exec 2> >(tee -a "$STDERR_LOG" >&3)
 
 trap 'error_handler $? $LINENO "$BASH_COMMAND"' ERR
 
@@ -62,6 +83,10 @@ cleanup_temp_files() {
     fi
     if [ -f "$temp_sql" ]; then
         rm -f "$temp_sql"
+    fi
+    # Delete temp stderr log
+    if [ -n "${STDERR_LOG:-}" ] && [ -f "$STDERR_LOG" ]; then
+        rm -f "$STDERR_LOG"
     fi
 }
 
