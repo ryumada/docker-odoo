@@ -124,13 +124,6 @@ function get_next_prefix() {
   printf "%03d" "$next_count"
 }
 
-function amIRoot() {
-  if [ "$EUID" -ne 0 ]; then
-    log_error "Please run this script as root"
-    exit 1
-  fi
-}
-
 function isBackupDataExists() {
   local backupdata_file_path="$1"
   if [ ! -f "$backupdata_file_path" ]; then
@@ -157,7 +150,13 @@ function isRsyncInstalled() {
   fi
 }
 
-function isUnZipInstalled() {
+function isZipAndUnzipInstalled() {
+  if ! command -v zip &>/dev/null; then
+    log_error "zip is not installed. Please install zip"
+    log_info "Ubuntu: sudo apt install zip"
+    log_info "CentOS: sudo yum install zip"
+    exit 1
+  fi
   if ! command -v unzip &>/dev/null; then
     log_error "unzip is not installed. Please install unzip"
     log_info "Ubuntu: sudo apt install unzip"
@@ -245,11 +244,19 @@ function main() {
   TEMP_DIR="/tmp/backupdata-$SERVICE_NAME"
   RESTORED_DB_NAME=""
 
-  amIRoot
+  # Self-elevate to root if not already
+  if [ "$(id -u)" -ne 0 ]; then
+      log_info "Elevating permissions to root..."
+      # shellcheck disable=SC2093
+      exec sudo "$0" "$@" # Re-run the script with sudo
+      log_error "Failed to elevate to root. Please run with sudo." # This will only run if exec fails
+      exit 1
+  fi
+
   isBackupDataExists "$BACKUPDATA_FILE_PATH"
   isRsyncInstalled
   isPg_restoreInstalled
-  isUnZipInstalled
+  isZipAndUnzipInstalled
 
   log_info "Start restoring backup data for $SERVICE_NAME"
 

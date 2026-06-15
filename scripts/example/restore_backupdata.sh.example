@@ -221,7 +221,7 @@ function main() {
       exit 1
   fi
 
-    # Self-elevate to root if not already
+  # Self-elevate to root if not already
   if [ "$(id -u)" -ne 0 ]; then
       log_info "Elevating permissions to root..."
       # shellcheck disable=SC2093
