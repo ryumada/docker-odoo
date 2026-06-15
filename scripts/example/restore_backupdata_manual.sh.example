@@ -225,6 +225,15 @@ function sanitizeDatabase() {
 }
 
 function main() {
+  # Self-elevate to root if not already
+  if [ "$(id -u)" -ne 0 ]; then
+      log_info "Elevating permissions to root..."
+      # shellcheck disable=SC2093
+      exec sudo "$0" "$@" # Re-run the script with sudo
+      log_error "Failed to elevate to root. Please run with sudo." # This will only run if exec fails
+      exit 1
+  fi
+
   # Ensure secret file exists
   if [ ! -f "$PATH_TO_ODOO/.secrets/db_user" ]; then
     log_error "Secret file .secrets/db_user not found in $PATH_TO_ODOO"
@@ -243,15 +252,6 @@ function main() {
   BACKUPDATA_FILE_PATH="/tmp/$BACKUPDATA_FILE_NAME"
   TEMP_DIR="/tmp/backupdata-$SERVICE_NAME"
   RESTORED_DB_NAME=""
-
-  # Self-elevate to root if not already
-  if [ "$(id -u)" -ne 0 ]; then
-      log_info "Elevating permissions to root..."
-      # shellcheck disable=SC2093
-      exec sudo "$0" "$@" # Re-run the script with sudo
-      log_error "Failed to elevate to root. Please run with sudo." # This will only run if exec fails
-      exit 1
-  fi
 
   isBackupDataExists "$BACKUPDATA_FILE_PATH"
   isRsyncInstalled
