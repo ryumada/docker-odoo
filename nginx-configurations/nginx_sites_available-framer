@@ -1,0 +1,120 @@
+# find (ctrl + f) 'ENTER' keyword to customize the configuration.
+upstream $DOMAIN-wordpress_backend {
+    # The IP:Port of your WordPress PHP-FPM container.
+    # If using Docker on the same host, 127.0.0.1:9000 is common.
+    server 127.0.0.1:$WORDPRESS_PORT;
+}
+
+server {
+    listen 80;
+    server_name $DOMAIN; # Replace with your domain
+
+    # # ACME Challenge Rule (for Let's Encrypt renewal)
+    # location ^~ /.well-known/acme-challenge/ {
+    #     allow all;
+    #     root /var/lib/letsencrypt;
+    # }
+
+    # Redirect all other traffic to HTTPS
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl;
+
+    server_name $DOMAIN; # Replace with your domain
+
+    # --- SSL CONFIGURATION ---
+    ssl_certificate     /etc/letsencrypt/live/$DOMAIN/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/$DOMAIN/privkey.pem;
+    include             /etc/letsencrypt/options-ssl-nginx.conf;
+    ssl_dhparam         /etc/letsencrypt/ssl-dhparams.pem;
+
+    if ($host != "$DOMAIN") { return 403; }
+
+    # --- LOGGING ---
+    access_log /var/log/nginx/$DOMAIN.access.log;
+    error_log  /var/log/nginx/$DOMAIN.error.log;
+    access_log /var/log/nginx/access.log;
+    error_log  /var/log/nginx/error.log;
+
+    # --- TIMEOUTS ---
+    # Increased to prevent 504 errors during WP updates or slow Framer loads
+    proxy_connect_timeout 60s;
+    proxy_send_timeout 300s;
+    proxy_read_timeout 300s;
+    fastcgi_read_timeout 300s;
+
+    # ============================================================
+    # ROUTE 1: FRAMER (Root Path /)
+    # ============================================================
+    location / {
+        # 1. Resolver is REQUIRED for variables in proxy_pass
+        resolver 8.8.8.8 valid=30s;
+
+        set $framer_upstream "https://site.$DOMAIN"; # Replace with your Framer subdomain
+
+        proxy_pass $framer_upstream;
+
+        # Headers for Framer
+        proxy_set_header Host site.$DOMAIN;
+        proxy_ssl_server_name on;
+        proxy_ssl_name site.$DOMAIN;
+
+        # Force plain text so we can edit the HTML
+        proxy_set_header Accept-Encoding "";
+
+        # Rewrite links from 'site.$DOMAIN' to '$DOMAIN'
+        sub_filter 'site.$DOMAIN' '$DOMAIN';
+        sub_filter_once off;
+        sub_filter_types text/css text/xml application/javascript application/json;
+
+        # Buffers for stability
+        proxy_buffer_size 128k;
+        proxy_buffers 4 256k;
+        proxy_busy_buffers_size 256k;
+    }
+
+    location = /robots.txt {
+        allow all;
+        log_not_found off;
+        access_log off;
+        root /var/www/html; # Ensure this points to your actual web root
+    }
+
+    # ============================================================
+    # ROUTE 2: WORDPRESS (/blog Path)
+    # ============================================================
+    location ^~ /blog {
+        # The 'alias' is used instead of root directive and MUST point to the full path of your website's files
+        # on the host machine's filesystem.
+        # ex. /opt/mywebsite/data/wordpress
+        alias /opt/mywebsite/data/wordpress;
+        index index.php index.html index.htm;
+
+        # Logic: If file doesn't exist, send to index.php with args
+        if (!-e $request_filename) {
+            rewrite /blog/(.*)$ /blog/index.php?q=$1 last;
+        }
+
+        # PHP-FPM Handler
+        location ~ \.php$ {
+            # 1. Strip '/blog' from the URI so Docker sees '/index.php'
+            rewrite ^/blog(/.*)$ $1 break;
+
+            fastcgi_split_path_info ^(.+\.php)(/.+)$;
+            fastcgi_pass $DOMAIN-wordpress_backend;
+            fastcgi_index index.php;
+            include fastcgi_params;
+
+            # 2. Map the request to the internal Docker path
+            # This ensures SCRIPT_FILENAME is /var/www/html/index.php
+            fastcgi_param SCRIPT_FILENAME /var/www/html$fastcgi_script_name;
+            fastcgi_param PATH_INFO $fastcgi_path_info;
+        }
+    }
+
+    # --- SECURITY ---
+    location ~ /\. { deny all; }
+    location ~* /(?:uploads|files)/.*\.php$ { deny all; }
+}
