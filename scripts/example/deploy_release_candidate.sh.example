@@ -355,25 +355,69 @@ log_info "   Clone DB: $IS_RENEW_DB"
 # ---------------------------------------------------------
 log_stage "[1/4] Switching Git Branch..."
 
-# Fetch updates
+log_info "Stashing local changes if any..."
 if [ "$JSON_MODE" = "true" ]; then
-    GIT_FETCH_CMD="sudo -u $CURRENT_DIR_USER git -C $STG_GIT_PATH fetch >&2"
+    sudo -u "$CURRENT_DIR_USER" git -C "$STG_GIT_PATH" stash save -u >&2 || true
 else
-    GIT_FETCH_CMD="sudo -u $CURRENT_DIR_USER git -C $STG_GIT_PATH fetch"
+    sudo -u "$CURRENT_DIR_USER" git -C "$STG_GIT_PATH" stash save -u || true
 fi
 
-if eval "$GIT_FETCH_CMD"; then
-    log_info "Fetch success."
+# Fetch updates with prune
+log_info "Fetching latest updates..."
+TEMP_GIT_LOG=$(mktemp)
+if [ "$JSON_MODE" = "true" ]; then
+    eval "sudo -u \"$CURRENT_DIR_USER\" git -C \"$STG_GIT_PATH\" fetch --prune" >"$TEMP_GIT_LOG" 2>&1
 else
-    log_error "Failed to fetch."
-    exit 1
+    eval "sudo -u \"$CURRENT_DIR_USER\" git -C \"$STG_GIT_PATH\" fetch --prune" >"$TEMP_GIT_LOG" 2>&1
+    cat "$TEMP_GIT_LOG"
 fi
+FETCH_STATUS=$?
+
+if [ $FETCH_STATUS -ne 0 ]; then
+    if grep -q "fatal: cannot lock ref" "$TEMP_GIT_LOG"; then
+        CONFLICTING_BRANCH=$(sed -n "s/.*fatal: cannot lock ref '[^']*': '\([^']*\)' exists.*/\1/p" "$TEMP_GIT_LOG" | head -n 1)
+        if [ -n "$CONFLICTING_BRANCH" ]; then
+            log_warn "Detected git ref conflict: $CONFLICTING_BRANCH"
+            log_info "Switching to main/master branch first to resolve conflict..."
+            if [ "$JSON_MODE" = "true" ]; then
+                sudo -u "$CURRENT_DIR_USER" git -C "$STG_GIT_PATH" checkout main >&2 || sudo -u "$CURRENT_DIR_USER" git -C "$STG_GIT_PATH" checkout master >&2 || true
+            else
+                sudo -u "$CURRENT_DIR_USER" git -C "$STG_GIT_PATH" checkout main || sudo -u "$CURRENT_DIR_USER" git -C "$STG_GIT_PATH" checkout master || true
+            fi
+
+            log_info "Deleting conflicting branch: $CONFLICTING_BRANCH..."
+            if [ "$JSON_MODE" = "true" ]; then
+                sudo -u "$CURRENT_DIR_USER" git -C "$STG_GIT_PATH" branch -D "$CONFLICTING_BRANCH" >&2 || true
+            else
+                sudo -u "$CURRENT_DIR_USER" git -C "$STG_GIT_PATH" branch -D "$CONFLICTING_BRANCH" || true
+            fi
+
+            log_info "Retrying fetch --prune..."
+            if [ "$JSON_MODE" = "true" ]; then
+                sudo -u "$CURRENT_DIR_USER" git -C "$STG_GIT_PATH" fetch --prune >&2 || { log_error "Failed to fetch updates after resolving conflict."; rm -f "$TEMP_GIT_LOG"; exit 1; }
+            else
+                sudo -u "$CURRENT_DIR_USER" git -C "$STG_GIT_PATH" fetch --prune || { log_error "Failed to fetch updates after resolving conflict."; rm -f "$TEMP_GIT_LOG"; exit 1; }
+            fi
+        else
+            log_error "Failed to fetch updates and could not parse conflict branch."
+            rm -f "$TEMP_GIT_LOG"
+            exit 1
+        fi
+    else
+        log_error "Failed to fetch updates."
+        rm -f "$TEMP_GIT_LOG"
+        exit 1
+    fi
+else
+    log_info "Fetch success."
+fi
+rm -f "$TEMP_GIT_LOG"
 
 # Force checkout clean (discard local changes in staging)
 if [ "$JSON_MODE" = "true" ]; then
-    GIT_RESET_CMD="sudo -u $CURRENT_DIR_USER git -C $STG_GIT_PATH reset --hard >&2"
+    GIT_RESET_CMD="sudo -u \"$CURRENT_DIR_USER\" git -C \"$STG_GIT_PATH\" reset --hard >&2"
 else
-    GIT_RESET_CMD="sudo -u $CURRENT_DIR_USER git -C $STG_GIT_PATH reset --hard"
+    GIT_RESET_CMD="sudo -u \"$CURRENT_DIR_USER\" git -C \"$STG_GIT_PATH\" reset --hard"
 fi
 
 if eval "$GIT_RESET_CMD"; then
@@ -382,23 +426,60 @@ else
     log_warn "Could not reset git changes. Proceeding..."
 fi
 
+# Checkout the branch with ref-locking conflict resolution fallback
+TEMP_CHECKOUT_LOG=$(mktemp)
 if [ "$JSON_MODE" = "true" ]; then
-    GIT_CHECKOUT_CMD="sudo -u $CURRENT_DIR_USER git -C $STG_GIT_PATH checkout $RELEASE_BRANCH >&2"
+    eval "sudo -u \"$CURRENT_DIR_USER\" git -C \"$STG_GIT_PATH\" checkout \"$RELEASE_BRANCH\"" >"$TEMP_CHECKOUT_LOG" 2>&1
 else
-    GIT_CHECKOUT_CMD="sudo -u $CURRENT_DIR_USER git -C $STG_GIT_PATH checkout $RELEASE_BRANCH"
+    eval "sudo -u \"$CURRENT_DIR_USER\" git -C \"$STG_GIT_PATH\" checkout \"$RELEASE_BRANCH\"" >"$TEMP_CHECKOUT_LOG" 2>&1
+    cat "$TEMP_CHECKOUT_LOG"
 fi
+CHECKOUT_STATUS=$?
 
-if eval "$GIT_CHECKOUT_CMD"; then
+if [ $CHECKOUT_STATUS -ne 0 ]; then
+    if grep -q "fatal: cannot lock ref" "$TEMP_CHECKOUT_LOG"; then
+        CONFLICTING_BRANCH=$(sed -n "s/.*fatal: cannot lock ref '[^']*': '\([^']*\)' exists.*/\1/p" "$TEMP_CHECKOUT_LOG" | head -n 1)
+        if [ -n "$CONFLICTING_BRANCH" ]; then
+            log_warn "Detected checkout git ref conflict: $CONFLICTING_BRANCH"
+            log_info "Switching to main/master branch first to resolve conflict..."
+            if [ "$JSON_MODE" = "true" ]; then
+                sudo -u "$CURRENT_DIR_USER" git -C "$STG_GIT_PATH" checkout main >&2 || sudo -u "$CURRENT_DIR_USER" git -C "$STG_GIT_PATH" checkout master >&2 || true
+            else
+                sudo -u "$CURRENT_DIR_USER" git -C "$STG_GIT_PATH" checkout main || sudo -u "$CURRENT_DIR_USER" git -C "$STG_GIT_PATH" checkout master || true
+            fi
+
+            log_info "Deleting conflicting branch: $CONFLICTING_BRANCH..."
+            if [ "$JSON_MODE" = "true" ]; then
+                sudo -u "$CURRENT_DIR_USER" git -C "$STG_GIT_PATH" branch -D "$CONFLICTING_BRANCH" >&2 || true
+            else
+                sudo -u "$CURRENT_DIR_USER" git -C "$STG_GIT_PATH" branch -D "$CONFLICTING_BRANCH" || true
+            fi
+
+            log_info "Retrying checkout to $RELEASE_BRANCH..."
+            if [ "$JSON_MODE" = "true" ]; then
+                sudo -u "$CURRENT_DIR_USER" git -C "$STG_GIT_PATH" checkout "$RELEASE_BRANCH" >&2 || { log_error "Failed to checkout after resolving conflict."; rm -f "$TEMP_CHECKOUT_LOG"; exit 1; }
+            else
+                sudo -u "$CURRENT_DIR_USER" git -C "$STG_GIT_PATH" checkout "$RELEASE_BRANCH" || { log_error "Failed to checkout after resolving conflict."; rm -f "$TEMP_CHECKOUT_LOG"; exit 1; }
+            fi
+        else
+            log_error "Failed to checkout and could not parse conflict branch."
+            rm -f "$TEMP_CHECKOUT_LOG"
+            exit 1
+        fi
+    else
+        log_error "Failed to checkout branch."
+        rm -f "$TEMP_CHECKOUT_LOG"
+        exit 1
+    fi
+else
     log_success "Checked out branch: $RELEASE_BRANCH"
-else
-    log_error "Failed to checkout branch $RELEASE_BRANCH. Does it exist?"
-    exit 1
 fi
+rm -f "$TEMP_CHECKOUT_LOG"
 
 if [ "$JSON_MODE" = "true" ]; then
-    GIT_PULL_CMD="sudo -u $CURRENT_DIR_USER git -C $STG_GIT_PATH pull >&2"
+    GIT_PULL_CMD="sudo -u \"$CURRENT_DIR_USER\" git -C \"$STG_GIT_PATH\" pull >&2"
 else
-    GIT_PULL_CMD="sudo -u $CURRENT_DIR_USER git -C $STG_GIT_PATH pull"
+    GIT_PULL_CMD="sudo -u \"$CURRENT_DIR_USER\" git -C \"$STG_GIT_PATH\" pull"
 fi
 
 if eval "$GIT_PULL_CMD"; then
