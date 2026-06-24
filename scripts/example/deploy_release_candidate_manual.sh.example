@@ -194,7 +194,7 @@ function list_databases() {
 
 function sanitize_database() {
     local db_name="$1"
-    log_info "Sanitizing the database (Disabling Emails & Crons)"
+    log_info "Sanitizing the database (Disabling Emails & Crons + Neutralize Banner)"
 
     # SQL commands to disable outgoing email, crons, and mail servers
     local SANITIZE_SQL="
@@ -207,6 +207,10 @@ function sanitize_database() {
       -- Set System Parameter to prevent catching emails
       DELETE FROM ir_config_parameter WHERE key = 'mail.catchall.domain';
       INSERT INTO ir_config_parameter (key, value) VALUES ('mail.catchall.domain', 'localhost');
+
+      -- Set neutralization flag to display the red TEST DATABASE banner in Odoo UI
+      DELETE FROM ir_config_parameter WHERE key = 'base.setup.neutralize';
+      INSERT INTO ir_config_parameter (key, value) VALUES ('base.setup.neutralize', 'True');
     "
 
     # Execute the SQL commands
@@ -315,6 +319,7 @@ STG_PATH_TO_ODOO=$PATH_TO_ODOO
 SERVICE_NAME_PRD=${SERVICE_NAME%-*} # Assumes format like 'project-stg' -> 'project' OR 'project-16-stg' -> 'project-16'
 
 STG_ENV_FILE="$STG_PATH_TO_ODOO/.env"
+BACKUP_RESTORE_METHOD=$(grep "^BACKUP_RESTORE_METHOD=" "$STG_ENV_FILE" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
 
 if [ "$IS_RENEW_DB" = "true" ]; then
     STG_DB_NAME_FROM_ENV=$(grep "^DB_NAME=" "$STG_ENV_FILE" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
@@ -487,12 +492,18 @@ if [ "$IS_RENEW_DB" == "true" ]; then
 
     STG_ADMIN_PASSWD=$(grep "^ADMIN_PASSWD=" "$STG_ENV_FILE" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
     STG_PORT=$(grep "^PORT=" "$STG_ENV_FILE" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
-    if [ -z "$STG_ADMIN_PASSWD" ] || [ -z "$STG_PORT" ]; then
-        log_error "ADMIN_PASSWD and/or PORT not set in staging .env file. Cannot proceed with endpoint cloning."
-        exit 1
+    if [ "$BACKUP_RESTORE_METHOD" != "manual" ]; then
+        if [ -z "$STG_ADMIN_PASSWD" ] || [ -z "$STG_PORT" ]; then
+            log_error "ADMIN_PASSWD and/or PORT not set in staging .env file. Cannot proceed with endpoint cloning."
+            exit 1
+        fi
     fi
 
-    log_stage "[2/4] Cloning Production Database to Staging (Endpoint Mode)..."
+    if [ "$BACKUP_RESTORE_METHOD" = "manual" ]; then
+        log_stage "[2/4] Cloning Production Database to Staging (Manual PSQL Mode)..."
+    else
+        log_stage "[2/4] Cloning Production Database to Staging (Endpoint Mode)..."
+    fi
 
     ODOO_FILESTORE_PATH_PRD="/var/lib/odoo/$SERVICE_NAME_PRD/filestore/$PRD_DB_NAME"
     ODOO_FILESTORE_PATH_ENV="/var/lib/odoo/$SERVICE_NAME/filestore/$STG_DB_NAME"
@@ -512,74 +523,117 @@ if [ "$IS_RENEW_DB" == "true" ]; then
     log_warn "Drop old database $STG_DB_NAME"
     run_psql -d postgres -c "DROP DATABASE IF EXISTS \"$STG_DB_NAME\" WITH (FORCE)" > /dev/null 2>&1 || { log_warn "Error dropping DB, proceeding..."; }
 
-    log_info "Ensuring staging environment is running to receive endpoint restore command..."
-    if curl -s -o /dev/null http://localhost:$STG_PORT; then
-        log_success "Staging environment is running."
+    if [ "$BACKUP_RESTORE_METHOD" != "manual" ]; then
+        log_info "Ensuring staging environment is running to receive endpoint restore command..."
+        if curl -s -o /dev/null http://localhost:$STG_PORT; then
+            log_success "Staging environment is running."
+        else
+            log_warn "Staging environment is not running. Starting it...";
+            docker compose -f "$STG_PATH_TO_ODOO/docker-compose.yml" up -d > /dev/null 2>&1 || true
+            log_info "Waiting for 15 seconds until the Odoo Instance is ready..."
+            sleep 15
+        fi
     else
-        log_warn "Staging environment is not running. Starting it...";
-        docker compose -f "$STG_PATH_TO_ODOO/docker-compose.yml" up -d > /dev/null 2>&1 || true
-        log_info "Waiting for 15 seconds until the Odoo Instance is ready..."
-        sleep 15
+        log_info "Skipping staging environment readiness check (pure manual PSQL mode)."
     fi
 
     NEUTRALIZE_DB=$(grep "^NEUTRALIZE_DATABASE=" "$PRD_ENV_FILE" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' | tr '[:upper:]' '[:lower:]' || true)
     if [ -z "$NEUTRALIZE_DB" ]; then NEUTRALIZE_DB="true"; fi
 
-    log_info "Preparing db_dump_only.zip archive containing dump.sql for staging endpoint import..."
-    rm -f "/tmp/dump.sql" "/tmp/db_dump_only_$STG_DB_NAME.zip"
-    mv "/tmp/$STG_DB_NAME.sql" "/tmp/dump.sql"
-    (cd /tmp && zip -q "db_dump_only_$STG_DB_NAME.zip" dump.sql)
-    rm -f "/tmp/dump.sql"
+    if [ "$BACKUP_RESTORE_METHOD" = "manual" ]; then
+        # --- PURE MANUAL PSQL RESTORE ---
+        # No endpoint needed: direct SQL dump restoration via psql
 
-    ODOO_VERSION=$(grep "^ODOO_VERSION=" "$STG_ENV_FILE" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
-    ODOO_VERSION_NUM=${ODOO_VERSION%%.*}
-    if [[ ! "$ODOO_VERSION_NUM" =~ ^[0-9]+$ ]]; then
-      if [[ "$ODOO_VERSION" == "latest" ]]; then
-        ODOO_VERSION_NUM=18
-      else
-        ODOO_VERSION_NUM=16
-      fi
-    fi
-    log_info "Detected staging Odoo Version: ${ODOO_VERSION:-16} (Numeric: $ODOO_VERSION_NUM)"
+        ODOO_VERSION=$(grep "^ODOO_VERSION=" "$STG_ENV_FILE" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
+        ODOO_VERSION_NUM=${ODOO_VERSION%%.*}
+        if [[ ! "$ODOO_VERSION_NUM" =~ ^[0-9]+$ ]]; then
+          if [[ "$ODOO_VERSION" == "latest" ]]; then
+            ODOO_VERSION_NUM=18
+          else
+            ODOO_VERSION_NUM=16
+          fi
+        fi
+        log_info "Detected staging Odoo Version: ${ODOO_VERSION:-16} (Numeric: $ODOO_VERSION_NUM)"
 
-    log_info "Restoring database schema/data via direct localhost endpoint..."
+        # Re-create database with correct owner
+        DB_USER=$(cat "$(dirname "$STG_ENV_FILE")/.secrets/db_user" 2>/dev/null || echo "odoo")
 
-    CURL_OUT=$(mktemp)
+        log_info "Dropping old database $STG_DB_NAME (with force)"
+        run_psql -d postgres -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '$STG_DB_NAME' AND pid <> pg_backend_pid();" > /dev/null 2>&1 || true
+        run_psql -d postgres -c "DROP DATABASE IF EXISTS \"$STG_DB_NAME\"" > /dev/null 2>&1 || { log_error "Error dropping DB"; exit 1; }
 
-    if [ "$ODOO_VERSION_NUM" -ge 16 ]; then
-      curl -s -X POST \
-        -F "master_pwd=$STG_ADMIN_PASSWD" \
-        -F "name=$STG_DB_NAME" \
-        -F "backup_file=@/tmp/db_dump_only_$STG_DB_NAME.zip" \
-        -F "copy=true" \
-        -F "neutralize_database=$NEUTRALIZE_DB" \
-        "http://localhost:$STG_PORT/web/database/restore" > "$CURL_OUT" 2>&1 || true
+        log_info "Creating new database $STG_DB_NAME with owner $DB_USER"
+        run_psql -d postgres -c "CREATE DATABASE \"$STG_DB_NAME\" OWNER $DB_USER" > /dev/null 2>&1 || { log_error "Error creating DB"; exit 1; }
+
+        # Restore from SQL dump
+        log_info "Restoring database from SQL dump via psql..."
+        run_psql -d "$STG_DB_NAME" -f "/tmp/$STG_DB_NAME.sql" > /dev/null 2>&1 || { log_error "Error restoring database via psql"; exit 1; }
+
+        log_success "Database restored successfully via psql."
+
+        # Neutralize if enabled (manual method uses SQL neutralize)
+        if [ "$NEUTRALIZE_DB" = "true" ]; then
+            sanitize_database "$STG_DB_NAME"
+        fi
     else
-      curl -s -X POST \
-        -F "master_pwd=$STG_ADMIN_PASSWD" \
-        -F "name=$STG_DB_NAME" \
-        -F "backup_file=@/tmp/db_dump_only_$STG_DB_NAME.zip" \
-        -F "copy=true" \
-        "http://localhost:$STG_PORT/web/database/restore" > "$CURL_OUT" 2>&1 || true
-    fi
-    response=$(cat "$CURL_OUT")
-    rm -f "$CURL_OUT"
+        # --- SEMI_MANUAL ENDPOINT RESTORE ---
 
-    response_lower="${response,,}"
-    if [[ "$response_lower" == *"redirecting"* ]] && [[ "$response_lower" == *"/web/database/manager"* ]]; then
-      log_success "Database clone command completed successfully."
-    elif [[ "$response_lower" == *"error"* ]] || \
-         [[ "$response_lower" == *"incorrect master password"* ]] || \
-         [ -z "$response" ]; then
-      log_error "Failed to clone database via endpoint. Response: ${response:-'Empty response'}"
-      exit 1
-    else
-      log_success "Database clone command completed."
-    fi
+        log_info "Preparing db_dump_only.zip archive containing dump.sql for staging endpoint import..."
+        rm -f "/tmp/dump.sql" "/tmp/db_dump_only_$STG_DB_NAME.zip"
+        mv "/tmp/$STG_DB_NAME.sql" "/tmp/dump.sql"
+        (cd /tmp && zip -q "db_dump_only_$STG_DB_NAME.zip" dump.sql)
+        rm -f "/tmp/dump.sql"
 
-    if [ "$NEUTRALIZE_DB" = "true" ] && [ "$ODOO_VERSION_NUM" -lt 16 ]; then
-      log_info "Staging Odoo version < 16 detected. Performing manual SQL database neutralization fallback..."
-      sanitize_database "$STG_DB_NAME"
+        ODOO_VERSION=$(grep "^ODOO_VERSION=" "$STG_ENV_FILE" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
+        ODOO_VERSION_NUM=${ODOO_VERSION%%.*}
+        if [[ ! "$ODOO_VERSION_NUM" =~ ^[0-9]+$ ]]; then
+          if [[ "$ODOO_VERSION" == "latest" ]]; then
+            ODOO_VERSION_NUM=18
+          else
+            ODOO_VERSION_NUM=16
+          fi
+        fi
+        log_info "Detected staging Odoo Version: ${ODOO_VERSION:-16} (Numeric: $ODOO_VERSION_NUM)"
+
+        log_info "Restoring database schema/data via direct localhost endpoint..."
+
+        CURL_OUT=$(mktemp)
+
+        if [ "$ODOO_VERSION_NUM" -ge 16 ]; then
+          curl -s -X POST \
+            -F "master_pwd=$STG_ADMIN_PASSWD" \
+            -F "name=$STG_DB_NAME" \
+            -F "backup_file=@/tmp/db_dump_only_$STG_DB_NAME.zip" \
+            -F "copy=true" \
+            -F "neutralize_database=$NEUTRALIZE_DB" \
+            "http://localhost:$STG_PORT/web/database/restore" > "$CURL_OUT" 2>&1 || true
+        else
+          curl -s -X POST \
+            -F "master_pwd=$STG_ADMIN_PASSWD" \
+            -F "name=$STG_DB_NAME" \
+            -F "backup_file=@/tmp/db_dump_only_$STG_DB_NAME.zip" \
+            -F "copy=true" \
+            "http://localhost:$STG_PORT/web/database/restore" > "$CURL_OUT" 2>&1 || true
+        fi
+        response=$(cat "$CURL_OUT")
+        rm -f "$CURL_OUT"
+
+        response_lower="${response,,}"
+        if [[ "$response_lower" == *"redirecting"* ]] && [[ "$response_lower" == *"/web/database/manager"* ]]; then
+          log_success "Database clone command completed successfully."
+        elif [[ "$response_lower" == *"error"* ]] || \
+             [[ "$response_lower" == *"incorrect master password"* ]] || \
+             [ -z "$response" ]; then
+          log_error "Failed to clone database via endpoint. Response: ${response:-'Empty response'}"
+          exit 1
+        else
+          log_success "Database clone command completed."
+        fi
+
+        if [ "$NEUTRALIZE_DB" = "true" ] && [ "$ODOO_VERSION_NUM" -lt 16 ]; then
+          log_info "Staging Odoo version < 16 detected. Performing manual SQL database neutralization fallback..."
+          sanitize_database "$STG_DB_NAME"
+        fi
     fi
 
     trigger_registry_reload "$STG_DB_NAME" "$STG_PATH_TO_ODOO"
