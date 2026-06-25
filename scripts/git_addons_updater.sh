@@ -47,7 +47,9 @@ log_success() { log "${COLOR_SUCCESS}" "✅" "$1"; }
 log_warn() { log "${COLOR_WARN}" "⚠️" "$1"; }
 log_error() {
   if [ "$JSON_MODE" = "true" ]; then
-      echo "{\"error\": \"$1\"}"
+      # Escape backslashes and double quotes for JSON safety
+      local escaped_msg=$(echo -n "$1" | sed 's/\\/\\\\/g; s/"/\\"/g; s/$/\\n/' | tr -d '\n' | sed 's/\\n$//')
+      echo "{\"error\": \"$escaped_msg\"}"
   fi
   log "${COLOR_ERROR}" "❌" "$1"
 }

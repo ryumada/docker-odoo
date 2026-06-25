@@ -201,7 +201,7 @@ function run_pg_dump() {
 
 function sanitizeDatabase() {
   local restored_db_name="$1"
-  log_info "Sanitizing the database (Disabling Emails & Crons)"
+  log_info "Sanitizing the database (Disabling Emails & Crons + Neutralize Banner)"
 
   # SQL commands to disable outgoing email, crons, and mail servers
   local SANITIZE_SQL="
@@ -214,6 +214,10 @@ function sanitizeDatabase() {
     -- Set System Parameter to prevent catching emails
     DELETE FROM ir_config_parameter WHERE key = 'mail.catchall.domain';
     INSERT INTO ir_config_parameter (key, value) VALUES ('mail.catchall.domain', 'localhost');
+
+    -- Set neutralization flag to display the red TEST DATABASE banner in Odoo UI
+    DELETE FROM ir_config_parameter WHERE key = 'base.setup.neutralize';
+    INSERT INTO ir_config_parameter (key, value) VALUES ('base.setup.neutralize', 'True');
   "
 
   # Execute the SQL commands
@@ -230,7 +234,6 @@ function main() {
       log_info "Elevating permissions to root..."
       # shellcheck disable=SC2093
       exec sudo "$0" "$@" # Re-run the script with sudo
-      log_error "Failed to elevate to root. Please run with sudo." # This will only run if exec fails
       exit 1
   fi
 
@@ -241,11 +244,15 @@ function main() {
   fi
   ODOO_DB_USER=$(cat "$PATH_TO_ODOO/.secrets/db_user")
 
+  BACKUP_RESTORE_METHOD=$(grep "^BACKUP_RESTORE_METHOD=" "$PATH_TO_ODOO/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
+
   ADMIN_PASSWD=$(grep "^ADMIN_PASSWD=" "$PATH_TO_ODOO/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
   PORT=$(grep "^PORT=" "$PATH_TO_ODOO/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
-  if [ -z "$ADMIN_PASSWD" ] || [ -z "$PORT" ]; then
-    log_error "ADMIN_PASSWD and/or PORT not set in .env file. Cannot proceed with endpoint restore."
-    exit 1
+  if [ "$BACKUP_RESTORE_METHOD" != "manual" ]; then
+    if [ -z "$ADMIN_PASSWD" ] || [ -z "$PORT" ]; then
+      log_error "ADMIN_PASSWD and/or PORT not set in .env file. Cannot proceed with endpoint restore."
+      exit 1
+    fi
   fi
 
   BACKUPDATA_FILE_NAME="backupdata-$SERVICE_NAME.zip"
@@ -360,65 +367,108 @@ function main() {
 
   log_info "Neutralize database option: $NEUTRALIZE_DB"
 
-  log_info "Compressing dump.sql into db_dump_only.zip for Odoo endpoint import..."
-  if [ -f "$TEMP_DIR/dump.sql" ]; then
-    (cd "$TEMP_DIR" && zip -q db_dump_only.zip dump.sql)
+  if [ "$BACKUP_RESTORE_METHOD" = "manual" ]; then
+      # --- PURE MANUAL PSQL RESTORE ---
+      ODOO_VERSION=$(grep "^ODOO_VERSION=" "$PATH_TO_ODOO/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
+      ODOO_VERSION_NUM=${ODOO_VERSION%%.*}
+      if [[ ! "$ODOO_VERSION_NUM" =~ ^[0-9]+$ ]]; then
+        if [[ "$ODOO_VERSION" == "latest" ]]; then
+          ODOO_VERSION_NUM=18
+        else
+          ODOO_VERSION_NUM=16
+        fi
+      fi
+      log_info "Detected target Odoo Version: ${ODOO_VERSION:-16} (Numeric: $ODOO_VERSION_NUM)"
+
+      DB_USER=$(cat "$(dirname "$PATH_TO_ODOO/.env")/.secrets/db_user" 2>/dev/null || echo "odoo")
+
+      log_info "Dropping old database $RESTORED_DB_NAME (with force)"
+      run_psql -d postgres -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '$RESTORED_DB_NAME' AND pid <> pg_backend_pid();" > /dev/null 2>&1 || true
+      if ! err_msg=$(run_psql -d postgres -c "DROP DATABASE IF EXISTS \"$RESTORED_DB_NAME\"" 2>&1 >/dev/null); then
+          log_error "Error dropping DB"
+          [ -n "$err_msg" ] && echo "$err_msg" >> "$STDERR_LOG"
+          error_handler 1 $LINENO "run_psql -d postgres -c \"DROP DATABASE IF EXISTS \\\"$RESTORED_DB_NAME\\\"\""
+      fi
+
+      log_info "Creating new database $RESTORED_DB_NAME with owner $DB_USER"
+      if ! err_msg=$(run_psql -d postgres -c "CREATE DATABASE \"$RESTORED_DB_NAME\" OWNER $DB_USER" 2>&1 >/dev/null); then
+          log_error "Error creating DB"
+          [ -n "$err_msg" ] && echo "$err_msg" >> "$STDERR_LOG"
+          error_handler 1 $LINENO "run_psql -d postgres -c \"CREATE DATABASE \\\"$RESTORED_DB_NAME\\\" OWNER $DB_USER\""
+      fi
+
+      log_info "Restoring database from SQL dump via psql..."
+      if ! err_msg=$(run_psql -d "$RESTORED_DB_NAME" -f "$TEMP_DIR/dump.sql" 2>&1 >/dev/null); then
+          log_error "Error restoring database via psql"
+          [ -n "$err_msg" ] && echo "$err_msg" >> "$STDERR_LOG"
+          error_handler 1 $LINENO "run_psql -d \"$RESTORED_DB_NAME\" -f \"$TEMP_DIR/dump.sql\""
+      fi
+
+      log_success "Database restored successfully via psql."
+
+      if [ "$NEUTRALIZE_DB" = "true" ]; then
+         sanitizeDatabase "$RESTORED_DB_NAME"
+      fi
   else
-    log_error "dump.sql not found in extracted backup. Aborting."
-    exit 1
-  fi
+      # --- SEMI_MANUAL ENDPOINT RESTORE ---
+      log_info "Compressing dump.sql into db_dump_only.zip for Odoo endpoint import..."
+      if [ -f "$TEMP_DIR/dump.sql" ]; then
+        (cd "$TEMP_DIR" && zip -q db_dump_only.zip dump.sql)
+      else
+        log_error "dump.sql not found in extracted backup. Aborting."
+        exit 1
+      fi
 
-  ODOO_VERSION=$(grep "^ODOO_VERSION=" "$PATH_TO_ODOO/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
-  ODOO_VERSION_NUM=${ODOO_VERSION%%.*}
-  if [[ ! "$ODOO_VERSION_NUM" =~ ^[0-9]+$ ]]; then
-    if [[ "$ODOO_VERSION" == "latest" ]]; then
-      ODOO_VERSION_NUM=18
-    else
-      ODOO_VERSION_NUM=16
-    fi
-  fi
-  log_info "Detected target Odoo Version: ${ODOO_VERSION:-16} (Numeric: $ODOO_VERSION_NUM)"
+      ODOO_VERSION=$(grep "^ODOO_VERSION=" "$PATH_TO_ODOO/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
+      ODOO_VERSION_NUM=${ODOO_VERSION%%.*}
+      if [[ ! "$ODOO_VERSION_NUM" =~ ^[0-9]+$ ]]; then
+        if [[ "$ODOO_VERSION" == "latest" ]]; then
+          ODOO_VERSION_NUM=18
+        else
+          ODOO_VERSION_NUM=16
+        fi
+      fi
+      log_info "Detected target Odoo Version: ${ODOO_VERSION:-16} (Numeric: $ODOO_VERSION_NUM)"
 
-  log_info "Restoring database schema/data via direct localhost endpoint..."
-  if [ "$ODOO_VERSION_NUM" -ge 16 ]; then
-    response=$(curl -s -X POST \
-      -F "master_pwd=$ADMIN_PASSWD" \
-      -F "name=$RESTORED_DB_NAME" \
-      -F "backup_file=@$TEMP_DIR/db_dump_only.zip" \
-      -F "copy=true" \
-      -F "neutralize_database=$NEUTRALIZE_DB" \
-      "http://localhost:$PORT/web/database/restore")
-  else
-    response=$(curl -s -X POST \
-      -F "master_pwd=$ADMIN_PASSWD" \
-      -F "name=$RESTORED_DB_NAME" \
-      -F "backup_file=@$TEMP_DIR/db_dump_only.zip" \
-      -F "copy=true" \
-      "http://localhost:$PORT/web/database/restore")
-  fi
+      log_info "Restoring database schema/data via direct localhost endpoint..."
+      if [ "$ODOO_VERSION_NUM" -ge 16 ]; then
+        response=$(curl -s -X POST \
+          -F "master_pwd=$ADMIN_PASSWD" \
+          -F "name=$RESTORED_DB_NAME" \
+          -F "backup_file=@$TEMP_DIR/db_dump_only.zip" \
+          -F "copy=true" \
+          -F "neutralize_database=$NEUTRALIZE_DB" \
+          "http://localhost:$PORT/web/database/restore")
+      else
+        response=$(curl -s -X POST \
+          -F "master_pwd=$ADMIN_PASSWD" \
+          -F "name=$RESTORED_DB_NAME" \
+          -F "backup_file=@$TEMP_DIR/db_dump_only.zip" \
+          -F "copy=true" \
+          "http://localhost:$PORT/web/database/restore")
+      fi
 
-  response_lower="${response,,}"
-  if [[ "$response_lower" == *"redirecting"* ]] && [[ "$response_lower" == *"/web/database/manager"* ]]; then
-    log_success "Database restore command completed successfully."
-  elif [[ "$response_lower" == *"error"* ]] || \
-       [[ "$response_lower" == *"incorrect master password"* ]] || \
-       [ -z "$response" ]; then
-    log_error "Failed to restore database via endpoint. Response: ${response:-'Empty response'}"
-    exit 1
-  else
-    log_success "Database restore command completed."
-  fi
+      response_lower="${response,,}"
+      if [[ "$response_lower" == *"redirecting"* ]] && [[ "$response_lower" == *"/web/database/manager"* ]]; then
+        log_success "Database restore command completed successfully."
+      elif [[ "$response_lower" == *"error"* ]] || \
+           [[ "$response_lower" == *"incorrect master password"* ]] || \
+           [ -z "$response" ]; then
+        log_error "Failed to restore database via endpoint. Response: ${response:-'Empty response'}"
+        exit 1
+      else
+        log_success "Database restore command completed."
+      fi
 
-  if [ "$NEUTRALIZE_DB" = "true" ] && [ "$ODOO_VERSION_NUM" -lt 16 ]; then
-    log_info "Odoo version < 16 detected. Performing manual SQL database neutralization fallback..."
-    sanitizeDatabase "$RESTORED_DB_NAME"
+      if [ "$NEUTRALIZE_DB" = "true" ] && [ "$ODOO_VERSION_NUM" -lt 16 ]; then
+        log_info "Odoo version < 16 detected. Performing manual SQL database neutralization fallback..."
+        sanitizeDatabase "$RESTORED_DB_NAME"
+      fi
   fi
 
   trigger_registry_reload "$RESTORED_DB_NAME" "$PATH_TO_ODOO"
 
   log_success "Finished restoring backup data for $SERVICE_NAME"
 }
-
-
 
 main "$@"
