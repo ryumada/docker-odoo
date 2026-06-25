@@ -234,532 +234,580 @@ if [ "$(id -u)" -ne 0 ]; then
     exit 1
 fi
 
-# --- JSON Mode Detection ---
-JSON_MODE="false"
-ARGS=()
-for arg in "$@"; do
-    if [[ "$arg" == "json" ]]; then
-        JSON_MODE="true"
+main() {
+    # --- JSON Mode Detection ---
+    JSON_MODE="false"
+    ARGS=()
+    for arg in "$@"; do
+        if [[ "$arg" == "json" ]]; then
+            JSON_MODE="true"
+        else
+            ARGS+=("$arg")
+        fi
+    done
+    set -- "${ARGS[@]}"
+
+    # --- Usage / Help Function ---
+    display_usage() {
+        echo -e "${COLOR_INFO}Usage:${COLOR_RESET} sudo $0 <REPO_NAME> <BRANCH> <RENEW_DB> [DB_NAME] [MODULES]"
+        echo -e "       sudo $0 --list-db"
+        echo ""
+        echo -e "${COLOR_CYAN}Arguments:${COLOR_RESET}"
+        echo -e "  ${COLOR_SUCCESS}1. REPO_NAME${COLOR_RESET}       : The directory name of the git repository (inside stg/git/)."
+        echo -e "  ${COLOR_SUCCESS}2. BRANCH${COLOR_RESET}          : The target Git branch to checkout (e.g., 'staging', 'main')."
+        echo -e "  ${COLOR_SUCCESS}3. RENEW_DB${COLOR_RESET}        : Set to 'true' or '1' to drop Staging DB and clone from Production."
+        echo -e "                       Set to 'false' or '0' to keep existing Staging data."
+        echo -e "  ${COLOR_SUCCESS}4. DB_NAME${COLOR_RESET}         : (Required if RENEW_DB is false) The name of the target database."
+        echo -e "  ${COLOR_SUCCESS}5. MODULES${COLOR_RESET}         : (Optional) Comma-separated list of modules to update (e.g., 'sale,stock')."
+        echo ""
+        echo -e "${COLOR_CYAN}Options:${COLOR_RESET}"
+        echo -e "  ${COLOR_SUCCESS}-h, --help${COLOR_RESET}         : Show this help message and exit."
+        echo -e "  ${COLOR_SUCCESS}-l, --list-db${COLOR_RESET}      : List all databases owned by the project's pg user and exit."
+        echo ""
+    }
+
+    # --- Check for Help or List Flags ---
+    if [[ "$1" == "-h" || "$1" == "--help" ]]; then
+        display_usage
+        exit 0
+    elif [[ "$1" == "-l" || "$1" == "--list-db" ]]; then
+        list_databases
+    fi
+
+    # --- Inputs ---
+    GIT_REPO_NAME=$1
+    RELEASE_BRANCH=$2
+    IS_RENEW_DB=$3
+
+    case "${IS_RENEW_DB}" in
+        1|true|True|TRUE) IS_RENEW_DB=true ;;
+        *) IS_RENEW_DB=false ;;
+    esac
+
+    TARGET_DB=""
+    MODULES_TO_UPDATE=""
+
+    if [ "$IS_RENEW_DB" = "true" ]; then
+        MODULES_TO_UPDATE=$4
     else
-        ARGS+=("$arg")
+        TARGET_DB=$4
+        MODULES_TO_UPDATE=$5
     fi
-done
-set -- "${ARGS[@]}"
 
-# --- Usage / Help Function ---
-display_usage() {
-    echo -e "${COLOR_INFO}Usage:${COLOR_RESET} sudo $0 <REPO_NAME> <BRANCH> <RENEW_DB> [DB_NAME] [MODULES]"
-    echo -e "       sudo $0 --list-db"
-    echo ""
-    echo -e "${COLOR_CYAN}Arguments:${COLOR_RESET}"
-    echo -e "  ${COLOR_SUCCESS}1. REPO_NAME${COLOR_RESET}       : The directory name of the git repository (inside stg/git/)."
-    echo -e "  ${COLOR_SUCCESS}2. BRANCH${COLOR_RESET}          : The target Git branch to checkout (e.g., 'staging', 'main')."
-    echo -e "  ${COLOR_SUCCESS}3. RENEW_DB${COLOR_RESET}        : Set to 'true' or '1' to drop Staging DB and clone from Production."
-    echo -e "                       Set to 'false' or '0' to keep existing Staging data."
-    echo -e "  ${COLOR_SUCCESS}4. DB_NAME${COLOR_RESET}         : (Required if RENEW_DB is false) The name of the target database."
-    echo -e "  ${COLOR_SUCCESS}5. MODULES${COLOR_RESET}         : (Optional) Comma-separated list of modules to update (e.g., 'sale,stock')."
-    echo ""
-    echo -e "${COLOR_CYAN}Options:${COLOR_RESET}"
-    echo -e "  ${COLOR_SUCCESS}-h, --help${COLOR_RESET}         : Show this help message and exit."
-    echo -e "  ${COLOR_SUCCESS}-l, --list-db${COLOR_RESET}      : List all databases owned by the project's pg user and exit."
-    echo ""
-}
-
-# --- Check for Help or List Flags ---
-if [[ "$1" == "-h" || "$1" == "--help" ]]; then
-    display_usage
-    exit 0
-elif [[ "$1" == "-l" || "$1" == "--list-db" ]]; then
-    list_databases
-fi
-
-# --- Inputs ---
-GIT_REPO_NAME=$1
-RELEASE_BRANCH=$2
-IS_RENEW_DB=$3
-
-case "${IS_RENEW_DB}" in
-    1|true|True|TRUE) IS_RENEW_DB=true ;;
-    *) IS_RENEW_DB=false ;;
-esac
-
-TARGET_DB=""
-MODULES_TO_UPDATE=""
-
-if [ "$IS_RENEW_DB" = "true" ]; then
-    MODULES_TO_UPDATE=$4
-else
-    TARGET_DB=$4
-    MODULES_TO_UPDATE=$5
-fi
-
-# --- Validation ---
-MISSING_ARGS=false
-if [ -z "$GIT_REPO_NAME" ]; then
-    log_error "Missing Argument 1: Git Repo Name"
-    MISSING_ARGS=true
-fi
-if [ -z "$RELEASE_BRANCH" ]; then
-    log_error "Missing Argument 2: Release Branch"
-    MISSING_ARGS=true
-fi
-if [ -z "$IS_RENEW_DB" ]; then
-    log_error "Missing Argument 3: Clone DB Flag (true/false)"
-    MISSING_ARGS=true
-fi
-if [ "$IS_RENEW_DB" = "false" ] && [ -z "$TARGET_DB" ] && [ -n "$MODULES_TO_UPDATE" ]; then
-    log_error "Missing Argument 4: Target Database Name (Required when RENEW_DB is false and modules are provided)"
-    MISSING_ARGS=true
-fi
-if [ "$MISSING_ARGS" == "true" ]; then
-    echo ""
-    display_usage
-    exit 1
-fi
-
-STG_PATH_TO_ODOO=$PATH_TO_ODOO
-SERVICE_NAME_PRD=${SERVICE_NAME%-*} # Assumes format like 'project-stg' -> 'project' OR 'project-16-stg' -> 'project-16'
-
-STG_ENV_FILE="$STG_PATH_TO_ODOO/.env"
-BACKUP_RESTORE_METHOD=$(grep "^BACKUP_RESTORE_METHOD=" "$STG_ENV_FILE" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
-
-if [ "$IS_RENEW_DB" = "true" ]; then
-    STG_DB_NAME_FROM_ENV=$(grep "^DB_NAME=" "$STG_ENV_FILE" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
-    STG_DB_NAME="$STG_DB_NAME_FROM_ENV"
-
-    if [ -z "$STG_DB_NAME" ]; then
-        # Fallback if .env is empty
-        STG_DB_NAME="$(get_next_prefix "$STG_ENV_FILE")-$SERVICE_NAME-$(date +"%Y%m%d-%H%M%S")"
+    # --- Validation ---
+    MISSING_ARGS=false
+    if [ -z "$GIT_REPO_NAME" ]; then
+        log_error "Missing Argument 1: Git Repo Name"
+        MISSING_ARGS=true
     fi
-else
-    STG_DB_NAME="$TARGET_DB"
-fi
+    if [ -z "$RELEASE_BRANCH" ]; then
+        log_error "Missing Argument 2: Release Branch"
+        MISSING_ARGS=true
+    fi
+    if [ -z "$IS_RENEW_DB" ]; then
+        log_error "Missing Argument 3: Clone DB Flag (true/false)"
+        MISSING_ARGS=true
+    fi
+    if [ "$IS_RENEW_DB" = "false" ] && [ -z "$TARGET_DB" ] && [ -n "$MODULES_TO_UPDATE" ]; then
+        log_error "Missing Argument 4: Target Database Name (Required when RENEW_DB is false and modules are provided)"
+        MISSING_ARGS=true
+    fi
+    if [ "$MISSING_ARGS" == "true" ]; then
+        echo ""
+        display_usage
+        exit 1
+    fi
 
-STG_GIT_PATH="$STG_PATH_TO_ODOO/git/$GIT_REPO_NAME"
-if [ ! -d "$STG_GIT_PATH" ]; then
-    fail_with_json "Git path not found at: $STG_GIT_PATH"
-fi
+    STG_PATH_TO_ODOO=$PATH_TO_ODOO
+    SERVICE_NAME_PRD=${SERVICE_NAME%-*} # Assumes format like 'project-stg' -> 'project' OR 'project-16-stg' -> 'project-16'
 
-# Check if remote branch exists
-log_info "Checking if remote branch '$RELEASE_BRANCH' exists..."
-if [ "$JSON_MODE" = "true" ]; then
-    GIT_LS_REMOTE_CMD="sudo -u $CURRENT_DIR_USER git -C $STG_GIT_PATH ls-remote --exit-code --heads origin $RELEASE_BRANCH > /dev/null 2>&1"
-else
-    GIT_LS_REMOTE_CMD="sudo -u $CURRENT_DIR_USER git -C $STG_GIT_PATH ls-remote --exit-code --heads origin $RELEASE_BRANCH > /dev/null"
-fi
+    STG_ENV_FILE="$STG_PATH_TO_ODOO/.env"
+    BACKUP_RESTORE_METHOD=$(grep "^BACKUP_RESTORE_METHOD=" "$STG_ENV_FILE" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
 
-if ! eval "$GIT_LS_REMOTE_CMD"; then
-    fail_with_json "Remote branch '$RELEASE_BRANCH' not found in repository '$GIT_REPO_NAME'."
-fi
+    if [ "$IS_RENEW_DB" = "true" ]; then
+        STG_DB_NAME_FROM_ENV=$(grep "^DB_NAME=" "$STG_ENV_FILE" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
+        STG_DB_NAME="$STG_DB_NAME_FROM_ENV"
 
-log_info "🚀 Starting Deployment for Service: $SERVICE_NAME"
-# ... (logging specific to this script)
+        if [ -z "$STG_DB_NAME" ]; then
+            # Fallback if .env is empty
+            STG_DB_NAME="$(get_next_prefix "$STG_ENV_FILE")-$SERVICE_NAME-$(date +"%Y%m%d-%H%M%S")"
+        fi
+    else
+        STG_DB_NAME="$TARGET_DB"
+    fi
 
-# 1. SWITCH BRANCH
-# ---------------------------------------------------------
-log_stage "[1/4] Switching Git Branch..."
+    STG_GIT_PATH="$STG_PATH_TO_ODOO/git/$GIT_REPO_NAME"
+    if [ ! -d "$STG_GIT_PATH" ]; then
+        fail_with_json "Git path not found at: $STG_GIT_PATH"
+    fi
 
-log_info "Stashing local changes if any..."
-if [ "$JSON_MODE" = "true" ]; then
-    sudo -u "$CURRENT_DIR_USER" git -C "$STG_GIT_PATH" stash save -u >&2 || true
-else
-    sudo -u "$CURRENT_DIR_USER" git -C "$STG_GIT_PATH" stash save -u || true
-fi
+    # Check if remote branch exists
+    log_info "Checking if remote branch '$RELEASE_BRANCH' exists..."
+    if [ "$JSON_MODE" = "true" ]; then
+        GIT_LS_REMOTE_CMD="sudo -u $CURRENT_DIR_USER git -C $STG_GIT_PATH ls-remote --exit-code --heads origin $RELEASE_BRANCH > /dev/null 2>&1"
+    else
+        GIT_LS_REMOTE_CMD="sudo -u $CURRENT_DIR_USER git -C $STG_GIT_PATH ls-remote --exit-code --heads origin $RELEASE_BRANCH > /dev/null"
+    fi
 
-# Fetch updates with prune
-log_info "Fetching latest updates..."
-TEMP_GIT_LOG=$(mktemp)
-if [ "$JSON_MODE" = "true" ]; then
-    eval "sudo -u \"$CURRENT_DIR_USER\" git -C \"$STG_GIT_PATH\" fetch --prune" >"$TEMP_GIT_LOG" 2>&1
-else
-    eval "sudo -u \"$CURRENT_DIR_USER\" git -C \"$STG_GIT_PATH\" fetch --prune" >"$TEMP_GIT_LOG" 2>&1
-    cat "$TEMP_GIT_LOG"
-fi
-FETCH_STATUS=$?
+    if ! eval "$GIT_LS_REMOTE_CMD"; then
+        fail_with_json "Remote branch '$RELEASE_BRANCH' not found in repository '$GIT_REPO_NAME'."
+    fi
 
-if [ $FETCH_STATUS -ne 0 ]; then
-    if grep -q "fatal: cannot lock ref" "$TEMP_GIT_LOG"; then
-        CONFLICTING_BRANCH=$(sed -n "s/.*fatal: cannot lock ref '[^']*': '\([^']*\)' exists.*/\1/p" "$TEMP_GIT_LOG" | head -n 1)
-        if [ -n "$CONFLICTING_BRANCH" ]; then
-            log_warn "Detected git ref conflict: $CONFLICTING_BRANCH"
-            log_info "Switching to main/master branch first to resolve conflict..."
-            if [ "$JSON_MODE" = "true" ]; then
-                sudo -u "$CURRENT_DIR_USER" git -C "$STG_GIT_PATH" checkout main >&2 || sudo -u "$CURRENT_DIR_USER" git -C "$STG_GIT_PATH" checkout master >&2 || true
+    log_info "🚀 Starting Deployment for Service: $SERVICE_NAME"
+    # ... (logging specific to this script)
+
+    # 1. SWITCH BRANCH
+    # ---------------------------------------------------------
+    log_stage "[1/4] Switching Git Branch..."
+
+    log_info "Stashing local changes if any..."
+    if [ "$JSON_MODE" = "true" ]; then
+        sudo -u "$CURRENT_DIR_USER" git -C "$STG_GIT_PATH" stash save -u >&2 || true
+    else
+        sudo -u "$CURRENT_DIR_USER" git -C "$STG_GIT_PATH" stash save -u || true
+    fi
+
+    # Fetch updates with prune
+    log_info "Fetching latest updates..."
+    TEMP_GIT_LOG=$(mktemp)
+    if [ "$JSON_MODE" = "true" ]; then
+        eval "sudo -u \"$CURRENT_DIR_USER\" git -C \"$STG_GIT_PATH\" fetch --prune" >"$TEMP_GIT_LOG" 2>&1
+    else
+        eval "sudo -u \"$CURRENT_DIR_USER\" git -C \"$STG_GIT_PATH\" fetch --prune" >"$TEMP_GIT_LOG" 2>&1
+        cat "$TEMP_GIT_LOG"
+    fi
+    FETCH_STATUS=$?
+
+    if [ $FETCH_STATUS -ne 0 ]; then
+        if grep -q "fatal: cannot lock ref" "$TEMP_GIT_LOG"; then
+            CONFLICTING_BRANCH=$(sed -n "s/.*fatal: cannot lock ref '[^']*': '\([^']*\)' exists.*/\1/p" "$TEMP_GIT_LOG" | head -n 1)
+            if [ -n "$CONFLICTING_BRANCH" ]; then
+                log_warn "Detected git ref conflict: $CONFLICTING_BRANCH"
+                log_info "Switching to main/master branch first to resolve conflict..."
+                if [ "$JSON_MODE" = "true" ]; then
+                    sudo -u "$CURRENT_DIR_USER" git -C "$STG_GIT_PATH" checkout main >&2 || sudo -u "$CURRENT_DIR_USER" git -C "$STG_GIT_PATH" checkout master >&2 || true
+                else
+                    sudo -u "$CURRENT_DIR_USER" git -C "$STG_GIT_PATH" checkout main || sudo -u "$CURRENT_DIR_USER" git -C "$STG_GIT_PATH" checkout master || true
+                fi
+
+                log_info "Deleting conflicting branch: $CONFLICTING_BRANCH..."
+                if [ "$JSON_MODE" = "true" ]; then
+                    sudo -u "$CURRENT_DIR_USER" git -C "$STG_GIT_PATH" branch -D "$CONFLICTING_BRANCH" >&2 || true
+                else
+                    sudo -u "$CURRENT_DIR_USER" git -C "$STG_GIT_PATH" branch -D "$CONFLICTING_BRANCH" || true
+                fi
+
+                log_info "Retrying fetch --prune..."
+                if [ "$JSON_MODE" = "true" ]; then
+                    sudo -u "$CURRENT_DIR_USER" git -C "$STG_GIT_PATH" fetch --prune >&2 || { log_error "Failed to fetch updates after resolving conflict."; rm -f "$TEMP_GIT_LOG"; exit 1; }
+                else
+                    sudo -u "$CURRENT_DIR_USER" git -C "$STG_GIT_PATH" fetch --prune || { log_error "Failed to fetch updates after resolving conflict."; rm -f "$TEMP_GIT_LOG"; exit 1; }
+                fi
             else
-                sudo -u "$CURRENT_DIR_USER" git -C "$STG_GIT_PATH" checkout main || sudo -u "$CURRENT_DIR_USER" git -C "$STG_GIT_PATH" checkout master || true
-            fi
-
-            log_info "Deleting conflicting branch: $CONFLICTING_BRANCH..."
-            if [ "$JSON_MODE" = "true" ]; then
-                sudo -u "$CURRENT_DIR_USER" git -C "$STG_GIT_PATH" branch -D "$CONFLICTING_BRANCH" >&2 || true
-            else
-                sudo -u "$CURRENT_DIR_USER" git -C "$STG_GIT_PATH" branch -D "$CONFLICTING_BRANCH" || true
-            fi
-
-            log_info "Retrying fetch --prune..."
-            if [ "$JSON_MODE" = "true" ]; then
-                sudo -u "$CURRENT_DIR_USER" git -C "$STG_GIT_PATH" fetch --prune >&2 || { log_error "Failed to fetch updates after resolving conflict."; rm -f "$TEMP_GIT_LOG"; exit 1; }
-            else
-                sudo -u "$CURRENT_DIR_USER" git -C "$STG_GIT_PATH" fetch --prune || { log_error "Failed to fetch updates after resolving conflict."; rm -f "$TEMP_GIT_LOG"; exit 1; }
+                log_error "Failed to fetch updates and could not parse conflict branch."
+                rm -f "$TEMP_GIT_LOG"
+                exit 1
             fi
         else
-            log_error "Failed to fetch updates and could not parse conflict branch."
+            log_error "Failed to fetch updates."
             rm -f "$TEMP_GIT_LOG"
             exit 1
         fi
     else
-        log_error "Failed to fetch updates."
-        rm -f "$TEMP_GIT_LOG"
-        exit 1
+        log_info "Fetch success."
     fi
-else
-    log_info "Fetch success."
-fi
-rm -f "$TEMP_GIT_LOG"
+    rm -f "$TEMP_GIT_LOG"
 
-if [ "$JSON_MODE" = "true" ]; then
-    GIT_RESET_CMD="sudo -u \"$CURRENT_DIR_USER\" git -C \"$STG_GIT_PATH\" reset --hard >&2"
-else
-    GIT_RESET_CMD="sudo -u \"$CURRENT_DIR_USER\" git -C \"$STG_GIT_PATH\" reset --hard"
-fi
-if eval "$GIT_RESET_CMD"; then log_info "Local changes discarded."; else log_warn "Could not reset git changes."; fi
+    if [ "$JSON_MODE" = "true" ]; then
+        GIT_RESET_CMD="sudo -u \"$CURRENT_DIR_USER\" git -C \"$STG_GIT_PATH\" reset --hard >&2"
+    else
+        GIT_RESET_CMD="sudo -u \"$CURRENT_DIR_USER\" git -C \"$STG_GIT_PATH\" reset --hard"
+    fi
+    if eval "$GIT_RESET_CMD"; then log_info "Local changes discarded."; else log_warn "Could not reset git changes."; fi
 
-# Checkout the branch with ref-locking conflict resolution fallback
-TEMP_CHECKOUT_LOG=$(mktemp)
-if [ "$JSON_MODE" = "true" ]; then
-    eval "sudo -u \"$CURRENT_DIR_USER\" git -C \"$STG_GIT_PATH\" checkout \"$RELEASE_BRANCH\"" >"$TEMP_CHECKOUT_LOG" 2>&1
-else
-    eval "sudo -u \"$CURRENT_DIR_USER\" git -C \"$STG_GIT_PATH\" checkout \"$RELEASE_BRANCH\"" >"$TEMP_CHECKOUT_LOG" 2>&1
-    cat "$TEMP_CHECKOUT_LOG"
-fi
-CHECKOUT_STATUS=$?
+    # Checkout the branch with ref-locking conflict resolution fallback
+    TEMP_CHECKOUT_LOG=$(mktemp)
+    if [ "$JSON_MODE" = "true" ]; then
+        eval "sudo -u \"$CURRENT_DIR_USER\" git -C \"$STG_GIT_PATH\" checkout \"$RELEASE_BRANCH\"" >"$TEMP_CHECKOUT_LOG" 2>&1
+    else
+        eval "sudo -u \"$CURRENT_DIR_USER\" git -C \"$STG_GIT_PATH\" checkout \"$RELEASE_BRANCH\"" >"$TEMP_CHECKOUT_LOG" 2>&1
+        cat "$TEMP_CHECKOUT_LOG"
+    fi
+    CHECKOUT_STATUS=$?
 
-if [ $CHECKOUT_STATUS -ne 0 ]; then
-    if grep -q "fatal: cannot lock ref" "$TEMP_CHECKOUT_LOG"; then
-        CONFLICTING_BRANCH=$(sed -n "s/.*fatal: cannot lock ref '[^']*': '\([^']*\)' exists.*/\1/p" "$TEMP_CHECKOUT_LOG" | head -n 1)
-        if [ -n "$CONFLICTING_BRANCH" ]; then
-            log_warn "Detected checkout git ref conflict: $CONFLICTING_BRANCH"
-            log_info "Switching to main/master branch first to resolve conflict..."
-            if [ "$JSON_MODE" = "true" ]; then
-                sudo -u "$CURRENT_DIR_USER" git -C "$STG_GIT_PATH" checkout main >&2 || sudo -u "$CURRENT_DIR_USER" git -C "$STG_GIT_PATH" checkout master >&2 || true
+    if [ $CHECKOUT_STATUS -ne 0 ]; then
+        if grep -q "fatal: cannot lock ref" "$TEMP_CHECKOUT_LOG"; then
+            CONFLICTING_BRANCH=$(sed -n "s/.*fatal: cannot lock ref '[^']*': '\([^']*\)' exists.*/\1/p" "$TEMP_CHECKOUT_LOG" | head -n 1)
+            if [ -n "$CONFLICTING_BRANCH" ]; then
+                log_warn "Detected checkout git ref conflict: $CONFLICTING_BRANCH"
+                log_info "Switching to main/master branch first to resolve conflict..."
+                if [ "$JSON_MODE" = "true" ]; then
+                    sudo -u "$CURRENT_DIR_USER" git -C "$STG_GIT_PATH" checkout main >&2 || sudo -u "$CURRENT_DIR_USER" git -C "$STG_GIT_PATH" checkout master >&2 || true
+                else
+                    sudo -u "$CURRENT_DIR_USER" git -C "$STG_GIT_PATH" checkout main || sudo -u "$CURRENT_DIR_USER" git -C "$STG_GIT_PATH" checkout master || true
+                fi
+
+                log_info "Deleting conflicting branch: $CONFLICTING_BRANCH..."
+                if [ "$JSON_MODE" = "true" ]; then
+                    sudo -u "$CURRENT_DIR_USER" git -C "$STG_GIT_PATH" branch -D "$CONFLICTING_BRANCH" >&2 || true
+                else
+                    sudo -u "$CURRENT_DIR_USER" git -C "$STG_GIT_PATH" branch -D "$CONFLICTING_BRANCH" || true
+                fi
+
+                log_info "Retrying checkout to $RELEASE_BRANCH..."
+                if [ "$JSON_MODE" = "true" ]; then
+                    sudo -u "$CURRENT_DIR_USER" git -C "$STG_GIT_PATH" checkout "$RELEASE_BRANCH" >&2 || { log_error "Failed to checkout after resolving conflict."; rm -f "$TEMP_CHECKOUT_LOG"; exit 1; }
+                else
+                    sudo -u "$CURRENT_DIR_USER" git -C "$STG_GIT_PATH" checkout "$RELEASE_BRANCH" || { log_error "Failed to checkout after resolving conflict."; rm -f "$TEMP_CHECKOUT_LOG"; exit 1; }
+                fi
             else
-                sudo -u "$CURRENT_DIR_USER" git -C "$STG_GIT_PATH" checkout main || sudo -u "$CURRENT_DIR_USER" git -C "$STG_GIT_PATH" checkout master || true
-            fi
-
-            log_info "Deleting conflicting branch: $CONFLICTING_BRANCH..."
-            if [ "$JSON_MODE" = "true" ]; then
-                sudo -u "$CURRENT_DIR_USER" git -C "$STG_GIT_PATH" branch -D "$CONFLICTING_BRANCH" >&2 || true
-            else
-                sudo -u "$CURRENT_DIR_USER" git -C "$STG_GIT_PATH" branch -D "$CONFLICTING_BRANCH" || true
-            fi
-
-            log_info "Retrying checkout to $RELEASE_BRANCH..."
-            if [ "$JSON_MODE" = "true" ]; then
-                sudo -u "$CURRENT_DIR_USER" git -C "$STG_GIT_PATH" checkout "$RELEASE_BRANCH" >&2 || { log_error "Failed to checkout after resolving conflict."; rm -f "$TEMP_CHECKOUT_LOG"; exit 1; }
-            else
-                sudo -u "$CURRENT_DIR_USER" git -C "$STG_GIT_PATH" checkout "$RELEASE_BRANCH" || { log_error "Failed to checkout after resolving conflict."; rm -f "$TEMP_CHECKOUT_LOG"; exit 1; }
+                log_error "Failed to checkout and could not parse conflict branch."
+                rm -f "$TEMP_CHECKOUT_LOG"
+                exit 1
             fi
         else
-            log_error "Failed to checkout and could not parse conflict branch."
+            log_error "Failed to checkout branch."
             rm -f "$TEMP_CHECKOUT_LOG"
             exit 1
         fi
     else
-        log_error "Failed to checkout branch."
-        rm -f "$TEMP_CHECKOUT_LOG"
-        exit 1
+        log_success "Checked out branch: $RELEASE_BRANCH"
     fi
-else
-    log_success "Checked out branch: $RELEASE_BRANCH"
-fi
-rm -f "$TEMP_CHECKOUT_LOG"
+    rm -f "$TEMP_CHECKOUT_LOG"
 
-if [ "$JSON_MODE" = "true" ]; then
-    GIT_PULL_CMD="sudo -u \"$CURRENT_DIR_USER\" git -C \"$STG_GIT_PATH\" pull >&2"
-else
-    GIT_PULL_CMD="sudo -u \"$CURRENT_DIR_USER\" git -C \"$STG_GIT_PATH\" pull"
-fi
-if eval "$GIT_PULL_CMD"; then log_success "Code is up to date."; else log_error "Failed to pull code."; exit 1; fi
-
-
-# 2. CLONE DATABASE (Manual)
-# ---------------------------------------------------------
-if [ "$IS_RENEW_DB" == "true" ]; then
-    PRD_PATH_TO_ODOO="$STG_PATH_TO_ODOO/../$SERVICE_NAME_PRD"
-    PRD_ENV_FILE="$PRD_PATH_TO_ODOO/.env"
-    if [ ! -f "$PRD_ENV_FILE" ]; then log_error "Prod .env not found."; exit 1; fi
-
-    PRD_DB_NAME=$(grep "^DB_NAME=" "$PRD_ENV_FILE" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
-    if [ -z "$PRD_DB_NAME" ]; then log_error "DB_NAME not set in prod."; exit 1; fi
-
-    STG_ADMIN_PASSWD=$(grep "^ADMIN_PASSWD=" "$STG_ENV_FILE" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
-    STG_PORT=$(grep "^PORT=" "$STG_ENV_FILE" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
-    if [ "$BACKUP_RESTORE_METHOD" != "manual" ]; then
-        if [ -z "$STG_ADMIN_PASSWD" ] || [ -z "$STG_PORT" ]; then
-            log_error "ADMIN_PASSWD and/or PORT not set in staging .env file. Cannot proceed with endpoint cloning."
-            exit 1
-        fi
-    fi
-
-    if [ "$BACKUP_RESTORE_METHOD" = "manual" ]; then
-        log_stage "[2/4] Cloning Production Database to Staging (Manual PSQL Mode)..."
-    else
-        log_stage "[2/4] Cloning Production Database to Staging (Endpoint Mode)..."
-    fi
-
-    ODOO_FILESTORE_PATH_PRD="/var/lib/odoo/$SERVICE_NAME_PRD/filestore/$PRD_DB_NAME"
-    ODOO_FILESTORE_PATH_ENV="/var/lib/odoo/$SERVICE_NAME/filestore/$STG_DB_NAME"
-
-    log_info "Dump $PRD_DB_NAME to temporary file"
-    if ! err_msg=$(run_pg_dump --no-owner -d "$PRD_DB_NAME" 2>&1 > "/tmp/$STG_DB_NAME.sql"); then
-        log_error "Error dumping database"
-        [ -n "$err_msg" ] && echo "$err_msg" >> "$STDERR_LOG"
-        error_handler 1 $LINENO "run_pg_dump --no-owner -d \"$PRD_DB_NAME\""
-    fi
-
-    # Sync Filestore
-    if [ -d "$ODOO_FILESTORE_PATH_ENV" ]; then
-        log_warn "Remove old filestore $STG_DB_NAME"
-        rm -rf "$ODOO_FILESTORE_PATH_ENV"
-    fi
-    mkdir -p "$ODOO_FILESTORE_PATH_ENV"
-    if ! err_msg=$(rsync -a "$ODOO_FILESTORE_PATH_PRD/" "$ODOO_FILESTORE_PATH_ENV" 2>&1 >/dev/null); then
-        log_error "Error copying filestore"
-        [ -n "$err_msg" ] && echo "$err_msg" >> "$STDERR_LOG"
-        error_handler 1 $LINENO "rsync -a \"$ODOO_FILESTORE_PATH_PRD/\" \"$ODOO_FILESTORE_PATH_ENV\""
-    fi
-    chown -R odoo: "$ODOO_FILESTORE_PATH_ENV"
-
-    log_warn "Drop old database $STG_DB_NAME"
-    if ! err_msg=$(run_psql -d postgres -c "DROP DATABASE IF EXISTS \"$STG_DB_NAME\" WITH (FORCE)" 2>&1 >/dev/null); then
-        log_warn "Error dropping DB, proceeding..."
-        if [ -n "$err_msg" ]; then
-            while IFS= read -r line; do
-                log_warn "Command Output: $line"
-            done <<< "$err_msg"
-        fi
-    fi
-
-    if [ "$BACKUP_RESTORE_METHOD" != "manual" ]; then
-        log_info "Ensuring staging environment is running to receive endpoint restore command..."
-        if curl -s -o /dev/null http://localhost:$STG_PORT; then
-            log_success "Staging environment is running."
-        else
-            log_warn "Staging environment is not running. Starting it...";
-            docker compose -f "$STG_PATH_TO_ODOO/docker-compose.yml" up -d > /dev/null 2>&1 || true
-            log_info "Waiting for 15 seconds until the Odoo Instance is ready..."
-            sleep 15
-        fi
-    else
-        log_info "Skipping staging environment readiness check (pure manual PSQL mode)."
-    fi
-
-    NEUTRALIZE_DB=$(grep "^NEUTRALIZE_DATABASE=" "$PRD_ENV_FILE" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' | tr '[:upper:]' '[:lower:]' || true)
-    if [ -z "$NEUTRALIZE_DB" ]; then NEUTRALIZE_DB="true"; fi
-
-    if [ "$BACKUP_RESTORE_METHOD" = "manual" ]; then
-        # --- PURE MANUAL PSQL RESTORE ---
-        # No endpoint needed: direct SQL dump restoration via psql
-
-        ODOO_VERSION=$(grep "^ODOO_VERSION=" "$STG_ENV_FILE" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
-        ODOO_VERSION_NUM=${ODOO_VERSION%%.*}
-        if [[ ! "$ODOO_VERSION_NUM" =~ ^[0-9]+$ ]]; then
-          if [[ "$ODOO_VERSION" == "latest" ]]; then
-            ODOO_VERSION_NUM=18
-          else
-            ODOO_VERSION_NUM=16
-          fi
-        fi
-        log_info "Detected staging Odoo Version: ${ODOO_VERSION:-16} (Numeric: $ODOO_VERSION_NUM)"
-
-        # Re-create database with correct owner
-        DB_USER=$(cat "$(dirname "$STG_ENV_FILE")/.secrets/db_user" 2>/dev/null || echo "odoo")
-
-        log_info "Dropping old database $STG_DB_NAME (with force)"
-        run_psql -d postgres -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '$STG_DB_NAME' AND pid <> pg_backend_pid();" > /dev/null 2>&1 || true
-        if ! err_msg=$(run_psql -d postgres -c "DROP DATABASE IF EXISTS \"$STG_DB_NAME\"" 2>&1 >/dev/null); then
-            log_error "Error dropping DB"
-            [ -n "$err_msg" ] && echo "$err_msg" >> "$STDERR_LOG"
-            error_handler 1 $LINENO "run_psql -d postgres -c \"DROP DATABASE IF EXISTS \\\"$STG_DB_NAME\\\"\""
-        fi
-
-        log_info "Creating new database $STG_DB_NAME with owner $DB_USER"
-        if ! err_msg=$(run_psql -d postgres -c "CREATE DATABASE \"$STG_DB_NAME\" OWNER \"$DB_USER\"" 2>&1 >/dev/null); then
-            log_error "Error creating DB"
-            [ -n "$err_msg" ] && echo "$err_msg" >> "$STDERR_LOG"
-            error_handler 1 $LINENO "run_psql -d postgres -c \"CREATE DATABASE \\\"$STG_DB_NAME\\\" OWNER \\\"$DB_USER\\\"\""
-        fi
-
-        # Restore from SQL dump
-        log_info "Restoring database from SQL dump via psql..."
-        if ! err_msg=$(run_psql -d "$STG_DB_NAME" -f "/tmp/$STG_DB_NAME.sql" 2>&1 >/dev/null); then
-            log_error "Error restoring database via psql"
-            [ -n "$err_msg" ] && echo "$err_msg" >> "$STDERR_LOG"
-            error_handler 1 $LINENO "run_psql -d \"$STG_DB_NAME\" -f \"/tmp/$STG_DB_NAME.sql\""
-        fi
-
-        log_success "Database restored successfully via psql."
-
-        # Neutralize if enabled (manual method uses SQL neutralize)
-        if [ "$NEUTRALIZE_DB" = "true" ]; then
-            sanitize_database "$STG_DB_NAME"
-        fi
-    else
-        # --- SEMI_MANUAL ENDPOINT RESTORE ---
-
-        log_info "Preparing db_dump_only.zip archive containing dump.sql for staging endpoint import..."
-        rm -f "/tmp/dump.sql" "/tmp/db_dump_only_$STG_DB_NAME.zip"
-        mv "/tmp/$STG_DB_NAME.sql" "/tmp/dump.sql"
-        (cd /tmp && zip -q "db_dump_only_$STG_DB_NAME.zip" dump.sql)
-        rm -f "/tmp/dump.sql"
-
-        ODOO_VERSION=$(grep "^ODOO_VERSION=" "$STG_ENV_FILE" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
-        ODOO_VERSION_NUM=${ODOO_VERSION%%.*}
-        if [[ ! "$ODOO_VERSION_NUM" =~ ^[0-9]+$ ]]; then
-          if [[ "$ODOO_VERSION" == "latest" ]]; then
-            ODOO_VERSION_NUM=18
-          else
-            ODOO_VERSION_NUM=16
-          fi
-        fi
-        log_info "Detected staging Odoo Version: ${ODOO_VERSION:-16} (Numeric: $ODOO_VERSION_NUM)"
-
-        log_info "Restoring database schema/data via direct localhost endpoint..."
-
-        CURL_OUT=$(mktemp)
-
-        if [ "$ODOO_VERSION_NUM" -ge 16 ]; then
-          curl -s -X POST \
-            -F "master_pwd=$STG_ADMIN_PASSWD" \
-            -F "name=$STG_DB_NAME" \
-            -F "backup_file=@/tmp/db_dump_only_$STG_DB_NAME.zip" \
-            -F "copy=true" \
-            -F "neutralize_database=$NEUTRALIZE_DB" \
-            "http://localhost:$STG_PORT/web/database/restore" > "$CURL_OUT" 2>&1 || true
-        else
-          curl -s -X POST \
-            -F "master_pwd=$STG_ADMIN_PASSWD" \
-            -F "name=$STG_DB_NAME" \
-            -F "backup_file=@/tmp/db_dump_only_$STG_DB_NAME.zip" \
-            -F "copy=true" \
-            "http://localhost:$STG_PORT/web/database/restore" > "$CURL_OUT" 2>&1 || true
-        fi
-        response=$(cat "$CURL_OUT")
-        rm -f "$CURL_OUT"
-
-        response_lower="${response,,}"
-        if [[ "$response_lower" == *"redirecting"* ]] && [[ "$response_lower" == *"/web/database/manager"* ]]; then
-          log_success "Database clone command completed successfully."
-        elif [[ "$response_lower" == *"error"* ]] || \
-             [[ "$response_lower" == *"incorrect master password"* ]] || \
-             [ -z "$response" ]; then
-          log_error "Failed to clone database via endpoint. Response: ${response:-'Empty response'}"
-          exit 1
-        else
-          log_success "Database clone command completed."
-        fi
-
-        if [ "$NEUTRALIZE_DB" = "true" ] && [ "$ODOO_VERSION_NUM" -lt 16 ]; then
-          log_info "Staging Odoo version < 16 detected. Performing manual SQL database neutralization fallback..."
-          sanitize_database "$STG_DB_NAME"
-        fi
-    fi
-
-    trigger_registry_reload "$STG_DB_NAME" "$STG_PATH_TO_ODOO"
-
-    log_success "Database clone complete."
-else
-    log_stage "[2/4] Skipping Database Clone."
-fi
-
-# 3. RESTART CONTAINER
-# ---------------------------------------------------------
-log_stage "[3/4] Restarting Staging Container..."
-cd "$STG_PATH_TO_ODOO"
-if [ "$JSON_MODE" = "true" ]; then
-    if docker compose restart odoo >&2; then log_success "Restarted."; else log_error "Restart failed."; exit 1; fi
-else
-    if docker compose restart odoo; then log_success "Restarted."; else log_error "Restart failed."; exit 1; fi
-fi
-
-# 4. UPDATE MODULES
-# ---------------------------------------------------------
-if [ -z "$MODULES_TO_UPDATE" ]; then
-    log_stage "[4/4] Update module skipped..."
-else
-    log_stage "[4/4] Updating Odoo Modules..."
-    sleep 10
-    MODULE_UPDATE_ERROR=false
-    UPDATE_OUTPUT=""
-    TEMP_UPDATE_LOG=$(mktemp)
     if [ "$JSON_MODE" = "true" ]; then
-        docker compose exec odoo odoo-module-upgrade "$STG_DB_NAME" --update="$MODULES_TO_UPDATE" 2>&1 | tee "$TEMP_UPDATE_LOG" >&2
-        if [ ${PIPESTATUS[0]} -ne 0 ]; then MODULE_UPDATE_ERROR=true; fi
-        UPDATE_OUTPUT=$(cat "$TEMP_UPDATE_LOG")
-        if [ "$MODULE_UPDATE_ERROR" = "false" ]; then
-            log_success "Modules updated."
-        else
-            log_warn "Process complete, but the module update encountered an error."
-            log "${COLOR_ERROR}" "❌" "Odoo module upgrade log (Summary):"
-            echo "$UPDATE_OUTPUT" >&2
-        fi
+        GIT_PULL_CMD="sudo -u \"$CURRENT_DIR_USER\" git -C \"$STG_GIT_PATH\" pull >&2"
     else
-        docker compose exec odoo odoo-module-upgrade "$STG_DB_NAME" --update="$MODULES_TO_UPDATE" 2>&1 | tee "$TEMP_UPDATE_LOG"
-        if [ ${PIPESTATUS[0]} -ne 0 ]; then MODULE_UPDATE_ERROR=true; fi
-        UPDATE_OUTPUT=$(cat "$TEMP_UPDATE_LOG")
-        if [ "$MODULE_UPDATE_ERROR" = "false" ]; then
-            log_success "Modules updated."
-        else
-            log_warn "Process complete, but the module update encountered an error."
-            log "${COLOR_ERROR}" "❌" "Odoo module upgrade log (Summary):"
-            echo "$UPDATE_OUTPUT"
-        fi
+        GIT_PULL_CMD="sudo -u \"$CURRENT_DIR_USER\" git -C \"$STG_GIT_PATH\" pull"
     fi
-    rm -f "$TEMP_UPDATE_LOG"
-fi
+    if eval "$GIT_PULL_CMD"; then log_success "Code is up to date."; else log_error "Failed to pull code."; exit 1; fi
 
-if [ "$JSON_MODE" = "false" ]; then
-    echo ""
-    log_success "Deployment Complete!"
-fi
 
-# --- JSON Output Generation ---
-if [ "$JSON_MODE" = "true" ]; then
-    echo "{"
-    echo '  "repositories": ['
-    GIT_ROOT="$STG_PATH_TO_ODOO/git"
-    FIRST_REPO=1
-    if [ -d "$GIT_ROOT" ]; then
-        for repo_dir in "$GIT_ROOT"/*/; do
-            [ -d "$repo_dir" ] || continue
-            repo_name=$(basename "$repo_dir")
-            status="clean" # Simplified
-            if [ -d "$repo_dir/.git" ]; then
-               commit_hash=$(sudo -u "$CURRENT_DIR_USER" git -C "$repo_dir" rev-parse --short HEAD 2>/dev/null || echo "unknown")
-               commit_subject=$(sudo -u "$CURRENT_DIR_USER" git -C "$repo_dir" log -1 --format="%s" 2>/dev/null | tr -d '"\\' || echo "")
-            else
-               status="not_git"; commit_hash=""; commit_subject=""
+    # 2. CLONE DATABASE (Manual)
+    # ---------------------------------------------------------
+    if [ "$IS_RENEW_DB" == "true" ]; then
+        PRD_PATH_TO_ODOO="$STG_PATH_TO_ODOO/../$SERVICE_NAME_PRD"
+        PRD_ENV_FILE="$PRD_PATH_TO_ODOO/.env"
+        if [ ! -f "$PRD_ENV_FILE" ]; then log_error "Prod .env not found."; exit 1; fi
+
+        PRD_DB_NAME=$(grep "^DB_NAME=" "$PRD_ENV_FILE" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
+        if [ -z "$PRD_DB_NAME" ]; then log_error "DB_NAME not set in prod."; exit 1; fi
+
+        STG_ADMIN_PASSWD=$(grep "^ADMIN_PASSWD=" "$STG_ENV_FILE" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
+        STG_PORT=$(grep "^PORT=" "$STG_ENV_FILE" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
+        if [ "$BACKUP_RESTORE_METHOD" != "manual" ]; then
+            if [ -z "$STG_ADMIN_PASSWD" ] || [ -z "$STG_PORT" ]; then
+                log_error "ADMIN_PASSWD and/or PORT not set in staging .env file. Cannot proceed with endpoint cloning."
+                exit 1
             fi
-            if [ $FIRST_REPO -eq 0 ]; then echo ","; fi
-            FIRST_REPO=0
-            echo "    { \"name\": \"$repo_name\", \"status\": \"$status\", \"commit\": \"$commit_hash\", \"subject\": \"$commit_subject\", \"files\": [] }"
-        done
-    fi
-    echo ""
-    echo "  ],"
-    echo "  \"database_name\": \"$STG_DB_NAME\""
-    if [ -n "$MODULES_TO_UPDATE" ]; then
-        echo ", \"modules_to_upgrade\": [ \"$MODULES_TO_UPDATE\" ]"
-    fi
-    if [ "$MODULE_UPDATE_ERROR" = "true" ]; then
-        echo ", \"error\": true"
-        if command -v python3 >/dev/null 2>&1; then
-            JSON_SAFE_LOG=$(python3 -c 'import json, sys; print(json.dumps(sys.stdin.read()))' <<< "$UPDATE_OUTPUT")
-        else
-            ESCAPED=$(echo "$UPDATE_OUTPUT" | sed 's/\\/\\\\/g' | sed 's/"/\\"/g' | awk '{printf "%s\\n", $0}' | sed 's/\\n$//')
-            JSON_SAFE_LOG="\"$ESCAPED\""
         fi
-        echo ", \"module_upgrade_log\": $JSON_SAFE_LOG"
+
+        if [ "$BACKUP_RESTORE_METHOD" = "manual" ]; then
+            log_stage "[2/4] Cloning Production Database to Staging (Manual PSQL Mode)..."
+        else
+            log_stage "[2/4] Cloning Production Database to Staging (Endpoint Mode)..."
+        fi
+
+        ODOO_FILESTORE_PATH_PRD="/var/lib/odoo/$SERVICE_NAME_PRD/filestore/$PRD_DB_NAME"
+        ODOO_FILESTORE_PATH_ENV="/var/lib/odoo/$SERVICE_NAME/filestore/$STG_DB_NAME"
+
+        log_info "Dump $PRD_DB_NAME to temporary file"
+        if ! err_msg=$(run_pg_dump --no-owner -d "$PRD_DB_NAME" 2>&1 > "/tmp/$STG_DB_NAME.sql"); then
+            log_error "Error dumping database"
+            [ -n "$err_msg" ] && echo "$err_msg" >> "$STDERR_LOG"
+            error_handler 1 $LINENO "run_pg_dump --no-owner -d \"$PRD_DB_NAME\""
+        fi
+
+        # Sync Filestore
+        if [ -d "$ODOO_FILESTORE_PATH_ENV" ]; then
+            log_warn "Remove old filestore $STG_DB_NAME"
+            rm -rf "$ODOO_FILESTORE_PATH_ENV"
+        fi
+        mkdir -p "$ODOO_FILESTORE_PATH_ENV"
+        if ! err_msg=$(rsync -a "$ODOO_FILESTORE_PATH_PRD/" "$ODOO_FILESTORE_PATH_ENV" 2>&1 >/dev/null); then
+            log_error "Error copying filestore"
+            [ -n "$err_msg" ] && echo "$err_msg" >> "$STDERR_LOG"
+            error_handler 1 $LINENO "rsync -a \"$ODOO_FILESTORE_PATH_PRD/\" \"$ODOO_FILESTORE_PATH_ENV\""
+        fi
+        chown -R odoo: "$ODOO_FILESTORE_PATH_ENV"
+
+        log_warn "Drop old database $STG_DB_NAME"
+        if ! err_msg=$(run_psql -d postgres -c "DROP DATABASE IF EXISTS \"$STG_DB_NAME\" WITH (FORCE)" 2>&1 >/dev/null); then
+            log_warn "Error dropping DB, proceeding..."
+            if [ -n "$err_msg" ]; then
+                while IFS= read -r line; do
+                    log_warn "Command Output: $line"
+                done <<< "$err_msg"
+            fi
+        fi
+
+        if [ "$BACKUP_RESTORE_METHOD" != "manual" ]; then
+            log_info "Ensuring staging environment is running to receive endpoint restore command..."
+            if curl -s -o /dev/null http://localhost:$STG_PORT; then
+                log_success "Staging environment is running."
+            else
+                log_warn "Staging environment is not running. Starting it...";
+                docker compose -f "$STG_PATH_TO_ODOO/docker-compose.yml" up -d > /dev/null 2>&1 || true
+                log_info "Waiting for 15 seconds until the Odoo Instance is ready..."
+                sleep 15
+            fi
+        else
+            log_info "Skipping staging environment readiness check (pure manual PSQL mode)."
+        fi
+
+        NEUTRALIZE_DB=$(grep "^NEUTRALIZE_DATABASE=" "$PRD_ENV_FILE" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' | tr '[:upper:]' '[:lower:]' || true)
+        if [ -z "$NEUTRALIZE_DB" ]; then NEUTRALIZE_DB="true"; fi
+
+        if [ "$BACKUP_RESTORE_METHOD" = "manual" ]; then
+            # --- PURE MANUAL PSQL RESTORE ---
+            # No endpoint needed: direct SQL dump restoration via psql
+
+            ODOO_VERSION=$(grep "^ODOO_VERSION=" "$STG_ENV_FILE" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
+            ODOO_VERSION_NUM=${ODOO_VERSION%%.*}
+            if [[ ! "$ODOO_VERSION_NUM" =~ ^[0-9]+$ ]]; then
+              if [[ "$ODOO_VERSION" == "latest" ]]; then
+                ODOO_VERSION_NUM=18
+              else
+                ODOO_VERSION_NUM=16
+              fi
+            fi
+            log_info "Detected staging Odoo Version: ${ODOO_VERSION:-16} (Numeric: $ODOO_VERSION_NUM)"
+
+            # Re-create database with correct owner
+            DB_USER=$(cat "$(dirname "$STG_ENV_FILE")/.secrets/db_user" 2>/dev/null || echo "odoo")
+
+            log_info "Dropping old database $STG_DB_NAME (with force)"
+            run_psql -d postgres -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '$STG_DB_NAME' AND pid <> pg_backend_pid();" > /dev/null 2>&1 || true
+            if ! err_msg=$(run_psql -d postgres -c "DROP DATABASE IF EXISTS \"$STG_DB_NAME\"" 2>&1 >/dev/null); then
+                log_error "Error dropping DB"
+                [ -n "$err_msg" ] && echo "$err_msg" >> "$STDERR_LOG"
+                error_handler 1 $LINENO "run_psql -d postgres -c \"DROP DATABASE IF EXISTS \\\"$STG_DB_NAME\\\"\""
+            fi
+
+            log_info "Creating new database $STG_DB_NAME with owner $DB_USER"
+            if ! err_msg=$(run_psql -d postgres -c "CREATE DATABASE \"$STG_DB_NAME\" OWNER \"$DB_USER\"" 2>&1 >/dev/null); then
+                log_error "Error creating DB"
+                [ -n "$err_msg" ] && echo "$err_msg" >> "$STDERR_LOG"
+                error_handler 1 $LINENO "run_psql -d postgres -c \"CREATE DATABASE \\\"$STG_DB_NAME\\\" OWNER \\\"$DB_USER\\\"\""
+            fi
+
+            # Restore from SQL dump
+            log_info "Restoring database from SQL dump via psql..."
+            if ! err_msg=$(run_psql -d "$STG_DB_NAME" -f "/tmp/$STG_DB_NAME.sql" 2>&1 >/dev/null); then
+                log_error "Error restoring database via psql"
+                [ -n "$err_msg" ] && echo "$err_msg" >> "$STDERR_LOG"
+                error_handler 1 $LINENO "run_psql -d \"$STG_DB_NAME\" -f \"/tmp/$STG_DB_NAME.sql\""
+            fi
+
+            log_success "Database restored successfully via psql."
+
+            log_info "Altering database object ownership..."
+            local POSTGRES_USER_DEV="$DB_USER"
+            run_psql -d "$STG_DB_NAME" -c "
+              -- Change the owner of all tables
+              DO \$\$
+              DECLARE
+                  rec RECORD;
+              BEGIN
+                  FOR rec IN (SELECT tablename FROM pg_tables WHERE schemaname = 'public') LOOP
+                      EXECUTE 'ALTER TABLE ' || quote_ident(rec.tablename) || ' OWNER TO \"${POSTGRES_USER_DEV}\"';
+                  END LOOP;
+              END \$\$;
+
+              -- Change the owner of all sequences
+              DO \$\$
+              DECLARE
+                  rec RECORD;
+              BEGIN
+                  FOR rec IN (SELECT sequence_name FROM information_schema.sequences WHERE sequence_schema = 'public') LOOP
+                      EXECUTE 'ALTER SEQUENCE ' || quote_ident(rec.sequence_name) || ' OWNER TO \"${POSTGRES_USER_DEV}\"';
+                  END LOOP;
+              END \$\$;
+
+              -- Change the owner of all views (Standard)
+              DO \$\$
+              DECLARE
+                  rec RECORD;
+              BEGIN
+                  FOR rec IN (SELECT table_name FROM information_schema.views WHERE table_schema = 'public') LOOP
+                      EXECUTE 'ALTER VIEW ' || quote_ident(rec.table_name) || ' OWNER TO \"${POSTGRES_USER_DEV}\"';
+                  END LOOP;
+              END \$\$;
+
+              -- Change the owner of all materialized views
+              DO \$\$
+              DECLARE
+                  rec RECORD;
+              BEGIN
+                  FOR rec IN (SELECT matviewname FROM pg_matviews WHERE schemaname = 'public') LOOP
+                      EXECUTE 'ALTER MATERIALIZED VIEW ' || quote_ident(rec.matviewname) || ' OWNER TO \"${POSTGRES_USER_DEV}\"';
+                  END LOOP;
+              END \$\$;
+            "
+
+            # Neutralize if enabled (manual method uses SQL neutralize)
+            if [ "$NEUTRALIZE_DB" = "true" ]; then
+                sanitize_database "$STG_DB_NAME"
+            fi
+        else
+            # --- SEMI_MANUAL ENDPOINT RESTORE ---
+
+            log_info "Preparing db_dump_only.zip archive containing dump.sql for staging endpoint import..."
+            rm -f "/tmp/dump.sql" "/tmp/db_dump_only_$STG_DB_NAME.zip"
+            mv "/tmp/$STG_DB_NAME.sql" "/tmp/dump.sql"
+            (cd /tmp && zip -q "db_dump_only_$STG_DB_NAME.zip" dump.sql)
+            rm -f "/tmp/dump.sql"
+
+            ODOO_VERSION=$(grep "^ODOO_VERSION=" "$STG_ENV_FILE" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
+            ODOO_VERSION_NUM=${ODOO_VERSION%%.*}
+            if [[ ! "$ODOO_VERSION_NUM" =~ ^[0-9]+$ ]]; then
+              if [[ "$ODOO_VERSION" == "latest" ]]; then
+                ODOO_VERSION_NUM=18
+              else
+                ODOO_VERSION_NUM=16
+              fi
+            fi
+            log_info "Detected staging Odoo Version: ${ODOO_VERSION:-16} (Numeric: $ODOO_VERSION_NUM)"
+
+            log_info "Restoring database schema/data via direct localhost endpoint..."
+
+            CURL_OUT=$(mktemp)
+
+            if [ "$ODOO_VERSION_NUM" -ge 16 ]; then
+              curl -s -X POST \
+                -F "master_pwd=$STG_ADMIN_PASSWD" \
+                -F "name=$STG_DB_NAME" \
+                -F "backup_file=@/tmp/db_dump_only_$STG_DB_NAME.zip" \
+                -F "copy=true" \
+                -F "neutralize_database=$NEUTRALIZE_DB" \
+                "http://localhost:$STG_PORT/web/database/restore" > "$CURL_OUT" 2>&1 || true
+            else
+              curl -s -X POST \
+                -F "master_pwd=$STG_ADMIN_PASSWD" \
+                -F "name=$STG_DB_NAME" \
+                -F "backup_file=@/tmp/db_dump_only_$STG_DB_NAME.zip" \
+                -F "copy=true" \
+                "http://localhost:$STG_PORT/web/database/restore" > "$CURL_OUT" 2>&1 || true
+            fi
+            response=$(cat "$CURL_OUT")
+            rm -f "$CURL_OUT"
+
+            response_lower="${response,,}"
+            if [[ "$response_lower" == *"redirecting"* ]] && [[ "$response_lower" == *"/web/database/manager"* ]]; then
+              log_success "Database clone command completed successfully."
+            elif [[ "$response_lower" == *"error"* ]] || \
+                 [[ "$response_lower" == *"incorrect master password"* ]] || \
+                 [ -z "$response" ]; then
+              log_error "Failed to clone database via endpoint. Response: ${response:-'Empty response'}"
+              exit 1
+            else
+              log_success "Database clone command completed."
+            fi
+
+            if [ "$NEUTRALIZE_DB" = "true" ] && [ "$ODOO_VERSION_NUM" -lt 16 ]; then
+              log_info "Staging Odoo version < 16 detected. Performing manual SQL database neutralization fallback..."
+              sanitize_database "$STG_DB_NAME"
+            fi
+        fi
+
+        trigger_registry_reload "$STG_DB_NAME" "$STG_PATH_TO_ODOO"
+
+        log_success "Database clone complete."
+    else
+        log_stage "[2/4] Skipping Database Clone."
     fi
-    echo "}"
-fi
+
+    # 3. RESTART CONTAINER
+    # ---------------------------------------------------------
+    log_stage "[3/4] Restarting Staging Container..."
+    cd "$STG_PATH_TO_ODOO"
+    if [ "$JSON_MODE" = "true" ]; then
+        if docker compose restart odoo >&2; then log_success "Restarted."; else log_error "Restart failed."; exit 1; fi
+    else
+        if docker compose restart odoo; then log_success "Restarted."; else log_error "Restart failed."; exit 1; fi
+    fi
+
+    # 4. UPDATE MODULES
+    # ---------------------------------------------------------
+    if [ -z "$MODULES_TO_UPDATE" ]; then
+        log_stage "[4/4] Update module skipped..."
+    else
+        log_stage "[4/4] Updating Odoo Modules..."
+        sleep 10
+        MODULE_UPDATE_ERROR=false
+        UPDATE_OUTPUT=""
+        TEMP_UPDATE_LOG=$(mktemp)
+        if [ "$JSON_MODE" = "true" ]; then
+            docker compose exec odoo odoo-module-upgrade "$STG_DB_NAME" --update="$MODULES_TO_UPDATE" 2>&1 | tee "$TEMP_UPDATE_LOG" >&2
+            if [ ${PIPESTATUS[0]} -ne 0 ]; then MODULE_UPDATE_ERROR=true; fi
+            UPDATE_OUTPUT=$(cat "$TEMP_UPDATE_LOG")
+            if [ "$MODULE_UPDATE_ERROR" = "false" ]; then
+                log_success "Modules updated."
+            else
+                log_warn "Process complete, but the module update encountered an error."
+                log "${COLOR_ERROR}" "❌" "Odoo module upgrade log (Summary):"
+                echo "$UPDATE_OUTPUT" >&2
+            fi
+        else
+            docker compose exec odoo odoo-module-upgrade "$STG_DB_NAME" --update="$MODULES_TO_UPDATE" 2>&1 | tee "$TEMP_UPDATE_LOG"
+            if [ ${PIPESTATUS[0]} -ne 0 ]; then MODULE_UPDATE_ERROR=true; fi
+            UPDATE_OUTPUT=$(cat "$TEMP_UPDATE_LOG")
+            if [ "$MODULE_UPDATE_ERROR" = "false" ]; then
+                log_success "Modules updated."
+            else
+                log_warn "Process complete, but the module update encountered an error."
+                log "${COLOR_ERROR}" "❌" "Odoo module upgrade log (Summary):"
+                echo "$UPDATE_OUTPUT"
+            fi
+        fi
+        rm -f "$TEMP_UPDATE_LOG"
+    fi
+
+    if [ "$JSON_MODE" = "false" ]; then
+        echo ""
+        log_success "Deployment Complete!"
+    fi
+
+    # --- JSON Output Generation ---
+    if [ "$JSON_MODE" = "true" ]; then
+        echo "{"
+        echo '  "repositories": ['
+        GIT_ROOT="$STG_PATH_TO_ODOO/git"
+        FIRST_REPO=1
+        if [ -d "$GIT_ROOT" ]; then
+            for repo_dir in "$GIT_ROOT"/*/; do
+                [ -d "$repo_dir" ] || continue
+                repo_name=$(basename "$repo_dir")
+                status="clean" # Simplified
+                if [ -d "$repo_dir/.git" ]; then
+                   commit_hash=$(sudo -u "$CURRENT_DIR_USER" git -C "$repo_dir" rev-parse --short HEAD 2>/dev/null || echo "unknown")
+                   commit_subject=$(sudo -u "$CURRENT_DIR_USER" git -C "$repo_dir" log -1 --format="%s" 2>/dev/null | tr -d '"\\' || echo "")
+                else
+                   status="not_git"; commit_hash=""; commit_subject=""
+                fi
+                if [ $FIRST_REPO -eq 0 ]; then echo ","; fi
+                FIRST_REPO=0
+                echo "    { \"name\": \"$repo_name\", \"status\": \"$status\", \"commit\": \"$commit_hash\", \"subject\": \"$commit_subject\", \"files\": [] }"
+            done
+        fi
+        echo ""
+        echo "  ],"
+        echo "  \"database_name\": \"$STG_DB_NAME\""
+        if [ -n "$MODULES_TO_UPDATE" ]; then
+            echo ", \"modules_to_upgrade\": [ \"$MODULES_TO_UPDATE\" ]"
+        fi
+        if [ "$MODULE_UPDATE_ERROR" = "true" ]; then
+            echo ", \"error\": true"
+            if command -v python3 >/dev/null 2>&1; then
+                JSON_SAFE_LOG=$(python3 -c 'import json, sys; print(json.dumps(sys.stdin.read()))' <<< "$UPDATE_OUTPUT")
+            else
+                ESCAPED=$(echo "$UPDATE_OUTPUT" | sed 's/\\/\\\\/g' | sed 's/"/\\"/g' | awk '{printf "%s\\n", $0}' | sed 's/\\n$//')
+                JSON_SAFE_LOG="\"$ESCAPED\""
+            fi
+            echo ", \"module_upgrade_log\": $JSON_SAFE_LOG"
+        fi
+        echo "}"
+    fi
+}
+
+main "$@"

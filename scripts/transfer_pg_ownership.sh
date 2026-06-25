@@ -124,6 +124,7 @@ for SUDOERP_DATABASE_NAME_DEV in "${DATABASES_TO_MIGRATE[@]}"; do
     run_psql -c "ALTER DATABASE \"$SUDOERP_DATABASE_NAME_DEV\" OWNER TO \"$NEW_OWNER\";";
 
     log_info "Changing ownership of tables, sequences, and views..."
+    local POSTGRES_USER_DEV="$NEW_OWNER"
     run_psql -d "$SUDOERP_DATABASE_NAME_DEV" -c "
       -- Change the owner of all tables
       DO \$\$
@@ -131,7 +132,7 @@ for SUDOERP_DATABASE_NAME_DEV in "${DATABASES_TO_MIGRATE[@]}"; do
           rec RECORD;
       BEGIN
           FOR rec IN (SELECT tablename FROM pg_tables WHERE schemaname = 'public') LOOP
-              EXECUTE 'ALTER TABLE ' || quote_ident(rec.tablename) || ' OWNER TO \"$NEW_OWNER\"';
+              EXECUTE 'ALTER TABLE ' || quote_ident(rec.tablename) || ' OWNER TO \"${POSTGRES_USER_DEV}\"';
           END LOOP;
       END \$\$;
 
@@ -141,17 +142,27 @@ for SUDOERP_DATABASE_NAME_DEV in "${DATABASES_TO_MIGRATE[@]}"; do
           rec RECORD;
       BEGIN
           FOR rec IN (SELECT sequence_name FROM information_schema.sequences WHERE sequence_schema = 'public') LOOP
-              EXECUTE 'ALTER SEQUENCE ' || quote_ident(rec.sequence_name) || ' OWNER TO \"$NEW_OWNER\"';
+              EXECUTE 'ALTER SEQUENCE ' || quote_ident(rec.sequence_name) || ' OWNER TO \"${POSTGRES_USER_DEV}\"';
           END LOOP;
       END \$\$;
 
-      -- Change the owner of all views
+      -- Change the owner of all views (Standard)
       DO \$\$
       DECLARE
           rec RECORD;
       BEGIN
           FOR rec IN (SELECT table_name FROM information_schema.views WHERE table_schema = 'public') LOOP
-              EXECUTE 'ALTER VIEW ' || quote_ident(rec.table_name) || ' OWNER TO \"$NEW_OWNER\"';
+              EXECUTE 'ALTER VIEW ' || quote_ident(rec.table_name) || ' OWNER TO \"${POSTGRES_USER_DEV}\"';
+          END LOOP;
+      END \$\$;
+
+      -- Change the owner of all materialized views
+      DO \$\$
+      DECLARE
+          rec RECORD;
+      BEGIN
+          FOR rec IN (SELECT matviewname FROM pg_matviews WHERE schemaname = 'public') LOOP
+              EXECUTE 'ALTER MATERIALIZED VIEW ' || quote_ident(rec.matviewname) || ' OWNER TO \"${POSTGRES_USER_DEV}\"';
           END LOOP;
       END \$\$;
     "
