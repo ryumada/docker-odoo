@@ -234,28 +234,100 @@ function run_pg_dump() {
 
 function sanitize_database() {
   local db_name="$1"
-  log_info "Sanitizing the database (Disabling Emails & Crons + Neutralize Banner)"
+  log_info "Neutralizing the database (SMTP, Crons, Webhooks, Payments, and activating Neutralized Banner)..."
 
-  # SQL commands to disable outgoing email, crons, and mail servers
-  local SANITIZE_SQL="
-    -- Disable all Outgoing Mail Servers
-    UPDATE ir_mail_server SET active = false;
+  # SQL commands to disable outgoing email, crons, mail servers, and activate the banner.
+  # Wrapped in a PL/pgSQL DO block to avoid failures if optional modules are not installed.
+  local SANITIZE_SQL
+  SANITIZE_SQL=$(cat << 'EOF'
+    DO $$
+    BEGIN
+        -- 1. Base Module Neutralization
+        IF EXISTS (SELECT FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'ir_mail_server') THEN
+            UPDATE ir_mail_server SET active = false;
+            INSERT INTO ir_mail_server(name, smtp_port, smtp_host, smtp_encryption, active, smtp_authentication)
+            VALUES ('neutralization - disable emails', 1025, 'invalid', 'none', true, 'login')
+            ON CONFLICT DO NOTHING;
+        END IF;
 
-    -- Disable ALL crons initially (Safety first)
-    UPDATE ir_cron SET active = false;
+        IF EXISTS (SELECT FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'ir_cron') THEN
+            UPDATE ir_cron
+               SET active = false
+             WHERE id NOT IN (
+                   SELECT res_id
+                     FROM ir_model_data
+                    WHERE model = 'ir.cron'
+                      AND name = 'autovacuum_job'
+                      AND module = 'base'
+             );
+        END IF;
 
-    -- Set System Parameter to prevent catching emails
-    DELETE FROM ir_config_parameter WHERE key = 'mail.catchall.domain';
-    INSERT INTO ir_config_parameter (key, value) VALUES ('mail.catchall.domain', 'localhost');
+        IF EXISTS (SELECT FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'ir_config_parameter') THEN
+            INSERT INTO ir_config_parameter (key, value)
+            VALUES ('database.is_neutralized', true)
+                ON CONFLICT (key) DO UPDATE SET value = true;
+        END IF;
+          
+        IF EXISTS (SELECT FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'ir_act_server') THEN
+            UPDATE ir_act_server
+               SET webhook_url = 'neutralization - disable webhook'
+             WHERE state = 'webhook';
+        END IF;
 
-    -- Set neutralization flag to display the red TEST DATABASE banner in Odoo UI
-    DELETE FROM ir_config_parameter WHERE key = 'base.setup.neutralize';
-    INSERT INTO ir_config_parameter (key, value) VALUES ('base.setup.neutralize', 'True');
-  "
+        -- 2. Mail Module Neutralization
+        IF EXISTS (SELECT FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'mail_template') THEN
+            UPDATE mail_template SET mail_server_id = NULL;
+        END IF;
+
+        IF EXISTS (SELECT FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'fetchmail_server') THEN
+            UPDATE fetchmail_server SET active = false;
+        END IF;
+
+        IF EXISTS (SELECT FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'ir_config_parameter') THEN
+            DELETE FROM ir_config_parameter WHERE key IN ('mail.web_push_vapid_private_key', 'mail.web_push_vapid_public_key', 'mail.sfu_server_key');
+        END IF;
+
+        IF EXISTS (SELECT FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'mail_push') THEN
+            TRUNCATE mail_push CASCADE;
+        END IF;
+
+        IF EXISTS (SELECT FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'mail_push_device') THEN
+            DELETE FROM mail_push_device;
+        END IF;
+
+        -- 3. Web Module Neutralization (Activate Neutralize Banner)
+        IF EXISTS (SELECT FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'ir_ui_view') THEN
+            UPDATE ir_ui_view SET active = true WHERE key = 'web.neutralize_banner';
+        END IF;
+
+        -- 4. Additional Common Services
+        -- Disable Payment Providers
+        IF EXISTS (SELECT FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'payment_provider') THEN
+            UPDATE payment_provider SET state = 'disabled' WHERE state NOT IN ('test', 'disabled');
+        END IF;
+
+        -- Disable OAuth login
+        IF EXISTS (SELECT FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'auth_oauth_provider') THEN
+            UPDATE auth_oauth_provider SET enabled = false;
+        END IF;
+
+        -- Disable Google Calendar sync
+        IF EXISTS (SELECT FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'res_users_settings') THEN
+            UPDATE res_users_settings SET google_calendar_rtoken = NULL, google_calendar_token = NULL, google_synchronization_stopped = True;
+        END IF;
+
+        -- Disable IAP accounts
+        IF EXISTS (SELECT FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'iap_account') THEN
+            UPDATE iap_account SET account_token = REGEXP_REPLACE(account_token, '(\+.*)?$', '+disabled') WHERE LENGTH(account_token) <= 33;
+            UPDATE iap_account SET account_token = 'dummy_value+disabled' WHERE LENGTH(account_token) > 33 AND account_token NOT LIKE '%+disabled';
+        END IF;
+    END $$;
+EOF
+)
 
   # Execute the SQL commands
   if run_psql -d "$db_name" -c "$SANITIZE_SQL" > /dev/null 2>&1; then
-    log_success "Database sanitized successfully."
+    log_success "Database successfully neutralized."
   else
     log_warn "Warning: Failed to sanitize database completely (SQL command failed)."
   fi
