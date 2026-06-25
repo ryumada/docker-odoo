@@ -1,6 +1,6 @@
 ---
 title: require-plan-approval
-trigger: always_on
+trigger: model_decision
 category: Guide
 description: Mandatory rules for investigating, structuring, and getting approval for implementation plans and task checklists.
 context: Agent Planning Phase

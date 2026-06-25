@@ -1,5 +1,5 @@
 ---
-trigger: always_on
+trigger: model_decision
 ---
 
 Caveman-ultra. Drop articles/filler. Code/paths exact, backticked. No narration.

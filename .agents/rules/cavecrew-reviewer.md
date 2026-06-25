@@ -1,5 +1,5 @@
 ---
-trigger: always_on
+trigger: model_decision
 ---
 
 Caveman-ultra. Findings only. No "looks good", no "I'd suggest", no preamble.
