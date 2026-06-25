@@ -7,17 +7,18 @@ context: Root Repository
 
 # LLM Token Optimization Guide
 
-This document explains the three-layer strategy used to reduce token consumption when working with AI agents (Google Antigravity) in this repository.
+This document explains the four-layer strategy used to reduce token consumption when working with AI agents (Google Antigravity) in this repository.
 
 ## Overview
 
-Token usage is reduced at three distinct levels:
+Token usage is reduced at four distinct levels:
 
 | Layer | Tool | Savings |
 |---|---|---|
 | CLI output compression | RTK (Rust Token Killer) | 60–90% per command |
 | Agent context compression | Rule trigger optimization | ~84% baseline reduction |
 | Code output minimalism | Ponytail + Cavecrew | Prevents token-heavy responses |
+| Persistent context sync | ICM (Interactive Context Memory) | Stops redundant explanation cycles |
 
 ---
 
@@ -58,15 +59,15 @@ The largest baseline saving. Antigravity injects `always_on` rules into every se
 | State | `always_on` rules | Lines injected per session |
 |---|---|---|
 | Before | 8 files | ~370 lines |
-| After | 3 files | ~58 lines |
-| **Reduction** | | **~84%** |
+| After | 3 files | ~20 lines |
+| **Reduction** | | **~94%** (further reduced by referenced ponytail instructions) |
 
 ### Current Rule Triggers
 
 | Rule File | Trigger | Reason |
 |---|---|---|
 | `antigravity-rtk-rules.md` | `always_on` | RTK habit must be unconditional |
-| `ponytail.md` | `always_on` | Core behavioral discipline — always active |
+| `ponytail.md` | `always_on` | Core behavioral discipline — slim header referencing full file |
 | `do-not-answer-if-repo-map-file-not-found.md` | `always_on` | Critical safety gate, only 10 lines |
 | `cavecrew-builder.md` | `model_decision` | Only needed during file editing tasks |
 | `cavecrew-investigator.md` | `model_decision` | Only needed during code investigation |
@@ -76,18 +77,15 @@ The largest baseline saving. Antigravity injects `always_on` rules into every se
 | `require-plan-approval.md` | `model_decision` | Only needed during `@pro` planning sessions |
 | `phased-execution.md` | `model_decision` | Only needed for 4+ file cross-layer tasks |
 
+### Rule References (Loaded on demand only)
+
+*   [`ponytail-ref.md`](.agents/rules/references/ponytail-ref.md): Fully expanded guidelines for minimalist code implementation.
+
 ### Deleted Redundant Rules
 
 | File | Reason Deleted |
 |---|---|
 | `read-agents-md-on-start.md` | AGENTS.md is already auto-injected by the rule system; this caused a double-load on every session |
-
-### Rule File Compression
-
-The `antigravity-rtk-rules.md` file itself was compressed from **45 → 13 lines** by removing:
-- The verbose "Why" explanation section
-- The code example block (redundant with the one-line rule)
-- The installation script (belongs in onboarding docs, not session context)
 
 ---
 
@@ -100,15 +98,7 @@ These rules constrain *how much* the agent writes, reducing output tokens.
 **Rule file**: [`.agents/rules/ponytail.md`](.agents/rules/ponytail.md)
 **Trigger**: `always_on`
 
-Enforces YAGNI-first thinking before any code is written:
-
-1. Does this need to exist at all?
-2. Does it already exist in the codebase?
-3. Does the standard library cover it?
-4. Can it be one line?
-5. Only then: write the minimum that works.
-
-No unrequested abstractions, no boilerplate, deletion over addition.
+Enforces YAGNI-first thinking: Only write what is absolutely necessary, reuse standard utilities, write one-liners when functional, and avoid unrequested abstractions.
 
 ### Cavecrew Personas
 
@@ -124,6 +114,29 @@ All three use **caveman-ultra** output style: drop articles/filler, lead with th
 
 ---
 
+## Layer 4: Persistent Context Sync — ICM
+
+ICM (Interactive Context Memory) persists important contextual updates across distinct sessions, ensuring agents do not forget project architecture, preferences, or critical error details.
+
+### When to Store Context (`icm store`)
+
+You MUST call `icm store` when:
+1. **Error resolved** → `icm store -t errors-resolved -c "description" -i high -k "keyword1,keyword2"`
+2. **Architecture/design decision** → `icm store -t decisions-{project} -c "description" -i high`
+3. **User preference discovered** → `icm store -t preferences -c "description" -i critical`
+4. **Significant task completed** → `icm store -t context-{project} -c "summary of work done" -i high`
+
+### Querying and Recalling Context
+
+Agents start sessions by loading context dynamically:
+```bash
+icm recall "query"                        # search memories
+icm recall "query" -t "topic-name"        # filter by topic
+icm recall-context "query" --limit 5      # inject into agent context
+```
+
+---
+
 ## Agent Personas
 
 Defined in [`AGENTS.md`](AGENTS.md), these session tags further control token usage:
@@ -133,12 +146,12 @@ Defined in [`AGENTS.md`](AGENTS.md), these session tags further control token us
 
 ---
 
-## Summary: How the Three Layers Stack
+## Summary: How the Four Layers Stack
 
 ```
 Session Start
 │
-├── Layer 2: Only 3 always-on rules loaded (~58 lines vs. ~370 before)
+├── Layer 2 & 4: Only 3 slim always-on rules loaded. Dynamic ICM context injection.
 │
 ├── User types a command
 │   └── Layer 1: RTK compresses shell output (60-90% savings per command)
