@@ -377,10 +377,10 @@ function main() {
         fi
 
         log_info "Creating new database $ODOO_DB_NAME_ENV with owner $DB_USER"
-        if ! err_msg=$(run_psql -d postgres -c "CREATE DATABASE \"$ODOO_DB_NAME_ENV\" OWNER $DB_USER" 2>&1 >/dev/null); then
+        if ! err_msg=$(run_psql -d postgres -c "CREATE DATABASE \"$ODOO_DB_NAME_ENV\" OWNER \"$DB_USER\"" 2>&1 >/dev/null); then
             log_error "Error creating DB"
             [ -n "$err_msg" ] && echo "$err_msg" >> "$STDERR_LOG"
-            error_handler 1 $LINENO "run_psql -d postgres -c \"CREATE DATABASE \\\"$ODOO_DB_NAME_ENV\\\" OWNER $DB_USER\""
+            error_handler 1 $LINENO "run_psql -d postgres -c \"CREATE DATABASE \\\"$ODOO_DB_NAME_ENV\\\" OWNER \\\"$DB_USER\\\"\""
         fi
 
         log_info "Restoring database from SQL dump via psql..."

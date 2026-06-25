@@ -39,6 +39,23 @@ log_warn() { log "${COLOR_WARN}" "⚠️" "$1"; }
 log_error() { log "${COLOR_ERROR}" "❌" "$1"; }
 # ------------------------------------
 
+run_psql() {
+    local env_file="${PSQL_ENV_FILE:-$PATH_TO_ODOO/.env}"
+    local db_host=$(grep "^DB_HOST=" "$env_file" 2>/dev/null | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
+    if [ -n "$db_host" ] && [ "$db_host" != "localhost" ]; then
+        local db_port=$(grep "^DB_PORT=" "$env_file" 2>/dev/null | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
+        local db_user=$(cat "$(dirname "$env_file")/.secrets/db_user" 2>/dev/null || true)
+        local db_pass=$(cat "$(dirname "$env_file")/.secrets/db_password" 2>/dev/null || true)
+        local docker_net=$(grep "^DOCKER_NETWORK_MODE=" "$env_file" 2>/dev/null | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
+        [ -z "$db_port" ] && db_port="5432"
+        [ -z "$docker_net" ] && docker_net="host"
+        local net=$(echo "$docker_net" | cut -d "," -f 1)
+        docker run -i --rm --network="$net" -e PGPASSWORD="$db_pass" postgres psql -h "$db_host" -p "$db_port" -U "$db_user" "$@"
+    else
+        sudo -u postgres psql "$@"
+    fi
+}
+
 error_handler() {
   local exit_code=$1
   local line_no=$2
@@ -72,16 +89,12 @@ log_info "Current Service Name: $OLD_SERVICE_NAME"
 
 # Identify databases owned by the old user
 log_info "Identifying databases owned by '$OLD_SERVICE_NAME'..."
-if ! command -v psql &> /dev/null; then
-  log_error "psql command not found. Please install postgresql-client."
-  exit 1
-fi
 
 DATABASES_TO_MIGRATE=()
 # Get list of databases owned by the service user
 while IFS= read -r dbname; do
   DATABASES_TO_MIGRATE+=("$dbname")
-done < <(sudo -u postgres psql -tAc "SELECT datname FROM pg_database WHERE datdba = (SELECT usesysid FROM pg_user WHERE usename = '$OLD_SERVICE_NAME');")
+done < <(run_psql -tAc "SELECT datname FROM pg_database WHERE datdba = (SELECT usesysid FROM pg_user WHERE usename = '$OLD_SERVICE_NAME');")
 
 if [ ${#DATABASES_TO_MIGRATE[@]} -eq 0 ]; then
     log_warn "No databases found owned by user '$OLD_SERVICE_NAME'."
@@ -157,11 +170,19 @@ trap 'error_handler $? $LINENO "$BASH_COMMAND"' ERR
 # Use static absolute paths calculated by proper logic in parent script
 OLD_DIR="$PATH_TO_ODOO"
 NEW_DIR="$NEW_PATH_TO_ODOO"
-ENV_FILE="$NEW_ENV_FILE"
+OLD_ENV_FILE="$ENV_FILE"
+NEW_ENV_FILE="$NEW_ENV_FILE"
 
 # Read current data/log paths from .env before moving anything
-OLD_DATADIR=\$(grep "^ODOO_DATADIR_SERVICE=" "\$ENV_FILE" | cut -d "=" -f 2)
-OLD_LOGDIR=\$(grep "^ODOO_LOG_DIR_SERVICE=" "\$ENV_FILE" | cut -d "=" -f 2)
+# We use grep with || true and fallbacks if keys are missing from the env file
+OLD_DATADIR=\$(grep "^ODOO_DATADIR_SERVICE=" "\$OLD_ENV_FILE" 2>/dev/null | cut -d "=" -f 2 || true)
+if [ -z "\$OLD_DATADIR" ]; then
+    OLD_DATADIR="/var/lib/odoo/$OLD_SERVICE_NAME"
+fi
+OLD_LOGDIR=\$(grep "^ODOO_LOG_DIR_SERVICE=" "\$OLD_ENV_FILE" 2>/dev/null | cut -d "=" -f 2 || true)
+if [ -z "\$OLD_LOGDIR" ]; then
+    OLD_LOGDIR="/var/log/odoo/$OLD_SERVICE_NAME"
+fi
 
 # Calculate new paths (replacing the service name part)
 NEW_DATADIR="\${OLD_DATADIR/$OLD_SERVICE_NAME/$NEW_SERVICE_NAME}"
@@ -202,17 +223,17 @@ fi
 
 log_info "Updating .env file..."
 # Script is now in the new location, but we use the static absolute path to be safe
-sed -i "s|^SERVICE_NAME=.*|SERVICE_NAME=$NEW_SERVICE_NAME|" "\$ENV_FILE"
+sed -i "s|^SERVICE_NAME=.*|SERVICE_NAME=$NEW_SERVICE_NAME|" "\$NEW_ENV_FILE"
 # Update paths using the variables we captured
 if [ -n "\$OLD_LOGDIR" ]; then
-    sed -i "s|\$OLD_LOGDIR|\$NEW_LOGDIR|g" "\$ENV_FILE"
+    sed -i "s|\$OLD_LOGDIR|\$NEW_LOGDIR|g" "\$NEW_ENV_FILE"
 fi
 if [ -n "\$OLD_DATADIR" ]; then
-    sed -i "s|\$OLD_DATADIR|\$NEW_DATADIR|g" "\$ENV_FILE"
+    sed -i "s|\$OLD_DATADIR|\$NEW_DATADIR|g" "\$NEW_ENV_FILE"
 fi
 
 # Enable DB secret regeneration so setup.sh creates the new user/password
-sed -i "s|^DB_REGENERATE_SECRETS=.*|DB_REGENERATE_SECRETS=Y|" "\$ENV_FILE"
+sed -i "s|^DB_REGENERATE_SECRETS=.*|DB_REGENERATE_SECRETS=Y|" "\$NEW_ENV_FILE"
 
 log_info "Running setup.sh to configure new user and permissions..."
 cd "\$NEW_DIR"

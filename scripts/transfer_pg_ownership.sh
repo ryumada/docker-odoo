@@ -39,6 +39,23 @@ log_warn() { log "${COLOR_WARN}" "⚠️" "$1"; }
 log_error() { log "${COLOR_ERROR}" "❌" "$1"; }
 # ------------------------------------
 
+run_psql() {
+    local env_file="${PSQL_ENV_FILE:-$PATH_TO_ODOO/.env}"
+    local db_host=$(grep "^DB_HOST=" "$env_file" 2>/dev/null | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
+    if [ -n "$db_host" ] && [ "$db_host" != "localhost" ]; then
+        local db_port=$(grep "^DB_PORT=" "$env_file" 2>/dev/null | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
+        local db_user=$(cat "$(dirname "$env_file")/.secrets/db_user" 2>/dev/null || true)
+        local db_pass=$(cat "$(dirname "$env_file")/.secrets/db_password" 2>/dev/null || true)
+        local docker_net=$(grep "^DOCKER_NETWORK_MODE=" "$env_file" 2>/dev/null | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
+        [ -z "$db_port" ] && db_port="5432"
+        [ -z "$docker_net" ] && docker_net="host"
+        local net=$(echo "$docker_net" | cut -d "," -f 1)
+        docker run -i --rm --network="$net" -e PGPASSWORD="$db_pass" postgres psql -h "$db_host" -p "$db_port" -U "$db_user" "$@"
+    else
+        sudo -u postgres psql "$@"
+    fi
+}
+
 error_handler() {
   local exit_code=$1
   local line_no=$2
@@ -82,7 +99,7 @@ log_info "Looking for databases owned by '$OLD_OWNER'..."
 DATABASES_TO_MIGRATE=()
 while IFS= read -r dbname; do
   DATABASES_TO_MIGRATE+=("$dbname")
-done < <(sudo -u postgres psql -tAc "SELECT datname FROM pg_database WHERE datdba = (SELECT usesysid FROM pg_user WHERE usename = '$OLD_OWNER');")
+done < <(run_psql -tAc "SELECT datname FROM pg_database WHERE datdba = (SELECT usesysid FROM pg_user WHERE usename = '$OLD_OWNER');")
 
 if [ ${#DATABASES_TO_MIGRATE[@]} -eq 0 ]; then
     log_warn "No databases found owned by '$OLD_OWNER'."
@@ -92,9 +109,9 @@ else
 fi
 
 # Check if new owner exists
-if ! sudo -u postgres psql -tAc "SELECT 1 FROM pg_roles WHERE rolname='$NEW_OWNER'" | grep -q 1; then
+if ! run_psql -tAc "SELECT 1 FROM pg_roles WHERE rolname='$NEW_OWNER'" | grep -q 1; then
     log_warn "User '$NEW_OWNER' does not exist in PostgreSQL. Creating it now..."
-    sudo -u postgres psql -c "CREATE ROLE \"$NEW_OWNER\" LOGIN CREATEDB;"
+    run_psql -c "CREATE ROLE \"$NEW_OWNER\" LOGIN CREATEDB;"
     log_success "Created user '$NEW_OWNER'."
 fi
 
@@ -104,10 +121,10 @@ for SUDOERP_DATABASE_NAME_DEV in "${DATABASES_TO_MIGRATE[@]}"; do
     log_info "--------------------------------------------------------"
 
     log_info "Changing database owner..."
-    sudo -u postgres psql -c "ALTER DATABASE \"$SUDOERP_DATABASE_NAME_DEV\" OWNER TO \"$NEW_OWNER\";";
+    run_psql -c "ALTER DATABASE \"$SUDOERP_DATABASE_NAME_DEV\" OWNER TO \"$NEW_OWNER\";";
 
     log_info "Changing ownership of tables, sequences, and views..."
-    sudo -u postgres psql -d "$SUDOERP_DATABASE_NAME_DEV" -c "
+    run_psql -d "$SUDOERP_DATABASE_NAME_DEV" -c "
       -- Change the owner of all tables
       DO \$\$
       DECLARE
