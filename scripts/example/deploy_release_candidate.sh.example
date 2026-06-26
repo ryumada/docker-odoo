@@ -153,28 +153,6 @@ function fail_with_json() {
     exit 1
 }
 
-function list_databases() {
-    local db_user_file="$PATH_TO_ODOO/.secrets/db_user"
-    if [ ! -f "$db_user_file" ]; then
-        log_error "Secrets file not found: $db_user_file"
-        exit 1
-    fi
-
-    local db_user
-    db_user=$(cat "$db_user_file" | tr -d '[:space:]')
-
-    if [ -z "$db_user" ]; then
-        log_error "Database user is empty in $db_user_file"
-        exit 1
-    fi
-
-    log_info "Listing databases owned by user: $db_user"
-    echo "--------------------------------------------------"
-    run_psql -t -c "SELECT datname FROM pg_database WHERE datdba = (SELECT oid FROM pg_roles WHERE rolname = '$db_user');" | awk '{$1=$1};1' | grep -v '^\s*$' || echo "No databases found."
-    echo "--------------------------------------------------"
-    exit 0
-}
-
 function checkOdooEndpoint() {
     local port="$1"
     log_info "Checking if Odoo endpoint is accessible on port $port..."
@@ -251,7 +229,7 @@ if [[ "$1" == "-h" || "$1" == "--help" ]]; then
     display_usage
     exit 0
 elif [[ "$1" == "-l" || "$1" == "--list-db" ]]; then
-    list_databases
+    "$PATH_TO_ODOO/scripts/list_databases.sh"
 fi
 
 # --- Inputs ---
