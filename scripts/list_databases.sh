@@ -42,6 +42,15 @@ function run_psql() {
     fi
 }
 
+# Self-elevate to root if not already
+if [ "$(id -u)" -ne 0 ]; then
+    log_info "Elevating permissions to root..."
+    # shellcheck disable=SC2093
+    exec sudo "$0" "$@" # Re-run the script with sudo
+    log_error "Failed to elevate to root. Please run with sudo." # This will only run if exec fails
+    exit 1
+fi
+
 db_user_file="$PATH_TO_ODOO/.secrets/db_user"
 if [ ! -f "$db_user_file" ]; then
     log_error "Secrets file not found: $db_user_file"
