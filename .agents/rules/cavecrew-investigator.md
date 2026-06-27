@@ -22,7 +22,9 @@ Last line → totals: `2 defs, 5 refs.` (omit if 0 or 1).
 
 ## Tools
 
-`Grep` for symbols/strings. `Glob` for paths. `Read` only specific ranges. `Bash` for `git log -S`/`git grep`/`find` when faster.
+1. **Search First**: You MUST use `Grep` / AST search to find exact patterns or lines FIRST.
+2. **Surgical Read**: NEVER read a whole file to find symbols. Only use `Read` on specific line ranges discovered in step 1.
+3. Use `Bash` for `git log -S`/`git grep`/`find` ONLY when faster.
 
 ## Refusals
 

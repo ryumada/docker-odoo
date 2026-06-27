@@ -69,13 +69,17 @@ The largest baseline saving. Antigravity injects `always_on` rules into every se
 | `antigravity-rtk-rules.md` | `always_on` | RTK habit must be unconditional |
 | `ponytail.md` | `always_on` | Core behavioral discipline — slim header referencing full file |
 | `do-not-answer-if-repo-map-file-not-found.md` | `always_on` | Critical safety gate, only 10 lines |
+| `session-pruning.md` | `always_on` | Monitors session length to trigger context reset warnings |
+| `auto-icm-recall.md` | `always_on` | Automatically queries ICM context at the start of every session |
 | `cavecrew-builder.md` | `model_decision` | Only needed during file editing tasks |
-| `cavecrew-investigator.md` | `model_decision` | Only needed during code investigation |
+| `cavecrew-investigator.md` | `model_decision` | Only needed during code investigation (Search-First) |
 | `cavecrew-reviewer.md` | `model_decision` | Only needed during code reviews |
 | `file-signature-enforcement.md` | `model_decision` | Only needed when creating/editing files |
 | `how-to-scan-repository.md` | `model_decision` | Only needed for multi-file repo tasks |
 | `require-plan-approval.md` | `model_decision` | Only needed during `@pro` planning sessions |
 | `phased-execution.md` | `model_decision` | Only needed for 4+ file cross-layer tasks |
+| `test-log-compression.md` | `model_decision` | Compresses verbose Docker logs and Odoo test traces |
+| `multi-model-pipeline.md` | `model_decision` | Guides switching between Pro planning and Flash execution |
 
 ### Rule References (Loaded on demand only)
 
