@@ -35,7 +35,7 @@ log() {
 
 log_info() { log "${COLOR_INFO}" "ℹ️" "$1"; }
 log_success() { log "${COLOR_SUCCESS}" "✅" "$1"; }
-log_warn() { log "${COLOR_WARN}" "⚠️" "$1"; }
+log_warn() { log "${COLOR_WARN}" "⚠️ " "$1"; }
 log_error() { log "${COLOR_ERROR}" "❌" "$1"; }
 # ------------------------------------
 
@@ -102,10 +102,10 @@ cleanup_on_error() {
 
 master_cleanup_hook() {
     local exit_code=$?
-    
+
     # Run the unconditional temp file cleanup
     cleanup_temp_files
-    
+
     # Pass the captured exit code to the conditional error cleanup
     cleanup_on_error "$exit_code"
 }
@@ -156,7 +156,7 @@ function generate_manifest() {
   local MANIFEST_SQL="
     WITH installed_modules AS (
         SELECT json_object_agg(name, latest_version) as modules
-        FROM ir_module_module 
+        FROM ir_module_module
         WHERE state = 'installed'
     ),
     pg_v AS (
@@ -299,7 +299,7 @@ FILES_TO_ZIP=("dump.sql" "filestore" "manifest.json")
 [ -f "git_hashes.txt" ] && FILES_TO_ZIP+=("git_hashes.txt")
 [ -f "odoo-base_git_hashes.txt" ] && FILES_TO_ZIP+=("odoo-base_git_hashes.txt")
 
-if ! err_msg=$(zip -r "$BACKUP_FILE_PATH" "${FILES_TO_ZIP[@]}" 2>&1 >/dev/null); then
+if ! err_msg=$(zip -r "$BACKUP_FILE_PATH" "${FILES_TO_ZIP[@]}" 2>&1); then
     log_error "Error compressing files to $BACKUP_FILE_PATH"
     [ -n "$err_msg" ] && echo "$err_msg" >> "$STDERR_LOG"
     error_handler 1 $LINENO "zip -r \"$BACKUP_FILE_PATH\" \"${FILES_TO_ZIP[@]}\""

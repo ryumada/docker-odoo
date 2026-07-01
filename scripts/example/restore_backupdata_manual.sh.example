@@ -415,7 +415,11 @@ function main() {
   mkdir -p "$TEMP_DIR"
 
   log_info "Extracting the zip backup file (this may take a while)..."
-  unzip -qqqq -d "$TEMP_DIR" "$BACKUPDATA_FILE_PATH" > /dev/null 2>&1
+  if ! err_msg=$(unzip -qqqq -d "$TEMP_DIR" "$BACKUPDATA_FILE_PATH" 2>&1); then
+      log_error "Error extracting backup file $BACKUPDATA_FILE_PATH"
+      [ -n "$err_msg" ] && echo "$err_msg" >> "$STDERR_LOG"
+      error_handler 1 $LINENO "unzip -qqqq -d \"$TEMP_DIR\" \"$BACKUPDATA_FILE_PATH\""
+  fi
 
   log_info "Creating the filestore directory at $FILESTORE_PATH"
   mkdir -p "$FILESTORE_PATH"
