@@ -560,11 +560,7 @@ main() {
         ODOO_FILESTORE_PATH_ENV="/var/lib/odoo/$SERVICE_NAME/filestore/$STG_DB_NAME"
 
         log_info "Dump $PRD_DB_NAME to temporary file"
-        if ! err_msg=$(run_pg_dump --no-owner -d "$PRD_DB_NAME" 2>&1 > "/tmp/$STG_DB_NAME.sql"); then
-            log_error "Error dumping database"
-            [ -n "$err_msg" ] && echo "$err_msg" >> "$STDERR_LOG"
-            error_handler 1 $LINENO "run_pg_dump --no-owner -d \"$PRD_DB_NAME\""
-        fi
+        run_pg_dump --no-owner -d "$PRD_DB_NAME" > "/tmp/$STG_DB_NAME.sql"
 
         # Sync Filestore
         if [ -d "$ODOO_FILESTORE_PATH_ENV" ]; then
@@ -572,22 +568,11 @@ main() {
             rm -rf "$ODOO_FILESTORE_PATH_ENV"
         fi
         mkdir -p "$ODOO_FILESTORE_PATH_ENV"
-        if ! err_msg=$(rsync -a "$ODOO_FILESTORE_PATH_PRD/" "$ODOO_FILESTORE_PATH_ENV" 2>&1 >/dev/null); then
-            log_error "Error copying filestore"
-            [ -n "$err_msg" ] && echo "$err_msg" >> "$STDERR_LOG"
-            error_handler 1 $LINENO "rsync -a \"$ODOO_FILESTORE_PATH_PRD/\" \"$ODOO_FILESTORE_PATH_ENV\""
-        fi
+        rsync -a "$ODOO_FILESTORE_PATH_PRD/" "$ODOO_FILESTORE_PATH_ENV"
         chown -R odoo: "$ODOO_FILESTORE_PATH_ENV"
 
         log_warn "Drop old database $STG_DB_NAME"
-        if ! err_msg=$(run_psql -d postgres -c "DROP DATABASE IF EXISTS \"$STG_DB_NAME\" WITH (FORCE)" 2>&1 >/dev/null); then
-            log_warn "Error dropping DB, proceeding..."
-            if [ -n "$err_msg" ]; then
-                while IFS= read -r line; do
-                    log_warn "Command Output: $line"
-                done <<< "$err_msg"
-            fi
-        fi
+        run_psql -d postgres -c "DROP DATABASE IF EXISTS \"$STG_DB_NAME\" WITH (FORCE)" >/dev/null 2>&1 || log_warn "Error dropping DB, proceeding..."
 
         if [ "$BACKUP_RESTORE_METHOD" != "manual" ]; then
             log_info "Ensuring staging environment is running to receive endpoint restore command..."
@@ -626,26 +611,14 @@ main() {
 
             log_info "Dropping old database $STG_DB_NAME (with force)"
             run_psql -d postgres -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '$STG_DB_NAME' AND pid <> pg_backend_pid();" > /dev/null 2>&1 || true
-            if ! err_msg=$(run_psql -d postgres -c "DROP DATABASE IF EXISTS \"$STG_DB_NAME\"" 2>&1 >/dev/null); then
-                log_error "Error dropping DB"
-                [ -n "$err_msg" ] && echo "$err_msg" >> "$STDERR_LOG"
-                error_handler 1 $LINENO "run_psql -d postgres -c \"DROP DATABASE IF EXISTS \\\"$STG_DB_NAME\\\"\""
-            fi
+            run_psql -d postgres -c "DROP DATABASE IF EXISTS \"$STG_DB_NAME\"" >/dev/null
 
             log_info "Creating new database $STG_DB_NAME with owner $DB_USER"
-            if ! err_msg=$(run_psql -d postgres -c "CREATE DATABASE \"$STG_DB_NAME\" OWNER \"$DB_USER\"" 2>&1 >/dev/null); then
-                log_error "Error creating DB"
-                [ -n "$err_msg" ] && echo "$err_msg" >> "$STDERR_LOG"
-                error_handler 1 $LINENO "run_psql -d postgres -c \"CREATE DATABASE \\\"$STG_DB_NAME\\\" OWNER \\\"$DB_USER\\\"\""
-            fi
+            run_psql -d postgres -c "CREATE DATABASE \"$STG_DB_NAME\" OWNER \"$DB_USER\"" >/dev/null
 
             # Restore from SQL dump
             log_info "Restoring database from SQL dump via psql..."
-            if ! err_msg=$(run_psql -d "$STG_DB_NAME" -f "/tmp/$STG_DB_NAME.sql" 2>&1 >/dev/null); then
-                log_error "Error restoring database via psql"
-                [ -n "$err_msg" ] && echo "$err_msg" >> "$STDERR_LOG"
-                error_handler 1 $LINENO "run_psql -d \"$STG_DB_NAME\" -f \"/tmp/$STG_DB_NAME.sql\""
-            fi
+            run_psql -d "$STG_DB_NAME" -f "/tmp/$STG_DB_NAME.sql" >/dev/null
 
             log_success "Database restored successfully via psql."
 

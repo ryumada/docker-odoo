@@ -227,69 +227,33 @@ if [ -f "$BACKUP_FILE_PATH" ]; then
 fi
 
 log_info "Change Directory to $PATH_TO_ODOO"
-if ! err_msg=$(cd "$PATH_TO_ODOO" 2>&1); then
-    log_error "Can't change directory to $PATH_TO_ODOO"
-    [ -n "$err_msg" ] && echo "$err_msg" >> "$STDERR_LOG"
-    error_handler 1 $LINENO "cd \"$PATH_TO_ODOO\""
-fi
+cd "$PATH_TO_ODOO"
 
 log_info "Create temporary directory"
-if ! err_msg=$(mkdir -p "/tmp/backupdata-$SERVICE_NAME" 2>&1); then
-    log_warn "/tmp/backupdata-$SERVICE_NAME may already exist."
-    if [ -n "$err_msg" ]; then
-        while IFS= read -r line; do
-            log_warn "Command Output: $line"
-        done <<< "$err_msg"
-    fi
-    true
-fi
+mkdir -p "/tmp/backupdata-$SERVICE_NAME" || log_warn "/tmp/backupdata-$SERVICE_NAME may already exist."
 
 log_info "Backup database $ODOO_DATABASE_NAME_PRD"
-if ! err_msg=$(run_pg_dump --no-owner "$ODOO_DATABASE_NAME_PRD" 2>&1 > "/tmp/dump.sql"); then
-    log_error "Error backup database $ODOO_DATABASE_NAME_PRD"
-    [ -n "$err_msg" ] && echo "$err_msg" >> "$STDERR_LOG"
-    error_handler 1 $LINENO "run_pg_dump --no-owner \"$ODOO_DATABASE_NAME_PRD\""
-fi
+run_pg_dump --no-owner "$ODOO_DATABASE_NAME_PRD" > "/tmp/dump.sql"
 
-if ! err_msg=$(mv /tmp/dump.sql "/tmp/backupdata-$SERVICE_NAME/dump.sql" 2>&1); then
-    log_error "Error moving dump.sql to /tmp/backupdata-$SERVICE_NAME"
-    [ -n "$err_msg" ] && echo "$err_msg" >> "$STDERR_LOG"
-    error_handler 1 $LINENO "mv /tmp/dump.sql \"/tmp/backupdata-$SERVICE_NAME/dump.sql\""
-fi
+mv /tmp/dump.sql "/tmp/backupdata-$SERVICE_NAME/dump.sql"
 
 generate_manifest "$ODOO_DATABASE_NAME_PRD" "/tmp/backupdata-$SERVICE_NAME/manifest.json"
 
 log_info "Copy filestore files to temporary directory"
-if ! err_msg=$(cp -r "$ODOO_FILESTORE_PATH" "/tmp/backupdata-$SERVICE_NAME/filestore" 2>&1 >/dev/null); then
-    log_error "Error copying filestore to /tmp/backupdata-$SERVICE_NAME"
-    [ -n "$err_msg" ] && echo "$err_msg" >> "$STDERR_LOG"
-    error_handler 1 $LINENO "cp -r \"$ODOO_FILESTORE_PATH\" \"/tmp/backupdata-$SERVICE_NAME/filestore\""
-fi
+cp -r "$ODOO_FILESTORE_PATH" "/tmp/backupdata-$SERVICE_NAME/filestore"
 
 if [ -f "git/git_hashes.txt" ]; then
   log_info "Copy git_hashes.txt to temporary directory"
-  if ! err_msg=$(cp -r git/git_hashes.txt "/tmp/backupdata-$SERVICE_NAME/git_hashes.txt" 2>&1 >/dev/null); then
-      log_error "Error copying git_hashes.txt to /tmp/backupdata-$SERVICE_NAME"
-      [ -n "$err_msg" ] && echo "$err_msg" >> "$STDERR_LOG"
-      error_handler 1 $LINENO "cp -r git/git_hashes.txt \"/tmp/backupdata-$SERVICE_NAME/git_hashes.txt\""
-  fi
+  cp -r git/git_hashes.txt "/tmp/backupdata-$SERVICE_NAME/git_hashes.txt"
 fi
 
 if [ -f "odoo-base/git_hashes.txt" ]; then
   log_info "Copy odoo-base/git_hashes.txt to temporary directory"
-  if ! err_msg=$(cp -r odoo-base/git_hashes.txt "/tmp/backupdata-$SERVICE_NAME/odoo-base_git_hashes.txt" 2>&1 >/dev/null); then
-      log_error "Error copying odoo-base/git_hashes.txt to /tmp/backupdata-$SERVICE_NAME"
-      [ -n "$err_msg" ] && echo "$err_msg" >> "$STDERR_LOG"
-      error_handler 1 $LINENO "cp -r odoo-base/git_hashes.txt \"/tmp/backupdata-$SERVICE_NAME/odoo-base_git_hashes.txt\""
-  fi
+  cp -r odoo-base/git_hashes.txt "/tmp/backupdata-$SERVICE_NAME/odoo-base_git_hashes.txt"
 fi
 
 log_info "Change Directory to /tmp/backupdata-$SERVICE_NAME"
-if ! err_msg=$(cd "/tmp/backupdata-$SERVICE_NAME" 2>&1); then
-    log_error "Can't change directory to /tmp/backupdata-$SERVICE_NAME"
-    [ -n "$err_msg" ] && echo "$err_msg" >> "$STDERR_LOG"
-    error_handler 1 $LINENO "cd \"/tmp/backupdata-$SERVICE_NAME\""
-fi
+cd "/tmp/backupdata-$SERVICE_NAME"
 
 log_info "Compress all files to $ZIP_FILE_NAME"
 # Create a list of files to include, starting with mandatory ones
@@ -299,11 +263,7 @@ FILES_TO_ZIP=("dump.sql" "filestore" "manifest.json")
 [ -f "git_hashes.txt" ] && FILES_TO_ZIP+=("git_hashes.txt")
 [ -f "odoo-base_git_hashes.txt" ] && FILES_TO_ZIP+=("odoo-base_git_hashes.txt")
 
-if ! err_msg=$(zip -r "$BACKUP_FILE_PATH" "${FILES_TO_ZIP[@]}" 2>&1); then
-    log_error "Error compressing files to $BACKUP_FILE_PATH"
-    [ -n "$err_msg" ] && echo "$err_msg" >> "$STDERR_LOG"
-    error_handler 1 $LINENO "zip -r \"$BACKUP_FILE_PATH\" \"${FILES_TO_ZIP[@]}\""
-fi
+zip -r "$BACKUP_FILE_PATH" "${FILES_TO_ZIP[@]}" >&2
 chown "$SUDO_USER:$SUDO_USER" "$BACKUP_FILE_PATH"
 
 log_success "Backup data for $SERVICE_NAME is completed. The backup file is located at $BACKUP_FILE_PATH."

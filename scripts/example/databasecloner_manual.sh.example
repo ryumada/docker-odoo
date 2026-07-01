@@ -385,12 +385,8 @@ function main() {
 
     log_info "Start cloning database from $ODOO_DATABASE_NAME_PRD to $ODOO_DB_NAME_ENV"
 
-    log_info "Dump $ODOO_DATABASE_NAME_PRD to temporary file"
-    if ! err_msg=$(run_pg_dump --no-owner -d "$ODOO_DATABASE_NAME_PRD" 2>&1 > "/tmp/$ODOO_DB_NAME_ENV.sql"); then
-        log_error "Error dumping $ODOO_DATABASE_NAME_PRD"
-        [ -n "$err_msg" ] && echo "$err_msg" >> "$STDERR_LOG"
-        error_handler 1 $LINENO "run_pg_dump --no-owner -d \"$ODOO_DATABASE_NAME_PRD\""
-    fi
+    log_info "Dump $ODOO_DATABASE_NAME_PRD"
+    run_pg_dump --no-owner -d "$ODOO_DATABASE_NAME_PRD" > "/tmp/$ODOO_DB_NAME_ENV.sql"
 
     if [ -d "$ODOO_FILESTORE_PATH_ENV" ]; then
         log_warn "Remove the old filestore of $ODOO_DB_NAME_ENV"
@@ -399,11 +395,7 @@ function main() {
 
     log_info "Copy the filestore to the $ODOO_DEPLOYMENT_ENVIRONMENT environment"
     mkdir "$ODOO_FILESTORE_PATH_ENV" > /dev/null 2>&1 || { log_warn "Error creating $ODOO_FILESTORE_PATH_ENV. Maybe the directory exists."; }
-    if ! err_msg=$(rsync -a "$ODOO_FILESTORE_PATH_PRD/" "$ODOO_FILESTORE_PATH_ENV" 2>&1 >/dev/null); then
-        log_error "Error copying filestore"
-        [ -n "$err_msg" ] && echo "$err_msg" >> "$STDERR_LOG"
-        error_handler 1 $LINENO "rsync -a \"$ODOO_FILESTORE_PATH_PRD/\" \"$ODOO_FILESTORE_PATH_ENV\""
-    fi
+    rsync -a "$ODOO_FILESTORE_PATH_PRD/" "$ODOO_FILESTORE_PATH_ENV"
 
     log_info "Change owner of $ODOO_FILESTORE_PATH_ENV to odoo"
     chown -R odoo: "$ODOO_FILESTORE_PATH_ENV"
@@ -413,11 +405,7 @@ function main() {
         docker compose -f "$PATH_TO_ODOO_ENV/docker-compose.yml" stop > /dev/null 2>&1 || { log_error "Error stopping $ODOO_DEPLOYMENT_ENVIRONMENT"; exit 1; }
 
         log_warn "Drop the old database $ODOO_DB_NAME_ENV"
-        if ! err_msg=$(run_psql -d postgres -c "DROP DATABASE IF EXISTS \"$ODOO_DB_NAME_ENV\" WITH (FORCE)" 2>&1 >/dev/null); then
-            log_error "Error dropping database"
-            [ -n "$err_msg" ] && echo "$err_msg" >> "$STDERR_LOG"
-            error_handler 1 $LINENO "run_psql -d postgres -c \"DROP DATABASE IF EXISTS \\\"$ODOO_DB_NAME_ENV\\\" WITH (FORCE)\""
-        fi
+        run_psql -d postgres -c "DROP DATABASE IF EXISTS \"$ODOO_DB_NAME_ENV\" WITH (FORCE)" >/dev/null
     fi
 
     NEUTRALIZE_DB=$(grep "^NEUTRALIZE_DATABASE=" "$PATH_TO_ODOO_ENV/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
@@ -442,25 +430,13 @@ function main() {
 
         log_info "Dropping old database $ODOO_DB_NAME_ENV (with force)"
         run_psql -d postgres -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '$ODOO_DB_NAME_ENV' AND pid <> pg_backend_pid();" > /dev/null 2>&1 || true
-        if ! err_msg=$(run_psql -d postgres -c "DROP DATABASE IF EXISTS \"$ODOO_DB_NAME_ENV\"" 2>&1 >/dev/null); then
-            log_error "Error dropping DB"
-            [ -n "$err_msg" ] && echo "$err_msg" >> "$STDERR_LOG"
-            error_handler 1 $LINENO "run_psql -d postgres -c \"DROP DATABASE IF EXISTS \\\"$ODOO_DB_NAME_ENV\\\"\""
-        fi
+        run_psql -d postgres -c "DROP DATABASE IF EXISTS \"$ODOO_DB_NAME_ENV\"" >/dev/null
 
         log_info "Creating new database $ODOO_DB_NAME_ENV with owner $DB_USER"
-        if ! err_msg=$(run_psql -d postgres -c "CREATE DATABASE \"$ODOO_DB_NAME_ENV\" OWNER \"$DB_USER\"" 2>&1 >/dev/null); then
-            log_error "Error creating DB"
-            [ -n "$err_msg" ] && echo "$err_msg" >> "$STDERR_LOG"
-            error_handler 1 $LINENO "run_psql -d postgres -c \"CREATE DATABASE \\\"$ODOO_DB_NAME_ENV\\\" OWNER \\\"$DB_USER\\\"\""
-        fi
+        run_psql -d postgres -c "CREATE DATABASE \"$ODOO_DB_NAME_ENV\" OWNER \"$DB_USER\"" >/dev/null
 
         log_info "Restoring database from SQL dump via psql..."
-        if ! err_msg=$(run_psql -d "$ODOO_DB_NAME_ENV" -f "/tmp/$ODOO_DB_NAME_ENV.sql" 2>&1 >/dev/null); then
-            log_error "Error restoring database via psql"
-            [ -n "$err_msg" ] && echo "$err_msg" >> "$STDERR_LOG"
-            error_handler 1 $LINENO "run_psql -d \"$ODOO_DB_NAME_ENV\" -f \"/tmp/$ODOO_DB_NAME_ENV.sql\""
-        fi
+        run_psql -d "$ODOO_DB_NAME_ENV" -f "/tmp/$ODOO_DB_NAME_ENV.sql" >/dev/null
 
         log_success "Database restored successfully via psql."
 
