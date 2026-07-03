@@ -1231,12 +1231,11 @@ function main() {
     NEXT_IMAGE_VERSION=$(grep "^NEXT_IMAGE_VERSION=" "$REPOSITORY_DIRPATH/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
 
     export CURRENT_IMAGE_VERSION=$NEXT_IMAGE_VERSION
-    if [ -n "$ODOO_IMAGE_NAME" ] && [ -n "$NEXT_IMAGE_VERSION" ]; then
-      ODOO_IMAGE_NAME="${ODOO_IMAGE_NAME}:${NEXT_IMAGE_VERSION}"
-      log_info "Using automated tag: $ODOO_IMAGE_NAME"
+    if [ -n "$ODOO_IMAGE_NAME" ]; then
       export ODOO_IMAGE_NAME
-    elif [ -n "$ODOO_IMAGE_NAME" ]; then
-      export ODOO_IMAGE_NAME
+      if [ -n "$NEXT_IMAGE_VERSION" ]; then
+        log_info "Using automated tag: ${ODOO_IMAGE_NAME}:${NEXT_IMAGE_VERSION}"
+      fi
     fi
 
     # Builder Mode Specifics
@@ -1329,7 +1328,7 @@ function main() {
 
         log_info "2. Verifying and extracting versions..."
         # Use the built image (ODOO_IMAGE_NAME or Service Name default)
-        TARGET_IMAGE=${ODOO_IMAGE_NAME:-$SERVICE_NAME:latest}
+        TARGET_IMAGE="${ODOO_IMAGE_NAME:-$SERVICE_NAME}:${NEXT_IMAGE_VERSION:-latest}"
 
         log_info "Running version checks on $TARGET_IMAGE..."
 
@@ -1340,7 +1339,7 @@ function main() {
 
             # Dual Tagging: If we pushed a specific version, also update 'latest'
             if [ -n "$NEXT_IMAGE_VERSION" ] && [ "$NEXT_IMAGE_VERSION" != "latest" ]; then
-                BASIC_IMAGE_NAME=$(echo "$TARGET_IMAGE" | cut -d: -f1)
+                BASIC_IMAGE_NAME="${TARGET_IMAGE%:*}"
                 LATEST_TAG="${BASIC_IMAGE_NAME}:latest"
                 log_info "Dual Tagging: Also pushing $LATEST_TAG..."
 
