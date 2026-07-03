@@ -115,8 +115,8 @@ function main() {
     local target_path="$PATH_TO_ODOO/scripts/$script_filename"
     local source_path=""
 
-    if [ "$BACKUP_RESTORE_METHOD" == "manual" ]; then
-      log_info "Configuration set to 'manual'. Installing Manual Restore Backup utility."
+    if [ "$BACKUP_RESTORE_METHOD" == "manual" ] || [ "$BACKUP_RESTORE_METHOD" == "semi_manual" ]; then
+      log_info "Configuration set to '$BACKUP_RESTORE_METHOD'. Installing Manual/Semi-manual Restore Backup utility."
       source_path="$PATH_TO_ODOO/scripts/example/restore_backupdata_manual.sh.example"
     else
       log_info "Configuration is empty or set to standard. Installing Standard Restore Backup utility."

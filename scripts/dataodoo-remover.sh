@@ -54,6 +54,25 @@ trap 'error_handler $? $LINENO "$BASH_COMMAND"' ERR
 
 ODOO_FILESTORE_PATH="/var/lib/odoo/$SERVICE_NAME/filestore"
 
+function run_psql() {
+  local env_file="${PSQL_ENV_FILE:-$PATH_TO_ODOO/.env}"
+  local db_host
+  db_host=$(grep "^DB_HOST=" "$env_file" 2>/dev/null | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
+  if [ -n "$db_host" ] && [ "$db_host" != "localhost" ]; then
+    local db_port db_user db_pass docker_net net
+    db_port=$(grep "^DB_PORT=" "$env_file" 2>/dev/null | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
+    db_user=$(cat "$(dirname "$env_file")/.secrets/db_user" 2>/dev/null || true)
+    db_pass=$(cat "$(dirname "$env_file")/.secrets/db_password" 2>/dev/null || true)
+    docker_net=$(grep "^DOCKER_NETWORK_MODE=" "$env_file" 2>/dev/null | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
+    [ -z "$db_port" ] && db_port="5432"
+    [ -z "$docker_net" ] && docker_net="host"
+    net=$(echo "$docker_net" | cut -d "," -f 1)
+    docker run -i --rm --network="$net" -e PGPASSWORD="$db_pass" postgres psql -h "$db_host" -p "$db_port" -U "$db_user" "$@"
+  else
+    sudo -u postgres psql "$@"
+  fi
+}
+
 function areYouReallySure() {
   prompt=$1
 
@@ -97,7 +116,7 @@ function main() {
 
   for DB in $(echo "$DB_LIST" | tr "," "\n"); do
     log_info "Removing Odoo Database: $DB"
-    if ! sudo -u postgres psql -d postgres -c "DROP DATABASE IF EXISTS \"$DB\" WITH (FORCE)" > /dev/null 2>&1; then
+    if ! run_psql -d postgres -c "DROP DATABASE IF EXISTS \"$DB\" WITH (FORCE)" > /dev/null 2>&1; then
       log_error "Error dropping database '$DB'. Please check logs."
     fi
 

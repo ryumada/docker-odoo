@@ -52,6 +52,8 @@ error_handler() {
 
 trap 'error_handler $? $LINENO "$BASH_COMMAND"' ERR
 
+ODOO_FILESTORE_PATH="/var/lib/odoo/$SERVICE_NAME/filestore"
+
 # --- Centralized Cleanup Hook ---
 cleanup_on_error() {
     local exit_code=$?
@@ -62,6 +64,98 @@ cleanup_on_error() {
     fi
 }
 trap cleanup_on_error EXIT
+
+function run_pg_dump() {
+  local env_file="${PSQL_ENV_FILE:-$PATH_TO_ODOO/.env}"
+  local db_host
+  db_host=$(grep "^DB_HOST=" "$env_file" 2>/dev/null | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
+  if [ -n "$db_host" ] && [ "$db_host" != "localhost" ]; then
+    local db_port db_user db_pass docker_net net
+    db_port=$(grep "^DB_PORT=" "$env_file" 2>/dev/null | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
+    db_user=$(cat "$(dirname "$env_file")/.secrets/db_user" 2>/dev/null || true)
+    db_pass=$(cat "$(dirname "$env_file")/.secrets/db_password" 2>/dev/null || true)
+    docker_net=$(grep "^DOCKER_NETWORK_MODE=" "$env_file" 2>/dev/null | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
+    [ -z "$db_port" ] && db_port="5432"
+    [ -z "$docker_net" ] && docker_net="host"
+    local net=$(echo "$docker_net" | cut -d "," -f 1)
+    docker run -i --rm --network="$net" -e PGPASSWORD="$db_pass" postgres pg_dump -h "$db_host" -p "$db_port" -U "$db_user" "$@"
+  else
+    sudo -u postgres pg_dump "$@"
+  fi
+}
+
+function run_psql() {
+  local env_file="${PSQL_ENV_FILE:-$PATH_TO_ODOO/.env}"
+  local db_host
+  db_host=$(grep "^DB_HOST=" "$env_file" 2>/dev/null | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
+  if [ -n "$db_host" ] && [ "$db_host" != "localhost" ]; then
+    local db_port db_user db_pass docker_net net
+    db_port=$(grep "^DB_PORT=" "$env_file" 2>/dev/null | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
+    db_user=$(cat "$(dirname "$env_file")/.secrets/db_user" 2>/dev/null || true)
+    db_pass=$(cat "$(dirname "$env_file")/.secrets/db_password" 2>/dev/null || true)
+    docker_net=$(grep "^DOCKER_NETWORK_MODE=" "$env_file" 2>/dev/null | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
+    [ -z "$db_port" ] && db_port="5432"
+    [ -z "$docker_net" ] && docker_net="host"
+    local net=$(echo "$docker_net" | cut -d "," -f 1)
+    docker run -i --rm --network="$net" -e PGPASSWORD="$db_pass" postgres psql -h "$db_host" -p "$db_port" -U "$db_user" "$@"
+  else
+    sudo -u postgres psql "$@"
+  fi
+}
+
+function generate_manifest() {
+  local db_name="$1"
+  local target_file="$2"
+
+  log_info "Gathering exact metadata for manifest.json..."
+
+  local MANIFEST_SQL="
+    WITH installed_modules AS (
+        SELECT json_object_agg(name, latest_version) as modules
+        FROM ir_module_module
+        WHERE state = 'installed'
+    ),
+    pg_v AS (
+        SELECT setting FROM pg_settings WHERE name = 'server_version_num'
+    )
+    SELECT json_build_object(
+        'odoo_dump', '1',
+        'db_name', '$db_name',
+        'version', split_part(latest_version, '.', 1) || '.' || split_part(latest_version, '.', 2),
+        'major_version', split_part(latest_version, '.', 1),
+        'pg_version', (SELECT floor(setting::int / 10000) || '.' || floor((setting::int % 10000) / 100) FROM pg_v),
+        'modules', (SELECT modules FROM installed_modules),
+        'version_info', json_build_array(
+            split_part(latest_version, '.', 1)::int,
+            split_part(latest_version, '.', 2)::int,
+            0, 'final', 0, ''
+        )
+    ) FROM ir_module_module WHERE name = 'base';
+  "
+
+  if ! run_psql -d "$db_name" -t -A -c "$MANIFEST_SQL" > "$target_file" 2>/dev/null; then
+    log_warn "Could not query database for manifest. Falling back to basic manifest."
+    cat <<EOF > "$target_file"
+{
+    "odoo_dump": "1",
+    "db_name": "$db_name",
+    "version": "16.0",
+    "version_info": [16, 0, 0, "final", 0, ""],
+    "major_version": "16",
+    "modules": {}
+}
+EOF
+  fi
+}
+
+function isZipInstalled() {
+  if ! command -v zip &>/dev/null; then
+    log_error "zip command could not be found. Please install zip first."
+    echo "For Ubuntu: sudo apt install zip"
+    echo "For CentOS: sudo yum install zip"
+    exit 1
+  fi
+}
 
 function isCurlInstalled() {
   if ! command -v curl &>/dev/null; then
@@ -123,21 +217,29 @@ function main() {
       log_error "Failed to elevate to root. Please run with sudo." # This will only run if exec fails
       exit 1
   fi
-  isCurlInstalled
+
+  BACKUP_RESTORE_METHOD=$(grep "^BACKUP_RESTORE_METHOD=" "$PATH_TO_ODOO/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
+
+  if [ "$BACKUP_RESTORE_METHOD" = "manual" ] || [ "$BACKUP_RESTORE_METHOD" = "semi_manual" ]; then
+    isZipInstalled
+  else
+    isCurlInstalled
+  fi
 
   areYouReallySure "yes"
 
   DB_LIST="$(whichData)"
 
-  ADMIN_PASSWD=$(grep "^ADMIN_PASSWD=" "$PATH_TO_ODOO/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
-  PORT=$(grep "^PORT=" "$PATH_TO_ODOO/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
+  ADMIN_PASSWD=$(grep "^ADMIN_PASSWD=" "$PATH_TO_ODOO/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
+  PORT=$(grep "^PORT=" "$PATH_TO_ODOO/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
 
-  if [ -z "$ADMIN_PASSWD" ] || [ -z "$PORT" ]; then
-    log_error "ADMIN_PASSWD and/or PORT not set in .env file. Cannot proceed with backup."
-    exit 1
+  if [ "$BACKUP_RESTORE_METHOD" != "manual" ] && [ "$BACKUP_RESTORE_METHOD" != "semi_manual" ]; then
+    if [ -z "$ADMIN_PASSWD" ] || [ -z "$PORT" ]; then
+      log_error "ADMIN_PASSWD and/or PORT not set in .env file. Cannot proceed with backup."
+      exit 1
+    fi
+    checkOdooEndpoint
   fi
-
-  checkOdooEndpoint
 
   temporary_directory="/tmp/$(date +"%Y%m%d-%H%M%S")-dataodoo-backupper"
   if mkdir -p "$temporary_directory"; then
@@ -151,19 +253,60 @@ function main() {
     log_info "Backing up Odoo Database: $DB"
     BACKUP_FILE_PATH="$temporary_directory/$DB.zip"
 
-    curl -s -X POST \
-      -F "master_pwd=$ADMIN_PASSWD" \
-      -F "name=$DB" \
-      -F "backup_format=zip" \
-      -o "$BACKUP_FILE_PATH" \
-      "http://localhost:$PORT/web/database/backup"
+    if [ "$BACKUP_RESTORE_METHOD" = "manual" ] || [ "$BACKUP_RESTORE_METHOD" = "semi_manual" ]; then
+      local odoo_filestore_path="/var/lib/odoo/$SERVICE_NAME/filestore/$DB"
+      local db_temp_dir
+      db_temp_dir=$(mktemp -d -t "backupdata_${DB}_XXXXXX")
 
-    if [ -s "$BACKUP_FILE_PATH" ]; then
-      log_success "Odoo Database '$DB' has been backed up to: $BACKUP_FILE_PATH"
+      log_info "Backup database $DB using pg_dump..."
+      if ! run_pg_dump --no-owner "$DB" > "$db_temp_dir/dump.sql"; then
+        log_error "pg_dump failed to dump database '$DB'"
+        rm -rf "$db_temp_dir"
+        exit 1
+      fi
+
+      generate_manifest "$DB" "$db_temp_dir/manifest.json"
+
+      log_info "Copying filestore files..."
+      if [ -d "$odoo_filestore_path" ]; then
+        mkdir -p "$db_temp_dir/filestore"
+        cp -r "$odoo_filestore_path/." "$db_temp_dir/filestore/"
+      else
+        log_warn "Filestore not found at $odoo_filestore_path. Skipping filestore."
+      fi
+
+      if [ -f "$PATH_TO_ODOO/git/git_hashes.txt" ]; then
+        cp "$PATH_TO_ODOO/git/git_hashes.txt" "$db_temp_dir/git_hashes.txt"
+      fi
+
+      if [ -f "$PATH_TO_ODOO/odoo-base/git_hashes.txt" ]; then
+        cp "$PATH_TO_ODOO/odoo-base/git_hashes.txt" "$db_temp_dir/git_hashes.txt"
+      fi
+
+      log_info "Zipping backup file into $BACKUP_FILE_PATH..."
+      if ! (cd "$db_temp_dir" && zip -r -q "$BACKUP_FILE_PATH" .); then
+        log_error "Failed to create backup ZIP archive."
+        rm -rf "$db_temp_dir"
+        exit 1
+      fi
+
+      rm -rf "$db_temp_dir"
+      log_success "Backup for '$DB' is completed manually."
     else
-      log_error "Backup failed for database '$DB'. The output file is empty. Check Odoo logs."
-      # Clean up the empty file
-      rm -f "$BACKUP_FILE_PATH"
+      curl -s -X POST \
+        -F "master_pwd=$ADMIN_PASSWD" \
+        -F "name=$DB" \
+        -F "backup_format=zip" \
+        -o "$BACKUP_FILE_PATH" \
+        "http://localhost:$PORT/web/database/backup"
+
+      if [ -s "$BACKUP_FILE_PATH" ]; then
+        log_success "Odoo Database '$DB' has been backed up to: $BACKUP_FILE_PATH"
+      else
+        log_error "Backup failed for database '$DB'. The output file is empty. Check Odoo logs."
+        # Clean up the empty file
+        rm -f "$BACKUP_FILE_PATH"
+      fi
     fi
   done
 

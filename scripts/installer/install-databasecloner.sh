@@ -113,8 +113,8 @@ function main() {
     local target_path="$PATH_TO_ODOO/scripts/$script_filename"
     local source_path
 
-    if [ "$BACKUP_RESTORE_METHOD" == "manual" ]; then
-      log_info "Installing databasecloner utility using manual method for service: $SERVICE_NAME"
+    if [ "$BACKUP_RESTORE_METHOD" == "manual" ] || [ "$BACKUP_RESTORE_METHOD" == "semi_manual" ]; then
+      log_info "Installing databasecloner utility using method '$BACKUP_RESTORE_METHOD' for service: $SERVICE_NAME"
       source_path="$PATH_TO_ODOO/scripts/example/databasecloner_manual.sh.example"
     else
       log_info "Configuration set to other than 'manual' or it is empty. Installing databasecloner utility using standard Odoo endpoint method for service: $SERVICE_NAME"

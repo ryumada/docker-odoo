@@ -114,6 +114,25 @@ function restoreDBCredentials() {
   fi
 }
 
+function run_psql() {
+  local env_file="${PSQL_ENV_FILE:-$PATH_TO_ODOO/.env}"
+  local db_host
+  db_host=$(grep "^DB_HOST=" "$env_file" 2>/dev/null | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
+  if [ -n "$db_host" ] && [ "$db_host" != "localhost" ]; then
+    local db_port db_user db_pass docker_net net
+    db_port=$(grep "^DB_PORT=" "$env_file" 2>/dev/null | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
+    db_user=$(cat "$(dirname "$env_file")/.secrets/db_user" 2>/dev/null || true)
+    db_pass=$(cat "$(dirname "$env_file")/.secrets/db_password" 2>/dev/null || true)
+    docker_net=$(grep "^DOCKER_NETWORK_MODE=" "$env_file" 2>/dev/null | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
+    [ -z "$db_port" ] && db_port="5432"
+    [ -z "$docker_net" ] && docker_net="host"
+    local net=$(echo "$docker_net" | cut -d "," -f 1)
+    docker run -i --rm --network="$net" -e PGPASSWORD="$db_pass" postgres psql -h "$db_host" -p "$db_port" -U "$db_user" "$@"
+  else
+    sudo -u postgres psql "$@"
+  fi
+}
+
 function restoreOdooData() {
   # Discover database name from filestore path structure inside tar
   # Path in tar: var/lib/odoo/$SERVICE_NAME/filestore/[DB_NAME]
@@ -151,13 +170,13 @@ function restoreOdooData() {
   chown -R odoo: "/var/lib/odoo/$SERVICE_NAME"
 
   log_info "Restore database $ODOO_DATABASE_NAME_PRD from $(basename "$sql_dump_file")"
-  sudo -u postgres psql -c "DROP DATABASE IF EXISTS \"$ODOO_DATABASE_NAME_PRD\"" --quiet -t -P pager=off 2> /dev/null > /dev/null || log_error "Can't drop database"
-  sudo -u postgres psql -c "CREATE DATABASE \"$ODOO_DATABASE_NAME_PRD\" OWNER \"$ODOO_DATABASE_USER\"" --quiet -t -P pager=off 2> /dev/null > /dev/null || log_error "Can't create database"
+  run_psql -c "DROP DATABASE IF EXISTS \"$ODOO_DATABASE_NAME_PRD\"" --quiet -t -P pager=off 2> /dev/null > /dev/null || log_error "Can't drop database"
+  run_psql -c "CREATE DATABASE \"$ODOO_DATABASE_NAME_PRD\" OWNER \"$ODOO_DATABASE_USER\"" --quiet -t -P pager=off 2> /dev/null > /dev/null || log_error "Can't create database"
 
   log_info "Setting role to $ODOO_DATABASE_USER in dump to ensure proper ownership"
   sed -i "1i SET ROLE \"$ODOO_DATABASE_USER\";" "$sql_dump_file"
 
-  sudo -u postgres psql -d "$ODOO_DATABASE_NAME_PRD" -f "$sql_dump_file" --quiet -t -P pager=off 2> /dev/null > /dev/null || log_error "Can't restore database"
+  run_psql -d "$ODOO_DATABASE_NAME_PRD" -f "$sql_dump_file" --quiet -t -P pager=off 2> /dev/null > /dev/null || log_error "Can't restore database"
 }
 
 function main() {

@@ -432,6 +432,23 @@ ENV LD_PRELOAD=/usr/lib/x86_64-linux-gnu/faketime/libfaketime.so.1' dockerfile
   } || true
 }
 
+function run_psql_setup() {
+  local env_file="$REPOSITORY_DIRPATH/.env"
+  local db_host=$(grep "^DB_HOST=" "$env_file" 2>/dev/null | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
+  if [ -n "$db_host" ] && [ "$db_host" != "localhost" ]; then
+    local db_port=$(grep "^DB_PORT=" "$env_file" 2>/dev/null | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
+    local db_user=$(cat "$REPOSITORY_DIRPATH/.secrets/db_user" 2>/dev/null || true)
+    local db_pass=$(cat "$REPOSITORY_DIRPATH/.secrets/db_password" 2>/dev/null || true)
+    local docker_net=$(grep "^DOCKER_NETWORK_MODE=" "$env_file" 2>/dev/null | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
+    [ -z "$db_port" ] && db_port="5432"
+    [ -z "$docker_net" ] && docker_net="host"
+    local net=$(echo "$docker_net" | cut -d "," -f 1)
+    docker run -i --rm --network="$net" -e PGPASSWORD="$db_pass" postgres psql -h "$db_host" -p "$db_port" -U "$db_user" "$@"
+  else
+    sudo -u postgres psql "$@"
+  fi
+}
+
 function generatePostgresPassword() {
   # _inherit = generatePostgresSecrets
 
@@ -441,7 +458,7 @@ function generatePostgresPassword() {
 
   POSTGRES_ODOO_PASSWORD=$(openssl rand -base64 64 | tr -d '\n')
 
-  sudo -u postgres psql -c "ALTER ROLE \"$postgresusername\" WITH PASSWORD '$POSTGRES_ODOO_PASSWORD';" > /dev/null 2>&1
+  run_psql_setup -c "ALTER ROLE \"$postgresusername\" WITH PASSWORD '$POSTGRES_ODOO_PASSWORD';" > /dev/null 2>&1
 
   writeTextFile "$POSTGRES_ODOO_PASSWORD" "$DB_PASSWORD_SECRET" "password"
 }

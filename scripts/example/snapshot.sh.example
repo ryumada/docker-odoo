@@ -1,4 +1,9 @@
-#!/bin/bash
+#!/usr/bin/env bash
+set -e
+# Category: Utility
+# Description: Creates a full Odoo snapshot (database dump + filestore + configs) as a compressed tar archive.
+# Usage: ./scripts/snapshot-SERVICE_NAME [auto]
+# Dependencies: sudo, git, zstd, tar, docker, pg_dump
 
 CURRENT_DIR=$(dirname "$(readlink -f "$0")")
 CURRENT_DIR_USER=$(stat -c '%U' "$CURRENT_DIR")
@@ -27,6 +32,31 @@ log_success() { log "${COLOR_SUCCESS}" "✅" "$1"; }
 log_warn() { log "${COLOR_WARN}" "⚠️" "$1"; }
 log_error() { log "${COLOR_ERROR}" "❌" "$1"; }
 # ------------------------------------
+
+function run_pg_dump() {
+  local env_file="${PSQL_ENV_FILE:-$PATH_TO_ODOO/.env}"
+  local db_host
+  db_host=$(grep "^DB_HOST=" "$env_file" 2>/dev/null | cut -d "=" -f 2 | sed 's/^[[:space:]
+]*//g' | sed 's/[[:space:]
+]*$//g' || true)
+  if [ -n "$db_host" ] && [ "$db_host" != "localhost" ]; then
+    local db_port db_user db_pass docker_net net
+    db_port=$(grep "^DB_PORT=" "$env_file" 2>/dev/null | cut -d "=" -f 2 | sed 's/^[[:space:]
+]*//g' | sed 's/[[:space:]
+]*$//g' || true)
+    db_user=$(cat "$(dirname "$env_file")/.secrets/db_user" 2>/dev/null || true)
+    db_pass=$(cat "$(dirname "$env_file")/.secrets/db_password" 2>/dev/null || true)
+    docker_net=$(grep "^DOCKER_NETWORK_MODE=" "$env_file" 2>/dev/null | cut -d "=" -f 2 | sed 's/^[[:space:]
+]*//g' | sed 's/[[:space:]
+]*$//g' || true)
+    [ -z "$db_port" ] && db_port="5432"
+    [ -z "$docker_net" ] && docker_net="host"
+    local net=$(echo "$docker_net" | cut -d "," -f 1)
+    docker run -i --rm --network="$net" -e PGPASSWORD="$db_pass" postgres pg_dump -h "$db_host" -p "$db_port" -U "$db_user" "$@"
+  else
+    sudo -u postgres pg_dump "$@"
+  fi
+}
 
 function areYouReallySure() {
   tar_file_path=$1
@@ -244,7 +274,6 @@ function main() {
 
   # Use secure temp file for SQL dump
   SQL_DUMP_FILE=$(mktemp --tmpdir "${ODOO_DATABASE_NAME_PRD}_XXXXXX.sql")
-  chown postgres "$SQL_DUMP_FILE"
   files_dirs_to_tar+=("$SQL_DUMP_FILE")
 
   # The trap function cleanup_temp_files handles cleanup securely
@@ -275,7 +304,7 @@ function main() {
 
   log_info "Dumping $ODOO_DATABASE_NAME_PRD database to $SQL_DUMP_FILE..."
   # Use the secure temp file
-  if ! sudo -u postgres pg_dump --no-owner -f "$SQL_DUMP_FILE" "$ODOO_DATABASE_NAME_PRD" > /dev/null 2>&1; then
+  if ! run_pg_dump --no-owner -f "$SQL_DUMP_FILE" "$ODOO_DATABASE_NAME_PRD" > /dev/null 2>&1; then
     log_error "pg_dump failed to dump the database."
     exit 1
   fi
