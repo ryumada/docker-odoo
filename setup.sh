@@ -1050,16 +1050,15 @@ function prepareOdooSources() {
 }
 
 function show_usage() {
-  echo -e "\nUsage: ./setup.sh [SETUP_MODE] [ENFORCE_BUILD_MODE] [DOCKER_USERNAME] [DOCKER_PUSH_KEY] [DOCKER_PULL_KEY]\n"
+  echo -e "\nUsage: ./setup.sh [SETUP_MODE] [ENFORCE_BUILD_MODE]\n"
   echo "Arguments:"
   echo "  SETUP_MODE          - Optional. Use 'auto' to bypass confirmation prompts."
   echo "  ENFORCE_BUILD_MODE  - Optional. Override the mode set in .env (1=Dev, 2=Builder, 3=Prod)."
-  echo "  DOCKER_USERNAME     - Required if ENFORCE_BUILD_MODE is set. The container registry username."
-  echo "  DOCKER_PUSH_KEY     - Required if ENFORCE_BUILD_MODE is set. The token to push images."
-  echo "  DOCKER_PULL_KEY     - Required if ENFORCE_BUILD_MODE is set. The token to pull images."
+  echo ""
+  echo "Note: When ENFORCE_BUILD_MODE is set to '2', registry credentials (DOCKER_PUSHPULL_USERNAME, DOCKER_PUSH_KEY, DOCKER_PULL_KEY) must be set in the .env file."
   echo ""
   echo "Example:"
-  echo "  ./setup.sh auto 2 myUser push_token_123 pull_token_456"
+  echo "  ./setup.sh auto 2"
   echo -e "===================================================================\n"
 }
 
@@ -1085,9 +1084,6 @@ function main() {
 
   local SETUP_MODE="$1"
   local ENFORCE_BUILD_MODE="$2"
-  local DOCKER_PUSHPULL_USERNAME="$3"
-  local DOCKER_PUSH_KEY="$4"
-  local DOCKER_PULL_KEY="$5"
 
   local DOCKER_REGISTRY_PROVIDER
 
@@ -1097,22 +1093,30 @@ function main() {
 
   "$REPOSITORY_DIRPATH/scripts/update-env-file.sh"
 
+  local DOCKER_PUSHPULL_USERNAME
+  local DOCKER_PUSH_KEY
+  local DOCKER_PULL_KEY
+
+  DOCKER_PUSHPULL_USERNAME=$(grep "^DOCKER_PUSHPULL_USERNAME=" "$REPOSITORY_DIRPATH/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
+  DOCKER_PUSH_KEY=$(grep "^DOCKER_PUSH_KEY=" "$REPOSITORY_DIRPATH/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
+  DOCKER_PULL_KEY=$(grep "^DOCKER_PULL_KEY=" "$REPOSITORY_DIRPATH/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
+
   if [ -z "$ENFORCE_BUILD_MODE" ]; then
     DOCKER_BUILD_MODE=$(grep "^DOCKER_BUILD_MODE=" "$REPOSITORY_DIRPATH/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
   else
     DOCKER_BUILD_MODE="$ENFORCE_BUILD_MODE"
     if [ -z "$DOCKER_PUSHPULL_USERNAME" ] && [ "$DOCKER_BUILD_MODE" = "2" ]; then
-      log_error "Docker pushpull username is required when enforcing build mode."
+      log_error "Docker pushpull username is required in .env when enforcing build mode."
       show_usage
       exit 1
     fi
     if [ -z "$DOCKER_PUSH_KEY" ] && [ "$DOCKER_BUILD_MODE" = "2" ]; then
-      log_error "Docker push key is required when enforcing build mode."
+      log_error "Docker push key is required in .env when enforcing build mode."
       show_usage
       exit 1
     fi
     if [ -z "$DOCKER_PULL_KEY" ] && [ "$DOCKER_BUILD_MODE" = "2" ]; then
-      log_error "Docker pull key is required when enforcing build mode."
+      log_error "Docker pull key is required in .env when enforcing build mode."
       show_usage
       exit 1
     fi
