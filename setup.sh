@@ -1257,6 +1257,7 @@ function main() {
       TODO+=("Please set the ODOO_IMAGE_NAME variable in your .env file.")
     else
       log_success "ODOO_IMAGE_NAME variable is set to $ODOO_IMAGE_NAME"
+      DOCKER_REGISTRY_PROVIDER=$(checkRegistryConnection "$ODOO_IMAGE_NAME")
     fi
   fi
 
@@ -1302,12 +1303,14 @@ function main() {
     elif [ "$mode_number" -eq 2 ]; then
         log_info "MODE: BUILDER"
 
-        if [ -n "$ENFORCE_BUILD_MODE" ]; then
-            log_info "0. Setting up Docker Push Key..."
-            if sudo -u $REPOSITORY_OWNER docker login $DOCKER_REGISTRY_PROVIDER -u $DOCKER_PUSHPULL_USERNAME -p $DOCKER_PUSH_KEY; then
-                log_success "Docker Push Key set successfully."
+        local did_push_login=false
+        if [ -n "$DOCKER_PUSHPULL_USERNAME" ] && [ -n "$DOCKER_PUSH_KEY" ]; then
+            log_info "0. Logging in to registry for push..."
+            if sudo -u "$REPOSITORY_OWNER" docker login "$DOCKER_REGISTRY_PROVIDER" -u "$DOCKER_PUSHPULL_USERNAME" -p "$DOCKER_PUSH_KEY"; then
+                log_success "Docker login for push successful."
+                did_push_login=true
             else
-                log_error "Failed to set Docker Push Key."
+                log_error "Failed to log in to Docker registry for push."
                 exit 1
             fi
         fi
@@ -1317,6 +1320,10 @@ function main() {
             log_success "Image built successfully."
         else
             log_error "Build failed."
+            if [ "$did_push_login" = true ]; then
+                log_info "Logging out of registry..."
+                sudo -u "$REPOSITORY_OWNER" docker logout "$DOCKER_REGISTRY_PROVIDER"
+            fi
             exit 1
         fi
 
@@ -1353,32 +1360,56 @@ function main() {
                 log_success "Image version bump completed!"
             else
                 log_error "Failed to bump image version."
+                if [ "$did_push_login" = true ]; then
+                    log_info "Logging out of registry..."
+                    sudo -u "$REPOSITORY_OWNER" docker logout "$DOCKER_REGISTRY_PROVIDER"
+                fi
                 exit 1
             fi
 
-            if [ -n "$ENFORCE_BUILD_MODE" ]; then
-                log_info "5. Logging in to pull key..."
-                if sudo -u $REPOSITORY_OWNER docker login $DOCKER_REGISTRY_PROVIDER -u $DOCKER_PUSHPULL_USERNAME -p $DOCKER_PULL_KEY; then
-                    log_success "Docker pull key successful."
-                else
-                    log_error "Failed to login of Docker pull key."
-                    exit 1
-                fi
+            if [ "$did_push_login" = true ]; then
+                log_info "Logging out of registry..."
+                sudo -u "$REPOSITORY_OWNER" docker logout "$DOCKER_REGISTRY_PROVIDER"
             fi
         else
             log_error "Detailed push error usually involves authentication or permission."
             log_error "Failed to push image."
+            if [ "$did_push_login" = true ]; then
+                log_info "Logging out of registry..."
+                sudo -u "$REPOSITORY_OWNER" docker logout "$DOCKER_REGISTRY_PROVIDER"
+            fi
             exit 1
         fi
 
     elif [ "$mode_number" -eq 3 ]; then
         log_info "MODE: PRODUCTION"
+
+        local did_pull_login=false
+        if [ -n "$DOCKER_PUSHPULL_USERNAME" ] && [ -n "$DOCKER_PULL_KEY" ]; then
+            log_info "0. Logging in to registry for pull..."
+            if sudo -u "$REPOSITORY_OWNER" docker login "$DOCKER_REGISTRY_PROVIDER" -u "$DOCKER_PUSHPULL_USERNAME" -p "$DOCKER_PULL_KEY"; then
+                log_success "Docker login for pull successful."
+                did_pull_login=true
+            else
+                log_error "Failed to log in to Docker registry for pull."
+                exit 1
+            fi
+        fi
+
         log_info "1. Pulling image $ODOO_IMAGE_NAME..."
         if sudo -u "$REPOSITORY_OWNER" docker compose pull; then
             log_success "Image pulled successfully."
             log_info "Now run: 'docker compose up -d'"
+            if [ "$did_pull_login" = true ]; then
+                log_info "Logging out of registry..."
+                sudo -u "$REPOSITORY_OWNER" docker logout "$DOCKER_REGISTRY_PROVIDER"
+            fi
         else
             log_error "Pull failed."
+            if [ "$did_pull_login" = true ]; then
+                log_info "Logging out of registry..."
+                sudo -u "$REPOSITORY_OWNER" docker logout "$DOCKER_REGISTRY_PROVIDER"
+            fi
             exit 1
         fi
     fi
