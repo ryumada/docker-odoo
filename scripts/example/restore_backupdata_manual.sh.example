@@ -346,7 +346,7 @@ function main() {
       if [ -z "$ODOO_DATABASE_NAME_PRD" ]; then
         RESTORED_DB_NAME="$(get_next_prefix "$PATH_TO_ODOO/.env")-$SERVICE_NAME-$(date +"%Y%m%d-%H%M%S")"
       else
-        RESTORED_DB_NAME="$(get_next_prefix "$PATH_TO_ODOO/.env")-$SERVICE_NAME-$(date +"%Y%m%d-%H%M%S")"
+        RESTORED_DB_NAME="$ODOO_DATABASE_NAME_PRD"
       fi
     else
       # Prompting logic
