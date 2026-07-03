@@ -1291,7 +1291,7 @@ function main() {
     if [ "$mode_number" -eq 1 ]; then
         log_info "MODE: DEVELOPMENT"
         log_info "1. Building image..."
-        if sudo -u "$REPOSITORY_OWNER" docker compose build; then
+        if sudo -u "$REPOSITORY_OWNER" CURRENT_IMAGE_VERSION="$CURRENT_IMAGE_VERSION" ODOO_IMAGE_NAME="$ODOO_IMAGE_NAME" docker compose build; then
             log_success "Image built successfully."
             log_info "Now run: 'docker compose up -d'"
         else
@@ -1315,7 +1315,7 @@ function main() {
         fi
 
         log_info "1. Building image..."
-        if sudo -u "$REPOSITORY_OWNER" docker compose build; then
+        if sudo -u "$REPOSITORY_OWNER" CURRENT_IMAGE_VERSION="$CURRENT_IMAGE_VERSION" ODOO_IMAGE_NAME="$ODOO_IMAGE_NAME" docker compose build; then
             log_success "Image built successfully."
         else
             log_error "Build failed."
