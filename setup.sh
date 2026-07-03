@@ -1251,6 +1251,7 @@ function main() {
 
   # MODE 3: PRODUCTION
   elif [ "$mode_number" -eq 3 ]; then
+    CURRENT_IMAGE_VERSION=$(grep "^CURRENT_IMAGE_VERSION=" "$REPOSITORY_DIRPATH/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
     if [ -z "$ODOO_IMAGE_NAME" ]; then
       log_error "ODOO_IMAGE_NAME variable is not set in your .env file. Production mode requires this to pull the image."
       TODO+=("Please set the ODOO_IMAGE_NAME variable in your .env file.")
@@ -1395,7 +1396,7 @@ function main() {
             fi
         fi
 
-        log_info "1. Pulling image $ODOO_IMAGE_NAME..."
+        log_info "1. Pulling image $ODOO_IMAGE_NAME:${CURRENT_IMAGE_VERSION}..."
         if sudo -u "$REPOSITORY_OWNER" docker compose pull; then
             log_success "Image pulled successfully."
             log_info "Now run: 'docker compose up -d'"
