@@ -349,6 +349,8 @@ EOF
   TRAEFIK_DOMAIN=$(grep "^TRAEFIK_DOMAIN=" "$REPOSITORY_DIRPATH/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
   TRAEFIK_CERTRESOLVER=$(grep "^TRAEFIK_CERTRESOLVER=" "$REPOSITORY_DIRPATH/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
   [ -z "$TRAEFIK_CERTRESOLVER" ] && TRAEFIK_CERTRESOLVER="myresolver"
+  TRAEFIK_NETWORK=$(grep "^TRAEFIK_NETWORK=" "$REPOSITORY_DIRPATH/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
+  [ -z "$TRAEFIK_NETWORK" ] && TRAEFIK_NETWORK="proxy"
   ODOO_VERSION=$(grep "^ODOO_VERSION=" "$REPOSITORY_DIRPATH/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
 
   if [[ "$REVERSE_PROXY_TYPE" == "traefik" ]]; then
@@ -372,6 +374,7 @@ EOF
     [ -z "$TARGET_GEVENT_PORT" ] && TARGET_GEVENT_PORT="8072"
 
     local traefik_labels="        - \"traefik.enable=true\"\n"
+    traefik_labels+="        - \"traefik.docker.network=$TRAEFIK_NETWORK\"\n"
     traefik_labels+="        - \"traefik.http.routers.odoo-${SERVICE_NAME}.rule=Host(\\\`${TRAEFIK_DOMAIN}\\\`)\"\n"
     traefik_labels+="        - \"traefik.http.routers.odoo-${SERVICE_NAME}.entrypoints=websecure\"\n"
     traefik_labels+="        - \"traefik.http.routers.odoo-${SERVICE_NAME}.tls.certresolver=${TRAEFIK_CERTRESOLVER}\"\n"
