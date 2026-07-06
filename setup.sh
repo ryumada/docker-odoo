@@ -1248,13 +1248,23 @@ function main() {
   # MODE 1: DEVELOPMENT or MODE 2: BUILDER
   if [ "$mode_number" -eq 1 ] || [ "$mode_number" -eq 2 ]; then
     ODOO_IMAGE_NAME=$(grep "^ODOO_IMAGE_NAME=" "$REPOSITORY_DIRPATH/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
-    NEXT_IMAGE_VERSION=$(grep "^NEXT_IMAGE_VERSION=" "$REPOSITORY_DIRPATH/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
-
-    export CURRENT_IMAGE_VERSION=$NEXT_IMAGE_VERSION
-    if [ -n "$ODOO_IMAGE_NAME" ]; then
-      export ODOO_IMAGE_NAME
-      if [ -n "$NEXT_IMAGE_VERSION" ]; then
-        log_info "Using automated tag: ${ODOO_IMAGE_NAME}:${NEXT_IMAGE_VERSION}"
+    if [ "$mode_number" -eq 1 ]; then
+      CURRENT_IMAGE_VERSION=$(grep "^CURRENT_IMAGE_VERSION=" "$REPOSITORY_DIRPATH/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
+      export CURRENT_IMAGE_VERSION
+      if [ -n "$ODOO_IMAGE_NAME" ]; then
+        export ODOO_IMAGE_NAME
+        if [ -n "$CURRENT_IMAGE_VERSION" ]; then
+          log_info "Using automated tag: ${ODOO_IMAGE_NAME}:${CURRENT_IMAGE_VERSION}"
+        fi
+      fi
+    else
+      NEXT_IMAGE_VERSION=$(grep "^NEXT_IMAGE_VERSION=" "$REPOSITORY_DIRPATH/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
+      export CURRENT_IMAGE_VERSION=$NEXT_IMAGE_VERSION
+      if [ -n "$ODOO_IMAGE_NAME" ]; then
+        export ODOO_IMAGE_NAME
+        if [ -n "$NEXT_IMAGE_VERSION" ]; then
+          log_info "Using automated tag: ${ODOO_IMAGE_NAME}:${NEXT_IMAGE_VERSION}"
+        fi
       fi
     fi
 
