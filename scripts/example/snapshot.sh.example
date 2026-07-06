@@ -3,7 +3,7 @@ set -e
 # Category: Utility
 # Description: Creates a full Odoo snapshot (database dump + filestore + configs) as a compressed tar archive.
 # Usage: ./scripts/snapshot-SERVICE_NAME [auto]
-# Dependencies: sudo, git, zstd, tar, docker, pg_dump
+# Dependencies: sudo, git, zstd, tar, docker, pg_dump, gcloud
 
 CURRENT_DIR=$(dirname "$(readlink -f "$0")")
 CURRENT_DIR_USER=$(stat -c '%U' "$CURRENT_DIR")
@@ -320,9 +320,9 @@ function main() {
   chown "$REPOSITORY_OWNER": "$TAR_FILE_PATH"
 
   if [ "$GCS_BUCKET_NAME" != "" ]; then
-    if sudo -u "$REPOSITORY_OWNER" gsutil ls "gs://$GCS_BUCKET_NAME" > /dev/null 2>&1; then
+    if sudo -u "$REPOSITORY_OWNER" gcloud storage ls "gs://$GCS_BUCKET_NAME" > /dev/null 2>&1; then
       log_info "Moving the snapshot file to Google Cloud Storage bucket: gs://$GCS_BUCKET_NAME."
-      if sudo -u "$REPOSITORY_OWNER" gsutil -m mv "$TAR_FILE_PATH" "gs://$GCS_BUCKET_NAME/$TAR_FILE_NAME"; then
+      if sudo -u "$REPOSITORY_OWNER" gcloud storage mv "$TAR_FILE_PATH" "gs://$GCS_BUCKET_NAME/$TAR_FILE_NAME"; then
         log_success "The snapshot File Created Successfully named $TAR_FILE_NAME. File Backed up at gs://$GCS_BUCKET_NAME/$TAR_FILE_NAME."
       else
         log_error "Error can't move the snapshot file to gs://$GCS_BUCKET_NAME. Exit code: $?"

@@ -195,7 +195,7 @@ Before you run the restore snapshot script, you need to prepare [snapshot utilit
 
   </summary>
 
-  Setup `google-cloud-cli` to run move your backup file to Google Cloud using `gsutil`
+  Setup `google-cloud-cli` to move your backup file to Google Cloud using `gcloud storage`
   1. Prepare the key from service account for our server access to gcloud storage
      <details>
      <summary>
@@ -264,7 +264,7 @@ Before you run the restore snapshot script, you need to prepare [snapshot utilit
    4. Test your service account
 
       ```bash
-      gsutil ls gs://$YOUR_GCS_BUCKET/
+      gcloud storage ls gs://$YOUR_GCS_BUCKET/
       ```
 
       The command will list objects available on `$YOUR_GCS_BUCKET` bucket.
