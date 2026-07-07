@@ -267,7 +267,7 @@ function sanitize_database() {
             VALUES (''database.is_neutralized'', true)
                 ON CONFLICT (key) DO UPDATE SET value = true';
         END IF;
-          
+
         IF EXISTS (SELECT FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'ir_act_server' AND column_name = 'webhook_url') THEN
             EXECUTE 'UPDATE ir_act_server
                SET webhook_url = ''neutralization - disable webhook''
@@ -387,6 +387,9 @@ function main() {
 
     log_info "Dump $ODOO_DATABASE_NAME_PRD"
     run_pg_dump --no-owner -d "$ODOO_DATABASE_NAME_PRD" > "/tmp/$ODOO_DB_NAME_ENV.sql"
+
+    # From this point onwards, all psql/pg commands will target the destination environment database.
+    export PSQL_ENV_FILE="$PATH_TO_ODOO_ENV/.env"
 
     if [ -d "$ODOO_FILESTORE_PATH_ENV" ]; then
         log_warn "Remove the old filestore of $ODOO_DB_NAME_ENV"
