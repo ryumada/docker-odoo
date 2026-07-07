@@ -176,7 +176,7 @@ function restoreOdooData() {
   log_info "Setting role to $ODOO_DATABASE_USER in dump to ensure proper ownership"
   sed -i "1i SET ROLE \"$ODOO_DATABASE_USER\";" "$sql_dump_file"
 
-  run_psql -d "$ODOO_DATABASE_NAME_PRD" -f "$sql_dump_file" --quiet -t -P pager=off 2> /dev/null > /dev/null || log_error "Can't restore database"
+  run_psql -d "$ODOO_DATABASE_NAME_PRD" --quiet -t -P pager=off < "$sql_dump_file" 2> /dev/null > /dev/null || log_error "Can't restore database"
 }
 
 function main() {

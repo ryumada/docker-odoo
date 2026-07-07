@@ -460,7 +460,7 @@ function main() {
       run_psql -d postgres -c "CREATE DATABASE \"$RESTORED_DB_NAME\" OWNER \"$DB_USER\"" >/dev/null
 
       log_info "Restoring database from SQL dump via psql..."
-      run_psql -d "$RESTORED_DB_NAME" -f "$TEMP_DIR/dump.sql" >/dev/null
+      run_psql -d "$RESTORED_DB_NAME" < "$TEMP_DIR/dump.sql" >/dev/null
 
       log_success "Database restored successfully via psql."
 

@@ -560,7 +560,10 @@ main() {
         ODOO_FILESTORE_PATH_ENV="/var/lib/odoo/$SERVICE_NAME/filestore/$STG_DB_NAME"
 
         log_info "Dump $PRD_DB_NAME to temporary file"
-        run_pg_dump --no-owner -d "$PRD_DB_NAME" > "/tmp/$STG_DB_NAME.sql"
+        PSQL_ENV_FILE="$PRD_ENV_FILE" run_pg_dump --no-owner -d "$PRD_DB_NAME" > "/tmp/$STG_DB_NAME.sql"
+
+        # From this point onwards, all database commands (run_psql) target the staging environment database.
+        export PSQL_ENV_FILE="$STG_ENV_FILE"
 
         # Sync Filestore
         if [ -d "$ODOO_FILESTORE_PATH_ENV" ]; then
@@ -618,7 +621,7 @@ main() {
 
             # Restore from SQL dump
             log_info "Restoring database from SQL dump via psql..."
-            run_psql -d "$STG_DB_NAME" -f "/tmp/$STG_DB_NAME.sql" >/dev/null
+            run_psql -d "$STG_DB_NAME" < "/tmp/$STG_DB_NAME.sql" >/dev/null
 
             log_success "Database restored successfully via psql."
 
