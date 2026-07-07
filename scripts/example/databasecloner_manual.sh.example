@@ -439,7 +439,7 @@ function main() {
         run_psql -d postgres -c "CREATE DATABASE \"$ODOO_DB_NAME_ENV\" OWNER \"$DB_USER\"" >/dev/null
 
         log_info "Restoring database from SQL dump via psql..."
-        run_psql -d "$ODOO_DB_NAME_ENV" -f "/tmp/$ODOO_DB_NAME_ENV.sql" >/dev/null
+        run_psql -d "$ODOO_DB_NAME_ENV" < "/tmp/$ODOO_DB_NAME_ENV.sql" >/dev/null
 
         log_success "Database restored successfully via psql."
 
