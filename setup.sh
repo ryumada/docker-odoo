@@ -481,14 +481,23 @@ function generatePostgresSecrets() {
     setPermissionFileToReadOnlyAndOnlyTo "$ODOO_LINUX_USER" "$DB_USER_SECRET"
     setPermissionFileToReadOnlyAndOnlyTo "$ODOO_LINUX_USER" "$DB_PASSWORD_SECRET"
 
-    echo -e "\n${COLOR_WARN}===================================================================${COLOR_RESET}"
-    echo -e "${COLOR_WARN}MANUAL DATABASE SETUP REQUIRED${COLOR_RESET}"
-    echo -e "You are connecting to a remote/containerized PostgreSQL database ($DB_HOST)."
-    echo -e "The local .secrets files have been generated, but the database role was not automatically created."
-    echo -e "Please copy and paste the following credentials into your docker-postgresql create user script:\n"
-    echo -e "  ${COLOR_SUCCESS}DB USERNAME:${COLOR_RESET} $POSTGRES_ODOO_USERNAME"
-    echo -e "  ${COLOR_SUCCESS}DB PASSWORD:${COLOR_RESET} $POSTGRES_ODOO_PASSWORD"
-    echo -e "\n${COLOR_WARN}===================================================================${COLOR_RESET}\n"
+    TODO+=(
+"${COLOR_WARN}===================================================================${COLOR_RESET}
+${COLOR_WARN}MANUAL DATABASE SETUP REQUIRED${COLOR_RESET}
+You are connecting to a remote/containerized PostgreSQL database ($DB_HOST).
+The local .secrets files have been generated, but the database role was not automatically created.
+Please copy and paste the following credentials into your docker-postgresql create user script:
+
+  ${COLOR_SUCCESS}DB USERNAME:${COLOR_RESET} $POSTGRES_ODOO_USERNAME
+  ${COLOR_SUCCESS}DB PASSWORD:${COLOR_RESET} $POSTGRES_ODOO_PASSWORD
+
+You can enter the following command to create the user and password:
+  - ${COLOR_INFO} docker compose exec enter_your_postgres_service_name psql -U postgres -c "CREATE ROLE \"$POSTGRES_ODOO_USERNAME\" LOGIN CREATEDB PASSWORD \'$POSTGRES_ODOO_PASSWORD\'";${COLOR_RESET}
+  - ${COLOR_INFO} sudo -u postgres psql -c "CREATE ROLE \"$POSTGRES_ODOO_USERNAME\" LOGIN CREATEDB PASSWORD \'$POSTGRES_ODOO_PASSWORD\'";${COLOR_RESET}
+
+
+${COLOR_WARN}===================================================================${COLOR_RESET}"
+    )
     return
   fi
 
@@ -812,7 +821,7 @@ function printTodo() {
 
     echo
     for i in "${TODO[@]}"; do
-      echo "🟦  $i"
+      echo -e "🟦  $i"
     done
 
     echo
