@@ -492,8 +492,8 @@ Please copy and paste the following credentials into your docker-postgresql crea
   ${COLOR_SUCCESS}DB PASSWORD:${COLOR_RESET} $POSTGRES_ODOO_PASSWORD
 
 You can enter the following command to create the user and password:
-  - ${COLOR_INFO} docker compose exec enter_your_postgres_service_name psql -U postgres -c \"CREATE ROLE \"$POSTGRES_ODOO_USERNAME\" LOGIN CREATEDB PASSWORD \'$POSTGRES_ODOO_PASSWORD\';\"${COLOR_RESET}
-  - ${COLOR_INFO} sudo -u postgres psql -c \"CREATE ROLE \"$POSTGRES_ODOO_USERNAME\" LOGIN CREATEDB PASSWORD \'$POSTGRES_ODOO_PASSWORD\';\"${COLOR_RESET}
+  - ${COLOR_INFO} docker compose exec enter_your_postgres_service_name psql -U postgres -c \"CREATE ROLE \\"$POSTGRES_ODOO_USERNAME\\" LOGIN CREATEDB PASSWORD '$POSTGRES_ODOO_PASSWORD';\"${COLOR_RESET}
+  - ${COLOR_INFO} sudo -u postgres psql -c \"CREATE ROLE \\"$POSTGRES_ODOO_USERNAME\\" LOGIN CREATEDB PASSWORD '$POSTGRES_ODOO_PASSWORD';\"${COLOR_RESET}
 
 
 ${COLOR_WARN}===================================================================${COLOR_RESET}"
