@@ -299,7 +299,7 @@ function main() {
 
   log_info "Dumping $ODOO_DATABASE_NAME_PRD database to $SQL_DUMP_FILE..."
   # Use the secure temp file
-  if ! run_pg_dump --no-owner -f "$SQL_DUMP_FILE" "$ODOO_DATABASE_NAME_PRD" > /dev/null 2>&1; then
+  if ! run_pg_dump --no-owner "$ODOO_DATABASE_NAME_PRD" > "$SQL_DUMP_FILE"; then
     log_error "pg_dump failed to dump the database."
     exit 1
   fi
