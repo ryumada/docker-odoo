@@ -315,6 +315,10 @@ function main() {
   chown "$REPOSITORY_OWNER": "$TAR_FILE_PATH"
 
   if [ "$GCS_BUCKET_NAME" != "" ]; then
+    # Disable parallel composite upload compatibility check to avoid permission errors if not already set.
+    if [ "$(sudo -u "$REPOSITORY_OWNER" gcloud config get-value storage/parallel_composite_upload_compatibility_check 2>/dev/null)" != "false" ]; then
+      sudo -u "$REPOSITORY_OWNER" gcloud config set storage/parallel_composite_upload_compatibility_check false 2>/dev/null
+    fi
     if sudo -u "$REPOSITORY_OWNER" gcloud storage ls "gs://$GCS_BUCKET_NAME" > /dev/null 2>&1; then
       log_info "Moving the snapshot file to Google Cloud Storage bucket: gs://$GCS_BUCKET_NAME."
       if sudo -u "$REPOSITORY_OWNER" gcloud storage mv "$TAR_FILE_PATH" "gs://$GCS_BUCKET_NAME/$TAR_FILE_NAME"; then
