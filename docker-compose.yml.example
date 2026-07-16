@@ -8,6 +8,7 @@
 
 services:
   odoo:
+    container_name: ${ACTIVE_SERVICE_NAME:-$SERVICE_NAME}
     image: ${ODOO_IMAGE_NAME:-$SERVICE_NAME}${CURRENT_IMAGE_VERSION:+:$CURRENT_IMAGE_VERSION}
     # <<TRAEFIK_LABELS_PLACEHOLDER>>
 
@@ -38,10 +39,10 @@ services:
     # <<NETWORKS_PLACEHOLDER>>
     entrypoint: [ "/opt/odoo/entrypoint.sh" ]
     volumes:
-     - ${ODOO_DATADIR_SERVICE}:${ODOO_DATADIR_SERVICE}
-     - ${ODOO_LOG_DIR_SERVICE}:${ODOO_LOG_DIR_SERVICE}
+     - ${ODOO_DATADIR_SERVICE:-/var/lib/odoo/$SERVICE_NAME}:${ODOO_DATADIR_SERVICE:-/var/lib/odoo/$SERVICE_NAME}
+     - ${ODOO_LOG_DIR_SERVICE:-/var/log/odoo/$SERVICE_NAME}:${ODOO_LOG_DIR_SERVICE:-/var/log/odoo/$SERVICE_NAME}
      - ./git:/opt/odoo/git
-     - ./odoo-base:/opt/odoo/odoo-base
+     - ${ACTIVE_ODOO_BASE_PATH:-./odoo-base}:${ACTIVE_ODOO_BASE_CONTAINER_PATH:-/opt/odoo/odoo-base}
      - ./conf/odoo.conf:/etc/odoo/odoo.conf
     logging:
       driver: "json-file"

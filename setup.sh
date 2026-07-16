@@ -78,6 +78,7 @@ trap 'error_handler $? $LINENO "$BASH_COMMAND"' ERR
 
 # Global Variable
 TODO=()
+IS_NON_INTERACTIVE=false
 
 function checkAddonsPathOnOdooConfFile() {
   addons_string="$(grep 'addons_path' $ODOO_CONF_FILE | grep -v '#' | grep -o 'addons_path = \([^)]*\)' | sed 's/addons_path = //')"
@@ -650,6 +651,12 @@ EOF
 }
 
 function selectMode() {
+    if [ "$IS_NON_INTERACTIVE" = true ]; then
+      log_warn "Non-interactive environment detected. Defaulting to '1 Development'."
+      echo "1 Development"
+      return 0
+    fi
+
     while true; do
       printf "Select the deployment mode:\n"
       printf "[1] Development (Build locally, bind-mounts)\n"
@@ -1106,17 +1113,24 @@ function main() {
       exit 1
   fi
 
+  local SETUP_MODE="$1"
+  local ENFORCE_BUILD_MODE="$2"
+
+  if [ "$SETUP_MODE" = "-y" ] || [ "$SETUP_MODE" = "--yes" ]; then
+    SETUP_MODE="auto"
+  fi
+  if [ "$SETUP_MODE" = "auto" ] || [ "$ENFORCE_BUILD_MODE" = "-y" ] || [ "$ENFORCE_BUILD_MODE" = "--yes" ] || [ ! -t 0 ] || [ -n "$VSCODE_PID" ]; then
+    IS_NON_INTERACTIVE=true
+  fi
+
   echo -e "\n==================================================================="
   echo "Path for working directory : $REPOSITORY_DIRPATH"
   echo "Deployment name will be    : $SERVICE_NAME"
   echo -e "===================================================================\n"
 
-  local SETUP_MODE="$1"
-  local ENFORCE_BUILD_MODE="$2"
-
   local DOCKER_REGISTRY_PROVIDER
 
-  if [ "$SETUP_MODE" != "auto" ]; then
+  if [ "$SETUP_MODE" != "auto" ] && [ "$IS_NON_INTERACTIVE" != true ]; then
     read -rp "Press enter key to continue..."
   fi
 
@@ -1175,7 +1189,7 @@ function main() {
     installDockerServiceRestartorScript
   fi
 
-  if [ "$SETUP_MODE" != "auto" ]; then
+  if [ "$SETUP_MODE" != "auto" ] && [ "$IS_NON_INTERACTIVE" != true ]; then
     read -rp "❓ Do you want to renew odoo-shell and odoo-module-upgrade scripts? [y/N] : " response
 
     if [[ "$response" =~ ^([yY][eE][sS]|[yY])+$ ]]; then

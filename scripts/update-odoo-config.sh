@@ -58,6 +58,7 @@ ODOO_CONF="$PATH_TO_ODOO/conf/odoo.conf"
 ENV_FILE_PATH="$PATH_TO_ODOO/.env"
 
 ODOO_LINUX_USER="odoo"
+CUSTOM_ADDONS_PATH="$1"
 
 log_info "Updating Odoo configuration file..."
 
@@ -84,6 +85,10 @@ if [ -f "$ENV_FILE_PATH" ]; then
     # shellcheck disable=SC2163
     export "$line"
   done < <(tr -d '\r' < "$ENV_FILE_PATH")
+
+  if [ -n "$CUSTOM_ADDONS_PATH" ]; then
+    ADDONS_PATH="$CUSTOM_ADDONS_PATH"
+  fi
 
   # Check if the ADMIN_PASSWD variable is set in the .env file
   if [ -n "$ADMIN_PASSWD" ]; then
