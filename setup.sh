@@ -651,12 +651,11 @@ EOF
 
 function selectMode() {
     while true; do
-      read -rp "Select the deployment mode:
-      [1] Development (Build locally, bind-mounts)
-      [2] Builder (Build, check versions, push to registry)
-      [3] Production (Pull from registry)
-
-      : " -e user_choice
+      printf "Select the deployment mode:\n"
+      printf "[1] Development (Build locally, bind-mounts)\n"
+      printf "[2] Builder (Build, check versions, push to registry)\n"
+      printf "[3] Production (Pull from registry)\n"
+      read -rp "Enter the number 1 - 3: " user_choice
 
       case $user_choice in
         1)
