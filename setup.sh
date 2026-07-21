@@ -994,7 +994,7 @@ function checkGitRepositories() {
 function writeDatadirVariableOnEnvFile() {
   # _inherit = CreateDataDir
 
-  if ! grep -q "ODOO_DATADIR_SERVICE" "$ENV_FILE"; then
+  if ! grep -q "^ODOO_DATADIR_SERVICE=" "$ENV_FILE"; then
     cat <<-EOF >> "$ENV_FILE"
 ODOO_DATADIR_SERVICE=$ODOO_DATADIR_SERVICE
 EOF
@@ -1004,7 +1004,7 @@ EOF
 function writeLogDirVariableOnEnvFile() {
   # _inherit = createLogDir
 
-  if ! grep -q "SERVICE_NAME" "$ENV_FILE"; then
+  if ! grep -q "^SERVICE_NAME=" "$ENV_FILE"; then
     cat <<-EOF >> "$ENV_FILE"
 
 # # # # # # # # # # # # # # # # #
@@ -1214,8 +1214,6 @@ function main() {
     if [ "$mode_number" -ne 2 ]; then
       createLogDir
       createDataDir
-      writeDatadirVariableOnEnvFile
-      writeLogDirVariableOnEnvFile
 
       DB_HOST=$(grep 'DB_HOST' $ENV_FILE | grep -v '#' | grep -o 'DB_HOST=\([^)]*\)' | sed 's/DB_HOST=//')
 
