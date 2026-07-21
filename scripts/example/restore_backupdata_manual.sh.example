@@ -416,6 +416,7 @@ function main() {
 
   log_info "Extracting the zip backup file (this may take a while)..."
   unzip -qqqq -d "$TEMP_DIR" "$BACKUPDATA_FILE_PATH" >&2
+  chmod -R a+rX "$TEMP_DIR"
 
   log_info "Creating the filestore directory at $FILESTORE_PATH"
   mkdir -p "$FILESTORE_PATH"
