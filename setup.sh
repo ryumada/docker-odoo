@@ -1214,6 +1214,8 @@ function main() {
     if [ "$mode_number" -ne 2 ]; then
       createLogDir
       createDataDir
+      writeDatadirVariableOnEnvFile
+      writeLogDirVariableOnEnvFile
 
       DB_HOST=$(grep 'DB_HOST' $ENV_FILE | grep -v '#' | grep -o 'DB_HOST=\([^)]*\)' | sed 's/DB_HOST=//')
 
