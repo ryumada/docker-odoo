@@ -118,6 +118,17 @@ function run_psql() {
   local env_file="${PSQL_ENV_FILE:-$PATH_TO_ODOO/.env}"
   local db_host
   db_host=$(grep "^DB_HOST=" "$env_file" 2>/dev/null | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
+  local has_db=false
+  for arg in "$@"; do
+    if [[ "$arg" == "-d" || "$arg" == -d* || "$arg" == "--dbname="* || "$arg" == "--dbname" ]]; then
+      has_db=true
+      break
+    fi
+  done
+  local db_default=()
+  if [ "$has_db" = false ]; then
+    db_default=(-d postgres)
+  fi
   if [ -n "$db_host" ] && [ "$db_host" != "localhost" ]; then
     local db_port db_user db_pass docker_net net
     db_port=$(grep "^DB_PORT=" "$env_file" 2>/dev/null | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
@@ -127,9 +138,9 @@ function run_psql() {
     [ -z "$db_port" ] && db_port="5432"
     [ -z "$docker_net" ] && docker_net="host"
     local net=$(echo "$docker_net" | cut -d "," -f 1)
-    docker run -i --rm --network="$net" -e PGPASSWORD="$db_pass" postgres psql -h "$db_host" -p "$db_port" -U "$db_user" "$@"
+    docker run -i --rm --network="$net" -e PGPASSWORD="$db_pass" postgres psql -h "$db_host" -p "$db_port" -U "$db_user" "${db_default[@]}" "$@"
   else
-    sudo -u postgres psql "$@"
+    sudo -u postgres psql "${db_default[@]}" "$@"
   fi
 }
 

@@ -369,8 +369,10 @@ EOF
     fi
     log_info "Detected Odoo Version $ODOO_VERSION. Using $ws_path for Traefik WS routing."
 
-    local TARGET_PORT=$(grep "^PORT=" "$REPOSITORY_DIRPATH/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
-    local TARGET_GEVENT_PORT=$(grep "^GEVENT_PORT=" "$REPOSITORY_DIRPATH/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
+    local TARGET_PORT
+    TARGET_PORT=$(grep "^PORT=" "$REPOSITORY_DIRPATH/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
+    local TARGET_GEVENT_PORT
+    TARGET_GEVENT_PORT=$(grep "^GEVENT_PORT=" "$REPOSITORY_DIRPATH/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
     [ -z "$TARGET_PORT" ] && TARGET_PORT="8069"
     [ -z "$TARGET_GEVENT_PORT" ] && TARGET_GEVENT_PORT="8072"
 
@@ -440,6 +442,17 @@ ENV LD_PRELOAD=/usr/lib/x86_64-linux-gnu/faketime/libfaketime.so.1' dockerfile
 function run_psql_setup() {
   local env_file="$REPOSITORY_DIRPATH/.env"
   local db_host=$(grep "^DB_HOST=" "$env_file" 2>/dev/null | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
+  local has_db=false
+  for arg in "$@"; do
+    if [[ "$arg" == "-d" || "$arg" == -d* || "$arg" == "--dbname="* || "$arg" == "--dbname" ]]; then
+      has_db=true
+      break
+    fi
+  done
+  local db_default=()
+  if [ "$has_db" = false ]; then
+    db_default=(-d postgres)
+  fi
   if [ -n "$db_host" ] && [ "$db_host" != "localhost" ]; then
     local db_port=$(grep "^DB_PORT=" "$env_file" 2>/dev/null | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
     local db_user=$(cat "$REPOSITORY_DIRPATH/.secrets/db_user" 2>/dev/null || true)
@@ -448,9 +461,9 @@ function run_psql_setup() {
     [ -z "$db_port" ] && db_port="5432"
     [ -z "$docker_net" ] && docker_net="host"
     local net=$(echo "$docker_net" | cut -d "," -f 1)
-    docker run -i --rm --network="$net" -e PGPASSWORD="$db_pass" postgres psql -h "$db_host" -p "$db_port" -U "$db_user" "$@"
+    docker run -i --rm --network="$net" -e PGPASSWORD="$db_pass" postgres psql -h "$db_host" -p "$db_port" -U "$db_user" "${db_default[@]}" "$@"
   else
-    sudo -u postgres psql "$@"
+    sudo -u postgres psql "${db_default[@]}" "$@"
   fi
 }
 
