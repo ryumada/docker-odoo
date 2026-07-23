@@ -1,4 +1,5 @@
 ---
+title: Agent Personas Reference
 trigger: on_demand
 category: Reference
 description: Full behavior definitions for @flash and @pro agent personas

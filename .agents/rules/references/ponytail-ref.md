@@ -1,4 +1,5 @@
 ---
+title: Ponytail Reference
 trigger: on_demand
 category: Reference
 description: Full reference instructions for Ponytail (Lazy Senior Dev Mode)
