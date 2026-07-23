@@ -1,0 +1,5 @@
+# RTK — Rust Token Killer (Cline)
+
+See the canonical rule at `.agents/rules/antigravity-rtk-rules.md`.
+
+Always prefix shell commands with `rtk` to minimize token consumption.

@@ -1,5 +1,6 @@
 ---
 trigger: always_on
+tokens: ~8
 ---
 
 # RTK - Rust Token Killer

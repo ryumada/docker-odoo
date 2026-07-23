@@ -8,6 +8,8 @@
 !.vscode/extensions.json
 !.vscode/launch.json.template
 
+.antigravitycli/
+
 conf/*
 !conf/odoo.conf.example
 !conf/README.md
@@ -62,5 +64,3 @@ REPO_MAP.md
 
 **.tar**
 **.swp
-
-.antigravitycli

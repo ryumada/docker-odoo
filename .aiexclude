@@ -1,2 +1,3 @@
-# To be used by Gemini Code Assist to include all directories when searching the files and directories ignored by .gitignore
+# Gemini Code Assist: include all directories when searching files ignored by .gitignore
+# Duplicated in .ignore for VS Code — keep in sync.
 !*

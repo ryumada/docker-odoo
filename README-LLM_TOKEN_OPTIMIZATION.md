@@ -48,6 +48,8 @@ rtk proxy <cmd>       # Bypass RTK for debugging
 
 **Installation**: See [github.com/rtk-ai/rtk](https://github.com/rtk-ai/rtk)
 
+**Note**: `.clinerules` and `.kilocode/rules/rtk-rules.md` are thin references to this canonical rule. Keep changes here only.
+
 ---
 
 ## Layer 2: Agent Context Compression — Rule Trigger Optimization
@@ -56,40 +58,42 @@ The largest baseline saving. Antigravity injects `always_on` rules into every se
 
 ### Before vs. After
 
-| State | `always_on` rules | Lines injected per session |
+| State | `always_on` rules | Est. tokens per session |
 |---|---|---|
-| Before | 8 files | ~370 lines |
-| After | 3 files | ~20 lines |
-| **Reduction** | | **~94%** (further reduced by referenced ponytail instructions) |
+| Before | 8 files | ~370 tokens |
+| After | 5 files | ~38 tokens |
+| **Reduction** | | **~90%** |
 
 ### Current Rule Triggers
 
-| Rule File | Trigger | Reason |
-|---|---|---|
-| `antigravity-rtk-rules.md` | `always_on` | RTK habit must be unconditional |
-| `ponytail.md` | `always_on` | Core behavioral discipline — slim header referencing full file |
-| `do-not-answer-if-repo-map-file-not-found.md` | `always_on` | Critical safety gate, only 10 lines |
-| `session-pruning.md` | `always_on` | Monitors session length to trigger context reset warnings |
-| `auto-icm-recall.md` | `always_on` | Automatically queries ICM context at the start of every session |
-| `cavecrew-builder.md` | `model_decision` | Only needed during file editing tasks |
-| `cavecrew-investigator.md` | `model_decision` | Only needed during code investigation (Search-First) |
-| `cavecrew-reviewer.md` | `model_decision` | Only needed during code reviews |
-| `file-signature-enforcement.md` | `model_decision` | Only needed when creating/editing files |
-| `how-to-scan-repository.md` | `model_decision` | Only needed for multi-file repo tasks |
-| `require-plan-approval.md` | `model_decision` | Only needed during `@pro` planning sessions |
-| `phased-execution.md` | `model_decision` | Only needed for 4+ file cross-layer tasks |
-| `test-log-compression.md` | `model_decision` | Compresses verbose Docker logs and Odoo test traces |
-| `multi-model-pipeline.md` | `model_decision` | Guides switching between Pro planning and Flash execution |
+| Rule File | Trigger | Est. Tokens | Purpose |
+|---|---|---|---|
+| `antigravity-rtk-rules.md` | `always_on` | ~8 | RTK shell compression |
+| `ponytail.md` | `always_on` | ~12 | Behavioral discipline + response budget |
+| `do-not-answer-if-repo-map-file-not-found.md` | `always_on` | ~4 | Safety gate |
+| `session-pruning.md` | `always_on` | ~8 | Context window limit |
+| `auto-icm-recall.md` | `always_on` | ~6 | Cross-session memory |
+| `cavecrew.md` | `model_decision` | ~65 | Merged builder/investigator/reviewer + phased execution |
+| `file-signature-enforcement.md` | `model_decision` | ~40 | 5-line header enforcement |
+| `how-to-scan-repository.md` | `model_decision` | ~12 | REPO_MAP navigation |
+| `ponytail-ref.md` | `on_demand` | ~25 | Full ponytail guidelines |
+| `agent-personas-ref.md` | `on_demand` | ~40 | @flash / @pro definitions |
 
-### Rule References (Loaded on demand only)
+### Deleted / Merged Rules
 
-*   [`ponytail-ref.md`](.agents/rules/references/ponytail-ref.md): Fully expanded guidelines for minimalist code implementation.
-
-### Deleted Redundant Rules
-
-| File | Reason Deleted |
+| File | Disposition |
 |---|---|
-| `read-agents-md-on-start.md` | AGENTS.md is already auto-injected by the rule system; this caused a double-load on every session |
+| `cavecrew-builder.md` | Merged into `cavecrew.md` |
+| `cavecrew-investigator.md` | Merged into `cavecrew.md` |
+| `cavecrew-reviewer.md` | Merged into `cavecrew.md` |
+| `phased-execution.md` | Merged into `cavecrew.md` |
+| `require-plan-approval.md` | Merged into `agent-personas-ref.md` |
+| `test-log-compression.md` | Merged into `docker-odoo-management` skill |
+| `multi-model-pipeline.md` | Removed — rarely used, personal pattern |
+| `response-budget.md` | Merged into `ponytail.md` |
+| `read-agents-md-on-start.md` | Removed — caused double-load |
+| `bash-orchestration` skill | Moved to `scripts/templates/` |
+| `CLINE.md` | Removed — redundant with AGENTS.md |
 
 ---
 
