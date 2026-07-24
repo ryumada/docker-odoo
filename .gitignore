@@ -39,10 +39,13 @@ scripts/*
 !scripts/restore-snapshot.sh
 !scripts/switch_env.sh
 !scripts/transfer_pg_ownership.sh
+!scripts/templates
 !scripts/.uninstall-odoo.sh
 !scripts/update-env-file.sh
 !scripts/update-odoo-config.sh
 !scripts/lib/
+!scripts/long-process-mode.sh
+!scripts/validate-agent-config.sh
 
 utilities/*
 !utilities/README.md
