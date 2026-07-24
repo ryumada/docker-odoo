@@ -215,6 +215,17 @@ function main() {
   # you can leave it as is to back up to the /tmp directory instead of Google Cloud Storage (GCS)
   GCS_BUCKET_NAME=$(grep "^GCS_BUCKET_NAME=" "$PATH_TO_ODOO/.env" | cut -d '=' -f2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//')
 
+  # The number represents the compression level for Zstandard (zstd)
+  SNAPSHOT_COMPRESSION_LEVEL=$(grep "^SNAPSHOT_COMPRESSION_LEVEL=" "$PATH_TO_ODOO/.env" 2>/dev/null | cut -d '=' -f2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//')
+  if [ -z "$SNAPSHOT_COMPRESSION_LEVEL" ]; then
+    SNAPSHOT_COMPRESSION_LEVEL=7
+  fi
+
+  if ! [[ "$SNAPSHOT_COMPRESSION_LEVEL" =~ ^[0-9]+$ ]]; then
+    log_error "SNAPSHOT_COMPRESSION_LEVEL must be a number!"
+    exit 1
+  fi
+
   ## This variable below to define the new variable (DON'T EDIT)
   # Use array for files
   files_dirs_to_tar=()
@@ -306,7 +317,7 @@ function main() {
 
   log_info "Backing up the database and its datadir..."
   # Use array expansion
-  if ! tar -cf "$TAR_FILE_PATH" -I "zstd -vT0 -7 --ultra" "${files_dirs_to_tar[@]}" > /dev/null 2>&1; then
+  if ! tar -cf "$TAR_FILE_PATH" -I "zstd -vT0 -$SNAPSHOT_COMPRESSION_LEVEL --ultra" "${files_dirs_to_tar[@]}" > /dev/null 2>&1; then
     log_error "tar failed to backup the database and its datadir."
     exit 1
   fi
