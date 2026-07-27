@@ -129,8 +129,11 @@ function main() {
   if [ "$logged_in_user" != "root" ] && [ "$logged_in_user" != "devops" ]; then
     create_sudoers_file "$logged_in_user" "scripts" "git_addons_updater"
     create_sudoers_file "$logged_in_user" "scripts" "git_odoo-base_updater"
+    create_sudoers_file "$logged_in_user" "scripts" "backupdata-$SERVICE_NAME"
+    create_sudoers_file "$logged_in_user" "scripts" "databasecloner-$SERVICE_NAME"
     create_sudoers_file "$logged_in_user" "scripts" "deploy_release_candidate-$SERVICE_NAME"
     create_sudoers_file "$logged_in_user" "scripts" "restore_backupdata-$SERVICE_NAME"
+    create_sudoers_file "$logged_in_user" "scripts" "snapshot-$SERVICE_NAME"
     create_sudoers_file "$logged_in_user" "root" "setup"
   fi
 
