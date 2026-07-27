@@ -89,11 +89,11 @@ function promptWhichEnvironment() {
   if [ "$environment" == "" ]; then
     # You need to choose whether there are multiple environments for your deployment
     while true; do
-      printf "Which environment you wish to clone the data to?\n" >&2
-      printf "[1] Development (dev)\n" >&2
-      printf "[2] Staging (stg)\n" >&2
-      printf "[3] Testing (tst)\n" >&2
-      printf "[4] Other\n\n" >&2
+      printf "Which environment you wish to clone the data to?\n" >&3
+      printf "[1] Development (dev)\n" >&3
+      printf "[2] Staging (stg)\n" >&3
+      printf "[3] Testing (tst)\n" >&3
+      printf "[4] Other\n\n" >&3
       read -rp "Enter the number 1 - 4: " input_env
 
       if [[ ! "$input_env" =~ ^[1-9]+$ ]]; then
