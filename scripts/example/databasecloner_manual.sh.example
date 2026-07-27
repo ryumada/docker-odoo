@@ -94,7 +94,8 @@ function promptWhichEnvironment() {
       printf "[2] Staging (stg)\n" >&3
       printf "[3] Testing (tst)\n" >&3
       printf "[4] Other\n\n" >&3
-      read -rp "Enter the number 1 - 4: " input_env
+      printf ">> Enter the number 1 - 4: " >&3
+      read -r input_env
 
       if [[ ! "$input_env" =~ ^[1-9]+$ ]]; then
         log_error "Invalid input. Please enter a number based on the menu above."
@@ -443,13 +444,14 @@ function main() {
 
         log_info "Dropping old database $ODOO_DB_NAME_ENV (with force)"
         run_psql -d postgres -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '$ODOO_DB_NAME_ENV' AND pid <> pg_backend_pid();" > /dev/null 2>&1 || true
-        run_psql -d postgres -c "DROP DATABASE IF EXISTS \"$ODOO_DB_NAME_ENV\"" >/dev/null
+        run_psql -d postgres -c "DROP DATABASE IF EXISTS \"$ODOO_DB_NAME_ENV\"" >/dev/null 2>&3
 
         log_info "Creating new database $ODOO_DB_NAME_ENV with owner $DB_USER"
-        run_psql -d postgres -c "CREATE DATABASE \"$ODOO_DB_NAME_ENV\" OWNER \"$DB_USER\"" >/dev/null
+        run_psql -d postgres -c "CREATE DATABASE \"$ODOO_DB_NAME_ENV\" OWNER \"$DB_USER\"" >/dev/null 2>&3
+
 
         log_info "Restoring database from SQL dump via psql..."
-        run_psql -d "$ODOO_DB_NAME_ENV" < "/tmp/$ODOO_DB_NAME_ENV.sql" >/dev/null
+        run_psql -d "$ODOO_DB_NAME_ENV" < "/tmp/$ODOO_DB_NAME_ENV.sql" >/dev/null 2>&3
 
         log_success "Database restored successfully via psql."
 
