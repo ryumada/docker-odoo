@@ -109,18 +109,22 @@ function main() {
         exit 1
     fi
 
+    if [ -z "$BACKUP_RESTORE_METHOD" ]; then
+        BACKUP_RESTORE_METHOD="manual"
+    fi
+
     # Define the single command name used by the system
     local link_name="backupdata-$SERVICE_NAME"
     local script_filename="$link_name.sh"
     local target_path="$PATH_TO_ODOO/scripts/$script_filename"
     local source_path=""
 
-    if [ "$BACKUP_RESTORE_METHOD" == "manual" ] || [ "$BACKUP_RESTORE_METHOD" == "semi_manual" ]; then
+    if [ "$BACKUP_RESTORE_METHOD" == "endpoint" ]; then
+      log_info "Configuration set to '$BACKUP_RESTORE_METHOD'. Installing Standard Endpoint Backup utility."
+      source_path="$PATH_TO_ODOO/scripts/example/backupdata.sh.example"
+    else
       log_info "Configuration set to '$BACKUP_RESTORE_METHOD'. Installing Manual/Semi-manual Backup utility."
       source_path="$PATH_TO_ODOO/scripts/example/backupdata_manual.sh.example"
-    else
-      log_info "Configuration is empty or set to standard. Installing Standard Backup utility."
-      source_path="$PATH_TO_ODOO/scripts/example/backupdata.sh.example"
     fi
 
     install_script "$link_name" "$source_path" "$target_path"

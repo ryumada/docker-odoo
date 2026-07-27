@@ -230,11 +230,14 @@ function main() {
   fi
 
   BACKUP_RESTORE_METHOD=$(grep "^BACKUP_RESTORE_METHOD=" "$PATH_TO_ODOO/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
+  if [ -z "$BACKUP_RESTORE_METHOD" ]; then
+    BACKUP_RESTORE_METHOD="manual"
+  fi
 
-  if [ "$BACKUP_RESTORE_METHOD" = "manual" ] || [ "$BACKUP_RESTORE_METHOD" = "semi_manual" ]; then
-    isZipInstalled
-  else
+  if [ "$BACKUP_RESTORE_METHOD" = "endpoint" ]; then
     isCurlInstalled
+  else
+    isZipInstalled
   fi
 
   areYouReallySure "yes"
@@ -244,7 +247,7 @@ function main() {
   ADMIN_PASSWD=$(grep "^ADMIN_PASSWD=" "$PATH_TO_ODOO/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
   PORT=$(grep "^PORT=" "$PATH_TO_ODOO/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
 
-  if [ "$BACKUP_RESTORE_METHOD" != "manual" ] && [ "$BACKUP_RESTORE_METHOD" != "semi_manual" ]; then
+  if [ "$BACKUP_RESTORE_METHOD" = "endpoint" ]; then
     if [ -z "$ADMIN_PASSWD" ] || [ -z "$PORT" ]; then
       log_error "ADMIN_PASSWD and/or PORT not set in .env file. Cannot proceed with backup."
       exit 1
@@ -264,7 +267,7 @@ function main() {
     log_info "Backing up Odoo Database: $DB"
     BACKUP_FILE_PATH="$temporary_directory/$DB.zip"
 
-    if [ "$BACKUP_RESTORE_METHOD" = "manual" ] || [ "$BACKUP_RESTORE_METHOD" = "semi_manual" ]; then
+    if [ "$BACKUP_RESTORE_METHOD" != "endpoint" ]; then
       local odoo_filestore_path="/var/lib/odoo/$SERVICE_NAME/filestore/$DB"
       local db_temp_dir
       db_temp_dir=$(mktemp -d -t "backupdata_${DB}_XXXXXX")

@@ -377,6 +377,9 @@ function main() {
     fi
 
     BACKUP_RESTORE_METHOD=$(grep "^BACKUP_RESTORE_METHOD=" "$PATH_TO_ODOO_ENV/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
+    if [ -z "$BACKUP_RESTORE_METHOD" ]; then
+        BACKUP_RESTORE_METHOD="manual"
+    fi
 
     DEST_ADMIN_PASSWD=$(grep "^ADMIN_PASSWD=" "$PATH_TO_ODOO_ENV/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
     DEST_PORT=$(grep "^PORT=" "$PATH_TO_ODOO_ENV/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)

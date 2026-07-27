@@ -382,6 +382,9 @@ main() {
 
     STG_ENV_FILE="$STG_PATH_TO_ODOO/.env"
     BACKUP_RESTORE_METHOD=$(grep "^BACKUP_RESTORE_METHOD=" "$STG_ENV_FILE" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
+    if [ -z "$BACKUP_RESTORE_METHOD" ]; then
+        BACKUP_RESTORE_METHOD="manual"
+    fi
 
     if [ "$IS_RENEW_DB" = "true" ]; then
         STG_DB_NAME_FROM_ENV=$(grep "^DB_NAME=" "$STG_ENV_FILE" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
