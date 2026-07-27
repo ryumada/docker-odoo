@@ -35,6 +35,7 @@ log_info() { log "${COLOR_INFO}" "ℹ️" "$1"; }
 log_success() { log "${COLOR_SUCCESS}" "✅" "$1"; }
 log_warn() { log "${COLOR_WARN}" "⚠️" "$1"; }
 log_error() { log "${COLOR_ERROR}" "❌" "$1"; }
+log_output() { log "${COLOR_RESET}" "" "$1"; }
 # ------------------------------------
 
 error_handler() {
@@ -89,11 +90,11 @@ function promptWhichEnvironment() {
   if [ "$environment" == "" ]; then
     # You need to choose whether there are multiple environments for your deployment
     while true; do
-      printf "Which environment you wish to clone the data to?\n"
-      printf "[1] Development (dev)\n"
-      printf "[2] Staging (stg)\n"
-      printf "[3] Testing (tst)\n"
-      printf "[4] Other\n\n"
+      log_output "Which environment you wish to clone the data to?\n"
+      log_output "[1] Development (dev)\n"
+      log_output "[2] Staging (stg)\n"
+      log_output "[3] Testing (tst)\n"
+      log_output "[4] Other\n\n"
       read -rp "Enter the number 1 - 4: " input_env
 
       if [[ ! "$input_env" =~ ^[1-9]+$ ]]; then
@@ -159,7 +160,7 @@ function get_next_prefix() {
   fi
 
   # Output formatted with leading zeros
-  printf "%03d" "$next_count"
+  log_output "%03d" "$next_count"
 }
 
 function promptClonedDBName() {
