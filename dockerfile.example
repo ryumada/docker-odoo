@@ -89,12 +89,12 @@ USER odoo
 WORKDIR /opt/odoo
 ARG PIP_ADDITIONAL_PACKAGES
 RUN export MAKEFLAGS="-j $(nproc)"; \
+    pip install --upgrade pip; \
     if [ -n "$PIP_ADDITIONAL_PACKAGES" ]; then \
         echo "$PIP_ADDITIONAL_PACKAGES" | tr ' ' '\n' > /tmp/pip-constraint.txt; \
         export PIP_CONSTRAINT=/tmp/pip-constraint.txt; \
         pip install $PIP_ADDITIONAL_PACKAGES; \
     fi; \
-    pip install --upgrade pip; \
     pip install -r ./requirements.txt
 
 # Switch back to root for further setup
