@@ -20,11 +20,13 @@ function trigger_registry_reload() {
   cd "$workdir" || { log_error "Failed to change to repository root. Cannot reload registry."; return 1; }
 
   # Execute the utility inside the container
-  if ! docker compose exec -T odoo odoo-registry-reload "$db_name"; then
+  if ! docker compose exec odoo odoo-registry-reload "$db_name"; then
+    printf "\r\n"
     log_error "Failed to reload registry. The application might not work correctly until a restart or module upgrade. You might need to rebuild your Odoo image for the 'odoo-registry-reload' script to be available."
     cd "$original_dir" || true # Attempt to return to original directory
     return 1
   else
+    printf "\r\n"
     log_success "Registry reloaded successfully."
     cd "$original_dir" || true # Attempt to return to original directory
     return 0
