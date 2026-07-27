@@ -125,7 +125,7 @@ function main() {
 
   # Create sudoers file for the user who ran the script, if they are not 'devops' or 'root'
   local logged_in_user
-  logged_in_user=$(logname)
+  logged_in_user="${SUDO_USER:-${REPOSITORY_OWNER:-$(id -un)}}"
   if [ "$logged_in_user" != "root" ] && [ "$logged_in_user" != "devops" ]; then
     create_sudoers_file "$logged_in_user" "scripts" "git_addons_updater"
     create_sudoers_file "$logged_in_user" "scripts" "git_odoo-base_updater"
