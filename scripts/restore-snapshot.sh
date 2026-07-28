@@ -145,6 +145,26 @@ function run_psql() {
 }
 
 function restoreOdooData() {
+  # Locate extracted backupdata zip file inside tar structure
+  local extracted_zip
+  extracted_zip=$(find "$TEMP_DIR/tmp" -name "backupdata-$SERVICE_NAME.zip" -print 2>/dev/null | head -n 1)
+
+  if [ -n "$extracted_zip" ]; then
+    log_info "Found bundled backup data: $extracted_zip"
+    cp -f "$extracted_zip" "/tmp/backupdata-$SERVICE_NAME.zip"
+
+    if [ -f "$PATH_TO_ODOO/scripts/restore_backupdata-$SERVICE_NAME" ]; then
+      log_info "Running restore_backupdata script..."
+      "$PATH_TO_ODOO/scripts/restore_backupdata-$SERVICE_NAME"
+    elif [ -f "$PATH_TO_ODOO/scripts/restore_backupdata_manual-$SERVICE_NAME" ]; then
+      log_info "Running restore_backupdata_manual script..."
+      "$PATH_TO_ODOO/scripts/restore_backupdata_manual-$SERVICE_NAME"
+    else
+      log_warn "restore_backupdata script not found. Zip file is placed at /tmp/backupdata-$SERVICE_NAME.zip for manual restore."
+    fi
+    return 0
+  fi
+
   # Discover database name from filestore path structure inside tar
   # Path in tar: var/lib/odoo/$SERVICE_NAME/filestore/[DB_NAME]
   local filestore_base_in_tar="$TEMP_DIR/var/lib/odoo/$SERVICE_NAME/filestore"

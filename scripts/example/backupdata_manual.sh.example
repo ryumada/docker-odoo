@@ -189,14 +189,68 @@ function generate_manifest() {
   "
 
   if ! run_psql -d "$db_name" -t -A -c "$MANIFEST_SQL" > "$target_file" 2>/dev/null; then
-    log_warn "Could not query database for manifest. Falling back to basic manifest."
+    log_warn "Could not query database for manifest. Falling back to dynamic manifest from release.py."
+
+    local ODOO_BASE_DIR_PATH
+    ODOO_BASE_DIR_PATH=$(find "$PATH_TO_ODOO/odoo-base" -mindepth 1 -maxdepth 1 -type d -print -quit 2>/dev/null || true)
+    local RELEASE_PY_FILE=""
+    if [ -n "$ODOO_BASE_DIR_PATH" ] && [ -f "$ODOO_BASE_DIR_PATH/odoo/release.py" ]; then
+      RELEASE_PY_FILE="$ODOO_BASE_DIR_PATH/odoo/release.py"
+    else
+      RELEASE_PY_FILE=$(find "$PATH_TO_ODOO/odoo-base" "$PATH_TO_ODOO/odoo" -name "release.py" -path "*/odoo/release.py" 2>/dev/null | head -n 1 || true)
+    fi
+
+    local MANIFEST_VERSION="16.0"
+    local MANIFEST_MAJOR_VERSION="16"
+    local MANIFEST_VERSION_INFO='[16, 0, 0, "final", 0, ""]'
+
+    if [ -n "$RELEASE_PY_FILE" ] && [ -f "$RELEASE_PY_FILE" ] && command -v python3 >/dev/null 2>&1; then
+      local VERSION_JSON
+      VERSION_JSON=$(python3 -c '
+import sys, json, ast
+try:
+    with open(sys.argv[1], "r") as f:
+        tree = ast.parse(f.read())
+    version = "16.0"
+    version_info = [16, 0, 0, "final", 0, ""]
+    major_version = "16"
+    for node in tree.body:
+        if isinstance(node, ast.Assign):
+            for target in node.targets:
+                if isinstance(target, ast.Name):
+                    if target.id == "version" and isinstance(node.value, ast.Constant):
+                        version = str(node.value.value)
+                    elif target.id in ("major_version", "series", "serie") and isinstance(node.value, ast.Constant):
+                        major_version = str(node.value.value)
+                    elif target.id == "version_info" and isinstance(node.value, ast.Tuple):
+                        version_info = [
+                            elt.value if isinstance(elt, ast.Constant)
+                            else (elt.id.lower() if isinstance(elt, ast.Name) else str(elt))
+                            for elt in node.value.elts
+                        ]
+    print(json.dumps({"version": version, "version_info": version_info, "major_version": major_version}))
+except Exception:
+    print(json.dumps({"version": "16.0", "version_info": [16, 0, 0, "final", 0, ""], "major_version": "16"}))
+' "$RELEASE_PY_FILE" 2>/dev/null || true)
+
+      if [ -n "$VERSION_JSON" ]; then
+        local EXTRACTED_V EXTRACTED_MV EXTRACTED_VI
+        EXTRACTED_V=$(echo "$VERSION_JSON" | python3 -c 'import sys, json; print(json.load(sys.stdin).get("version", ""))' 2>/dev/null || true)
+        EXTRACTED_MV=$(echo "$VERSION_JSON" | python3 -c 'import sys, json; print(json.load(sys.stdin).get("major_version", ""))' 2>/dev/null || true)
+        EXTRACTED_VI=$(echo "$VERSION_JSON" | python3 -c 'import sys, json; print(json.dumps(json.load(sys.stdin).get("version_info", [])))' 2>/dev/null || true)
+        [ -n "$EXTRACTED_V" ] && MANIFEST_VERSION="$EXTRACTED_V"
+        [ -n "$EXTRACTED_MV" ] && MANIFEST_MAJOR_VERSION="$EXTRACTED_MV"
+        [ -n "$EXTRACTED_VI" ] && [ "$EXTRACTED_VI" != "[]" ] && MANIFEST_VERSION_INFO="$EXTRACTED_VI"
+      fi
+    fi
+
     cat <<EOF > "$target_file"
 {
     "odoo_dump": "1",
     "db_name": "$db_name",
-    "version": "16.0",
-    "version_info": [16, 0, 0, "final", 0, ""],
-    "major_version": "16",
+    "version": "$MANIFEST_VERSION",
+    "version_info": $MANIFEST_VERSION_INFO,
+    "major_version": "$MANIFEST_MAJOR_VERSION",
     "modules": {}
 }
 EOF

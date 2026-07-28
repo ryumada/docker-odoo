@@ -169,6 +169,30 @@ function main() {
     fi
   fi
 
+  if zip --version > /dev/null 2>&1; then
+    log_success "zip is already installed"
+  else
+    log_info "Install zip"
+    if sudo apt install zip -y; then
+      log_success "zip is installed"
+    else
+      log_error "Failed to install zip"
+      exit 1
+    fi
+  fi
+
+  if zip --version > /dev/null 2>&1; then
+    log_success "zip is already installed"
+  else
+    log_info "Install zip"
+    if sudo apt install zip -y; then
+      log_success "zip is installed"
+    else
+      log_error "Failed to install zip"
+      exit 1
+    fi
+  fi
+
   log_info "Install the logrotate utility"
   cat << EOF | sudo tee "$HOME/snapshot-$SERVICE_NAME" > /dev/null
 /var/log/odoo/_utilities/snapshot-$SERVICE_NAME.log {

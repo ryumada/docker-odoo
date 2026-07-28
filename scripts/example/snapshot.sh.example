@@ -173,13 +173,19 @@ function main() {
       exit 1
   fi
 
+  ZIP_FILE_NAME="backupdata-$SERVICE_NAME.zip"
+  ZIP_STAGING_DIR="/tmp/backupdata_staging_$SERVICE_NAME"
+  BACKUPDATA_ZIP_PATH="/tmp/$ZIP_FILE_NAME"
   SQL_DUMP_FILE=""
   GIT_HASHES_FILE=""
 
   cleanup_temp_files() {
       local exit_code=$?
-      if [[ -n "$SQL_DUMP_FILE" && -f "$SQL_DUMP_FILE" ]]; then
-          rm -f "$SQL_DUMP_FILE"
+      if [[ -n "$ZIP_STAGING_DIR" && -d "$ZIP_STAGING_DIR" ]]; then
+          rm -rf "$ZIP_STAGING_DIR"
+      fi
+      if [[ -n "$BACKUPDATA_ZIP_PATH" && -f "$BACKUPDATA_ZIP_PATH" ]]; then
+          rm -f "$BACKUPDATA_ZIP_PATH"
       fi
       if [[ -n "$GIT_HASHES_FILE" && -f "$GIT_HASHES_FILE" ]]; then
           rm -f "$GIT_HASHES_FILE"
@@ -226,12 +232,116 @@ function main() {
     exit 1
   fi
 
+  if ! command -v zstd >/dev/null 2>&1; then
+    log_error "zstd is not installed. Please install zstd first."
+    echo "For Ubuntu: sudo apt install zstd"
+    echo "For CentOS: sudo yum install zstd"
+    exit 1
+  fi
+
+  if ! command -v zip >/dev/null 2>&1; then
+    log_error "zip is not installed. Please install zip first."
+    echo "For Ubuntu: sudo apt install zip"
+    echo "For CentOS: sudo yum install zip"
+    exit 1
+  fi
+
+  # --- Dynamic Odoo Version Extraction & Staging ---
+  rm -rf "$ZIP_STAGING_DIR" "$BACKUPDATA_ZIP_PATH"
+  mkdir -p "$ZIP_STAGING_DIR"
+
+  log_info "Dumping $ODOO_DATABASE_NAME_PRD database to staging dump.sql..."
+  if ! run_pg_dump --no-owner "$ODOO_DATABASE_NAME_PRD" > "$ZIP_STAGING_DIR/dump.sql"; then
+    log_error "pg_dump failed."
+    exit 1
+  fi
+
+  ODOO_BASE_DIR_PATH=$(find "$PATH_TO_ODOO/odoo-base" -mindepth 1 -maxdepth 1 -type d -print -quit 2>/dev/null || true)
+  RELEASE_PY_FILE=""
+  if [ -n "$ODOO_BASE_DIR_PATH" ] && [ -f "$ODOO_BASE_DIR_PATH/odoo/release.py" ]; then
+    RELEASE_PY_FILE="$ODOO_BASE_DIR_PATH/odoo/release.py"
+  else
+    RELEASE_PY_FILE=$(find "$PATH_TO_ODOO/odoo-base" "$PATH_TO_ODOO/odoo" -name "release.py" -path "*/odoo/release.py" 2>/dev/null | head -n 1 || true)
+  fi
+
+  MANIFEST_VERSION="16.0"
+  MANIFEST_MAJOR_VERSION="16"
+  MANIFEST_VERSION_INFO='[16, 0, 0, "final", 0, ""]'
+
+  if [ -n "$RELEASE_PY_FILE" ] && [ -f "$RELEASE_PY_FILE" ] && command -v python3 >/dev/null 2>&1; then
+    VERSION_JSON=$(python3 -c '
+import sys, json, ast
+try:
+    with open(sys.argv[1], "r") as f:
+        tree = ast.parse(f.read())
+    version = "16.0"
+    version_info = [16, 0, 0, "final", 0, ""]
+    major_version = "16"
+    for node in tree.body:
+        if isinstance(node, ast.Assign):
+            for target in node.targets:
+                if isinstance(target, ast.Name):
+                    if target.id == "version" and isinstance(node.value, ast.Constant):
+                        version = str(node.value.value)
+                    elif target.id in ("major_version", "series", "serie") and isinstance(node.value, ast.Constant):
+                        major_version = str(node.value.value)
+                    elif target.id == "version_info" and isinstance(node.value, ast.Tuple):
+                        version_info = [
+                            elt.value if isinstance(elt, ast.Constant)
+                            else (elt.id.lower() if isinstance(elt, ast.Name) else str(elt))
+                            for elt in node.value.elts
+                        ]
+    print(json.dumps({"version": version, "version_info": version_info, "major_version": major_version}))
+except Exception:
+    print(json.dumps({"version": "16.0", "version_info": [16, 0, 0, "final", 0, ""], "major_version": "16"}))
+' "$RELEASE_PY_FILE" 2>/dev/null || true)
+
+    if [ -n "$VERSION_JSON" ]; then
+      EXTRACTED_V=$(echo "$VERSION_JSON" | python3 -c 'import sys, json; print(json.load(sys.stdin).get("version", ""))' 2>/dev/null || true)
+      EXTRACTED_MV=$(echo "$VERSION_JSON" | python3 -c 'import sys, json; print(json.load(sys.stdin).get("major_version", ""))' 2>/dev/null || true)
+      EXTRACTED_VI=$(echo "$VERSION_JSON" | python3 -c 'import sys, json; print(json.dumps(json.load(sys.stdin).get("version_info", [])))' 2>/dev/null || true)
+      [ -n "$EXTRACTED_V" ] && MANIFEST_VERSION="$EXTRACTED_V"
+      [ -n "$EXTRACTED_MV" ] && MANIFEST_MAJOR_VERSION="$EXTRACTED_MV"
+      [ -n "$EXTRACTED_VI" ] && [ "$EXTRACTED_VI" != "[]" ] && MANIFEST_VERSION_INFO="$EXTRACTED_VI"
+    fi
+  fi
+
+  log_info "Generating manifest.json for backup bundle (Odoo version: $MANIFEST_VERSION)..."
+  cat <<EOF > "$ZIP_STAGING_DIR/manifest.json"
+{
+    "odoo_dump": "1",
+    "db_name": "$ODOO_DATABASE_NAME_PRD",
+    "version": "$MANIFEST_VERSION",
+    "version_info": $MANIFEST_VERSION_INFO,
+    "major_version": "$MANIFEST_MAJOR_VERSION",
+    "modules": {}
+}
+EOF
+
+  ODOO_FILESTORE_PATH="/var/lib/odoo/$SERVICE_NAME/filestore/$ODOO_DATABASE_NAME_PRD"
+  if [ -d "$ODOO_FILESTORE_PATH" ]; then
+    log_info "Copying filestore to staging..."
+    cp -r "$ODOO_FILESTORE_PATH" "$ZIP_STAGING_DIR/filestore"
+  else
+    log_warn "Filestore path not found: $ODOO_FILESTORE_PATH"
+  fi
+
+  log_info "Creating $ZIP_FILE_NAME..."
+  if [ -d "$ZIP_STAGING_DIR/filestore" ]; then
+    (cd "$ZIP_STAGING_DIR" && zip -r -q "$BACKUPDATA_ZIP_PATH" dump.sql manifest.json filestore)
+  else
+    (cd "$ZIP_STAGING_DIR" && zip -r -q "$BACKUPDATA_ZIP_PATH" dump.sql manifest.json)
+  fi
+
+  # Clean up staging directory after zipping
+  rm -rf "$ZIP_STAGING_DIR"
+
   ## This variable below to define the new variable (DON'T EDIT)
   # Use array for files
   files_dirs_to_tar=()
 
-  ## Add Directory (ADD MORE VARIABLE TO ADD NEW DIRECTORY for the archive by uncommenting and adding.)
-  # files_dirs_to_tar+=("enter_path_to_directory")
+  # Include bundled backup data ZIP
+  files_dirs_to_tar+=("$BACKUPDATA_ZIP_PATH")
 
   # Generate Git Hashes to a temporary file
   GIT_HASHES_FILE=$(mktemp --tmpdir "git_hashes_XXXXXX.txt")
@@ -241,13 +351,6 @@ function main() {
   writeGitHash "$PATH_TO_ODOO/odoo-base" "$GIT_HASHES_FILE"
 
   files_dirs_to_tar+=("$GIT_HASHES_FILE")
-
-  ## Add the additional odoo module directory that don't use git (uncomment and add the path of the directory)
-  # files_dirs_to_tar+=("git/enter_additional_git_odoo_module_directory")
-
-  ## Make sure that the datadir location is correct (enter the correct one)
-  files_dirs_to_tar+=("/var/lib/odoo/$SERVICE_NAME/filestore/$ODOO_DATABASE_NAME_PRD")
-
 
   # Add custom directories if defined
   if [ -n "$SNAPSHOT_CUSTOM_DIRS" ]; then
@@ -278,17 +381,6 @@ function main() {
   files_dirs_to_tar+=("$PATH_TO_ODOO/.env")
   files_dirs_to_tar+=("$PATH_TO_ODOO/requirements.txt")
 
-  # Use secure temp file for SQL dump
-  SQL_DUMP_FILE=$(mktemp --tmpdir "${ODOO_DATABASE_NAME_PRD}_XXXXXX.sql")
-  files_dirs_to_tar+=("$SQL_DUMP_FILE")
-
-  # The trap function cleanup_temp_files handles cleanup securely
-
-  # These files not backupped to the snapshot file
-  ## crontab or /etc/cron.d directory is the place where docker-odoo cron jobs are stored.
-  ## /etc/nginx/sites-available is the place where nginx configuration files are stored.
-  ## /etc/logrotate.d is the place where logrotate configuration files are stored.
-
   if [ -f "$PATH_TO_ODOO/scripts/backupdata-$SERVICE_NAME" ]; then
     files_dirs_to_tar+=("$PATH_TO_ODOO/scripts/backupdata-$SERVICE_NAME")
   fi
@@ -299,20 +391,6 @@ function main() {
 
   if [ -f "$PATH_TO_ODOO/scripts/snapshot-$SERVICE_NAME" ]; then
     files_dirs_to_tar+=("$PATH_TO_ODOO/scripts/snapshot-$SERVICE_NAME")
-  fi
-
-  if ! command -v zstd >/dev/null 2>&1; then
-    log_error "zstd is not installed. Please install zstd first."
-    echo "For Ubuntu: sudo apt install zstd"
-    echo "For CentOS: sudo yum install zstd"
-    exit 1
-  fi
-
-  log_info "Dumping $ODOO_DATABASE_NAME_PRD database to $SQL_DUMP_FILE..."
-  # Use the secure temp file
-  if ! run_pg_dump --no-owner "$ODOO_DATABASE_NAME_PRD" > "$SQL_DUMP_FILE"; then
-    log_error "pg_dump failed to dump the database."
-    exit 1
   fi
 
   log_info "Backing up the database and its datadir..."
