@@ -1076,10 +1076,23 @@ function prepareOdooSources() {
     checkGitRepositories "$GIT_DIR"
   fi
 
-  if isSubDirectoryExists "$ODOO_BASE_DIR" "Please clone your odoo-base repository inside the odoo-base directory" "" "only-one"; then
+  local available_deployments
+  available_deployments=$(grep "^AVAILABLE_DEPLOYMENTS=" "$PATH_TO_ODOO/.env" 2>/dev/null | cut -d '=' -f2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//')
+
+  local only_one_arg="only-one"
+  if [ -n "$available_deployments" ]; then
+    only_one_arg=""
+  fi
+
+  if isSubDirectoryExists "$ODOO_BASE_DIR" "Please clone your odoo-base repository inside the odoo-base directory" "" "$only_one_arg"; then
     checkGitRepositories "$ODOO_BASE_DIR"
 
-    ODOO_BASE_DIRECTORY=$(find $ODOO_BASE_DIR -mindepth 1 -maxdepth 1 -type d -print -quit)
+    ACTIVE_BASE_PATH=$(grep "^ACTIVE_ODOO_BASE_PATH=" "$PATH_TO_ODOO/.env" 2>/dev/null | cut -d '=' -f2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//')
+    if [ -n "$ACTIVE_BASE_PATH" ] && [ -d "$PATH_TO_ODOO/$ACTIVE_BASE_PATH" ]; then
+      ODOO_BASE_DIRECTORY="$PATH_TO_ODOO/$ACTIVE_BASE_PATH"
+    else
+      ODOO_BASE_DIRECTORY=$(find $ODOO_BASE_DIR -mindepth 1 -maxdepth 1 -type d -print -quit)
+    fi
 
     log_info "Add execute permission to odoo-bin binary"
     chmod +x "$ODOO_BASE_DIRECTORY"/odoo-bin

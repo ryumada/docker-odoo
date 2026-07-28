@@ -256,7 +256,12 @@ function main() {
     exit 1
   fi
 
-  ODOO_BASE_DIR_PATH=$(find "$PATH_TO_ODOO/odoo-base" -mindepth 1 -maxdepth 1 -type d -print -quit 2>/dev/null || true)
+  ACTIVE_BASE_PATH=$(grep "^ACTIVE_ODOO_BASE_PATH=" "$PATH_TO_ODOO/.env" 2>/dev/null | cut -d '=' -f2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//')
+  if [ -n "$ACTIVE_BASE_PATH" ] && [ -d "$PATH_TO_ODOO/$ACTIVE_BASE_PATH" ]; then
+    ODOO_BASE_DIR_PATH="$PATH_TO_ODOO/$ACTIVE_BASE_PATH"
+  else
+    ODOO_BASE_DIR_PATH=$(find "$PATH_TO_ODOO/odoo-base" -mindepth 1 -maxdepth 1 -type d -print -quit 2>/dev/null || true)
+  fi
   RELEASE_PY_FILE=""
   if [ -n "$ODOO_BASE_DIR_PATH" ] && [ -f "$ODOO_BASE_DIR_PATH/odoo/release.py" ]; then
     RELEASE_PY_FILE="$ODOO_BASE_DIR_PATH/odoo/release.py"
