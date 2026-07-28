@@ -41,7 +41,8 @@ function run_pg_dump() {
   if [ -n "$db_host" ] && [ "$db_host" != "localhost" ]; then
     local db_port db_user db_pass docker_net net
     db_port=$(grep "^DB_PORT=" "$env_file" 2>/dev/null | cut -d "=" -f 2 | sed 's/^[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^[""'\\']//;s/[""'\\']$//')
-    db_user=$(cat "$(dirname "$env_file")/.secrets/db_user" 2>/dev/null || true)
+    db_user=$(grep "^ACTIVE_DB_USER=" "$env_file" 2>/dev/null | cut -d '=' -f2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//')
+    [ -z "$db_user" ] && db_user=$(cat "$(dirname "$env_file")/.secrets/db_user" 2>/dev/null || true)
     db_pass=$(cat "$(dirname "$env_file")/.secrets/db_password" 2>/dev/null || true)
     docker_net=$(grep "^DOCKER_NETWORK_MODE=" "$env_file" 2>/dev/null | cut -d "=" -f 2 | sed 's/^[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^[""'\\']//;s/[""'\\']$//')
     [ -z "$db_port" ] && db_port="5432"

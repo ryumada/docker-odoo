@@ -143,6 +143,14 @@ function main() {
     fi
   fi
 
+  BYPASS_SNAPSHOT=false
+  for arg in "$@"; do
+    if [ "$arg" == "--bypass-snapshot" ] || [ "$arg" == "bypass-snapshot" ] || [ "$arg" == "-b" ]; then
+      BYPASS_SNAPSHOT=true
+      log_warn "Bypassing snapshot execution and pre-uninstallation backup verification."
+    fi
+  done
+
   # DB user secret
   if [ ! -f "$DB_USER_SECRET" ]; then
     die "DB user secret not found: $DB_USER_SECRET"
@@ -152,10 +160,30 @@ function main() {
     die "DB user secret is empty: $DB_USER_SECRET"
   fi
 
-  DATABASE_COUNT=$(sudo -u postgres psql -tAc "SELECT COUNT(*) FROM pg_database WHERE datdba=(SELECT usesysid FROM pg_user WHERE usename='$DB_USER');")
-  if [ "$DATABASE_COUNT" -gt 1 ]; then
-    log_error "The postgres user '$DB_USER' has multiple databases. Uninstallation is prohibited."
-    die "Please remove the databases manually and leave one, then try running this script again."
+  # Backup verification per deployment
+  if [ "$BYPASS_SNAPSHOT" = "false" ]; then
+    AVAILABLE_DEPLOYMENTS=$(grep "^AVAILABLE_DEPLOYMENTS=" "$PATH_TO_ODOO/.env" 2>/dev/null | cut -d '=' -f2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//')
+    if [ -n "$AVAILABLE_DEPLOYMENTS" ]; then
+      IFS=';' read -ra DEP_ARR <<< "$AVAILABLE_DEPLOYMENTS"
+      MISSING_BACKUPS=()
+      for dep in "${DEP_ARR[@]}"; do
+        if ! ls /tmp/backupdata_*${dep}* /tmp/snapshot_*${dep}* /tmp/backupdata_* /tmp/snapshot_* >/dev/null 2>&1; then
+          MISSING_BACKUPS+=("$dep")
+        fi
+      done
+
+      if [ ${#MISSING_BACKUPS[@]} -gt 0 ]; then
+        log_error "Backup files in /tmp/ are missing for deployment(s): ${MISSING_BACKUPS[*]}"
+        log_info "To complete uninstallation safely:"
+        for dep in "${MISSING_BACKUPS[@]}"; do
+          log_info "  1. Switch environment: sudo ./scripts/switch_env.sh $dep"
+          log_info "  2. Run backup: sudo ./scripts/backupdata-$SERVICE_NAME (or ./scripts/snapshot-$SERVICE_NAME)"
+          log_info "  3. Ensure the backup file is placed in /tmp/"
+        done
+        log_warn "Alternatively, pass --bypass-snapshot to force uninstallation without backups."
+        die "Uninstallation aborted: Missing backup files in /tmp/."
+      fi
+    fi
   fi
 
   areYouReallySure "yes"
@@ -167,13 +195,14 @@ function main() {
   areYouReallySure "yes, remove $SERVICE_NAME deployment permanently and all its data"
   echo
 
-  if [ -x "$SNAPSHOT_SCRIPT_FILE" ]; then
-    if ! "$SNAPSHOT_SCRIPT_FILE"; then
-      die "The snapshot script failed. Uninstallation is prohibited. Please create the snapshot script first"
+  if [ "$BYPASS_SNAPSHOT" = "false" ]; then
+    if [ -x "$SNAPSHOT_SCRIPT_FILE" ]; then
+      if ! "$SNAPSHOT_SCRIPT_FILE"; then
+        die "The snapshot script failed. Uninstallation is prohibited. Please create the snapshot script first"
+      fi
+    else
+      log_warn "The snapshot script is missing or not executable: $SNAPSHOT_SCRIPT_FILE. Ensure backups exist in /tmp/."
     fi
-  else
-    log_error "The snapshot script is missing or not executable: $SNAPSHOT_SCRIPT_FILE"
-    die "Uninstallation is prohibited. Please ensure snapshot is created."
   fi
 
   cd "$PATH_TO_ODOO"
@@ -182,63 +211,45 @@ function main() {
 
   log_info "Start to remove Odoo deployment..."
 
-  DB_NAME="$(sudo -u postgres psql -tc "SELECT datname FROM pg_database WHERE datdba=(SELECT usesysid FROM pg_user WHERE usename='$DB_USER')" | awk '{print $1}')"
-  if [ -z "${DB_NAME:-}" ]; then
-    die "Could not determine database name for user '$DB_USER'"
-  fi
-  log_info "Removing the database: $DB_NAME"
-  sudo -u postgres dropdb "$DB_NAME"
+  # Collect all DB Users (base DB_USER, ACTIVE_DB_USER, and AVAILABLE_DB_USERS)
+  DB_USERS_TO_CLEAN=("$DB_USER")
+  ACTIVE_DB_USER=$(grep "^ACTIVE_DB_USER=" "$PATH_TO_ODOO/.env" 2>/dev/null | cut -d '=' -f2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//')
+  [ -n "$ACTIVE_DB_USER" ] && DB_USERS_TO_CLEAN+=("$ACTIVE_DB_USER")
 
-  log_info "Removing the datadir: $ODOO_DATADIR_SERVICE"
-  rm -rf "$ODOO_DATADIR_SERVICE"
-
-  log_info "Removing the logdir: $ODOO_LOG_DIR_SERVICE"
-  rm -rf "$ODOO_LOG_DIR_SERVICE"
-
-  if [ -f "$BACKUPDATA_SCRIPT_FILE" ]; then
-    log_info "Removing the backup script: $BACKUPDATA_SCRIPT_FILE"
-    rm -f -- "$BACKUPDATA_SCRIPT_FILE"
-
-    BACKUPDATA_SCRIPT_SOFTLINK_FILE="/usr/local/sbin/backupdata-$SERVICE_NAME"
-    log_info "Removing the soft-link: $BACKUPDATA_SCRIPT_SOFTLINK_FILE"
-    rm -f -- "$BACKUPDATA_SCRIPT_SOFTLINK_FILE"
+  AVAILABLE_DB_USERS=$(grep "^AVAILABLE_DB_USERS=" "$PATH_TO_ODOO/.env" 2>/dev/null | cut -d '=' -f2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//')
+  if [ -n "$AVAILABLE_DB_USERS" ]; then
+    IFS=';' read -ra DB_USER_ARR <<< "$AVAILABLE_DB_USERS"
+    for item in "${DB_USER_ARR[@]}"; do
+      if [[ "$item" =~ ^[^:]+:(.*) ]]; then
+        DB_USERS_TO_CLEAN+=("${BASH_REMATCH[1]}")
+      fi
+    done
   fi
 
-  if [ -f "$DATABASECLONER_SCRIPT_FILE" ]; then
-    log_info "Removing the database cloner script: $DATABASECLONER_SCRIPT_FILE"
-    rm -f -- "$DATABASECLONER_SCRIPT_FILE"
+  for db_u in "${DB_USERS_TO_CLEAN[@]}"; do
+    DBS=$(sudo -u postgres psql -tAc "SELECT datname FROM pg_database WHERE datdba=(SELECT usesysid FROM pg_user WHERE usename='$db_u' LIMIT 1);" 2>/dev/null || true)
+    for db in $DBS; do
+      log_info "Removing database: $db (owner: $db_u)"
+      sudo -u postgres dropdb "$db" || true
+    done
+  done
 
-    DATABASECLONER_SCRIPT_SOFTLINK_FILE="/usr/local/sbin/databasecloner-$SERVICE_NAME"
-    log_info "Removing the soft-link: $DATABASECLONER_SCRIPT_SOFTLINK_FILE"
-    rm -f -- "$DATABASECLONER_SCRIPT_SOFTLINK_FILE"
-  fi
+  log_info "Removing datadirs under /var/lib/odoo/${SERVICE_NAME}*"
+  rm -rf /var/lib/odoo/${SERVICE_NAME} /var/lib/odoo/${SERVICE_NAME}-* 2>/dev/null || true
 
-  if [ -f "$SNAPSHOT_SCRIPT_FILE" ]; then
-    log_info "Removing the snapshot script: $SNAPSHOT_SCRIPT_FILE"
-    rm -f -- "$SNAPSHOT_SCRIPT_FILE"
+  log_info "Removing logdirs under /var/log/odoo/${SERVICE_NAME}*"
+  rm -rf /var/log/odoo/${SERVICE_NAME} /var/log/odoo/${SERVICE_NAME}-* 2>/dev/null || true
 
-    SNAPSHOT_SCRIPT_SOFTLINK_FILE="/usr/local/sbin/snapshot-$SERVICE_NAME"
-    log_info "Removing the soft-link: $SNAPSHOT_SCRIPT_SOFTLINK_FILE"
-    rm -f -- "$SNAPSHOT_SCRIPT_SOFTLINK_FILE"
-  fi
+  log_info "Removing backup/clone/snapshot scripts and soft-links..."
+  rm -f -- "$BACKUPDATA_SCRIPT_FILE" "/usr/local/sbin/backupdata-$SERVICE_NAME" 2>/dev/null || true
+  rm -f -- "$DATABASECLONER_SCRIPT_FILE" "/usr/local/sbin/databasecloner-$SERVICE_NAME" 2>/dev/null || true
+  rm -f -- "$SNAPSHOT_SCRIPT_FILE" "/usr/local/sbin/snapshot-$SERVICE_NAME" 2>/dev/null || true
 
-  if [ -f "$DOCKER_RESTARTOR_SCRIPT_FILE" ]; then
-    log_info "Removing the docker restartor script: $DOCKER_RESTARTOR_SCRIPT_FILE"
-    rm -f -- "$DOCKER_RESTARTOR_SCRIPT_FILE"
-
-    DOCKER_RESTARTOR_CRON_FILE="/etc/cron.d/restart_$SERVICE_NAME"
-    log_info "Removing the cron file: $DOCKER_RESTARTOR_CRON_FILE"
-    rm -f -- "$DOCKER_RESTARTOR_CRON_FILE"
-
-    DOCKER_RESTARTOR_LOGROTATE_FILE="/etc/logrotate.d/restart_$SERVICE_NAME"
-    log_info "Removing the logrotate: $DOCKER_RESTARTOR_LOGROTATE_FILE"
-    rm -f -- "$DOCKER_RESTARTOR_LOGROTATE_FILE"
-  fi
-
-  if [ -f "$ODOO_LOG_ROTATOR_FILE" ]; then
-    log_info "Removing the Odoo logrotate file: $ODOO_LOG_ROTATOR_FILE"
-    rm -f -- "$ODOO_LOG_ROTATOR_FILE"
-  fi
+  log_info "Removing service scripts, cron jobs, and logrotate files..."
+  rm -f /usr/local/sbin/restart_${SERVICE_NAME}* /usr/local/sbin/restart-${SERVICE_NAME}* 2>/dev/null || true
+  rm -f /etc/cron.d/restart_${SERVICE_NAME}* /etc/cron.d/restart-${SERVICE_NAME}* 2>/dev/null || true
+  rm -f /etc/logrotate.d/restart_${SERVICE_NAME}* /etc/logrotate.d/restart-${SERVICE_NAME}* 2>/dev/null || true
+  rm -f /etc/logrotate.d/${SERVICE_NAME}* 2>/dev/null || true
 
   for FILEPATH_TO_REMOVE in "${FILEPATHS_TO_REMOVE[@]}"; do
     removeWithPrompt "$FILEPATH_TO_REMOVE"

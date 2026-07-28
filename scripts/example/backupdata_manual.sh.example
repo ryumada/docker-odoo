@@ -117,7 +117,8 @@ function run_pg_dump() {
   local db_host=$(grep "^DB_HOST=" "$env_file" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
   if [ -n "$db_host" ] && [ "$db_host" != "localhost" ]; then
     local db_port=$(grep "^DB_PORT=" "$env_file" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
-    local db_user=$(cat "$(dirname "$env_file")/.secrets/db_user" 2>/dev/null || true)
+    local db_user=$(grep "^ACTIVE_DB_USER=" "$env_file" 2>/dev/null | cut -d '=' -f2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//')
+    [ -z "$db_user" ] && db_user=$(cat "$(dirname "$env_file")/.secrets/db_user" 2>/dev/null || true)
     local db_pass=$(cat "$(dirname "$env_file")/.secrets/db_password" 2>/dev/null || true)
     local docker_net=$(grep "^DOCKER_NETWORK_MODE=" "$env_file" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
     [ -z "$db_port" ] && db_port="5432"
@@ -145,7 +146,8 @@ function run_psql() {
   fi
   if [ -n "$db_host" ] && [ "$db_host" != "localhost" ]; then
     local db_port=$(grep "^DB_PORT=" "$env_file" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
-    local db_user=$(cat "$(dirname "$env_file")/.secrets/db_user" 2>/dev/null || true)
+    local db_user=$(grep "^ACTIVE_DB_USER=" "$env_file" 2>/dev/null | cut -d '=' -f2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//')
+    [ -z "$db_user" ] && db_user=$(cat "$(dirname "$env_file")/.secrets/db_user" 2>/dev/null || true)
     local db_pass=$(cat "$(dirname "$env_file")/.secrets/db_password" 2>/dev/null || true)
     local docker_net=$(grep "^DOCKER_NETWORK_MODE=" "$env_file" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
     [ -z "$db_port" ] && db_port="5432"

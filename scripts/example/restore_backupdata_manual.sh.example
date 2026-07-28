@@ -181,7 +181,8 @@ function run_psql() {
   fi
   if [ -n "$db_host" ] && [ "$db_host" != "localhost" ]; then
     local db_port=$(grep "^DB_PORT=" "$env_file" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
-    local db_user=$(cat "$(dirname "$env_file")/.secrets/db_user" 2>/dev/null || true)
+    local db_user=$(grep "^ACTIVE_DB_USER=" "$env_file" 2>/dev/null | cut -d '=' -f2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//')
+    [ -z "$db_user" ] && db_user=$(cat "$(dirname "$env_file")/.secrets/db_user" 2>/dev/null || true)
     local db_pass=$(cat "$(dirname "$env_file")/.secrets/db_password" 2>/dev/null || true)
     local docker_net=$(grep "^DOCKER_NETWORK_MODE=" "$env_file" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
     [ -z "$db_port" ] && db_port="5432"
@@ -198,7 +199,8 @@ function run_pg_dump() {
   local db_host=$(grep "^DB_HOST=" "$env_file" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
   if [ -n "$db_host" ] && [ "$db_host" != "localhost" ]; then
     local db_port=$(grep "^DB_PORT=" "$env_file" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
-    local db_user=$(cat "$(dirname "$env_file")/.secrets/db_user" 2>/dev/null || true)
+    local db_user=$(grep "^ACTIVE_DB_USER=" "$env_file" 2>/dev/null | cut -d '=' -f2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//')
+    [ -z "$db_user" ] && db_user=$(cat "$(dirname "$env_file")/.secrets/db_user" 2>/dev/null || true)
     local db_pass=$(cat "$(dirname "$env_file")/.secrets/db_password" 2>/dev/null || true)
     local docker_net=$(grep "^DOCKER_NETWORK_MODE=" "$env_file" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
     [ -z "$db_port" ] && db_port="5432"
@@ -465,7 +467,8 @@ function main() {
       fi
       log_info "Detected target Odoo Version: ${ODOO_VERSION:-16} (Numeric: $ODOO_VERSION_NUM)"
 
-      DB_USER=$(cat "$(dirname "$PATH_TO_ODOO/.env")/.secrets/db_user" 2>/dev/null || echo "odoo")
+      DB_USER=$(grep "^ACTIVE_DB_USER=" "$PATH_TO_ODOO/.env" 2>/dev/null | cut -d '=' -f2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//')
+      [ -z "$DB_USER" ] && DB_USER=$(cat "$(dirname "$PATH_TO_ODOO/.env")/.secrets/db_user" 2>/dev/null || echo "odoo")
 
       log_info "Dropping old database $RESTORED_DB_NAME (with force)"
       run_psql -d postgres -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '$RESTORED_DB_NAME' AND pid <> pg_backend_pid();" > /dev/null 2>&1 || true

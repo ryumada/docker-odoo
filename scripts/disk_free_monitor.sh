@@ -34,12 +34,15 @@ if [ "$(id -u)" -ne 0 ]; then
     exit 1
 fi
 
-DB_USER_FILE="$PATH_TO_ODOO/.secrets/db_user"
-if [ ! -f "$DB_USER_FILE" ]; then
-    log_error "Database user secret file not found at $DB_USER_FILE"
-    exit 1
+DB_USER=$(grep "^ACTIVE_DB_USER=" "$PATH_TO_ODOO/.env" 2>/dev/null | cut -d '=' -f2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//')
+if [ -z "$DB_USER" ]; then
+    DB_USER_FILE="$PATH_TO_ODOO/.secrets/db_user"
+    if [ ! -f "$DB_USER_FILE" ]; then
+        log_error "Database user secret file not found at $DB_USER_FILE"
+        exit 1
+    fi
+    DB_USER=$(cat "$DB_USER_FILE" | tr -d '[:space:]')
 fi
-DB_USER=$(cat "$DB_USER_FILE" | tr -d '[:space:]')
 
 TARGET_DB="$1"
 if [ -z "$TARGET_DB" ]; then

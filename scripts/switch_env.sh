@@ -122,6 +122,21 @@ if [ -z "$EXTRACTED_BASE_PATH" ]; then
     exit 1
 fi
 
+# Extract target's specific DB User or fallback to odoo_<TARGET_DEPLOYMENT>
+AVAILABLE_DB_USERS=$(grep "^AVAILABLE_DB_USERS=" "$ENV_FILE_PATH" | cut -d "=" -f 2- | sed 's/^["'\''\\]*//; s/["'\''\\]*$//')
+IFS=';' read -ra DB_USER_ARR <<< "$AVAILABLE_DB_USERS"
+EXTRACTED_DB_USER=""
+for item in "${DB_USER_ARR[@]}"; do
+    if [[ "$item" =~ ^${TARGET_DEPLOYMENT}:(.*) ]]; then
+        EXTRACTED_DB_USER="${BASH_REMATCH[1]}"
+        break
+    fi
+done
+
+if [ -z "$EXTRACTED_DB_USER" ]; then
+    EXTRACTED_DB_USER="odoo_${TARGET_DEPLOYMENT}"
+fi
+
 # Verify Odoo base path directory exists on the host
 FULL_BASE_PATH="$PATH_TO_ODOO/$EXTRACTED_BASE_PATH"
 if [ ! -d "$FULL_BASE_PATH" ]; then
@@ -157,10 +172,40 @@ update_env_var() {
 log_info "Stamping deployment variables in .env..."
 update_env_var "ACTIVE_DEPLOYMENT" "$TARGET_DEPLOYMENT"
 update_env_var "ACTIVE_SERVICE_NAME" "${SERVICE_NAME}-${TARGET_DEPLOYMENT}"
+update_env_var "ACTIVE_DB_USER" "$EXTRACTED_DB_USER"
 update_env_var "ACTIVE_ODOO_BASE_PATH" "$EXTRACTED_BASE_PATH"
 update_env_var "ACTIVE_ODOO_BASE_CONTAINER_PATH" "/opt/odoo/odoo-base/active_odoo_base"
 update_env_var "ODOO_LOG_DIR_SERVICE" "/var/log/odoo/${SERVICE_NAME}-${TARGET_DEPLOYMENT}"
 update_env_var "ODOO_DATADIR_SERVICE" "/var/lib/odoo/${SERVICE_NAME}-${TARGET_DEPLOYMENT}"
+
+# Sync deployment-specific secret files (.secrets/db_user_<dep> & .secrets/db_password_<dep>)
+SECRETS_DIR="$PATH_TO_ODOO/.secrets"
+DEP_DB_USER_FILE="$SECRETS_DIR/db_user_${TARGET_DEPLOYMENT}"
+DEP_DB_PASS_FILE="$SECRETS_DIR/db_password_${TARGET_DEPLOYMENT}"
+ACTIVE_DB_USER_FILE="$SECRETS_DIR/db_user"
+ACTIVE_DB_PASS_FILE="$SECRETS_DIR/db_password"
+
+if [ -d "$SECRETS_DIR" ]; then
+    log_info "Syncing deployment secret files for $TARGET_DEPLOYMENT..."
+
+    # User secret
+    if [ -f "$DEP_DB_USER_FILE" ]; then
+        cp "$DEP_DB_USER_FILE" "$ACTIVE_DB_USER_FILE"
+    else
+        echo "$EXTRACTED_DB_USER" > "$ACTIVE_DB_USER_FILE"
+        cp "$ACTIVE_DB_USER_FILE" "$DEP_DB_USER_FILE"
+    fi
+    chown "$REPOSITORY_OWNER:$REPOSITORY_OWNER" "$ACTIVE_DB_USER_FILE" "$DEP_DB_USER_FILE" 2>/dev/null || true
+
+    # Password secret
+    if [ -f "$DEP_DB_PASS_FILE" ]; then
+        cp "$DEP_DB_PASS_FILE" "$ACTIVE_DB_PASS_FILE"
+    elif [ -f "$ACTIVE_DB_PASS_FILE" ]; then
+        cp "$ACTIVE_DB_PASS_FILE" "$DEP_DB_PASS_FILE"
+    fi
+    [ -f "$ACTIVE_DB_PASS_FILE" ] && chown "$REPOSITORY_OWNER:$REPOSITORY_OWNER" "$ACTIVE_DB_PASS_FILE" 2>/dev/null || true
+    [ -f "$DEP_DB_PASS_FILE" ] && chown "$REPOSITORY_OWNER:$REPOSITORY_OWNER" "$DEP_DB_PASS_FILE" 2>/dev/null || true
+fi
 
 # Re-read values for host directory creation
 DATADIR="/var/lib/odoo/${SERVICE_NAME}-${TARGET_DEPLOYMENT}"
