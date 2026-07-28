@@ -113,11 +113,15 @@ function process_repo() {
         old_commit=$(sudo -u "$REPOSITORY_OWNER" git -C "$subdir" rev-parse "$current_branch" 2>/dev/null || true)
 
         log_info "Fetching $repo_name..."
-        if ! sudo -u "$REPOSITORY_OWNER" git -C "$subdir" fetch -q 2>/dev/null; then
+        if ! sudo -u "$REPOSITORY_OWNER" git -C "$subdir" fetch --prune --tags -q 2>/dev/null; then
             log_warn "Failed to fetch $repo_name"
             status="fetch_failed"
             error_message="Failed to fetch updates from remote."
             HAS_ERROR=1
+        elif ! sudo -u "$REPOSITORY_OWNER" git -C "$subdir" symbolic-ref -q HEAD >/dev/null; then
+            log_info "Skipping pull for $repo_name: HEAD is detached (on a tag or commit)."
+            status="not_on_branch"
+            repo_updated=1 # false
         else
             log_info "Pulling updates for $repo_name..."
             local pull_output

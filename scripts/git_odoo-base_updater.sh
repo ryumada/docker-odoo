@@ -75,34 +75,7 @@ function getSubDirectories() {
   echo "$subdirs"
 }
 
-function main() {
-  # Self-elevate to root if not already
-  if [ "$(id -u)" -ne 0 ]; then
-      log_info "Elevating permissions to root..."
-      # shellcheck disable=SC2093
-      exec sudo "$0" "$@" # Re-run the script with sudo
-      log_error "Failed to elevate to root. Please run with sudo." # This will only run if exec fails
-      exit 1
-  fi
 
-  log_info "Change Directory to $PATH_TO_ODOO"
-  if ! cd "$PATH_TO_ODOO"; then
-    log_error "Can't change directory to $PATH_TO_ODOO"
-    exit 1
-  fi
-
-  log_info "Start checking git repositories"
-  GIT_SUBDIRS=$(getSubDirectories "$GIT_PATH")
-
-  if wc -l <<< "$GIT_SUBDIRS" | grep -q "0"; then
-    log_error "No git repositories found in $GIT_PATH"
-    exit 1
-  fi
-
-  if ! wc -l <<< "$GIT_SUBDIRS" | grep -q "1"; then
-    log_warn "Please make sure there is only one git repository in $GIT_PATH"
-    exit 1
-  fi
 
 function process_repo() {
     local subdir=$1
@@ -123,8 +96,10 @@ function process_repo() {
         old_commit=$(sudo -u "$REPOSITORY_OWNER" git -C "$subdir" rev-parse "$current_branch" 2>/dev/null || true)
 
         log_info "Fetching $repo_name..."
-        if ! sudo -u "$REPOSITORY_OWNER" git -C "$subdir" fetch -q 2>/dev/null; then
+        if ! sudo -u "$REPOSITORY_OWNER" git -C "$subdir" fetch --prune --tags -q 2>/dev/null; then
             log_warn "Failed to fetch $repo_name"
+        elif ! sudo -u "$REPOSITORY_OWNER" git -C "$subdir" symbolic-ref -q HEAD >/dev/null; then
+            log_info "Skipping pull for $repo_name: HEAD is detached (on a tag or commit)."
         else
             log_info "Pulling updates for $repo_name..."
             if ! sudo -u "$REPOSITORY_OWNER" git -C "$subdir" pull -q 2>/dev/null; then
