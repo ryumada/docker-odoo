@@ -122,8 +122,8 @@ if [ -z "$EXTRACTED_BASE_PATH" ]; then
     exit 1
 fi
 
-# Automatically define DB user by target deployment name
-EXTRACTED_DB_USER="${TARGET_DEPLOYMENT}"
+# Automatically define DB user by service name and target deployment name
+EXTRACTED_DB_USER="${SERVICE_NAME}_${TARGET_DEPLOYMENT}"
 
 # Verify Odoo base path directory exists on the host
 FULL_BASE_PATH="$PATH_TO_ODOO/odoo-base/$EXTRACTED_BASE_PATH"

@@ -220,7 +220,7 @@ function main() {
   if [ -n "$AVAILABLE_DEPLOYMENTS" ]; then
     IFS=';' read -ra DEP_ARR <<< "$AVAILABLE_DEPLOYMENTS"
     for dep in "${DEP_ARR[@]}"; do
-      DB_USERS_TO_CLEAN+=("${dep}")
+      DB_USERS_TO_CLEAN+=("${SERVICE_NAME}_${dep}")
     done
   fi
 
