@@ -138,7 +138,7 @@ if [ -z "$EXTRACTED_DB_USER" ]; then
 fi
 
 # Verify Odoo base path directory exists on the host
-FULL_BASE_PATH="$PATH_TO_ODOO/$EXTRACTED_BASE_PATH"
+FULL_BASE_PATH="$PATH_TO_ODOO/odoo-base/$EXTRACTED_BASE_PATH"
 if [ ! -d "$FULL_BASE_PATH" ]; then
     log_error "Target base directory does not exist: $FULL_BASE_PATH"
     exit 1
