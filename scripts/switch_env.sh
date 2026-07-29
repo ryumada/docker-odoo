@@ -122,20 +122,8 @@ if [ -z "$EXTRACTED_BASE_PATH" ]; then
     exit 1
 fi
 
-# Extract target's specific DB User or fallback to odoo_<TARGET_DEPLOYMENT>
-AVAILABLE_DB_USERS=$(grep "^AVAILABLE_DB_USERS=" "$ENV_FILE_PATH" | cut -d "=" -f 2- | sed 's/^["'\''\\]*//; s/["'\''\\]*$//')
-IFS=';' read -ra DB_USER_ARR <<< "$AVAILABLE_DB_USERS"
-EXTRACTED_DB_USER=""
-for item in "${DB_USER_ARR[@]}"; do
-    if [[ "$item" =~ ^${TARGET_DEPLOYMENT}:(.*) ]]; then
-        EXTRACTED_DB_USER="${BASH_REMATCH[1]}"
-        break
-    fi
-done
-
-if [ -z "$EXTRACTED_DB_USER" ]; then
-    EXTRACTED_DB_USER="odoo_${TARGET_DEPLOYMENT}"
-fi
+# Automatically define DB user by target deployment name
+EXTRACTED_DB_USER="${TARGET_DEPLOYMENT}"
 
 # Verify Odoo base path directory exists on the host
 FULL_BASE_PATH="$PATH_TO_ODOO/odoo-base/$EXTRACTED_BASE_PATH"

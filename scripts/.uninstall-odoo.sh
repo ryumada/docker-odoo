@@ -211,18 +211,16 @@ function main() {
 
   log_info "Start to remove Odoo deployment..."
 
-  # Collect all DB Users (base DB_USER, ACTIVE_DB_USER, and AVAILABLE_DB_USERS)
+  # Collect all DB Users (base DB_USER, ACTIVE_DB_USER, and deployment DB users)
   DB_USERS_TO_CLEAN=("$DB_USER")
   ACTIVE_DB_USER=$(grep "^ACTIVE_DB_USER=" "$PATH_TO_ODOO/.env" 2>/dev/null | cut -d '=' -f2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//')
   [ -n "$ACTIVE_DB_USER" ] && DB_USERS_TO_CLEAN+=("$ACTIVE_DB_USER")
 
-  AVAILABLE_DB_USERS=$(grep "^AVAILABLE_DB_USERS=" "$PATH_TO_ODOO/.env" 2>/dev/null | cut -d '=' -f2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//')
-  if [ -n "$AVAILABLE_DB_USERS" ]; then
-    IFS=';' read -ra DB_USER_ARR <<< "$AVAILABLE_DB_USERS"
-    for item in "${DB_USER_ARR[@]}"; do
-      if [[ "$item" =~ ^[^:]+:(.*) ]]; then
-        DB_USERS_TO_CLEAN+=("${BASH_REMATCH[1]}")
-      fi
+  AVAILABLE_DEPLOYMENTS=$(grep "^AVAILABLE_DEPLOYMENTS=" "$PATH_TO_ODOO/.env" 2>/dev/null | cut -d '=' -f2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//')
+  if [ -n "$AVAILABLE_DEPLOYMENTS" ]; then
+    IFS=';' read -ra DEP_ARR <<< "$AVAILABLE_DEPLOYMENTS"
+    for dep in "${DEP_ARR[@]}"; do
+      DB_USERS_TO_CLEAN+=("${dep}")
     done
   fi
 
