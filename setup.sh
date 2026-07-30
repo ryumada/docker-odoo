@@ -404,16 +404,21 @@ EOF
       # trim whitespace
       secret=$(echo "$secret" | xargs)
       if [ -n "$secret" ]; then
-         setPermissionFileToReadOnlyAndOnlyTo "$ODOO_LINUX_USER" ".secrets/$secret"
+        if [ -f ".secrets/$secret" ]; then
+          setPermissionFileToReadOnlyAndOnlyTo "$ODOO_LINUX_USER" ".secrets/$secret"
 
-         # Inject into services > odoo > secrets
-         sed -i "/      - db_password/a \      - $secret" docker-compose.yml
+          # Inject into services > odoo > secrets
+          sed -i "/      - db_password/a \      - $secret" docker-compose.yml
 
-         # Inject into top-level secrets
-         cat <<EOF >> docker-compose.yml
+          # Inject into top-level secrets
+          cat <<EOF >> docker-compose.yml
   $secret:
     file: .secrets/$secret
 EOF
+        else
+          log_error "Secret file '.secrets/$secret' does not exist."
+          TODO+=("Please create '.secrets/$secret' file or remove it from CUSTOM_SECRETS_FILES in .env.")
+        fi
       fi
     done
   fi
@@ -868,8 +873,12 @@ function setPermissionFileToReadOnlyAndOnlyTo() {
   owner=$1
   file=$2
 
-  sudo chmod 400 "$file"
-  sudo chown -R "$owner": "$file"
+  if [ -e "$file" ]; then
+    sudo chmod 400 "$file"
+    sudo chown -R "$owner": "$file"
+  else
+    log_warn "File '$file' does not exist. Skipping permission setup."
+  fi
 }
 
 function setupAutoDevops() {
