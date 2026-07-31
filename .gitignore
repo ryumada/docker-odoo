@@ -54,6 +54,9 @@ utilities/*
 !utilities/getinfo-odoo_addons.sh
 !utilities/install-font.sh
 
+deployments/*
+!deployments/deployment.example
+
 .env
 .env.bak*
 .env.backup*
