@@ -35,6 +35,15 @@ Backup: `./scripts/backupdata.sh`. Restore: `./scripts/restore_backupdata.sh`.
 docker compose exec odoo odoo-shell <database>
 ```
 
+## Multi-Deployment Architecture
+
+- **Toggle**: Controlled via `ENABLE_MULTI_DEPLOYMENT=Y` in root `.env`. Default is `N` (single-deployment mode).
+- **Profiles**: Stored under `deployments/<deployment_name>/`:
+  - `deployments/<dep>/.env` — Overrides `PYTHON_VERSION`, `ODOO_VERSION`, `ODOO_BASE_PATH`, `ADDONS_PATH`, `DB_NAME`, `APT/PIP_ADDITIONAL_PACKAGES`.
+  - `deployments/<dep>/requirements.txt` — Deployment-specific Python packages.
+- **Shared Config**: Network ports (`PORT`, `GEVENT_PORT`), `DB_HOST`, reverse proxy configs, and global `ADMIN_PASSWD` default stay in root `.env`.
+- **Environment Switch**: `sudo ./scripts/switch_env.sh <deployment_name>` syncs per-deployment `.env` variables, `requirements.txt`, secrets (`.secrets/db_user_<dep>`), host datadirs, and builds an isolated container image (`${SERVICE_NAME}-${TARGET_DEPLOYMENT}`).
+
 ### Test Log Compression
 - Docker builds: use `--quiet` or pipe through grep for errors only.
 - Odoo tests: use `--test-tags` to target specific modules.
