@@ -132,6 +132,46 @@ There are some points you should know:
        ```
   </details>
 
+## Multi-Deployment Setup (Folder-Based)
+
+`docker-odoo` supports multi-deployment environments using isolated profiles under the `deployments/` directory. Each deployment can use different Odoo base versions, Python versions, ports, and `requirements.txt`.
+
+### 1. Enable Multi-Deployment
+In your root `.env` file, set:
+```env
+ENABLE_MULTI_DEPLOYMENT=Y
+```
+
+> ℹ️ Single-deployment mode remains active by default (`ENABLE_MULTI_DEPLOYMENT=N`).
+
+### 2. Create Deployment Profiles
+Each profile lives in `deployments/<deployment_name>/`:
+
+```text
+deployments/
+├── project_a/
+│   ├── .env              # Per-deployment overrides (PYTHON_VERSION, ODOO_VERSION, PORT, etc.)
+│   └── requirements.txt  # Custom Python packages for project_a
+└── project_b/
+    ├── .env
+    └── requirements.txt
+```
+
+> Copy template files from `deployments/project_a/.env.example` and `deployments/project_a/requirements.txt.example` to get started.
+
+### 3. Switch Between Deployments
+To switch active environments:
+
+```bash
+sudo ./scripts/switch_env.sh project_a
+```
+
+`switch_env.sh` automatically:
+- Syncs per-deployment `.env` overrides and `requirements.txt`.
+- Manages deployment secrets (`.secrets/db_user_project_a` and `.secrets/db_password_project_a`).
+- Provisions host data (`/var/lib/odoo/docker-odoo-project_a`) and log (`/var/log/odoo/docker-odoo-project_a`) directories.
+- Builds an isolated Docker image (`docker-odoo-project_a`) and starts the container.
+
 # Maintenance
 The image build using the dockerfile in this repository installed some utility scripts.
 

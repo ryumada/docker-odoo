@@ -121,6 +121,13 @@ function checkImportantEnvVariable() {
 }
 
 function createDataDir() {
+  ACTIVE_DEP=$(grep "^ACTIVE_DEPLOYMENT=" "$ENV_FILE" 2>/dev/null | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g; s/[[:space:]\n]*$//g' || true)
+  if [ -n "$ACTIVE_DEP" ]; then
+    ODOO_DATADIR_SERVICE="$ODOO_DATADIR/${SERVICE_NAME}-${ACTIVE_DEP}"
+  else
+    ODOO_DATADIR_SERVICE="$ODOO_DATADIR/$SERVICE_NAME"
+  fi
+
   log_info "Create Odoo datadir... (path: $ODOO_DATADIR_SERVICE)"
 
   if [ ! -d "$ODOO_DATADIR" ]; then
@@ -142,6 +149,13 @@ function createDataDir() {
 }
 
 function createLogDir() {
+  ACTIVE_DEP=$(grep "^ACTIVE_DEPLOYMENT=" "$ENV_FILE" 2>/dev/null | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g; s/[[:space:]\n]*$//g' || true)
+  if [ -n "$ACTIVE_DEP" ]; then
+    ODOO_LOG_DIR_SERVICE="$ODOO_LOG_DIR/${SERVICE_NAME}-${ACTIVE_DEP}"
+  else
+    ODOO_LOG_DIR_SERVICE="$ODOO_LOG_DIR/$SERVICE_NAME"
+  fi
+
   log_info "Create log directory... (path: $ODOO_LOG_DIR_SERVICE)"
 
   if [ ! -d "$ODOO_LOG_DIR" ]; then
@@ -592,10 +606,13 @@ EOF
 
 function installOdooLogRotator() {
   # _inherit = createLogDir
+  local active_svc="$SERVICE_NAME"
+  ACTIVE_DEP=$(grep "^ACTIVE_DEPLOYMENT=" "$ENV_FILE" 2>/dev/null | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g; s/[[:space:]\n]*$//g' || true)
+  [ -n "$ACTIVE_DEP" ] && active_svc="${SERVICE_NAME}-${ACTIVE_DEP}"
 
-  log_filename="$ODOO_LOG_DIR_SERVICE/$SERVICE_NAME.log"
+  log_filename="$ODOO_LOG_DIR_SERVICE/$active_svc.log"
 
-  cat <<-EOF > ~/"$SERVICE_NAME"
+  cat <<-EOF > ~/"$active_svc"
 $log_filename {
     rotate 14
     olddir $log_filename-old
@@ -615,10 +632,10 @@ $log_filename {
 }
 EOF
 
-  sudo chown root: ~/"$SERVICE_NAME"
-  sudo chmod 644 ~/"$SERVICE_NAME"
+  sudo chown root: ~/"$active_svc"
+  sudo chmod 644 ~/"$active_svc"
 
-  sudo mv ~/"$SERVICE_NAME" "/etc/logrotate.d/$SERVICE_NAME"
+  sudo mv ~/"$active_svc" "/etc/logrotate.d/$active_svc"
 }
 
 function installPostgresRestartorScript() {
@@ -1016,7 +1033,9 @@ function checkGitRepositories() {
 function writeDatadirVariableOnEnvFile() {
   # _inherit = CreateDataDir
 
-  if ! grep -q "^ODOO_DATADIR_SERVICE=" "$ENV_FILE"; then
+  if grep -q "^ODOO_DATADIR_SERVICE=" "$ENV_FILE"; then
+    sed -i "s|^ODOO_DATADIR_SERVICE=.*|ODOO_DATADIR_SERVICE=$ODOO_DATADIR_SERVICE|" "$ENV_FILE"
+  else
     cat <<-EOF >> "$ENV_FILE"
 ODOO_DATADIR_SERVICE=$ODOO_DATADIR_SERVICE
 EOF
@@ -1025,6 +1044,10 @@ EOF
 
 function writeLogDirVariableOnEnvFile() {
   # _inherit = createLogDir
+
+  if grep -q "^ODOO_LOG_DIR_SERVICE=" "$ENV_FILE"; then
+    sed -i "s|^ODOO_LOG_DIR_SERVICE=.*|ODOO_LOG_DIR_SERVICE=$ODOO_LOG_DIR_SERVICE|" "$ENV_FILE"
+  fi
 
   if ! grep -q "^SERVICE_NAME=" "$ENV_FILE"; then
     cat <<-EOF >> "$ENV_FILE"
