@@ -16,26 +16,26 @@ REPOSITORY_OWNER=$(stat -c '%U' "$PATH_TO_ODOO")
 REPOSITORY_DIRPATH="$PATH_TO_ODOO"
 
 # Configuration
-ENV_FILE=".env"
-UPDATE_SCRIPT="./scripts/update-env-file.sh"
+ENV_FILE="$PATH_TO_ODOO/.env"
+UPDATE_SCRIPT="$PATH_TO_ODOO/scripts/update-env-file.sh"
 MAX_BACKUPS=3
 
 ODOO_LINUX_USER="odoo"
 DEVOPS_USER="devops"
 
 # Define the paths
-DB_USER_SECRET="./.secrets/db_user"
-DB_PASSWORD_SECRET="./.secrets/db_password"
-DOCKER_COMPOSE_FILE="./docker-compose.yml"
+DB_USER_SECRET="$PATH_TO_ODOO/.secrets/db_user"
+DB_PASSWORD_SECRET="$PATH_TO_ODOO/.secrets/db_password"
+DOCKER_COMPOSE_FILE="$PATH_TO_ODOO/docker-compose.yml"
 # ENV_FILE is already defined above
-GIT_DIR="./git"
-ODOO_BASE_DIR="./odoo-base"
-ODOO_CONF_FILE="./conf/odoo.conf"
+GIT_DIR="$PATH_TO_ODOO/git"
+ODOO_BASE_DIR="$PATH_TO_ODOO/odoo-base"
+ODOO_CONF_FILE="$PATH_TO_ODOO/conf/odoo.conf"
 ODOO_DATADIR="/var/lib/odoo"
 ODOO_DATADIR_SERVICE="$ODOO_DATADIR/$SERVICE_NAME"
 ODOO_LOG_DIR="/var/log/odoo"
 ODOO_LOG_DIR_SERVICE="$ODOO_LOG_DIR/$SERVICE_NAME"
-REQUIREMENTS_FILE="./requirements.txt"
+REQUIREMENTS_FILE="$PATH_TO_ODOO/requirements.txt"
 
 # Source OS detection library (sets OS_FAMILY and PKG_MANAGER)
 # shellcheck source=scripts/lib/os_detect.sh
@@ -319,8 +319,8 @@ EOF
 function generateDockerComposeAndDockerfile() {
   log_info "Create docker-compose.yml file..."
 
-  cp docker-compose.yml.example docker-compose.yml
-  chown "$REPOSITORY_OWNER": docker-compose.yml
+  cp "$PATH_TO_ODOO/docker-compose.yml.example" "$PATH_TO_ODOO/docker-compose.yml"
+  chown "$REPOSITORY_OWNER": "$PATH_TO_ODOO/docker-compose.yml"
 
   # Configure Docker Network Mode
   DOCKER_NETWORK_MODE=$(grep "^DOCKER_NETWORK_MODE=" "$REPOSITORY_DIRPATH/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
@@ -443,11 +443,11 @@ EOF
 function generateDockerFile() {
   # _inherit = generateDockerComposeFile
 
-  log_info "Create dockerfile..."
-  cp dockerfile.example dockerfile
-  chown "$REPOSITORY_OWNER": dockerfile
+  log_info "Create $PATH_TO_ODOO/dockerfile..."
+  cp "$PATH_TO_ODOO/dockerfile.example" "$PATH_TO_ODOO/dockerfile"
+  chown "$REPOSITORY_OWNER": "$PATH_TO_ODOO/dockerfile"
 
-  log_info "Setting up dockerfile with mount strategy..."
+  log_info "Setting up $PATH_TO_ODOO/dockerfile with mount strategy..."
 
   FAKETIME=$(grep "^FAKETIME=" "$REPOSITORY_DIRPATH/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
   [ -n "$FAKETIME" ] && validateDatetimeFormat "$FAKETIME" " FAKETIME on .env file" && {
@@ -1120,7 +1120,9 @@ function prepareOdooSources() {
     checkGitRepositories "$ODOO_BASE_DIR"
 
     ACTIVE_BASE_PATH=$(grep "^ACTIVE_ODOO_BASE_PATH=" "$PATH_TO_ODOO/.env" 2>/dev/null | cut -d '=' -f2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//')
-    if [ -n "$ACTIVE_BASE_PATH" ] && [ -d "$PATH_TO_ODOO/$ACTIVE_BASE_PATH" ]; then
+    if [ -n "$ACTIVE_BASE_PATH" ] && [ -d "$PATH_TO_ODOO/odoo-base/$ACTIVE_BASE_PATH" ]; then
+      ODOO_BASE_DIRECTORY="$PATH_TO_ODOO/odoo-base/$ACTIVE_BASE_PATH"
+    elif [ -n "$ACTIVE_BASE_PATH" ] && [ -d "$PATH_TO_ODOO/$ACTIVE_BASE_PATH" ]; then
       ODOO_BASE_DIRECTORY="$PATH_TO_ODOO/$ACTIVE_BASE_PATH"
     else
       ODOO_BASE_DIRECTORY=$(find $ODOO_BASE_DIR -mindepth 1 -maxdepth 1 -type d -print -quit)
@@ -1132,7 +1134,7 @@ function prepareOdooSources() {
     if ! isFileExists "$REQUIREMENTS_FILE" "Please copy your requirements.txt file from your 'odoo-base' or create the file by following the requirements.txt.example file."; then
       if [ "$mode_number" -eq 1 ]; then
         log_info "Copying $REQUIREMENTS_FILE file..."
-        cp "$ODOO_BASE_DIRECTORY/$REQUIREMENTS_FILE" "$REQUIREMENTS_FILE"
+        cp "$ODOO_BASE_DIRECTORY/requirements.txt" "$REQUIREMENTS_FILE"
         chown "$REPOSITORY_OWNER:$REPOSITORY_OWNER" "$REQUIREMENTS_FILE"
         log_success "$REQUIREMENTS_FILE file copied."
       else
