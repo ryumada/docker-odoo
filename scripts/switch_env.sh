@@ -117,14 +117,6 @@ EXTRACTED_ADDONS=$(grep "^ADDONS_PATH=" "$DEP_ENV_FILE" 2>/dev/null | cut -d "="
 EXTRACTED_BASE_PATH=$(grep "^ODOO_BASE_PATH=" "$DEP_ENV_FILE" 2>/dev/null | cut -d "=" -f 2- | sed 's/^["'\''\\]*//; s/["'\''\\]*$//')
 [ -z "$EXTRACTED_BASE_PATH" ] && EXTRACTED_BASE_PATH="odoo16"
 
-DEP_PYTHON_VERSION=$(grep "^PYTHON_VERSION=" "$DEP_ENV_FILE" 2>/dev/null | cut -d "=" -f 2- | sed 's/^["'\''\\]*//; s/["'\''\\]*$//')
-DEP_PORT=$(grep "^PORT=" "$DEP_ENV_FILE" 2>/dev/null | cut -d "=" -f 2- | sed 's/^["'\''\\]*//; s/["'\''\\]*$//')
-DEP_GEVENT_PORT=$(grep "^GEVENT_PORT=" "$DEP_ENV_FILE" 2>/dev/null | cut -d "=" -f 2- | sed 's/^["'\''\\]*//; s/["'\''\\]*$//')
-DEP_ADMIN_PASSWD=$(grep "^ADMIN_PASSWD=" "$DEP_ENV_FILE" 2>/dev/null | cut -d "=" -f 2- | sed 's/^["'\''\\]*//; s/["'\''\\]*$//')
-DEP_DB_NAME=$(grep "^DB_NAME=" "$DEP_ENV_FILE" 2>/dev/null | cut -d "=" -f 2- | sed 's/^["'\''\\]*//; s/["'\''\\]*$//')
-DEP_APT_PACKAGES=$(grep "^APT_ADDITIONAL_PACKAGES=" "$DEP_ENV_FILE" 2>/dev/null | cut -d "=" -f 2- | sed 's/^["'\''\\]*//; s/["'\''\\]*$//')
-DEP_PIP_PACKAGES=$(grep "^PIP_ADDITIONAL_PACKAGES=" "$DEP_ENV_FILE" 2>/dev/null | cut -d "=" -f 2- | sed 's/^["'\''\\]*//; s/["'\''\\]*$//')
-
 # Automatically define DB user by service name and target deployment name
 EXTRACTED_DB_USER="${SERVICE_NAME}_${TARGET_DEPLOYMENT}"
 
@@ -237,42 +229,12 @@ ODOO_LINUX_USER="odoo"
 
 # Automatically create directories on the host
 log_info "Provisioning directories on the host..."
-if [ ! -d "/var/lib/odoo" ]; then
-    mkdir -p "/var/lib/odoo"
-    chown "$ODOO_LINUX_USER":"$ODOO_LINUX_USER" "/var/lib/odoo"
-fi
-
-if [ ! -d "$DATADIR" ]; then
-    log_info "Creating data directory: $DATADIR"
-    mkdir -p "$DATADIR"
-fi
-chown -R "$ODOO_LINUX_USER":"$ODOO_LINUX_USER" "$DATADIR"
-
-if [ ! -d "$DATADIR/filestore" ]; then
-    mkdir -p "$DATADIR/filestore"
-    chown -R "$ODOO_LINUX_USER":"$ODOO_LINUX_USER" "$DATADIR/filestore"
-fi
-
-if [ ! -d "/var/log/odoo" ]; then
-    mkdir -p "/var/log/odoo"
-    chown "$ODOO_LINUX_USER":"$ODOO_LINUX_USER" "/var/log/odoo"
-fi
-
-if [ ! -d "$LOGDIR" ]; then
-    log_info "Creating log directory: $LOGDIR"
-    mkdir -p "$LOGDIR"
-fi
-chown -R "$ODOO_LINUX_USER":"$ODOO_LINUX_USER" "$LOGDIR"
+mkdir -p "$DATADIR/filestore" "$LOGDIR"
+chown -R "$ODOO_LINUX_USER":"$ODOO_LINUX_USER" "/var/lib/odoo" "/var/log/odoo" "$DATADIR" "$LOGDIR"
 
 # Run odoo configuration update with target addons
 log_info "Injecting Odoo configuration for addons..."
 "$PATH_TO_ODOO/scripts/update-odoo-config.sh" "$EXTRACTED_ADDONS"
-
-# Re-read values to sync env file
-if [ -f "$PATH_TO_ODOO/scripts/update-env-file.sh" ]; then
-    log_info "Syncing environment variables..."
-    "$PATH_TO_ODOO/scripts/update-env-file.sh" "$ENV_FILE_PATH"
-fi
 
 # Boot up the new deployment container
 log_info "Booting up deployment container for '$TARGET_DEPLOYMENT'..."
