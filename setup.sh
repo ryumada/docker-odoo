@@ -326,33 +326,33 @@ function generateDockerComposeAndDockerfile() {
   DOCKER_NETWORK_MODE=$(grep "^DOCKER_NETWORK_MODE=" "$REPOSITORY_DIRPATH/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
   if [ -z "$DOCKER_NETWORK_MODE" ] || [ "$DOCKER_NETWORK_MODE" = "host" ]; then
     log_info "Configuring docker-compose for 'host' network mode..."
-    sed -i 's/# <<NETWORK_MODE_PLACEHOLDER>>/network_mode: "host"/' docker-compose.yml
-    sed -i '/# <<NETWORKS_PLACEHOLDER>>/d' docker-compose.yml
-    sed -i '/# <<TOP_LEVEL_NETWORKS_PLACEHOLDER>>/d' docker-compose.yml
+    sed -i 's/# <<NETWORK_MODE_PLACEHOLDER>>/network_mode: "host"/' "$DOCKER_COMPOSE_FILE"
+    sed -i '/# <<NETWORKS_PLACEHOLDER>>/d' "$DOCKER_COMPOSE_FILE"
+    sed -i '/# <<TOP_LEVEL_NETWORKS_PLACEHOLDER>>/d' "$DOCKER_COMPOSE_FILE"
   else
     log_info "Configuring docker-compose for external network(s): $DOCKER_NETWORK_MODE"
     # Uncomment ports since we are not in host mode
-    sed -i -E 's/^([ \t]*)#ports:/\1ports:/' docker-compose.yml
-    sed -i -E 's/^([ \t]*)#  - "\$\{PORT\}:/\1  - "${PORT}:/' docker-compose.yml
-    sed -i -E 's/^([ \t]*)#  - "\$\{GEVENT_PORT\}:/\1  - "${GEVENT_PORT}:/' docker-compose.yml
+    sed -i -E 's/^([ \t]*)#ports:/\1ports:/' "$DOCKER_COMPOSE_FILE"
+    sed -i -E 's/^([ \t]*)#  - "\$\{PORT\}:/\1  - "${PORT}:/' "$DOCKER_COMPOSE_FILE"
+    sed -i -E 's/^([ \t]*)#  - "\$\{GEVENT_PORT\}:/\1  - "${GEVENT_PORT}:/' "$DOCKER_COMPOSE_FILE"
 
     # Remove network_mode placeholder
-    sed -i '/# <<NETWORK_MODE_PLACEHOLDER>>/d' docker-compose.yml
+    sed -i '/# <<NETWORK_MODE_PLACEHOLDER>>/d' "$DOCKER_COMPOSE_FILE"
 
     # Inject service networks block
-    sed -i 's/# <<NETWORKS_PLACEHOLDER>>/networks:/' docker-compose.yml
+    sed -i 's/# <<NETWORKS_PLACEHOLDER>>/networks:/' "$DOCKER_COMPOSE_FILE"
     IFS=',' read -ra NET_ADDR <<< "$DOCKER_NETWORK_MODE"
     for net in "${NET_ADDR[@]}"; do
       # Avoid leading spaces in variable expansion
       net=$(echo "$net" | xargs)
-      sed -i "/networks:/a \      - ${net}" docker-compose.yml
+      sed -i "/networks:/a \      - ${net}" "$DOCKER_COMPOSE_FILE"
     done
 
     # Inject top-level networks block
-    sed -i 's/# <<TOP_LEVEL_NETWORKS_PLACEHOLDER>>/networks:/' docker-compose.yml
+    sed -i 's/# <<TOP_LEVEL_NETWORKS_PLACEHOLDER>>/networks:/' "$DOCKER_COMPOSE_FILE"
     for net in "${NET_ADDR[@]}"; do
       net=$(echo "$net" | xargs)
-      cat <<EOF >> docker-compose.yml
+      cat <<EOF >> "$DOCKER_COMPOSE_FILE"
   ${net}:
     external: true
 EOF
@@ -404,9 +404,9 @@ EOF
     traefik_labels+="      - 'traefik.http.routers.odoo-ws-${SERVICE_NAME}.service=odoo-ws-service-${SERVICE_NAME}'\n"
     traefik_labels+="      - 'traefik.http.services.odoo-ws-service-${SERVICE_NAME}.loadbalancer.server.port=${TARGET_GEVENT_PORT}'"
 
-    sed -i "s|.*# <<TRAEFIK_LABELS_PLACEHOLDER>>.*|${traefik_labels}|" docker-compose.yml
+    sed -i "s|.*# <<TRAEFIK_LABELS_PLACEHOLDER>>.*|${traefik_labels}|" "$DOCKER_COMPOSE_FILE"
   else
-    sed -i '/# <<TRAEFIK_LABELS_PLACEHOLDER>>/d' docker-compose.yml
+    sed -i '/# <<TRAEFIK_LABELS_PLACEHOLDER>>/d' "$DOCKER_COMPOSE_FILE"
   fi
 
   # Inject Custom Secrets from .env
@@ -418,14 +418,14 @@ EOF
       # trim whitespace
       secret=$(echo "$secret" | xargs)
       if [ -n "$secret" ]; then
-        if [ -f ".secrets/$secret" ]; then
-          setPermissionFileToReadOnlyAndOnlyTo "$ODOO_LINUX_USER" ".secrets/$secret"
+        if [ -f "$PATH_TO_ODOO/.secrets/$secret" ]; then
+          setPermissionFileToReadOnlyAndOnlyTo "$ODOO_LINUX_USER" "$PATH_TO_ODOO/.secrets/$secret"
 
           # Inject into services > odoo > secrets
-          sed -i "/      - db_password/a \      - $secret" docker-compose.yml
+          sed -i "/      - db_password/a \      - $secret" "$DOCKER_COMPOSE_FILE"
 
           # Inject into top-level secrets
-          cat <<EOF >> docker-compose.yml
+          cat <<EOF >> "$DOCKER_COMPOSE_FILE"
   $secret:
     file: .secrets/$secret
 EOF
