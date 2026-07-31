@@ -87,7 +87,7 @@ function main() {
 
   if [ -f "$TEMPLATE_ENV_FILE" ]; then
     log_info "Copy $TEMPLATE_ENV_FILE to .env"
-    cp "$TEMPLATE_ENV_FILE" .env
+    cp "$TEMPLATE_ENV_FILE" "$PATH_TO_ODOO/.env"
   else
     log_error "Source example file not found: $TEMPLATE_ENV_FILE"
     exit 1
