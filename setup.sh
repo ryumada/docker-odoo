@@ -1370,6 +1370,17 @@ function main() {
       "$REPOSITORY_DIRPATH/scripts/installer/uninstall-snapshot.sh"
       log_warn "snapshot utility is not installed. Please fill ENABLE_SNAPSHOT and DB_NAME variables in your .env file, then re-run this install script to install snapshot utility."
     fi
+
+    ENABLE_MULTI_DEPLOYMENT=$(grep "^ENABLE_MULTI_DEPLOYMENT=" "$REPOSITORY_DIRPATH/.env" 2>/dev/null | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
+    if [[ "$ENABLE_MULTI_DEPLOYMENT" =~ ^([yY][eE][sS]|[yY]|1|true|TRUE)$ ]]; then
+      log_info "Multi-deployment mode enabled. Verifying deployments/ directory..."
+      if [ ! -d "$REPOSITORY_DIRPATH/deployments" ]; then
+        mkdir -p "$REPOSITORY_DIRPATH/deployments/project_a"
+        cp "$REPOSITORY_DIRPATH/deployments/project_a/.env.example" "$REPOSITORY_DIRPATH/deployments/project_a/.env" 2>/dev/null || true
+        cp "$REPOSITORY_DIRPATH/deployments/project_a/requirements.txt.example" "$REPOSITORY_DIRPATH/deployments/project_a/requirements.txt" 2>/dev/null || true
+        log_success "Initialized deployments/project_a profile directory."
+      fi
+    fi
   fi
 
   # Check if there are any TODOs. If no todos (true) run the completion script.

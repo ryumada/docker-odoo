@@ -1,0 +1,10 @@
+# Category: Config
+# File: deployments/project_a/requirements.txt.example
+# Description: Example Python requirements file for project_a deployment.
+# Usage: Copy to deployments/project_a/requirements.txt and customize.
+# Maintainer: ryumada
+
+# Add custom Python library requirements for project_a here
+# e.g.:
+# num2words>=0.5.10
+# phonenumbers>=8.12.0

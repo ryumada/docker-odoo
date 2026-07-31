@@ -162,9 +162,13 @@ function main() {
 
   # Backup verification per deployment
   if [ "$BYPASS_SNAPSHOT" = "false" ]; then
-    AVAILABLE_DEPLOYMENTS=$(grep "^AVAILABLE_DEPLOYMENTS=" "$PATH_TO_ODOO/.env" 2>/dev/null | cut -d '=' -f2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//')
-    if [ -n "$AVAILABLE_DEPLOYMENTS" ]; then
-      IFS=';' read -ra DEP_ARR <<< "$AVAILABLE_DEPLOYMENTS"
+    DEP_ARR=()
+    if [ -d "$PATH_TO_ODOO/deployments" ]; then
+      for dir in "$PATH_TO_ODOO/deployments"/*/; do
+        [ -d "$dir" ] && DEP_ARR+=("$(basename "$dir")")
+      done
+    fi
+    if [ ${#DEP_ARR[@]} -gt 0 ]; then
       MISSING_BACKUPS=()
       for dep in "${DEP_ARR[@]}"; do
         if ! ls /tmp/backupdata_*${dep}* /tmp/snapshot_*${dep}* /tmp/backupdata_* /tmp/snapshot_* >/dev/null 2>&1; then
@@ -216,13 +220,15 @@ function main() {
   ACTIVE_DB_USER=$(grep "^ACTIVE_DB_USER=" "$PATH_TO_ODOO/.env" 2>/dev/null | cut -d '=' -f2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//')
   [ -n "$ACTIVE_DB_USER" ] && DB_USERS_TO_CLEAN+=("$ACTIVE_DB_USER")
 
-  AVAILABLE_DEPLOYMENTS=$(grep "^AVAILABLE_DEPLOYMENTS=" "$PATH_TO_ODOO/.env" 2>/dev/null | cut -d '=' -f2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//')
-  if [ -n "$AVAILABLE_DEPLOYMENTS" ]; then
-    IFS=';' read -ra DEP_ARR <<< "$AVAILABLE_DEPLOYMENTS"
-    for dep in "${DEP_ARR[@]}"; do
-      DB_USERS_TO_CLEAN+=("${SERVICE_NAME}_${dep}")
+  DEP_ARR=()
+  if [ -d "$PATH_TO_ODOO/deployments" ]; then
+    for dir in "$PATH_TO_ODOO/deployments"/*/; do
+      [ -d "$dir" ] && DEP_ARR+=("$(basename "$dir")")
     done
   fi
+  for dep in "${DEP_ARR[@]}"; do
+    DB_USERS_TO_CLEAN+=("${SERVICE_NAME}_${dep}")
+  done
 
   for db_u in "${DB_USERS_TO_CLEAN[@]}"; do
     DBS=$(sudo -u postgres psql -tAc "SELECT datname FROM pg_database WHERE datdba=(SELECT usesysid FROM pg_user WHERE usename='$db_u' LIMIT 1);" 2>/dev/null || true)

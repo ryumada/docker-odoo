@@ -56,13 +56,30 @@ if [ ! -f "$ENV_FILE_PATH" ]; then
     exit 1
 fi
 
-# Read AVAILABLE_DEPLOYMENTS from .env
-AVAILABLE_DEPLOYMENTS=$(grep "^AVAILABLE_DEPLOYMENTS=" "$ENV_FILE_PATH" | cut -d "=" -f 2- | sed 's/^[[:space:]\n]*//g; s/[[:space:]\n]*$//g')
+# Read ENABLE_MULTI_DEPLOYMENT toggle from .env
+ENABLE_MULTI_DEPLOYMENT=$(grep "^ENABLE_MULTI_DEPLOYMENT=" "$ENV_FILE_PATH" | cut -d "=" -f 2- | sed 's/[[:space:]]*#.*//; s/^[[:space:]]*//; s/[[:space:]]*$//; s/^["'\''\\]*//; s/["'\''\\]*$//')
 
-if [ -z "$AVAILABLE_DEPLOYMENTS" ]; then
-    log_warn "Multi-deployment is not configured (AVAILABLE_DEPLOYMENTS is empty)."
-    log_info "Single-deployment mode remains active. Bypassing switch."
+if [[ ! "$ENABLE_MULTI_DEPLOYMENT" =~ ^([yY][eE][sS]|[yY]|1|true|TRUE)$ ]]; then
+    log_warn "Multi-deployment is disabled (ENABLE_MULTI_DEPLOYMENT is '$ENABLE_MULTI_DEPLOYMENT')."
+    log_info "Single-deployment mode remains active. Bypassing environment switch."
     exit 0
+fi
+
+# Discover available deployment directories under deployments/
+DEPLOYMENTS_DIR="$PATH_TO_ODOO/deployments"
+AVAILABLE_DEPLOYMENTS=()
+if [ -d "$DEPLOYMENTS_DIR" ]; then
+    for dir in "$DEPLOYMENTS_DIR"/*/; do
+        if [ -d "$dir" ]; then
+            dep_name=$(basename "$dir")
+            AVAILABLE_DEPLOYMENTS+=("$dep_name")
+        fi
+    done
+fi
+
+if [ ${#AVAILABLE_DEPLOYMENTS[@]} -eq 0 ]; then
+    log_error "No deployment profiles found under '$DEPLOYMENTS_DIR/' directory."
+    exit 1
 fi
 
 TARGET_DEPLOYMENT="$1"
@@ -70,57 +87,43 @@ TARGET_DEPLOYMENT="$1"
 if [ -z "$TARGET_DEPLOYMENT" ]; then
     log_error "Target deployment name is required."
     echo "Usage: $0 <deployment_name>"
-    echo "Available deployments: $(echo "$AVAILABLE_DEPLOYMENTS" | tr ';' ' ')"
+    echo "Available deployments: ${AVAILABLE_DEPLOYMENTS[*]}"
     exit 1
 fi
 
-# Check if target deployment is in the available deployments registry
-IFS=';' read -ra DEPLOYMENTS_ARR <<< "$AVAILABLE_DEPLOYMENTS"
-IS_VALID=false
-for dep in "${DEPLOYMENTS_ARR[@]}"; do
-    if [ "$dep" = "$TARGET_DEPLOYMENT" ]; then
-        IS_VALID=true
-        break
-    fi
-done
-
-if [ "$IS_VALID" = false ]; then
-    log_error "Deployment '$TARGET_DEPLOYMENT' is not registered in AVAILABLE_DEPLOYMENTS."
-    echo "Available deployments: $(echo "$AVAILABLE_DEPLOYMENTS" | tr ';' ' ')"
+# Check if target deployment directory exists
+TARGET_DEP_DIR="$DEPLOYMENTS_DIR/$TARGET_DEPLOYMENT"
+if [ ! -d "$TARGET_DEP_DIR" ]; then
+    log_error "Deployment '$TARGET_DEPLOYMENT' profile directory does not exist at '$TARGET_DEP_DIR'."
+    echo "Available deployments: ${AVAILABLE_DEPLOYMENTS[*]}"
     exit 1
 fi
 
-# Extract target's specific addons path
-AVAILABLE_ADDONS_PATHS=$(grep "^AVAILABLE_ADDONS_PATHS=" "$ENV_FILE_PATH" | cut -d "=" -f 2- | sed 's/^["'\''\\]*//; s/["'\''\\]*$//')
-IFS=';' read -ra ADDONS_ARR <<< "$AVAILABLE_ADDONS_PATHS"
-EXTRACTED_ADDONS=""
-for item in "${ADDONS_ARR[@]}"; do
-    if [[ "$item" =~ ^${TARGET_DEPLOYMENT}:(.*) ]]; then
-        EXTRACTED_ADDONS="${BASH_REMATCH[1]}"
-        break
-    fi
-done
+# Determine deployment env file (.env or .env.example)
+DEP_ENV_FILE="$TARGET_DEP_DIR/.env"
+if [ ! -f "$DEP_ENV_FILE" ] && [ -f "$TARGET_DEP_DIR/.env.example" ]; then
+    log_info "Creating $DEP_ENV_FILE from template..."
+    cp "$TARGET_DEP_DIR/.env.example" "$DEP_ENV_FILE"
+    chown "$REPOSITORY_OWNER:$REPOSITORY_OWNER" "$DEP_ENV_FILE" 2>/dev/null || true
+fi
 
-if [ -z "$EXTRACTED_ADDONS" ]; then
-    log_error "No addons path configured for deployment '$TARGET_DEPLOYMENT' in AVAILABLE_ADDONS_PATHS."
+if [ ! -f "$DEP_ENV_FILE" ]; then
+    log_error "Deployment environment file not found: $DEP_ENV_FILE"
     exit 1
 fi
 
-# Extract target's specific Odoo base path
-AVAILABLE_ODOO_BASE=$(grep "^AVAILABLE_ODOO_BASE=" "$ENV_FILE_PATH" | cut -d "=" -f 2- | sed 's/^["'\''\\]*//; s/["'\''\\]*$//')
-IFS=';' read -ra BASE_ARR <<< "$AVAILABLE_ODOO_BASE"
-EXTRACTED_BASE_PATH=""
-for item in "${BASE_ARR[@]}"; do
-    if [[ "$item" =~ ^${TARGET_DEPLOYMENT}:(.*) ]]; then
-        EXTRACTED_BASE_PATH="${BASH_REMATCH[1]}"
-        break
-    fi
-done
+# Extract deployment configurations
+EXTRACTED_ADDONS=$(grep "^ADDONS_PATH=" "$DEP_ENV_FILE" 2>/dev/null | cut -d "=" -f 2- | sed 's/^["'\''\\]*//; s/["'\''\\]*$//')
+EXTRACTED_BASE_PATH=$(grep "^ODOO_BASE_PATH=" "$DEP_ENV_FILE" 2>/dev/null | cut -d "=" -f 2- | sed 's/^["'\''\\]*//; s/["'\''\\]*$//')
+[ -z "$EXTRACTED_BASE_PATH" ] && EXTRACTED_BASE_PATH="odoo16"
 
-if [ -z "$EXTRACTED_BASE_PATH" ]; then
-    log_error "No base path configured for deployment '$TARGET_DEPLOYMENT' in AVAILABLE_ODOO_BASE."
-    exit 1
-fi
+DEP_PYTHON_VERSION=$(grep "^PYTHON_VERSION=" "$DEP_ENV_FILE" 2>/dev/null | cut -d "=" -f 2- | sed 's/^["'\''\\]*//; s/["'\''\\]*$//')
+DEP_PORT=$(grep "^PORT=" "$DEP_ENV_FILE" 2>/dev/null | cut -d "=" -f 2- | sed 's/^["'\''\\]*//; s/["'\''\\]*$//')
+DEP_GEVENT_PORT=$(grep "^GEVENT_PORT=" "$DEP_ENV_FILE" 2>/dev/null | cut -d "=" -f 2- | sed 's/^["'\''\\]*//; s/["'\''\\]*$//')
+DEP_ADMIN_PASSWD=$(grep "^ADMIN_PASSWD=" "$DEP_ENV_FILE" 2>/dev/null | cut -d "=" -f 2- | sed 's/^["'\''\\]*//; s/["'\''\\]*$//')
+DEP_DB_NAME=$(grep "^DB_NAME=" "$DEP_ENV_FILE" 2>/dev/null | cut -d "=" -f 2- | sed 's/^["'\''\\]*//; s/["'\''\\]*$//')
+DEP_APT_PACKAGES=$(grep "^APT_ADDITIONAL_PACKAGES=" "$DEP_ENV_FILE" 2>/dev/null | cut -d "=" -f 2- | sed 's/^["'\''\\]*//; s/["'\''\\]*$//')
+DEP_PIP_PACKAGES=$(grep "^PIP_ADDITIONAL_PACKAGES=" "$DEP_ENV_FILE" 2>/dev/null | cut -d "=" -f 2- | sed 's/^["'\''\\]*//; s/["'\''\\]*$//')
 
 # Automatically define DB user by service name and target deployment name
 EXTRACTED_DB_USER="${SERVICE_NAME}_${TARGET_DEPLOYMENT}"
@@ -130,6 +133,23 @@ FULL_BASE_PATH="$PATH_TO_ODOO/odoo-base/$EXTRACTED_BASE_PATH"
 if [ ! -d "$FULL_BASE_PATH" ]; then
     log_error "Target base directory does not exist: $FULL_BASE_PATH"
     exit 1
+fi
+
+# Sync deployment requirements.txt if present
+if [ -f "$TARGET_DEP_DIR/requirements.txt" ]; then
+    log_info "Syncing requirements.txt for '$TARGET_DEPLOYMENT'..."
+    cp "$TARGET_DEP_DIR/requirements.txt" "$PATH_TO_ODOO/requirements.txt"
+    chown "$REPOSITORY_OWNER:$REPOSITORY_OWNER" "$PATH_TO_ODOO/requirements.txt" 2>/dev/null || true
+elif [ -f "$TARGET_DEP_DIR/requirements.txt.example" ] && [ ! -f "$PATH_TO_ODOO/requirements.txt" ]; then
+    cp "$TARGET_DEP_DIR/requirements.txt.example" "$PATH_TO_ODOO/requirements.txt"
+    chown "$REPOSITORY_OWNER:$REPOSITORY_OWNER" "$PATH_TO_ODOO/requirements.txt" 2>/dev/null || true
+fi
+
+# Sync deployment dockerfile if custom one exists in deployment directory
+if [ -f "$TARGET_DEP_DIR/dockerfile" ]; then
+    log_info "Syncing custom dockerfile for '$TARGET_DEPLOYMENT'..."
+    cp "$TARGET_DEP_DIR/dockerfile" "$PATH_TO_ODOO/dockerfile"
+    chown "$REPOSITORY_OWNER:$REPOSITORY_OWNER" "$PATH_TO_ODOO/dockerfile" 2>/dev/null || true
 fi
 
 # Verify docker-compose.yml exists, if not, copy it from example
@@ -165,6 +185,16 @@ update_env_var "ACTIVE_ODOO_BASE_PATH" "$EXTRACTED_BASE_PATH"
 update_env_var "ACTIVE_ODOO_BASE_CONTAINER_PATH" "/opt/odoo/odoo-base/active_odoo_base"
 update_env_var "ODOO_LOG_DIR_SERVICE" "/var/log/odoo/${SERVICE_NAME}-${TARGET_DEPLOYMENT}"
 update_env_var "ODOO_DATADIR_SERVICE" "/var/lib/odoo/${SERVICE_NAME}-${TARGET_DEPLOYMENT}"
+update_env_var "ODOO_IMAGE_NAME" "${SERVICE_NAME}-${TARGET_DEPLOYMENT}"
+
+[ -n "$EXTRACTED_ADDONS" ] && update_env_var "ADDONS_PATH" "$EXTRACTED_ADDONS"
+[ -n "$DEP_PYTHON_VERSION" ] && update_env_var "PYTHON_VERSION" "$DEP_PYTHON_VERSION"
+[ -n "$DEP_PORT" ] && update_env_var "PORT" "$DEP_PORT"
+[ -n "$DEP_GEVENT_PORT" ] && update_env_var "GEVENT_PORT" "$DEP_GEVENT_PORT"
+[ -n "$DEP_ADMIN_PASSWD" ] && update_env_var "ADMIN_PASSWD" "$DEP_ADMIN_PASSWD"
+[ -n "$DEP_DB_NAME" ] && update_env_var "DB_NAME" "$DEP_DB_NAME"
+[ -n "$DEP_APT_PACKAGES" ] && update_env_var "APT_ADDITIONAL_PACKAGES" "$DEP_APT_PACKAGES"
+[ -n "$DEP_PIP_PACKAGES" ] && update_env_var "PIP_ADDITIONAL_PACKAGES" "$DEP_PIP_PACKAGES"
 
 # Sync deployment-specific secret files (.secrets/db_user_<dep> & .secrets/db_password_<dep>)
 SECRETS_DIR="$PATH_TO_ODOO/.secrets"
@@ -241,6 +271,6 @@ fi
 
 # Boot up the new deployment container
 log_info "Booting up deployment container for '$TARGET_DEPLOYMENT'..."
-sudo -u "$REPOSITORY_OWNER" docker compose -f "$PATH_TO_ODOO/docker-compose.yml" up -d
+sudo -u "$REPOSITORY_OWNER" docker compose -f "$PATH_TO_ODOO/docker-compose.yml" up -d --build
 
 log_success "Deployment successfully switched to '$TARGET_DEPLOYMENT'."
