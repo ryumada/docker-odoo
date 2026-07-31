@@ -1398,10 +1398,10 @@ function main() {
     if [[ "$ENABLE_MULTI_DEPLOYMENT" =~ ^([yY][eE][sS]|[yY]|1|true|TRUE)$ ]]; then
       log_info "Multi-deployment mode enabled. Verifying deployments/ directory..."
       if [ ! -d "$REPOSITORY_DIRPATH/deployments" ]; then
-        mkdir -p "$REPOSITORY_DIRPATH/deployments/project_a"
-        cp "$REPOSITORY_DIRPATH/deployments/project_a/.env.example" "$REPOSITORY_DIRPATH/deployments/project_a/.env" 2>/dev/null || true
-        cp "$REPOSITORY_DIRPATH/deployments/project_a/requirements.txt.example" "$REPOSITORY_DIRPATH/deployments/project_a/requirements.txt" 2>/dev/null || true
-        log_success "Initialized deployments/project_a profile directory."
+        mkdir -p "$REPOSITORY_DIRPATH/deployments/deployment.example"
+        cp "$REPOSITORY_DIRPATH/deployments/deployment.example/.env.example" "$REPOSITORY_DIRPATH/deployments/deployment.example/.env" 2>/dev/null || true
+        cp "$REPOSITORY_DIRPATH/deployments/deployment.example/requirements.txt.example" "$REPOSITORY_DIRPATH/deployments/deployment.example/requirements.txt" 2>/dev/null || true
+        log_success "Initialized deployments/deployment.example profile directory."
       fi
     fi
   fi

@@ -157,7 +157,7 @@ deployments/
     └── requirements.txt
 ```
 
-> Copy template files from `deployments/project_a/.env.example` and `deployments/project_a/requirements.txt.example` to get started.
+> Copy template files from `deployments/deployment.example/.env.example` and `deployments/deployment.example/requirements.txt.example` to get started.
 
 ### 3. Switch Between Deployments
 To switch active environments:

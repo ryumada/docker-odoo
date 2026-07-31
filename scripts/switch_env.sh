@@ -187,14 +187,19 @@ update_env_var "ODOO_LOG_DIR_SERVICE" "/var/log/odoo/${SERVICE_NAME}-${TARGET_DE
 update_env_var "ODOO_DATADIR_SERVICE" "/var/lib/odoo/${SERVICE_NAME}-${TARGET_DEPLOYMENT}"
 update_env_var "ODOO_IMAGE_NAME" "${SERVICE_NAME}-${TARGET_DEPLOYMENT}"
 
-[ -n "$EXTRACTED_ADDONS" ] && update_env_var "ADDONS_PATH" "$EXTRACTED_ADDONS"
-[ -n "$DEP_PYTHON_VERSION" ] && update_env_var "PYTHON_VERSION" "$DEP_PYTHON_VERSION"
-[ -n "$DEP_PORT" ] && update_env_var "PORT" "$DEP_PORT"
-[ -n "$DEP_GEVENT_PORT" ] && update_env_var "GEVENT_PORT" "$DEP_GEVENT_PORT"
-[ -n "$DEP_ADMIN_PASSWD" ] && update_env_var "ADMIN_PASSWD" "$DEP_ADMIN_PASSWD"
-[ -n "$DEP_DB_NAME" ] && update_env_var "DB_NAME" "$DEP_DB_NAME"
-[ -n "$DEP_APT_PACKAGES" ] && update_env_var "APT_ADDITIONAL_PACKAGES" "$DEP_APT_PACKAGES"
-[ -n "$DEP_PIP_PACKAGES" ] && update_env_var "PIP_ADDITIONAL_PACKAGES" "$DEP_PIP_PACKAGES"
+# Sync all non-empty per-deployment variables into active root .env
+while IFS= read -r line; do
+    [[ -z "$line" || "$line" =~ ^# ]] && continue
+    if [[ "$line" =~ ^([A-Za-z0-9_]+)=(.*)$ ]]; then
+        var_key="${BASH_REMATCH[1]}"
+        var_val="${BASH_REMATCH[2]}"
+        var_val=$(echo "$var_val" | sed 's/^["'\''\\]*//; s/["'\''\\]*$//')
+        # Do not override system active metadata variables dynamically
+        if [[ "$var_key" != "ACTIVE_"* ]]; then
+            update_env_var "$var_key" "$var_val"
+        fi
+    fi
+done < <(tr -d '\r' < "$DEP_ENV_FILE")
 
 # Sync deployment-specific secret files (.secrets/db_user_<dep> & .secrets/db_password_<dep>)
 SECRETS_DIR="$PATH_TO_ODOO/.secrets"
