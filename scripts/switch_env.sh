@@ -233,6 +233,6 @@ mkdir -p "$DATADIR/filestore" "$LOGDIR"
 chown -R "$ODOO_LINUX_USER":"$ODOO_LINUX_USER" "$DATADIR" "$LOGDIR"
 
 # Run setup script to update configuration and trigger container deployment mode
-"$PATH_TO_ODOO/setup.sh auto"
+"$PATH_TO_ODOO/setup.sh" auto
 
 log_success "Deployment successfully switched to '$TARGET_DEPLOYMENT'."
