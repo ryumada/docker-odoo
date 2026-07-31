@@ -230,14 +230,9 @@ ODOO_LINUX_USER="odoo"
 # Automatically create directories on the host
 log_info "Provisioning directories on the host..."
 mkdir -p "$DATADIR/filestore" "$LOGDIR"
-chown -R "$ODOO_LINUX_USER":"$ODOO_LINUX_USER" "/var/lib/odoo" "/var/log/odoo" "$DATADIR" "$LOGDIR"
+chown -R "$ODOO_LINUX_USER":"$ODOO_LINUX_USER" "$DATADIR" "$LOGDIR"
 
-# Run odoo configuration update with target addons
-log_info "Injecting Odoo configuration for addons..."
-"$PATH_TO_ODOO/scripts/update-odoo-config.sh" "$EXTRACTED_ADDONS"
-
-# Boot up the new deployment container
-log_info "Booting up deployment container for '$TARGET_DEPLOYMENT'..."
-sudo -u "$REPOSITORY_OWNER" docker compose -f "$PATH_TO_ODOO/docker-compose.yml" up -d --build
+# Run setup script to update configuration and trigger container deployment mode
+"$PATH_TO_ODOO/setup.sh"
 
 log_success "Deployment successfully switched to '$TARGET_DEPLOYMENT'."
