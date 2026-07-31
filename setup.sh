@@ -1108,11 +1108,11 @@ function prepareOdooSources() {
     checkGitRepositories "$GIT_DIR"
   fi
 
-  local available_deployments
-  available_deployments=$(grep "^AVAILABLE_DEPLOYMENTS=" "$PATH_TO_ODOO/.env" 2>/dev/null | cut -d '=' -f2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//')
+  local ENABLE_MULTI_DEPLOYMENT
+  ENABLE_MULTI_DEPLOYMENT=$(grep "^ENABLE_MULTI_DEPLOYMENT=" "$PATH_TO_ODOO/.env" 2>/dev/null | cut -d '=' -f2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//')
 
   local only_one_arg="only-one"
-  if [ -n "$available_deployments" ]; then
+  if [[ "$ENABLE_MULTI_DEPLOYMENT" =~ ^([yY][eE][sS]|[yY]|1|true|TRUE)$ ]]; then
     only_one_arg=""
   fi
 
