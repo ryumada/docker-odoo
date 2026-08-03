@@ -280,3 +280,43 @@ Before you run the restore snapshot script, you need to prepare [snapshot utilit
   </details>
 
 </details>
+
+<details>
+<summary>
+
+# VSCode Server
+
+</summary>
+
+This utility installs and manages a systemd service for running VSCode Web Server (`code serve-web`) to assist in debugging Odoo deployments.
+
+### Setup & Usage
+
+1. Enable in `.env`:
+    ```bash
+    ENABLE_VSCODE_SERVER=Y
+    VSCODE_SERVER_PORT=8000
+    ```
+
+2. Run `setup.sh` or run the installer script directly:
+    ```bash
+    sudo ./scripts/installer/install-vscode_server.sh
+    ```
+
+3. Restart service and retrieve authentication token:
+   Executing the installer or the system-wide restart command will restart the service, extract the token from `journalctl`, and save it to your home directory:
+    ```bash
+    sudo /usr/local/sbin/restart_code-server
+    cat ~/vscode-server-token.txt
+    ```
+
+4. Nginx HTTPS Proxy setup (optional):
+   See `nginx-configurations/nginx_sites_available_vscode.example` for the reverse proxy template with WebSocket and CORS support.
+
+5. Uninstalling / Disabling:
+   Set `ENABLE_VSCODE_SERVER=` in `.env` and re-run `setup.sh`, or execute:
+    ```bash
+    sudo ./scripts/installer/uninstall-vscode_server.sh
+    ```
+
+</details>

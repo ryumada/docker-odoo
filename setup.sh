@@ -1403,6 +1403,14 @@ function main() {
       log_warn "snapshot utility is not installed. Please fill ENABLE_SNAPSHOT and DB_NAME variables in your .env file, then re-run this install script to install snapshot utility."
     fi
 
+    ENABLE_VSCODE_SERVER=$(grep "^ENABLE_VSCODE_SERVER=" "$REPOSITORY_DIRPATH/.env" 2>/dev/null | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
+    if [[ "$ENABLE_VSCODE_SERVER" =~ ^([yY][eE][sS]|[yY]|1|true|TRUE)$ ]]; then
+      "$REPOSITORY_DIRPATH/scripts/installer/install-vscode_server.sh"
+    else
+      "$REPOSITORY_DIRPATH/scripts/installer/uninstall-vscode_server.sh"
+      log_warn "vscode_server utility is not installed. Please set ENABLE_VSCODE_SERVER=Y in your .env file to install VSCode Server."
+    fi
+
     ENABLE_MULTI_DEPLOYMENT=$(grep "^ENABLE_MULTI_DEPLOYMENT=" "$REPOSITORY_DIRPATH/.env" 2>/dev/null | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
     if [[ "$ENABLE_MULTI_DEPLOYMENT" =~ ^([yY][eE][sS]|[yY]|1|true|TRUE)$ ]]; then
       log_info "Multi-deployment mode enabled. Verifying deployments/ directory..."

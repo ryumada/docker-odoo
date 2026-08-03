@@ -250,6 +250,12 @@ function main() {
   rm -f -- "$SNAPSHOT_SCRIPT_FILE" "/usr/local/sbin/snapshot-$SERVICE_NAME" 2>/dev/null || true
 
   log_info "Removing service scripts, cron jobs, and logrotate files..."
+  systemctl stop "code-server.service" 2>/dev/null || true
+  systemctl disable "code-server.service" 2>/dev/null || true
+  rm -f "/lib/systemd/system/code-server.service" "/etc/systemd/system/code-server.service" 2>/dev/null || true
+  rm -f "/usr/local/sbin/restart_code-server" 2>/dev/null || true
+  rm -f "$(eval echo "~${REPOSITORY_OWNER}")/vscode-server-token.txt" 2>/dev/null || true
+  systemctl daemon-reload 2>/dev/null || true
   rm -f /usr/local/sbin/restart_${SERVICE_NAME}* /usr/local/sbin/restart-${SERVICE_NAME}* 2>/dev/null || true
   rm -f /etc/cron.d/restart_${SERVICE_NAME}* /etc/cron.d/restart-${SERVICE_NAME}* 2>/dev/null || true
   rm -f /etc/logrotate.d/restart_${SERVICE_NAME}* /etc/logrotate.d/restart-${SERVICE_NAME}* 2>/dev/null || true
