@@ -242,7 +242,7 @@ log_info "Run setup script to update configuration and trigger container deploym
 
 # Apply the switched environment
 log_info "Apply the switched environment..."
-docker compose -f "$PATH_TO_ODOO/docker-compose.yml" up -d
-docker compose -f "$PATH_TO_ODOO/docker-compose.yml" restart
+sudo -u "$REPOSITORY_OWNER" docker compose -f "$PATH_TO_ODOO/docker-compose.yml" up -d
+sudo -u "$REPOSITORY_OWNER" docker compose -f "$PATH_TO_ODOO/docker-compose.yml" restart
 
 log_success "Deployment successfully switched to '$TARGET_DEPLOYMENT'."
