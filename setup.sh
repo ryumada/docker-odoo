@@ -501,7 +501,14 @@ function generatePostgresPassword() {
 }
 
 function generatePostgresSecrets() {
-  POSTGRES_ODOO_USERNAME=$SERVICE_NAME
+  DEPLOYMENT_NAME=$(grep "^ACTIVE_DEPLOYMENT=" "$REPOSITORY_DIRPATH/.env" 2>/dev/null | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
+  [ -z "$DEPLOYMENT_NAME" ] && DEPLOYMENT_NAME=$(grep "^DEPLOYMENT_NAME=" "$REPOSITORY_DIRPATH/.env" 2>/dev/null | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
+
+  if [ -n "$DEPLOYMENT_NAME" ]; then
+    POSTGRES_ODOO_USERNAME="${SERVICE_NAME}_${DEPLOYMENT_NAME}"
+  else
+    POSTGRES_ODOO_USERNAME="$SERVICE_NAME"
+  fi
 
   DB_HOST=$(grep "^DB_HOST=" "$REPOSITORY_DIRPATH/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
 
