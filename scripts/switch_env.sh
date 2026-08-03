@@ -237,6 +237,12 @@ mkdir -p "$DATADIR/filestore" "$LOGDIR"
 chown -R "$ODOO_LINUX_USER":"$ODOO_LINUX_USER" "$DATADIR" "$LOGDIR"
 
 # Run setup script to update configuration and trigger container deployment mode
+log_info "Run setup script to update configuration and trigger container deployment mode..."
 "$PATH_TO_ODOO/setup.sh" auto
+
+# Apply the switched environment
+log_info "Apply the switched environment..."
+docker compose -f "$PATH_TO_ODOO/docker-compose.yml" up -d
+docker compose -f "$PATH_TO_ODOO/docker-compose.yml" restart
 
 log_success "Deployment successfully switched to '$TARGET_DEPLOYMENT'."
