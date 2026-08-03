@@ -129,12 +129,16 @@ fi
 
 # Sync deployment requirements.txt if present
 if [ -f "$TARGET_DEP_DIR/requirements.txt" ]; then
-    log_info "Syncing requirements.txt for '$TARGET_DEPLOYMENT'..."
+    log_info "Syncing requirements.txt from '$TARGET_DEPLOYMENT' deployment..."
     cp "$TARGET_DEP_DIR/requirements.txt" "$PATH_TO_ODOO/requirements.txt"
     chown "$REPOSITORY_OWNER:$REPOSITORY_OWNER" "$PATH_TO_ODOO/requirements.txt" 2>/dev/null || true
-elif [ -f "$TARGET_DEP_DIR/requirements.txt.example" ] && [ ! -f "$PATH_TO_ODOO/requirements.txt" ]; then
-    cp "$TARGET_DEP_DIR/requirements.txt.example" "$PATH_TO_ODOO/requirements.txt"
+elif [ -f "$FULL_BASE_PATH/requirements.txt" ]; then
+    log_info "Syncing requirements.txt from '$EXTRACTED_BASE_PATH' (no custom one found)..."
+    cp "$FULL_BASE_PATH/requirements.txt" "$PATH_TO_ODOO/requirements.txt"
     chown "$REPOSITORY_OWNER:$REPOSITORY_OWNER" "$PATH_TO_ODOO/requirements.txt" 2>/dev/null || true
+else
+    log_error "No requirements.txt found for '$TARGET_DEPLOYMENT'..."
+    exit 1
 fi
 
 # Sync deployment dockerfile if custom one exists in deployment directory
