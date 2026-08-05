@@ -83,6 +83,22 @@ function main() {
 
   log_info "Removing restart script, token file, and cron job if present..."
   rm -f "$RESTART_SCRIPT_PATH" "$TOKEN_FILE_PATH" "$CRON_FILE_PATH" 2>/dev/null || true
+
+  ENV_FILE="$PATH_TO_ODOO/.env"
+  if [ -f "$ENV_FILE" ]; then
+    VSCODE_DOMAIN=$(grep "^VSCODE_SERVER_DOMAIN=" "$ENV_FILE" 2>/dev/null | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g; s/[[:space:]\n]*$//g' || true)
+    if [ -n "$VSCODE_DOMAIN" ]; then
+      NGINX_CONF_AVAILABLE="/etc/nginx/sites-available/${VSCODE_DOMAIN}"
+      NGINX_CONF_ENABLED="/etc/nginx/sites-enabled/${VSCODE_DOMAIN}"
+      if [ -f "$NGINX_CONF_AVAILABLE" ] || [ -f "$NGINX_CONF_ENABLED" ]; then
+        log_info "Removing Nginx site configuration for VSCode Server (${VSCODE_DOMAIN})..."
+        rm -f "$NGINX_CONF_AVAILABLE" "$NGINX_CONF_ENABLED" 2>/dev/null || true
+        if nginx -t >/dev/null 2>&1; then
+          systemctl reload nginx 2>/dev/null || service nginx reload 2>/dev/null || true
+        fi
+      fi
+    fi
+  fi
 }
 
 main "$@"

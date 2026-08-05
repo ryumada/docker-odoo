@@ -185,6 +185,40 @@ EOF
 
   chmod 755 "$RESTART_SCRIPT_PATH"
 
+  REVERSE_PROXY_TYPE=$(grep "^REVERSE_PROXY_TYPE=" "$ENV_FILE" 2>/dev/null | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g; s/[[:space:]\n]*$//g' | tr '[:upper:]' '[:lower:]' || true)
+  VSCODE_DOMAIN=$(grep "^VSCODE_SERVER_DOMAIN=" "$ENV_FILE" 2>/dev/null | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g; s/[[:space:]\n]*$//g' || true)
+
+  if [ "$REVERSE_PROXY_TYPE" = "nginx" ] && [ -n "$VSCODE_DOMAIN" ]; then
+    if [ -d "/etc/nginx" ]; then
+      NGINX_TEMPLATE="$PATH_TO_ODOO/nginx-configurations/nginx_sites_available_vscode.example"
+      NGINX_CONF_AVAILABLE="/etc/nginx/sites-available/${VSCODE_DOMAIN}"
+      NGINX_CONF_ENABLED="/etc/nginx/sites-enabled/${VSCODE_DOMAIN}"
+
+      if [ -f "$NGINX_TEMPLATE" ]; then
+        log_info "Configuring Nginx reverse proxy for VSCode Server (${VSCODE_DOMAIN}) from template..."
+        sed \
+          -e "s/\$ENTER_DOMAIN/${VSCODE_DOMAIN}/g" \
+          -e "s/\$ENTER_SSL_DOMAIN/${VSCODE_DOMAIN}/g" \
+          -e "s|http://127\.0\.0\.1:8000|http://127.0.0.1:${VSCODE_PORT}|g" \
+          "$NGINX_TEMPLATE" > "$NGINX_CONF_AVAILABLE"
+
+        mkdir -p /etc/nginx/sites-enabled
+        ln -sf "$NGINX_CONF_AVAILABLE" "$NGINX_CONF_ENABLED"
+
+        if nginx -t >/dev/null 2>&1; then
+          systemctl reload nginx 2>/dev/null || service nginx reload 2>/dev/null || true
+          log_success "Nginx configuration enabled at ${NGINX_CONF_AVAILABLE} and Nginx reloaded."
+        else
+          log_warn "Nginx configuration generated at ${NGINX_CONF_AVAILABLE}, but 'nginx -t' failed (SSL certificates may be missing). Please verify SSL configuration before reloading Nginx."
+        fi
+      else
+        log_error "Nginx template file not found at: ${NGINX_TEMPLATE}"
+      fi
+    else
+      log_warn "REVERSE_PROXY_TYPE is set to nginx, but /etc/nginx directory was not found on host."
+    fi
+  fi
+
   log_info "Executing restart script to initialize service and save token..."
   "$RESTART_SCRIPT_PATH"
 }
