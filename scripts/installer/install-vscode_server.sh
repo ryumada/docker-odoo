@@ -185,6 +185,13 @@ EOF
 
   chmod 755 "$RESTART_SCRIPT_PATH"
 
+  SUDOERS_FILE_PATH="/etc/sudoers.d/restart_code_server"
+  log_info "Creating sudoers rule for ${REPOSITORY_OWNER} to run restart_code-server without password: ${SUDOERS_FILE_PATH}"
+  cat << EOF > "$SUDOERS_FILE_PATH"
+${REPOSITORY_OWNER} ALL=(ALL) NOPASSWD: ${RESTART_SCRIPT_PATH}
+EOF
+  chmod 440 "$SUDOERS_FILE_PATH"
+
   REVERSE_PROXY_TYPE=$(grep "^REVERSE_PROXY_TYPE=" "$ENV_FILE" 2>/dev/null | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g; s/[[:space:]\n]*$//g' | tr '[:upper:]' '[:lower:]' || true)
   VSCODE_DOMAIN=$(grep "^VSCODE_SERVER_DOMAIN=" "$ENV_FILE" 2>/dev/null | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g; s/[[:space:]\n]*$//g' || true)
 
