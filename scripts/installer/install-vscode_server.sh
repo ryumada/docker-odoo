@@ -60,10 +60,32 @@ function main() {
     exit 1
   fi
 
+  VSCODE_DIRECT_DOWNLOAD_URL=$(grep "^VSCODE_DIRECT_DOWNLOAD_URL=" "$ENV_FILE" 2>/dev/null | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g; s/[[:space:]\n]*$//g' || true)
+
   CODE_BIN=$(command -v code 2>/dev/null || true)
   if [ -z "$CODE_BIN" ]; then
+    if [ -n "$VSCODE_DIRECT_DOWNLOAD_URL" ] && { [ "$VSCODE_DIRECT_DOWNLOAD_URL" != "${VSCODE_DIRECT_DOWNLOAD_URL#[http://]}" ] || [ "$VSCODE_DIRECT_DOWNLOAD_URL" != "${VSCODE_DIRECT_DOWNLOAD_URL#[https://]}" ]; }; then
+      log_info "VSCode CLI ('code') binary not found in PATH. Downloading from VSCODE_DIRECT_DOWNLOAD_URL..."
+      TEMP_DEB="/tmp/vscode_installer.deb"
+      if command -v wget >/dev/null 2>&1; then
+        wget -O "$TEMP_DEB" "$VSCODE_DIRECT_DOWNLOAD_URL"
+      elif command -v curl >/dev/null 2>&1; then
+        curl -fsSL "$VSCODE_DIRECT_DOWNLOAD_URL" -o "$TEMP_DEB"
+      else
+        log_error "Neither wget nor curl is installed on the host system."
+        exit 1
+      fi
+
+      log_info "Installing VSCode package on host system..."
+      apt-get update -qq && apt-get install -y "$TEMP_DEB"
+      rm -f "$TEMP_DEB"
+      CODE_BIN=$(command -v code 2>/dev/null || true)
+    fi
+  fi
+
+  if [ -z "$CODE_BIN" ]; then
     log_error "VSCode CLI ('code') binary was not found in PATH."
-    log_warn "Please install VSCode CLI first or ensure 'code' is available in /usr/bin/code."
+    log_warn "Please install VSCode CLI first, or set VSCODE_DIRECT_DOWNLOAD_URL in your .env file to auto-install it on the host server."
     exit 1
   fi
 

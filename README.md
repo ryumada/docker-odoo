@@ -268,32 +268,26 @@ docker compose exec odoo odoo-module-upgrade example_database_name --update=all
   As you can see in the `SERVICE` column, the service name is `odoo`.
 </details>
 
-## Run VSCode on container
-If you setup this variable in .env:
+## VSCode Server for Odoo Debugging (Host Server)
+If you setup these variables in `.env`:
 
 ```env
-...
-# # # # # # # # # # # # # # # #
-# VSCODE ON Container         #
-# # # # # # # # # # # # # # # #
-# Set the direct download URL of vscode for debian to install vscode inside your odoo container
-# possible values
+# # # # # # # # # # # # # # # # #
+# VSCODE SERVER FOR ODOO DEBUG  #
+# # # # # # # # # # # # # # # # #
+# Set Y to install VSCode Web Server systemd service for debugging Odoo
+ENABLE_VSCODE_SERVER=Y
+# Port for VSCode Web Server (default: 8000)
+VSCODE_SERVER_PORT=8000
+# Domain for VSCode Web Server Nginx proxy setup (e.g., vscode.example.com)
+VSCODE_SERVER_DOMAIN=
+# Custom working directory for VSCode Server (leave empty to default to path to Odoo repo)
+VSCODE_SERVER_WORKING_DIR=
+# Optional: Direct download URL of VSCode CLI .deb package if not installed on host server
 VSCODE_DIRECT_DOWNLOAD_URL=
-...
 ```
 
-Then, vscode will be installed inside the container when you build the image. Here how to activate vscode from your container:
-
-```bash
-# This will open the vscode web on http://localhost:8000
-docker compose exec $SERVICE_NAME code serve-web
-
-# You can change the port of vscode if port 8000 is already in use
-docker compose exec $SERVICE_NAME code serve-web --port
-
-# See help of code cli
-docker compose exec $SERVICE_NAME code serve-web --help
-```
+When `ENABLE_VSCODE_SERVER=Y` is set, `setup.sh` (or `sudo ./scripts/installer/install-vscode_server.sh`) will install and configure a systemd service running VSCode Web Server (`code serve-web`) on the host system. If `code` CLI is not installed on the host server, specifying `VSCODE_DIRECT_DOWNLOAD_URL` will automatically download and install VSCode CLI during setup.
 
 <details>
   <summary>You can get <code>$SERVICE_NAME</code> by running <code>docker compose ps</code> in your root repository where docker compose file located. </summary>

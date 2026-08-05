@@ -296,6 +296,7 @@ This utility installs and manages a systemd service for running VSCode Web Serve
     ```bash
     ENABLE_VSCODE_SERVER=Y
     VSCODE_SERVER_PORT=8000
+    VSCODE_DIRECT_DOWNLOAD_URL=
     ```
 
 2. Run `setup.sh` or run the installer script directly:
