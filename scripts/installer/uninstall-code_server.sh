@@ -2,7 +2,7 @@
 set -e
 # Category: Installer
 # Description: Uninstalls and removes VSCode Server systemd service and restart script.
-# Usage: ./scripts/installer/uninstall-vscode_server.sh
+# Usage: ./scripts/installer/uninstall-code_server.sh
 # Dependencies: systemctl, sudo
 # Maintainer: ryumada
 
@@ -56,7 +56,8 @@ function main() {
   SERVICE_UNIT_NAME="code-server.service"
   UNIT_LIB_PATH="/lib/systemd/system/${SERVICE_UNIT_NAME}"
   UNIT_ETC_PATH="/etc/systemd/system/${SERVICE_UNIT_NAME}"
-  RESTART_SCRIPT_PATH="/usr/local/sbin/restart_code-server"
+  RESTART_SCRIPT_PATH="/usr/local/sbin/restart-code_server"
+  SUDOERS_FILE_PATH="/etc/sudoers.d/restart_code_server"
   TOKEN_FILE_PATH="${OWNER_HOME}/vscode-server-token.txt"
   CRON_FILE_PATH="/etc/cron.d/stop_code_server"
 
@@ -83,6 +84,9 @@ function main() {
 
   log_info "Removing restart script, token file, and cron job if present..."
   rm -f "$RESTART_SCRIPT_PATH" "$TOKEN_FILE_PATH" "$CRON_FILE_PATH" 2>/dev/null || true
+
+  log_info "Removing the sudoers file of restart code_server..."
+  rm -f "$SUDOERS_FILE_PATH" 2>/dev/null || true
 
   ENV_FILE="$PATH_TO_ODOO/.env"
   if [ -f "$ENV_FILE" ]; then

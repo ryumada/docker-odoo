@@ -2,7 +2,7 @@
 set -e
 # Category: Installer
 # Description: Installs and configures global VSCode Server systemd service and restart utility for Odoo debugging.
-# Usage: ./scripts/installer/install-vscode_server.sh
+# Usage: ./scripts/installer/install-code_server.sh
 # Dependencies: code, systemctl, sudo
 # Maintainer: ryumada
 
@@ -104,7 +104,7 @@ function main() {
 
   SERVICE_UNIT_NAME="code-server.service"
   SERVICE_UNIT_PATH="/lib/systemd/system/${SERVICE_UNIT_NAME}"
-  RESTART_SCRIPT_PATH="/usr/local/sbin/restart_code-server"
+  RESTART_SCRIPT_PATH="/usr/local/sbin/restart-code_server"
   TOKEN_FILE_PATH="${OWNER_HOME}/vscode-server-token.txt"
 
   log_info "Creating global systemd unit file for VSCode Server: ${SERVICE_UNIT_PATH}"
@@ -158,7 +158,7 @@ if [ "\$(id -u)" -ne 0 ]; then
   exec sudo "\$0" "\$@"
 fi
 
-echo "[$(date +"%Y-%m-%d %H:%M:%S")] ℹ️ Restarting \${SERVICE_UNIT_NAME}..."
+echo "[\$(date +"%Y-%m-%d %H:%M:%S")] ℹ️ Restarting \${SERVICE_UNIT_NAME}..."
 systemctl restart "\${SERVICE_UNIT_NAME}"
 
 TOKEN_URL=""
@@ -174,19 +174,19 @@ if [ -n "\$TOKEN_URL" ]; then
   echo "\$TOKEN_URL" > "\$TOKEN_FILE"
   chown "\${REPO_OWNER}:" "\$TOKEN_FILE" 2>/dev/null || true
   chmod 600 "\$TOKEN_FILE" 2>/dev/null || true
-  echo "[$(date +"%Y-%m-%d %H:%M:%S")] ✅ VSCode Server restarted successfully."
-  echo "[$(date +"%Y-%m-%d %H:%M:%S")] 🔑 Token URL: \$TOKEN_URL"
-  echo "[$(date +"%Y-%m-%d %H:%M:%S")] 💾 Saved token to: \$TOKEN_FILE"
+  echo "[\$(date +"%Y-%m-%d %H:%M:%S")] ✅ VSCode Server restarted successfully."
+  echo "[\$(date +"%Y-%m-%d %H:%M:%S")] 🔑 Token URL: \$TOKEN_URL"
+  echo "[\$(date +"%Y-%m-%d %H:%M:%S")] 💾 Saved token to: \$TOKEN_FILE"
 else
-  echo "[$(date +"%Y-%m-%d %H:%M:%S")] ⚠️ VSCode Server restarted, but token URL was not captured in journalctl yet."
-  echo "[$(date +"%Y-%m-%d %H:%M:%S")] ℹ️ Run 'sudo journalctl -u \${SERVICE_UNIT_NAME} -f' to inspect logs."
+  echo "[\$(date +"%Y-%m-%d %H:%M:%S")] ⚠️ VSCode Server restarted, but token URL was not captured in journalctl yet."
+  echo "[\$(date +"%Y-%m-%d %H:%M:%S")] ℹ️ Run 'sudo journalctl -u \${SERVICE_UNIT_NAME} -f' to inspect logs."
 fi
 EOF
 
   chmod 755 "$RESTART_SCRIPT_PATH"
 
   SUDOERS_FILE_PATH="/etc/sudoers.d/restart_code_server"
-  log_info "Creating sudoers rule for ${REPOSITORY_OWNER} to run restart_code-server without password: ${SUDOERS_FILE_PATH}"
+  log_info "Creating sudoers rule for ${REPOSITORY_OWNER} to run restart-code_server without password: ${SUDOERS_FILE_PATH}"
   cat << EOF > "$SUDOERS_FILE_PATH"
 ${REPOSITORY_OWNER} ALL=(ALL) NOPASSWD: ${RESTART_SCRIPT_PATH}
 EOF

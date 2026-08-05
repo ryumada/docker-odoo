@@ -1405,9 +1405,9 @@ function main() {
 
     ENABLE_VSCODE_SERVER=$(grep "^ENABLE_VSCODE_SERVER=" "$REPOSITORY_DIRPATH/.env" 2>/dev/null | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
     if [[ "$ENABLE_VSCODE_SERVER" =~ ^([yY][eE][sS]|[yY]|1|true|TRUE)$ ]]; then
-      "$REPOSITORY_DIRPATH/scripts/installer/install-vscode_server.sh"
+      "$REPOSITORY_DIRPATH/scripts/installer/install-code_server.sh"
     else
-      "$REPOSITORY_DIRPATH/scripts/installer/uninstall-vscode_server.sh"
+      "$REPOSITORY_DIRPATH/scripts/installer/uninstall-code_server.sh"
       log_warn "vscode_server utility is not installed. Please set ENABLE_VSCODE_SERVER=Y in your .env file to install VSCode Server."
     fi
 

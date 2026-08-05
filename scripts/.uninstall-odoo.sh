@@ -253,7 +253,7 @@ function main() {
   systemctl stop "code-server.service" 2>/dev/null || true
   systemctl disable "code-server.service" 2>/dev/null || true
   rm -f "/lib/systemd/system/code-server.service" "/etc/systemd/system/code-server.service" 2>/dev/null || true
-  rm -f "/usr/local/sbin/restart_code-server" 2>/dev/null || true
+  rm -f "/usr/local/sbin/restart-code_server" 2>/dev/null || true
   rm -f "$(eval echo "~${REPOSITORY_OWNER}")/vscode-server-token.txt" 2>/dev/null || true
   systemctl daemon-reload 2>/dev/null || true
   rm -f /usr/local/sbin/restart_${SERVICE_NAME}* /usr/local/sbin/restart-${SERVICE_NAME}* 2>/dev/null || true

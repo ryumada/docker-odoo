@@ -287,7 +287,7 @@ VSCODE_SERVER_WORKING_DIR=
 VSCODE_DIRECT_DOWNLOAD_URL=
 ```
 
-When `ENABLE_VSCODE_SERVER=Y` is set, `setup.sh` (or `sudo ./scripts/installer/install-vscode_server.sh`) will install and configure a systemd service running VSCode Web Server (`code serve-web`) on the host system. If `code` CLI is not installed on the host server, specifying `VSCODE_DIRECT_DOWNLOAD_URL` will automatically download and install VSCode CLI during setup.
+When `ENABLE_VSCODE_SERVER=Y` is set, `setup.sh` (or `sudo ./scripts/installer/install-code_server.sh`) will install and configure a systemd service running VSCode Web Server (`code serve-web`) on the host system. If `code` CLI is not installed on the host server, specifying `VSCODE_DIRECT_DOWNLOAD_URL` will automatically download and install VSCode CLI during setup.
 
 <details>
   <summary>You can get <code>$SERVICE_NAME</code> by running <code>docker compose ps</code> in your root repository where docker compose file located. </summary>

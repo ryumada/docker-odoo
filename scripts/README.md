@@ -301,13 +301,13 @@ This utility installs and manages a systemd service for running VSCode Web Serve
 
 2. Run `setup.sh` or run the installer script directly:
     ```bash
-    sudo ./scripts/installer/install-vscode_server.sh
+    sudo ./scripts/installer/install-code_server.sh
     ```
 
 3. Restart service and retrieve authentication token:
    Executing the installer or the system-wide restart command will restart the service, extract the token from `journalctl`, and save it to your home directory:
     ```bash
-    sudo /usr/local/sbin/restart_code-server
+    sudo /usr/local/sbin/restart-code_server
     cat ~/vscode-server-token.txt
     ```
 
@@ -317,7 +317,7 @@ This utility installs and manages a systemd service for running VSCode Web Serve
 5. Uninstalling / Disabling:
    Set `ENABLE_VSCODE_SERVER=` in `.env` and re-run `setup.sh`, or execute:
     ```bash
-    sudo ./scripts/installer/uninstall-vscode_server.sh
+    sudo ./scripts/installer/uninstall-code_server.sh
     ```
 
 </details>
