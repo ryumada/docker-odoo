@@ -160,7 +160,7 @@ fi
 
 echo "[$(date +"%Y-%m-%d %H:%M:%S")] ℹ️ Restarting \${SERVICE_UNIT_NAME}..."
 systemctl restart "\${SERVICE_UNIT_NAME}"
-sleep 2
+sleep 10
 
 TOKEN_URL=\$(journalctl -u "\${SERVICE_UNIT_NAME}" -n 50 --no-pager 2>/dev/null | grep -o 'http://127\.0\.0\.1:[0-9]*\?tkn=[^[:space:]]*' | tail -n 1 || true)
 
