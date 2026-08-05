@@ -136,7 +136,7 @@ EOF
   chmod 644 "$SERVICE_UNIT_PATH"
   systemctl daemon-reload
 
-  CRON_FILE_PATH="/etc/cron.d/vscode-server-stop"
+  CRON_FILE_PATH="/etc/cron.d/stop_code_server"
   log_info "Creating cron job to stop VSCode Server daily at 8:00 PM (20:00): ${CRON_FILE_PATH}"
   cat << EOF > "$CRON_FILE_PATH"
 # Automatically stop VSCode Server every day at 8:00 PM (20:00)

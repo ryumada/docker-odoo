@@ -58,7 +58,7 @@ function main() {
   UNIT_ETC_PATH="/etc/systemd/system/${SERVICE_UNIT_NAME}"
   RESTART_SCRIPT_PATH="/usr/local/sbin/restart_code-server"
   TOKEN_FILE_PATH="${OWNER_HOME}/vscode-server-token.txt"
-  CRON_FILE_PATH="/etc/cron.d/vscode-server-stop"
+  CRON_FILE_PATH="/etc/cron.d/stop_code_server"
 
   log_info "Uninstalling global VSCode Server systemd service (${SERVICE_UNIT_NAME})..."
 
