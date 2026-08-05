@@ -58,6 +58,7 @@ function main() {
   UNIT_ETC_PATH="/etc/systemd/system/${SERVICE_UNIT_NAME}"
   RESTART_SCRIPT_PATH="/usr/local/sbin/restart_code-server"
   TOKEN_FILE_PATH="${OWNER_HOME}/vscode-server-token.txt"
+  CRON_FILE_PATH="/etc/cron.d/vscode-server-stop"
 
   log_info "Uninstalling global VSCode Server systemd service (${SERVICE_UNIT_NAME})..."
 
@@ -80,8 +81,8 @@ function main() {
     log_info "VSCode Server systemd unit file was not installed."
   fi
 
-  log_info "Removing restart script and token file if present..."
-  rm -f "$RESTART_SCRIPT_PATH" "$TOKEN_FILE_PATH" 2>/dev/null || true
+  log_info "Removing restart script, token file, and cron job if present..."
+  rm -f "$RESTART_SCRIPT_PATH" "$TOKEN_FILE_PATH" "$CRON_FILE_PATH" 2>/dev/null || true
 }
 
 main "$@"
