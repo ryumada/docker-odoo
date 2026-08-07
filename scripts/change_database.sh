@@ -32,9 +32,8 @@ log_error() { log "${COLOR_ERROR}" "❌" "$1"; }
 
 NEW_DB="$1"
 
-if [ -z "$NEW_DB" ]; then
-    log_error "Missing database name. Usage: $0 <db_name>"
-    exit 1
+if [ "$NEW_DB" == "clear" ] || [ "$NEW_DB" == "none" ] || [ "$NEW_DB" == "--clear" ]; then
+    NEW_DB=""
 fi
 
 if [ ! -f "$ENV_FILE" ]; then
@@ -49,7 +48,11 @@ else
     echo "DB_NAME=$NEW_DB" >> "$ENV_FILE"
 fi
 
-log_success "Successfully set DB_NAME to '$NEW_DB' in $ENV_FILE"
+if [ -z "$NEW_DB" ]; then
+    log_success "Successfully cleared DB_NAME in $ENV_FILE"
+else
+    log_success "Successfully set DB_NAME to '$NEW_DB' in $ENV_FILE"
+fi
 
 # Automatically run docker compose up -d
 log_info "Applying deployment changes via docker compose up -d..."
