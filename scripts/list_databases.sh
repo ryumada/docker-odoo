@@ -19,11 +19,18 @@ log() {
     local color="$1"
     local emoji="$2"
     local message="$3"
-    echo -e "${color}[$(date +"%Y-%m-%d %H:%M:%S")] ${emoji} ${message}${COLOR_RESET}"
+    echo -e "${color}[$(date +"%Y-%m-%d %H:%M:%S")] ${emoji} ${message}${COLOR_RESET}" >&2
 }
 
 log_info() { log "${COLOR_INFO}" "ℹ️" "$1"; }
 log_error() { log "${COLOR_ERROR}" "❌" "$1"; }
+
+FORMAT_JSON=false
+for arg in "$@"; do
+    if [[ "$arg" == "--json" ]]; then
+        FORMAT_JSON=true
+    fi
+done
 
 function run_psql() {
     local env_file="${PSQL_ENV_FILE:-$PATH_TO_ODOO/.env}"
@@ -57,9 +64,10 @@ function run_psql() {
 if [ "$(id -u)" -ne 0 ]; then
     log_info "Elevating permissions to root..."
     # shellcheck disable=SC2093
-    exec sudo "$0" "$@" # Re-run the script with sudo
-    log_error "Failed to elevate to root. Please run with sudo." # This will only run if exec fails
-    exit 1
+    if ! exec sudo -n "$0" "$@"; then
+        log_error "Failed to elevate to root non-interactively. Please ensure sudoers rule is installed."
+        exit 1
+    fi
 fi
 
 db_user_file="$PATH_TO_ODOO/.secrets/db_user"
@@ -76,6 +84,21 @@ if [ -z "$db_user" ]; then
 fi
 
 log_info "Listing databases owned by user: $db_user"
-echo "--------------------------------------------------"
-run_psql -t -c "SELECT datname FROM pg_database WHERE datdba = (SELECT oid FROM pg_roles WHERE rolname = '$db_user');" | awk '{$1=$1};1' | grep -v '^\s*$' || echo "No databases found."
-echo "--------------------------------------------------"
+
+RAW_DBS=$(run_psql -t -c "SELECT datname FROM pg_database WHERE datdba = (SELECT oid FROM pg_roles WHERE rolname = '$db_user');" | awk '{$1=$1};1' | grep -v '^\s*$' || true)
+
+if [ "$FORMAT_JSON" = true ]; then
+    if [ -z "$RAW_DBS" ]; then
+        echo "[]"
+    else
+        echo "$RAW_DBS" | jq -R . | jq -s .
+    fi
+else
+    echo "--------------------------------------------------"
+    if [ -z "$RAW_DBS" ]; then
+        echo "No databases found."
+    else
+        echo "$RAW_DBS"
+    fi
+    echo "--------------------------------------------------"
+fi

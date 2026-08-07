@@ -58,6 +58,13 @@ FILEPATHS_TO_REMOVE=(
   "/etc/sudoers.d/00-devops_as_root"
 )
 
+# Dynamically include all sudoers files created for this deployment
+for sudoers_f in /etc/sudoers.d/01-*_${SERVICE_NAME//./_}-*; do
+  if [ -f "$sudoers_f" ]; then
+    FILEPATHS_TO_REMOVE+=("$sudoers_f")
+  fi
+done
+
 die() {
   log_error "$*"
   exit 1
