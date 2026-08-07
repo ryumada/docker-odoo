@@ -30,10 +30,13 @@ log_info() { log "${COLOR_INFO}" "ℹ️" "$1"; }
 log_success() { log "${COLOR_SUCCESS}" "✅" "$1"; }
 log_error() { log "${COLOR_ERROR}" "❌" "$1"; }
 
-NEW_DB="$1"
+NEW_DB_RAW="$1"
+NEW_DB_LOWER=$(echo "$NEW_DB_RAW" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')
 
-if [ "$NEW_DB" == "clear" ] || [ "$NEW_DB" == "none" ] || [ "$NEW_DB" == "--clear" ]; then
+if [ -z "$NEW_DB_RAW" ] || [ "$NEW_DB_LOWER" = "clear" ] || [ "$NEW_DB_LOWER" = "none" ] || [ "$NEW_DB_LOWER" = "--clear" ] || [ "$NEW_DB_LOWER" = "false" ]; then
     NEW_DB=""
+else
+    NEW_DB="$NEW_DB_RAW"
 fi
 
 if [ ! -f "$ENV_FILE" ]; then
