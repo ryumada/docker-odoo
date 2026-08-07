@@ -788,6 +788,19 @@ function isLogRotateInstalled() {
   fi
 }
 
+function isJqInstalled() {
+  if ! command -v jq &>/dev/null; then
+    log_error "jq command not found."
+    if [ "$OS_FAMILY" = "rhel" ]; then
+      TODO+=("Please install jq by running the following command: 'sudo $PKG_MANAGER install jq'")
+    else
+      TODO+=("Please install jq by running the following command: 'sudo apt install jq'")
+    fi
+  else
+    log_success "jq command found"
+  fi
+}
+
 function isSubDirectoryExists() {
   dir=$1
   todo=$2
@@ -1249,6 +1262,7 @@ function main() {
 
   isDockerInstalled
   isLogRotateInstalled
+  isJqInstalled
 
   if [ "$mode_number" -ne 2 ]; then
     isUserExist "$ODOO_LINUX_USER" 8069
