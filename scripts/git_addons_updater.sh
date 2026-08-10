@@ -162,6 +162,19 @@ function process_repo() {
         status="not_git"
     fi
 
+    local commit_hash=""
+    local commit_msg=""
+    local commit_author=""
+    local commit_date=""
+
+    if [ -d "$subdir/.git" ]; then
+        local commit_log
+        commit_log=$(sudo -u "$REPOSITORY_OWNER" git -c safe.directory="*" -C "$subdir" log -1 --format="%h~%s~%an~%cr" 2>/dev/null || git -c safe.directory="*" -C "$subdir" log -1 --format="%h~%s~%an~%cr" 2>/dev/null || true)
+        if [ -n "$commit_log" ]; then
+            IFS='~' read -r commit_hash commit_msg commit_author commit_date <<< "$commit_log"
+        fi
+    fi
+
     # Output Handling
     if [ "$JSON_MODE" = "true" ]; then
         # If not the first repo, print comma
@@ -170,9 +183,18 @@ function process_repo() {
         fi
         FIRST_JSON_REPO=0
 
+        local clean_hash=$(echo "$commit_hash" | sed 's/"/\\"/g')
+        local clean_msg=$(echo "$commit_msg" | sed 's/"/\\"/g')
+        local clean_author=$(echo "$commit_author" | sed 's/"/\\"/g')
+        local clean_date=$(echo "$commit_date" | sed 's/"/\\"/g')
+
         echo '    {'
         echo "      \"name\": \"$repo_name\","
         echo "      \"status\": \"$status\","
+        echo "      \"commit_hash\": \"$clean_hash\","
+        echo "      \"commit_msg\": \"$clean_msg\","
+        echo "      \"commit_author\": \"$clean_author\","
+        echo "      \"commit_date\": \"$clean_date\","
         if [ -n "$error_message" ]; then
             echo "      \"error_message\": \"$error_message\","
         fi
