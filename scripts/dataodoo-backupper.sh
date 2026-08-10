@@ -281,10 +281,9 @@ function main() {
 
       generate_manifest "$DB" "$db_temp_dir/manifest.json"
 
-      log_info "Copying filestore files..."
+      log_info "Symlinking filestore..."
       if [ -d "$odoo_filestore_path" ]; then
-        mkdir -p "$db_temp_dir/filestore"
-        cp -r "$odoo_filestore_path/." "$db_temp_dir/filestore/"
+        ln -s "$odoo_filestore_path" "$db_temp_dir/filestore"
       else
         log_warn "Filestore not found at $odoo_filestore_path. Skipping filestore."
       fi

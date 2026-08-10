@@ -312,8 +312,12 @@ mv /tmp/dump.sql "/tmp/backupdata-$SERVICE_NAME/dump.sql"
 
 generate_manifest "$ODOO_DATABASE_NAME_PRD" "/tmp/backupdata-$SERVICE_NAME/manifest.json"
 
-log_info "Copy filestore files to temporary directory"
-cp -r "$ODOO_FILESTORE_PATH" "/tmp/backupdata-$SERVICE_NAME/filestore"
+log_info "Symlink filestore directory to temporary directory"
+if [ -d "$ODOO_FILESTORE_PATH" ]; then
+  ln -s "$ODOO_FILESTORE_PATH" "/tmp/backupdata-$SERVICE_NAME/filestore"
+else
+  log_warn "Filestore not found at $ODOO_FILESTORE_PATH. Skipping filestore."
+fi
 
 if [ -f "git/git_hashes.txt" ]; then
   log_info "Copy git_hashes.txt to temporary directory"

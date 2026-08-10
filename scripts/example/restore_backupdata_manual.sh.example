@@ -389,10 +389,9 @@ function main() {
           exit 1
       fi
 
-      log_info "Copying filestore from $EXISTING_FILESTORE"
+      log_info "Symlinking filestore from $EXISTING_FILESTORE"
       if [ -d "$EXISTING_FILESTORE" ]; then
-          mkdir -p "$SAFETY_BACKUP_DIR/filestore"
-          cp -r "$EXISTING_FILESTORE/." "$SAFETY_BACKUP_DIR/filestore/"
+          ln -s "$EXISTING_FILESTORE" "$SAFETY_BACKUP_DIR/filestore"
       else
           log_warn "Filestore not found at $EXISTING_FILESTORE. Proceeding with SQL dump only."
       fi

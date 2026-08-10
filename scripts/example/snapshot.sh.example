@@ -326,8 +326,8 @@ EOF
 
   ODOO_FILESTORE_PATH="/var/lib/odoo/$SERVICE_NAME/filestore/$ODOO_DATABASE_NAME_PRD"
   if [ -d "$ODOO_FILESTORE_PATH" ]; then
-    log_info "Copying filestore to staging..."
-    cp -r "$ODOO_FILESTORE_PATH" "$ZIP_STAGING_DIR/filestore"
+    log_info "Symlinking filestore to staging..."
+    ln -s "$ODOO_FILESTORE_PATH" "$ZIP_STAGING_DIR/filestore"
   else
     log_warn "Filestore path not found: $ODOO_FILESTORE_PATH"
   fi
