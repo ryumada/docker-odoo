@@ -1062,20 +1062,22 @@ EOF
   fi
 }
 
-function writeLogDirVariableOnEnvFile() {
-  # _inherit = createLogDir
-
-  if grep -q "^ODOO_LOG_DIR_SERVICE=" "$ENV_FILE"; then
-    sed -i "s|^ODOO_LOG_DIR_SERVICE=.*|ODOO_LOG_DIR_SERVICE=$ODOO_LOG_DIR_SERVICE|" "$ENV_FILE"
-  fi
-
+function writeServiceNameVariableOnEnvFile() {
   if ! grep -q "^SERVICE_NAME=" "$ENV_FILE"; then
     cat <<-EOF >> "$ENV_FILE"
-
 # # # # # # # # # # # # # # # # #
 # DIRECTORIES                   #
 # # # # # # # # # # # # # # # # #
 SERVICE_NAME=$SERVICE_NAME
+EOF
+  fi
+}
+
+function writeLogDirVariableOnEnvFile() {
+  if grep -q "^ODOO_LOG_DIR_SERVICE=" "$ENV_FILE"; then
+    sed -i "s|^ODOO_LOG_DIR_SERVICE=.*|ODOO_LOG_DIR_SERVICE=$ODOO_LOG_DIR_SERVICE|" "$ENV_FILE"
+  else
+    cat <<-EOF >> "$ENV_FILE"
 ODOO_LOG_DIR_SERVICE=$ODOO_LOG_DIR_SERVICE
 EOF
   fi
@@ -1292,6 +1294,8 @@ function main() {
   generateDockerComposeAndDockerfile
 
   if isFileExists "$ENV_FILE" "Please create a .env file by folowing the .env.example file."; then
+    writeServiceNameVariableOnEnvFile
+
     if [ "$mode_number" -ne 2 ]; then
       createLogDir
       createDataDir
