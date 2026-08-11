@@ -1425,8 +1425,8 @@ function main() {
     if [[ "$ENABLE_VSCODE_SERVER" =~ ^([yY][eE][sS]|[yY]|1|true|TRUE)$ ]]; then
       "$REPOSITORY_DIRPATH/scripts/installer/install-code_server.sh"
     else
-      "$REPOSITORY_DIRPATH/scripts/installer/uninstall-code_server.sh"
-      log_warn "vscode_server utility is not installed. Please set ENABLE_VSCODE_SERVER=Y in your .env file to install VSCode Server."
+      log_warn "vscode_server utility is not installed. Please set ENABLE_VSCODE_SERVER=Y in your .env file to install VSCode Server. Please ignore this warning if the vscode server is already installed using other deployments."
+      log_warn "To enable the function to restart vscode on this deployment, you need to setup vscode server."
     fi
 
     ENABLE_MULTI_DEPLOYMENT=$(grep "^ENABLE_MULTI_DEPLOYMENT=" "$REPOSITORY_DIRPATH/.env" 2>/dev/null | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
