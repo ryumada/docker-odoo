@@ -281,6 +281,8 @@ ENABLE_VSCODE_SERVER=Y
 VSCODE_SERVER_PORT=8000
 # Domain for VSCode Web Server Nginx proxy setup (e.g., vscode.example.com)
 VSCODE_SERVER_DOMAIN=
+# SSL Domain for VSCode Web Server Nginx proxy setup (e.g., example.com if using the main domain as the SSL or the domain is wildcard)
+VSCODE_SERVER_SSL_DOMAIN=
 # Custom working directory for VSCode Server (leave empty to default to path to Odoo repo)
 VSCODE_SERVER_WORKING_DIR=
 # Optional: Direct download URL of VSCode CLI .deb package if not installed on host server

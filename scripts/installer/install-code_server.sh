@@ -194,6 +194,8 @@ EOF
 
   REVERSE_PROXY_TYPE=$(grep "^REVERSE_PROXY_TYPE=" "$ENV_FILE" 2>/dev/null | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g; s/[[:space:]\n]*$//g' | tr '[:upper:]' '[:lower:]' || true)
   VSCODE_DOMAIN=$(grep "^VSCODE_SERVER_DOMAIN=" "$ENV_FILE" 2>/dev/null | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g; s/[[:space:]\n]*$//g' || true)
+  VSCODE_SSL_DOMAIN=$(grep "^VSCODE_SERVER_SSL_DOMAIN=" "$ENV_FILE" 2>/dev/null | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g; s/[[:space:]\n]*$//g' || true)
+  VSCODE_SSL_DOMAIN="${VSCODE_SSL_DOMAIN:-$VSCODE_DOMAIN}"
 
   if [ "$REVERSE_PROXY_TYPE" = "nginx" ] && [ -n "$VSCODE_DOMAIN" ]; then
     if [ -d "/etc/nginx" ]; then
@@ -205,7 +207,7 @@ EOF
         log_info "Configuring Nginx reverse proxy for VSCode Server (${VSCODE_DOMAIN}) from template..."
         sed \
           -e "s/\$ENTER_DOMAIN/${VSCODE_DOMAIN}/g" \
-          -e "s/\$ENTER_SSL_DOMAIN/${VSCODE_DOMAIN}/g" \
+          -e "s/\$ENTER_SSL_DOMAIN/${VSCODE_SSL_DOMAIN}/g" \
           -e "s|http://127\.0\.0\.1:8000|http://127.0.0.1:${VSCODE_PORT}|g" \
           "$NGINX_TEMPLATE" > "$NGINX_CONF_AVAILABLE"
 
