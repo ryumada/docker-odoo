@@ -921,7 +921,11 @@ function setPermissionFileToReadOnlyAndOnlyTo() {
 function setupAutoDevops() {
   isUserExist "$DEVOPS_USER" 7689
 
-  cat <<EOF > ~/00-devops_permissions
+  local temp_dir
+  temp_dir=$(mktemp -d)
+  local temp_file="$temp_dir/00-devops_permissions"
+
+  cat <<EOF > "$temp_file"
 devops ALL=(devopsadmin) NOPASSWD: \\
   /usr/bin/git, \\
   /usr/bin/docker compose *, \\
@@ -935,9 +939,10 @@ devops ALL=(root) NOPASSWD: \\
 
 EOF
 
-  sudo chmod 440 ~/00-devops_permissions
-  sudo chown root: ~/00-devops_permissions
-  sudo mv ~/00-devops_permissions /etc/sudoers.d/
+  sudo chmod 440 "$temp_file"
+  sudo chown root: "$temp_file"
+  sudo mv "$temp_file" /etc/sudoers.d/00-devops_permissions
+  rm -rf "$temp_dir"
 }
 
 function validateDatetimeFormat() {
