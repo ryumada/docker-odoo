@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -e
 # Category: Utility
-# Description: Clones Odoo database using rsync for filestore and native localhost endpoint for SQL dump.
-# Usage: ./scripts/databasecloner_manual.sh
+# Description: Clones Odoo database using rsync for filestore and native localhost endpoint/PSQL mode. Supports interactive push and automated pull mode.
+# Usage: ./scripts/databasecloner_manual.sh [TARGET_DB_NAME] [MODULES] [json]
 # Dependencies: sudo, git, docker, pg_dump, psql, rsync, zip, curl
 
 # Detect Repository Owner to run non-root commands as that user
@@ -12,38 +12,48 @@ PATH_TO_ODOO=$(sudo -u "$CURRENT_DIR_USER" git -C "$(dirname "$(readlink -f "$0"
 SERVICE_NAME=$(basename "$PATH_TO_ODOO")
 REPOSITORY_OWNER=$(stat -c '%U' "$PATH_TO_ODOO")
 
-# Source common utilities
-# shellcheck source=lib/odoo_utils.sh
-source "$CURRENT_DIR/lib/odoo_utils.sh"
+if [ -f "$CURRENT_DIR/lib/odoo_utils.sh" ]; then
+    source "$CURRENT_DIR/lib/odoo_utils.sh"
+elif [ -f "$CURRENT_DIR/../lib/odoo_utils.sh" ]; then
+    source "$CURRENT_DIR/../lib/odoo_utils.sh"
+fi
 
 # --- Logging Functions & Colors ---
-# Define colors for log messages
 readonly COLOR_RESET="\033[0m"
 readonly COLOR_INFO="\033[0;34m"
 readonly COLOR_SUCCESS="\033[0;32m"
 readonly COLOR_WARN="\033[1;33m"
 readonly COLOR_ERROR="\033[0;31m"
+readonly COLOR_CYAN="\033[0;36m"
 
-# Function to log messages with a specific color and emoji
 log() {
   local color="$1"
   local emoji="$2"
   local message="$3"
-  echo -e "${color}[$(date +"%Y-%m-%d %H:%M:%S")] ${emoji} ${message}${COLOR_RESET}"
+  if [ "$JSON_MODE" = "true" ]; then
+      echo -e "${color}[$(date +"%Y-%m-%d %H:%M:%S")] ${emoji} ${message}${COLOR_RESET}" >&2
+  else
+      echo -e "${color}[$(date +"%Y-%m-%d %H:%M:%S")] ${emoji} ${message}${COLOR_RESET}"
+  fi
 }
 
 log_info() { log "${COLOR_INFO}" "ℹ️" "$1"; }
 log_success() { log "${COLOR_SUCCESS}" "✅" "$1"; }
 log_warn() { log "${COLOR_WARN}" "⚠️" "$1"; }
-log_error() { log "${COLOR_ERROR}" "❌" "$1"; }
-# ------------------------------------
+log_error() {
+    if [ "$JSON_MODE" = "true" ]; then
+        local escaped_msg=$(echo -n "$1" | sed 's/\\/\\\\/g; s/"/\\"/g; s/$/\\n/' | tr -d '\n' | sed 's/\\n$//')
+        echo "{\"error\": \"$escaped_msg\"}"
+    fi
+    log "${COLOR_ERROR}" "❌" "$1"
+}
+log_stage() { log "${COLOR_CYAN}" "📋" "$1"; }
 
 error_handler() {
   local exit_code=$1
   local line_no=$2
   local command_name=$3
 
-  # Restore stderr to the original descriptor to stop logging to the temp file
   if [ -n "${STDERR_LOG:-}" ]; then
     exec 2>&3
   fi
@@ -52,7 +62,6 @@ error_handler() {
   log_error "Exit Code: $exit_code"
   log_error "Command: $command_name"
 
-  # Allow tee to finish flushing
   sleep 0.2
 
   if [ -f "${STDERR_LOG:-}" ] && [ -s "$STDERR_LOG" ]; then
@@ -65,19 +74,19 @@ error_handler() {
   exit "$exit_code"
 }
 
-# Save original stderr to file descriptor 3 and redirect to temp file & descriptor 3
 STDERR_LOG=$(mktemp)
 exec 3>&2
 exec 2> >(tee -a "$STDERR_LOG" >&3)
 
 trap 'error_handler $? $LINENO "$BASH_COMMAND"' ERR
 
-# --- Centralized Cleanup Hook ---
 cleanup_temp_files() {
-    rm -f "/tmp/$ODOO_DB_NAME_ENV.sql" "/tmp/dump.sql" "/tmp/db_dump_only_$ODOO_DB_NAME_ENV.zip" 2>/dev/null || true
-    # Delete temp stderr log
+    rm -f "/tmp/$ODOO_DB_NAME_ENV.sql" "/tmp/$STG_DB_NAME.sql" "/tmp/dump.sql" "/tmp/db_dump_only_$ODOO_DB_NAME_ENV.zip" 2>/dev/null || true
     if [ -n "${STDERR_LOG:-}" ] && [ -f "$STDERR_LOG" ]; then
         rm -f "$STDERR_LOG"
+    fi
+    if [ -n "${CURL_OUT:-}" ] && [ -f "$CURL_OUT" ]; then
+        rm -f "$CURL_OUT"
     fi
 }
 trap cleanup_temp_files EXIT
@@ -88,7 +97,6 @@ function promptWhichEnvironment() {
   local input_env
 
   if [ "$environment" == "" ]; then
-    # You need to choose whether there are multiple environments for your deployment
     while true; do
       printf "Which environment you wish to clone the data to?\r\n" >&3
       printf "[1] Development (dev)\r\n" >&3
@@ -104,25 +112,11 @@ function promptWhichEnvironment() {
       fi
 
       case $input_env in
-        1)
-          ODOO_DEPLOYMENT_ENVIRONMENT=dev
-          break
-          ;;
-        2)
-          ODOO_DEPLOYMENT_ENVIRONMENT=stg
-          break
-          ;;
-        3)
-          ODOO_DEPLOYMENT_ENVIRONMENT=tst
-          break
-          ;;
-        4)
-          read -rp "Enter the environment name: " ODOO_DEPLOYMENT_ENVIRONMENT
-          break
-          ;;
-        *)
-          log_error "Invalid option"
-          ;;
+        1) ODOO_DEPLOYMENT_ENVIRONMENT=dev; break ;;
+        2) ODOO_DEPLOYMENT_ENVIRONMENT=stg; break ;;
+        3) ODOO_DEPLOYMENT_ENVIRONMENT=tst; break ;;
+        4) read -rp "Enter the environment name: " ODOO_DEPLOYMENT_ENVIRONMENT; break ;;
+        *) log_error "Invalid option" ;;
       esac
     done
   else
@@ -137,30 +131,21 @@ function get_next_prefix() {
   local current_count
   local next_count
 
-  # Read existing count
   current_count=$(grep "^DB_PREFIX_COUNT=" "$env_file" | cut -d "=" -f 2 | tr -d '[:space:]')
-
-  # Initialize if empty or not a number
   if [[ ! "$current_count" =~ ^[0-9]+$ ]]; then
     current_count=-1
   fi
-
-  # Increment
   next_count=$((current_count + 1))
-
-  # Reset if > 999
   if [ "$next_count" -gt 999 ]; then
     next_count=0
   fi
 
-  # Update .env file
   if grep -q "^DB_PREFIX_COUNT=" "$env_file"; then
      sed -i "s/^DB_PREFIX_COUNT=.*/DB_PREFIX_COUNT=$next_count/" "$env_file"
   else
      echo "DB_PREFIX_COUNT=$next_count" >> "$env_file"
   fi
 
-  # Output formatted with leading zeros
   printf "%03d" "$next_count"
 }
 
@@ -182,12 +167,9 @@ function promptClonedDBName() {
         read -rp "Do you want to use a date suffix for the new database name? [Y/n]: " USE_DATE_SUFFIX_INPUT
 
         case "$USE_DATE_SUFFIX_INPUT" in
-          Y|y)
-            ODOO_DB_NAME_ENV="$DB_PREFIX-$ODOO_DEPLOYMENT_ENVIRONMENT-$(date +"%Y%m%d_%H%M")"; break ;;
-          N|n)
-            ODOO_DB_NAME_ENV="$DB_PREFIX-$ODOO_DEPLOYMENT_ENVIRONMENT"; break ;;
-          *)
-            log_error "Invalid option" ;;
+          Y|y) ODOO_DB_NAME_ENV="$DB_PREFIX-$ODOO_DEPLOYMENT_ENVIRONMENT-$(date +"%Y%m%d_%H%M")"; break ;;
+          N|n) ODOO_DB_NAME_ENV="$DB_PREFIX-$ODOO_DEPLOYMENT_ENVIRONMENT"; break ;;
+          *) log_error "Invalid option" ;;
         esac
       done
       ;;
@@ -248,13 +230,10 @@ function sanitize_database() {
   local db_name="$1"
   log_info "Neutralizing the database (SMTP, Crons, Webhooks, Payments, and activating Neutralized Banner)..."
 
-  # SQL commands to disable outgoing email, crons, mail servers, and activate the banner.
-  # Wrapped in a PL/pgSQL DO block to avoid failures if optional modules are not installed.
   local SANITIZE_SQL
   SANITIZE_SQL=$(cat << 'EOF'
     DO $$
     BEGIN
-        -- 1. Base Module Neutralization
         IF EXISTS (SELECT FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'ir_mail_server' AND column_name = 'active') THEN
             EXECUTE 'UPDATE ir_mail_server SET active = false';
             EXECUTE 'INSERT INTO ir_mail_server(name, smtp_port, smtp_host, smtp_encryption, active, smtp_authentication)
@@ -281,12 +260,9 @@ function sanitize_database() {
         END IF;
 
         IF EXISTS (SELECT FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'ir_act_server' AND column_name = 'webhook_url') THEN
-            EXECUTE 'UPDATE ir_act_server
-               SET webhook_url = ''neutralization - disable webhook''
-             WHERE state = ''webhook''';
+            EXECUTE 'UPDATE ir_act_server SET webhook_url = ''neutralization - disable webhook'' WHERE state = ''webhook''';
         END IF;
 
-        -- 2. Mail Module Neutralization
         IF EXISTS (SELECT FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'mail_template' AND column_name = 'mail_server_id') THEN
             EXECUTE 'UPDATE mail_template SET mail_server_id = NULL';
         END IF;
@@ -307,28 +283,22 @@ function sanitize_database() {
             EXECUTE 'DELETE FROM mail_push_device';
         END IF;
 
-        -- 3. Web Module Neutralization (Activate Neutralize Banner)
         IF EXISTS (SELECT FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'ir_ui_view' AND column_name = 'active') THEN
             EXECUTE 'UPDATE ir_ui_view SET active = true WHERE key = ''web.neutralize_banner''';
         END IF;
 
-        -- 4. Additional Common Services
-        -- Disable Payment Providers
         IF EXISTS (SELECT FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'payment_provider' AND column_name = 'state') THEN
             EXECUTE 'UPDATE payment_provider SET state = ''disabled'' WHERE state NOT IN (''test'', ''disabled'')';
         END IF;
 
-        -- Disable OAuth login
         IF EXISTS (SELECT FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'auth_oauth_provider' AND column_name = 'enabled') THEN
             EXECUTE 'UPDATE auth_oauth_provider SET enabled = false';
         END IF;
 
-        -- Disable Google Calendar sync
         IF EXISTS (SELECT FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'res_users_settings' AND column_name = 'google_calendar_rtoken') THEN
             EXECUTE 'UPDATE res_users_settings SET google_calendar_rtoken = NULL, google_calendar_token = NULL, google_synchronization_stopped = True';
         END IF;
 
-        -- Disable IAP accounts
         IF EXISTS (SELECT FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'iap_account' AND column_name = 'account_token') THEN
             EXECUTE 'UPDATE iap_account SET account_token = REGEXP_REPLACE(account_token, ''(\+.*)?$'', ''+disabled'') WHERE LENGTH(account_token) <= 33';
             EXECUTE 'UPDATE iap_account SET account_token = ''dummy_value+disabled'' WHERE LENGTH(account_token) > 33 AND account_token NOT LIKE ''%+disabled''';
@@ -337,7 +307,6 @@ function sanitize_database() {
 EOF
 )
 
-  # Execute the SQL commands
   if run_psql -d "$db_name" -c "$SANITIZE_SQL" > /dev/null 2>&1; then
     log_success "Database successfully neutralized."
   else
@@ -345,30 +314,152 @@ EOF
   fi
 }
 
-function main() {
-    # Self-elevate to root if not already
-    if [ "$(id -u)" -ne 0 ]; then
-        log_info "Elevating permissions to root..."
-        # shellcheck disable=SC2093
-        exec sudo "$0" "$@" # Re-run the script with sudo
-        log_error "Failed to elevate to root. Please run with sudo." # This will only run if exec fails
+function run_automated_pull_mode() {
+    TARGET_DB=$1
+    MODULES_TO_UPDATE=$2
+
+    STG_PATH_TO_ODOO=$PATH_TO_ODOO
+    SERVICE_NAME_PRD=${SERVICE_NAME%-*}
+
+    if [ "$SERVICE_NAME" = "$SERVICE_NAME_PRD" ]; then
+        if [ "$JSON_MODE" = "true" ]; then
+            echo "{\"error\": \"Cannot clone production database onto itself ($SERVICE_NAME).\"}"
+        fi
+        log_error "Cannot clone production database onto itself ($SERVICE_NAME)."
         exit 1
     fi
 
+    STG_ENV_FILE="$STG_PATH_TO_ODOO/.env"
+    if [ ! -f "$STG_ENV_FILE" ]; then
+        if [ "$JSON_MODE" = "true" ]; then
+            echo "{\"error\": \"Target .env file not found at $STG_ENV_FILE\"}"
+        fi
+        log_error "Target .env file not found at: $STG_ENV_FILE"
+        exit 1
+    fi
+
+    if [ -n "$TARGET_DB" ]; then
+        STG_DB_NAME="$TARGET_DB"
+    else
+        STG_DB_NAME_FROM_ENV=$(grep "^DB_NAME=" "$STG_ENV_FILE" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
+        STG_DB_NAME="$STG_DB_NAME_FROM_ENV"
+        if [ -z "$STG_DB_NAME" ]; then
+            STG_DB_NAME="$(get_next_prefix "$STG_ENV_FILE")-$SERVICE_NAME-$(date +"%Y%m%d-%H%M%S")"
+        fi
+    fi
+
+    PRD_PATH_TO_ODOO="$STG_PATH_TO_ODOO/../$SERVICE_NAME_PRD"
+    PRD_ENV_FILE="$PRD_PATH_TO_ODOO/.env"
+    if [ ! -f "$PRD_ENV_FILE" ]; then
+        if [ "$JSON_MODE" = "true" ]; then
+            echo "{\"error\": \"Production .env file not found at $PRD_ENV_FILE\"}"
+        fi
+        log_error "Production .env file not found at: $PRD_ENV_FILE"
+        exit 1
+    fi
+
+    PRD_DB_NAME=$(grep "^DB_NAME=" "$PRD_ENV_FILE" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
+    if [ -z "$PRD_DB_NAME" ]; then
+        if [ "$JSON_MODE" = "true" ]; then
+            echo "{\"error\": \"DB_NAME not set in production .env ($PRD_ENV_FILE).\"}"
+        fi
+        log_error "DB_NAME not set in production .env ($PRD_ENV_FILE)."
+        exit 1
+    fi
+
+    log_stage "[1/3] Dumping Production Database ($PRD_DB_NAME)..."
+    ODOO_FILESTORE_PATH_PRD="/var/lib/odoo/$SERVICE_NAME_PRD/filestore/$PRD_DB_NAME"
+    ODOO_FILESTORE_PATH_ENV="/var/lib/odoo/$SERVICE_NAME/filestore/$STG_DB_NAME"
+
+    PSQL_ENV_FILE="$PRD_ENV_FILE" run_pg_dump --no-owner -d "$PRD_DB_NAME" > "/tmp/$STG_DB_NAME.sql"
+    export PSQL_ENV_FILE="$STG_ENV_FILE"
+
+    log_stage "[2/3] Restoring Filestore and Database to $STG_DB_NAME..."
+    if [ -d "$ODOO_FILESTORE_PATH_ENV" ]; then
+        log_warn "Removing old filestore: $ODOO_FILESTORE_PATH_ENV"
+        rm -rf "$ODOO_FILESTORE_PATH_ENV"
+    fi
+    mkdir -p "$ODOO_FILESTORE_PATH_ENV"
+    rsync -a "$ODOO_FILESTORE_PATH_PRD/" "$ODOO_FILESTORE_PATH_ENV"
+    chown -R odoo: "$ODOO_FILESTORE_PATH_ENV"
+
+    DB_USER=$(grep "^ACTIVE_DB_USER=" "$STG_ENV_FILE" 2>/dev/null | cut -d '=' -f2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//')
+    [ -z "$DB_USER" ] && DB_USER=$(cat "$(dirname "$STG_ENV_FILE")/.secrets/db_user" 2>/dev/null || echo "odoo")
+
+    log_info "Dropping old database $STG_DB_NAME (if exists)..."
+    run_psql -d postgres -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '$STG_DB_NAME' AND pid <> pg_backend_pid();" > /dev/null 2>&1 || true
+    run_psql -d postgres -c "DROP DATABASE IF EXISTS \"$STG_DB_NAME\"" >/dev/null
+
+    log_info "Creating database $STG_DB_NAME owned by $DB_USER..."
+    run_psql -d postgres -c "CREATE DATABASE \"$STG_DB_NAME\" OWNER \"$DB_USER\"" >/dev/null
+
+    log_info "Restoring SQL dump..."
+    run_psql -d "$STG_DB_NAME" < "/tmp/$STG_DB_NAME.sql" >/dev/null
+
+    NEUTRALIZE_DB=$(grep "^NEUTRALIZE_DATABASE=" "$PRD_ENV_FILE" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' | tr '[:upper:]' '[:lower:]' || true)
+    [ -z "$NEUTRALIZE_DB" ] && NEUTRALIZE_DB="true"
+
+    if [ "$NEUTRALIZE_DB" = "true" ]; then
+        sanitize_database "$STG_DB_NAME"
+    fi
+
+    trigger_registry_reload "$STG_DB_NAME" "$STG_PATH_TO_ODOO"
+
+    if grep -q "^DB_NAME=" "$STG_ENV_FILE"; then
+        sed -i "s/^DB_NAME=.*/DB_NAME=$STG_DB_NAME/" "$STG_ENV_FILE"
+    else
+        echo "DB_NAME=$STG_DB_NAME" >> "$STG_ENV_FILE"
+    fi
+
+    log_stage "[3/3] Restarting Odoo Container..."
+    cd "$STG_PATH_TO_ODOO"
+    if [ "$JSON_MODE" = "true" ]; then
+        docker compose restart odoo >&2 || true
+    else
+        docker compose restart odoo || true
+    fi
+
+    MODULE_UPDATE_ERROR=false
+    if [ -n "$MODULES_TO_UPDATE" ]; then
+        log_info "Updating Odoo modules: $MODULES_TO_UPDATE..."
+        sleep 10
+        TEMP_UPDATE_LOG=$(mktemp)
+        if [ "$JSON_MODE" = "true" ]; then
+            docker compose exec odoo odoo-module-upgrade "$STG_DB_NAME" --update="$MODULES_TO_UPDATE" 2>&1 | tee "$TEMP_UPDATE_LOG" >&2
+            if [ ${PIPESTATUS[0]} -ne 0 ]; then MODULE_UPDATE_ERROR=true; fi
+        else
+            docker compose exec odoo odoo-module-upgrade "$STG_DB_NAME" --update="$MODULES_TO_UPDATE" 2>&1 | tee "$TEMP_UPDATE_LOG"
+            if [ ${PIPESTATUS[0]} -ne 0 ]; then MODULE_UPDATE_ERROR=true; fi
+        fi
+        rm -f "$TEMP_UPDATE_LOG"
+    fi
+
+    if [ "$JSON_MODE" = "true" ]; then
+        echo "{"
+        echo "  \"database_name\": \"$STG_DB_NAME\","
+        echo "  \"source_database\": \"$PRD_DB_NAME\""
+        if [ -n "$MODULES_TO_UPDATE" ]; then
+            echo "  , \"modules_to_upgrade\": [ \"$MODULES_TO_UPDATE\" ]"
+        fi
+        if [ "$MODULE_UPDATE_ERROR" = "true" ]; then
+            echo "  , \"error\": true"
+        fi
+        echo "}"
+    fi
+
+    log_success "Database clone completed successfully!"
+}
+
+function run_interactive_push_mode() {
     ODOO_DATABASE_NAME_PRD=$(grep "^DB_NAME=" "$PATH_TO_ODOO/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
     if [ -z "$ODOO_DATABASE_NAME_PRD" ]; then
         read -rp "Enter the database name: " ODOO_DATABASE_NAME_PRD
     fi
 
-    ## The environment to which the database will be cloned (leave empty to prompt)
     CLONED_ENV=$(grep "^CLONED_ENV=" "$PATH_TO_ODOO/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
-
-    ## ex. Y (replace with Y if you want to use a date suffix for the new database name)
-    # This variable determines whether to use a date suffix for the new database name
     USE_DATE_SUFFIX=$(grep "^USE_DATE_SUFFIX=" "$PATH_TO_ODOO/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
 
     ODOO_DEPLOYMENT_ENVIRONMENT=$(promptWhichEnvironment "$CLONED_ENV")
-
     PATH_TO_ODOO_ENV="$PATH_TO_ODOO/../$SERVICE_NAME-$ODOO_DEPLOYMENT_ENVIRONMENT"
 
     if [ ! -d "$PATH_TO_ODOO_ENV" ]; then
@@ -399,11 +490,9 @@ function main() {
     cd "$PATH_TO_ODOO" || { log_error "Can't change directory to $PATH_TO_ODOO"; exit 1; }
 
     log_info "Start cloning database from $ODOO_DATABASE_NAME_PRD to $ODOO_DB_NAME_ENV"
-
     log_info "Dump $ODOO_DATABASE_NAME_PRD"
     run_pg_dump --no-owner -d "$ODOO_DATABASE_NAME_PRD" > "/tmp/$ODOO_DB_NAME_ENV.sql"
 
-    # From this point onwards, all psql/pg commands will target the destination environment database.
     export PSQL_ENV_FILE="$PATH_TO_ODOO_ENV/.env"
 
     if [ -d "$ODOO_FILESTORE_PATH_ENV" ]; then
@@ -432,7 +521,6 @@ function main() {
     fi
 
     if [ "$BACKUP_RESTORE_METHOD" = "manual" ]; then
-        # --- PURE MANUAL PSQL RESTORE ---
         ODOO_VERSION=$(grep "^ODOO_VERSION=" "$PATH_TO_ODOO_ENV/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
         ODOO_VERSION_NUM=${ODOO_VERSION%%.*}
         if [[ ! "$ODOO_VERSION_NUM" =~ ^[0-9]+$ ]]; then
@@ -464,40 +552,29 @@ function main() {
         log_info "Altering database object ownership..."
         local POSTGRES_USER_DEV="$DB_USER"
         run_psql -d "$ODOO_DB_NAME_ENV" -c "
-          -- Change the owner of all tables
           DO \$\$
-          DECLARE
-              rec RECORD;
+          DECLARE rec RECORD;
           BEGIN
               FOR rec IN (SELECT tablename FROM pg_tables WHERE schemaname = 'public') LOOP
                   EXECUTE 'ALTER TABLE ' || quote_ident(rec.tablename) || ' OWNER TO \"${POSTGRES_USER_DEV}\"';
               END LOOP;
           END \$\$;
-
-          -- Change the owner of all sequences
           DO \$\$
-          DECLARE
-              rec RECORD;
+          DECLARE rec RECORD;
           BEGIN
               FOR rec IN (SELECT sequence_name FROM information_schema.sequences WHERE sequence_schema = 'public') LOOP
                   EXECUTE 'ALTER SEQUENCE ' || quote_ident(rec.sequence_name) || ' OWNER TO \"${POSTGRES_USER_DEV}\"';
               END LOOP;
           END \$\$;
-
-          -- Change the owner of all views (Standard)
           DO \$\$
-          DECLARE
-              rec RECORD;
+          DECLARE rec RECORD;
           BEGIN
               FOR rec IN (SELECT table_name FROM information_schema.views WHERE table_schema = 'public') LOOP
                   EXECUTE 'ALTER VIEW ' || quote_ident(rec.table_name) || ' OWNER TO \"${POSTGRES_USER_DEV}\"';
               END LOOP;
           END \$\$;
-
-          -- Change the owner of all materialized views
           DO \$\$
-          DECLARE
-              rec RECORD;
+          DECLARE rec RECORD;
           BEGIN
               FOR rec IN (SELECT matviewname FROM pg_matviews WHERE schemaname = 'public') LOOP
                   EXECUTE 'ALTER MATERIALIZED VIEW ' || quote_ident(rec.matviewname) || ' OWNER TO \"${POSTGRES_USER_DEV}\"';
@@ -509,7 +586,6 @@ function main() {
             sanitize_database "$ODOO_DB_NAME_ENV"
         fi
     else
-        # --- SEMI_MANUAL ENDPOINT RESTORE ---
         log_info "Ensuring destination environment is running to receive endpoint restore command..."
         docker compose -f "$PATH_TO_ODOO_ENV/docker-compose.yml" up -d > /dev/null 2>&1 || true
 
@@ -572,6 +648,51 @@ function main() {
     docker compose -f "$PATH_TO_ODOO_ENV/docker-compose.yml" restart > /dev/null 2>&1 || { log_error "Error restarting $ODOO_DEPLOYMENT_ENVIRONMENT"; exit 1; }
 
     log_success "Finish cloning database $ODOO_DB_NAME_ENV from $ODOO_DATABASE_NAME_PRD"
+}
+
+main() {
+    display_usage() {
+        echo -e "${COLOR_INFO}Usage:${COLOR_RESET} sudo $0 [TARGET_DB_NAME] [MODULES] [json]"
+        echo -e "       $0 -h | --help"
+        echo ""
+        echo -e "${COLOR_CYAN}Modes:${COLOR_RESET}"
+        echo -e "  ${COLOR_SUCCESS}Automated Pull Mode${COLOR_RESET} : Pass arguments (e.g. TARGET_DB_NAME) or 'json' to pull & clone production database to this instance."
+        echo -e "  ${COLOR_SUCCESS}Interactive Push Mode${COLOR_RESET} : Run without arguments to interactively choose a target environment to clone data to."
+        echo ""
+        echo -e "${COLOR_CYAN}Arguments:${COLOR_RESET}"
+        echo -e "  ${COLOR_SUCCESS}1. TARGET_DB_NAME${COLOR_RESET}  : (Optional) Target database name to clone into."
+        echo -e "  ${COLOR_SUCCESS}2. MODULES${COLOR_RESET}         : (Optional) Comma-separated list of modules to upgrade after clone (e.g., 'sale,stock')."
+        echo -e "  ${COLOR_SUCCESS}3. json${COLOR_RESET}            : (Optional) Enable JSON machine output for integration."
+        echo ""
+    }
+
+    JSON_MODE="false"
+    ARGS=()
+    for arg in "$@"; do
+        if [[ "$arg" == "-h" || "$arg" == "--help" ]]; then
+            display_usage
+            exit 0
+        elif [[ "$arg" == "json" ]]; then
+            JSON_MODE="true"
+        else
+            ARGS+=("$arg")
+        fi
+    done
+    set -- "${ARGS[@]}"
+
+    if [ "$(id -u)" -ne 0 ]; then
+        log_info "Elevating permissions to root..."
+        # shellcheck disable=SC2093
+        exec sudo "$0" "$@"
+        log_error "Failed to elevate to root. Please run with sudo."
+        exit 1
+    fi
+
+    if [ "$#" -gt 0 ] || [ "$JSON_MODE" = "true" ]; then
+        run_automated_pull_mode "$@"
+    else
+        run_interactive_push_mode
+    fi
 }
 
 main "$@"
