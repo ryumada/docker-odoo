@@ -3,7 +3,7 @@ set -e
 # Category: Installer
 # Description: Upgrades and installs the snapshot utility from the example script.
 # Usage: ./scripts/installer/install-snapshot.sh
-# Dependencies: rsync, git, sudo, cron
+# Dependencies: rsync, git, sudo, cron, ssh
 
 # Detect Repository Owner to run non-root commands as that user
 CURRENT_DIR=$(dirname "$(readlink -f "$0")")
@@ -127,8 +127,13 @@ function main() {
     exit 1
   fi
 
-  GCS_BUCKET_NAME=$(grep "^GCS_BUCKET_NAME=" "$PATH_TO_ODOO/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
-  SNAPSHOT_TIME_LIST=$(grep "^SNAPSHOT_TIME=" "$PATH_TO_ODOO/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
+  GCS_BUCKET_NAME=$(grep "^GCS_BUCKET_NAME=" "$PATH_TO_ODOO/.env" 2>/dev/null | cut -d "=" -f 2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//')
+  SNAPSHOT_TIME_LIST=$(grep "^SNAPSHOT_TIME=" "$PATH_TO_ODOO/.env" 2>/dev/null | cut -d "=" -f 2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//')
+  SNAPSHOT_REMOTE_HOST=$(grep "^SNAPSHOT_REMOTE_HOST=" "$PATH_TO_ODOO/.env" 2>/dev/null | cut -d "=" -f 2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//')
+  SNAPSHOT_REMOTE_USER=$(grep "^SNAPSHOT_REMOTE_USER=" "$PATH_TO_ODOO/.env" 2>/dev/null | cut -d "=" -f 2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//')
+  SNAPSHOT_REMOTE_PORT=$(grep "^SNAPSHOT_REMOTE_PORT=" "$PATH_TO_ODOO/.env" 2>/dev/null | cut -d "=" -f 2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//')
+  SNAPSHOT_REMOTE_KEY=$(grep "^SNAPSHOT_REMOTE_KEY=" "$PATH_TO_ODOO/.env" 2>/dev/null | cut -d "=" -f 2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//')
+  [ -z "$SNAPSHOT_REMOTE_PORT" ] && SNAPSHOT_REMOTE_PORT="22"
 
   validateSnapshotTimeList "$SNAPSHOT_TIME_LIST" || {
     log_error "the SNAPSHOT_TIME is not correct. Please revise it in your .env file."
@@ -136,6 +141,37 @@ function main() {
   }
 
   log_info "Installing snapshot utility"
+
+  # Validate remote SSH connectivity & prerequisites if SNAPSHOT_REMOTE_HOST is set
+  if [ -n "$SNAPSHOT_REMOTE_HOST" ]; then
+    if [ -z "$SNAPSHOT_REMOTE_USER" ]; then
+      log_error "SNAPSHOT_REMOTE_USER must be set in .env when SNAPSHOT_REMOTE_HOST is specified."
+      exit 1
+    fi
+
+    local ssh_test_opts=(-p "$SNAPSHOT_REMOTE_PORT" -o StrictHostKeyChecking=accept-new)
+    if [ -n "$SNAPSHOT_REMOTE_KEY" ]; then
+      ssh_test_opts+=(-i "$SNAPSHOT_REMOTE_KEY")
+    fi
+
+    log_info "Testing SSH connectivity to Secondary VPS ($SNAPSHOT_REMOTE_USER@$SNAPSHOT_REMOTE_HOST:$SNAPSHOT_REMOTE_PORT)..."
+    if ! ssh "${ssh_test_opts[@]}" "$SNAPSHOT_REMOTE_USER@$SNAPSHOT_REMOTE_HOST" "true" 2>/dev/null; then
+      log_warn "Could not connect to Secondary VPS via SSH. Please verify SSH key setup and network connectivity."
+    else
+      log_success "SSH connection to Secondary VPS verified."
+
+      if [ -n "$GCS_BUCKET_NAME" ]; then
+        log_info "Checking Google Cloud Storage access on Secondary VPS..."
+        if ! ssh "${ssh_test_opts[@]}" "$SNAPSHOT_REMOTE_USER@$SNAPSHOT_REMOTE_HOST" "command -v gcloud >/dev/null 2>&1" 2>/dev/null; then
+          log_warn "gcloud CLI is not installed on Secondary VPS ($SNAPSHOT_REMOTE_HOST)."
+        elif ! ssh "${ssh_test_opts[@]}" "$SNAPSHOT_REMOTE_USER@$SNAPSHOT_REMOTE_HOST" "gcloud storage ls 'gs://$GCS_BUCKET_NAME' >/dev/null 2>&1" 2>/dev/null; then
+          log_warn "Secondary VPS cannot access bucket gs://$GCS_BUCKET_NAME. Ensure gcloud is authenticated on Secondary VPS."
+        else
+          log_success "Secondary VPS has verified access to gs://$GCS_BUCKET_NAME."
+        fi
+      fi
+    fi
+  fi
 
   log_info "Copying the latest script from the example script"
   if OUTPUT_RSYNC_COMMAND=$(rsync -acz ./scripts/example/snapshot.sh.example "./scripts/snapshot-$SERVICE_NAME" 2>&1); then
@@ -149,7 +185,7 @@ function main() {
   chmod 755 "./scripts/snapshot-$SERVICE_NAME"
 
   log_info "Create a softlink to /usr/local/sbin"
-  if OUTPUT_LN_COMMAND=$(ln -s "$PATH_TO_ODOO/scripts/snapshot-$SERVICE_NAME" /usr/local/sbin/snapshot-"$SERVICE_NAME" 2>&1); then
+  if OUTPUT_LN_COMMAND=$(ln -sf "$PATH_TO_ODOO/scripts/snapshot-$SERVICE_NAME" /usr/local/sbin/snapshot-"$SERVICE_NAME" 2>&1); then
     log_success "Created a symbolic link to /usr/local/sbin/snapshot-$SERVICE_NAME"
   else
     log_warn "Failed to create a symbolic link to /usr/local/sbin/snapshot-$SERVICE_NAME ➡️ $OUTPUT_LN_COMMAND"
@@ -157,6 +193,7 @@ function main() {
 
   installCronJob "$GCS_BUCKET_NAME" "$SNAPSHOT_TIME_LIST"
 
+  # Ensure local prerequisites
   if zstd --version > /dev/null 2>&1; then
     log_success "zstd is already installed"
   else
@@ -181,14 +218,14 @@ function main() {
     fi
   fi
 
-  if zip --version > /dev/null 2>&1; then
-    log_success "zip is already installed"
+  if rsync --version > /dev/null 2>&1; then
+    log_success "rsync is already installed"
   else
-    log_info "Install zip"
-    if sudo apt install zip -y; then
-      log_success "zip is installed"
+    log_info "Install rsync"
+    if sudo apt install rsync -y; then
+      log_success "rsync is installed"
     else
-      log_error "Failed to install zip"
+      log_error "Failed to install rsync"
       exit 1
     fi
   fi

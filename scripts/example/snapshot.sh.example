@@ -1,15 +1,16 @@
 #!/usr/bin/env bash
 set -e
 # Category: Utility
-# Description: Creates a full Odoo snapshot (database dump + filestore + configs) as a compressed tar archive.
+# Description: Creates a full Odoo snapshot (database dump + filestore + configs) locally or via secondary VPS over SSH.
 # Usage: ./scripts/snapshot-SERVICE_NAME [auto]
-# Dependencies: sudo, git, zstd, tar, docker, pg_dump, gcloud
+# Dependencies: sudo, git, zstd, tar, docker, pg_dump, gcloud, rsync, ssh
 
 CURRENT_DIR=$(dirname "$(readlink -f "$0")")
 CURRENT_DIR_USER=$(stat -c '%U' "$CURRENT_DIR")
 PATH_TO_ODOO=$(sudo -u "$CURRENT_DIR_USER" git -C "$(dirname "$(readlink -f "$0")")" rev-parse --show-toplevel)
 SERVICE_NAME=$(basename "$PATH_TO_ODOO")
 REPOSITORY_OWNER=$(stat -c '%U' "$PATH_TO_ODOO")
+TAR_PROJECT_ROOT="${PATH_TO_ODOO#/}"
 
 # --- Logging Functions & Colors ---
 # Define colors for log messages
@@ -142,7 +143,6 @@ function moveSnapshotFileToTempDir() {
   log_success "The snapshot File Created Successfully named $tar_file_name. File Backed up at $temp_dir/$tar_file_name"
 }
 
-
 function writeGitHash() {
   local search_dir=$1
   local output_file=$2
@@ -157,6 +157,239 @@ function writeGitHash() {
       log_warn "$dir is not a git repository. You need to backup this directory by adding it to your snapshot utilities."
     fi
   done
+}
+
+function extract_odoo_version_info() {
+  local active_base_path
+  active_base_path=$(grep "^ACTIVE_ODOO_BASE_PATH=" "$PATH_TO_ODOO/.env" 2>/dev/null | cut -d '=' -f2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//')
+  local odoo_base_dir_path=""
+  if [ -n "$active_base_path" ] && [ -d "$PATH_TO_ODOO/$active_base_path" ]; then
+    odoo_base_dir_path="$PATH_TO_ODOO/$active_base_path"
+  else
+    odoo_base_dir_path=$(find "$PATH_TO_ODOO/odoo-base" -mindepth 1 -maxdepth 1 -type d -print -quit 2>/dev/null || true)
+  fi
+
+  local release_py_file=""
+  if [ -n "$odoo_base_dir_path" ] && [ -f "$odoo_base_dir_path/odoo/release.py" ]; then
+    release_py_file="$odoo_base_dir_path/odoo/release.py"
+  else
+    release_py_file=$(find "$PATH_TO_ODOO/odoo-base" "$PATH_TO_ODOO/odoo" -name "release.py" -path "*/odoo/release.py" 2>/dev/null | head -n 1 || true)
+  fi
+
+  MANIFEST_VERSION="16.0"
+  MANIFEST_MAJOR_VERSION="16"
+  MANIFEST_VERSION_INFO='[16, 0, 0, "final", 0, ""]'
+
+  if [ -n "$release_py_file" ] && [ -f "$release_py_file" ] && command -v python3 >/dev/null 2>&1; then
+    local version_json
+    version_json=$(python3 -c '
+import sys, json, ast
+try:
+    with open(sys.argv[1], "r") as f:
+        tree = ast.parse(f.read())
+    version = "16.0"
+    version_info = [16, 0, 0, "final", 0, ""]
+    major_version = "16"
+    for node in tree.body:
+        if isinstance(node, ast.Assign):
+            for target in node.targets:
+                if isinstance(target, ast.Name):
+                    if target.id == "version" and isinstance(node.value, ast.Constant):
+                        version = str(node.value.value)
+                    elif target.id in ("major_version", "series", "serie") and isinstance(node.value, ast.Constant):
+                        major_version = str(node.value.value)
+                    elif target.id == "version_info" and isinstance(node.value, ast.Tuple):
+                        version_info = [
+                            elt.value if isinstance(elt, ast.Constant)
+                            else (elt.id.lower() if isinstance(elt, ast.Name) else str(elt))
+                            for elt in node.value.elts
+                        ]
+    print(json.dumps({"version": version, "version_info": version_info, "major_version": major_version}))
+except Exception:
+    print(json.dumps({"version": "16.0", "version_info": [16, 0, 0, "final", 0, ""], "major_version": "16"}))
+' "$release_py_file" 2>/dev/null || true)
+
+    if [ -n "$version_json" ]; then
+      local extracted_v extracted_mv extracted_vi
+      extracted_v=$(echo "$version_json" | python3 -c 'import sys, json; print(json.load(sys.stdin).get("version", ""))' 2>/dev/null || true)
+      extracted_mv=$(echo "$version_json" | python3 -c 'import sys, json; print(json.load(sys.stdin).get("major_version", ""))' 2>/dev/null || true)
+      extracted_vi=$(echo "$version_json" | python3 -c 'import sys, json; print(json.dumps(json.load(sys.stdin).get("version_info", [])))' 2>/dev/null || true)
+      [ -n "$extracted_v" ] && MANIFEST_VERSION="$extracted_v"
+      [ -n "$extracted_mv" ] && MANIFEST_MAJOR_VERSION="$extracted_mv"
+      [ -n "$extracted_vi" ] && [ "$extracted_vi" != "[]" ] && MANIFEST_VERSION_INFO="$extracted_vi"
+    fi
+  fi
+}
+
+function run_remote_snapshot() {
+  local host="$1"
+  local user="$2"
+  local port="${3:-22}"
+  local key="$4"
+  local compression_level="$5"
+
+  local ssh_opts=(-p "$port" -o StrictHostKeyChecking=accept-new)
+  local rsync_ssh="ssh -p $port -o StrictHostKeyChecking=accept-new"
+  if [ -n "$key" ]; then
+    ssh_opts+=(-i "$key")
+    rsync_ssh+=" -i $key"
+  fi
+
+  remote_exec() {
+    ssh "${ssh_opts[@]}" "$user@$host" "$@"
+  }
+
+  remote_sync() {
+    rsync -e "$rsync_ssh" "$@"
+  }
+
+  log_info "Connecting to Secondary VPS ($user@$host:$port)..."
+  if ! remote_exec "true" 2>/dev/null; then
+    log_error "Failed to establish SSH connection with Secondary VPS at $user@$host:$port."
+    exit 1
+  fi
+  log_success "SSH connection established with Secondary VPS."
+
+  # Check required tools on Secondary VPS
+  if ! remote_exec "command -v zstd >/dev/null 2>&1 && command -v zip >/dev/null 2>&1 && command -v tar >/dev/null 2>&1"; then
+    log_error "Secondary VPS is missing required tools (zstd, zip, or tar). Please install them on Secondary VPS."
+    exit 1
+  fi
+
+  # Check GCS access on Secondary VPS if GCS_BUCKET_NAME is configured
+  if [ -n "$GCS_BUCKET_NAME" ]; then
+    log_info "Verifying Google Cloud Storage access on Secondary VPS..."
+    if ! remote_exec "command -v gcloud >/dev/null 2>&1"; then
+      log_error "gcloud CLI is not installed on Secondary VPS ($host), but GCS_BUCKET_NAME is set in .env."
+      exit 1
+    fi
+
+    # Disable parallel composite upload check on secondary if needed
+    remote_exec "gcloud config set storage/parallel_composite_upload_compatibility_check false 2>/dev/null || true"
+
+    if ! remote_exec "gcloud storage ls 'gs://$GCS_BUCKET_NAME' >/dev/null 2>&1"; then
+      log_error "Secondary VPS ($host) cannot access Google Cloud Storage bucket: gs://$GCS_BUCKET_NAME"
+      log_error "Please ensure gcloud is authenticated and has storage permissions on the Secondary VPS."
+      exit 1
+    fi
+    log_success "Secondary VPS has verified access to gs://$GCS_BUCKET_NAME."
+  fi
+
+  local remote_base="~/.odoo-snapshots/$SERVICE_NAME"
+  local remote_mirror="$remote_base/mirror/filestore"
+  local remote_staging="$remote_base/staging"
+  local remote_archives="$remote_base/archives"
+
+  log_info "Preparing directory structure on Secondary VPS under ~/.odoo-snapshots/$SERVICE_NAME/..."
+  remote_exec "mkdir -p $remote_mirror $remote_staging/tmp $remote_archives && chmod 700 ~/.odoo-snapshots"
+
+  local odoo_filestore_path="/var/lib/odoo/$SERVICE_NAME/filestore/$ODOO_DATABASE_NAME_PRD"
+  if [ -d "$odoo_filestore_path" ]; then
+    log_info "Syncing filestore to Secondary VPS (incremental pass 1)..."
+    remote_sync -az --delete "$odoo_filestore_path/" "$user@$host:$remote_mirror/"
+  else
+    log_warn "Filestore path not found: $odoo_filestore_path"
+  fi
+
+  log_info "Streaming database dump directly to Secondary VPS..."
+  if ! run_pg_dump --no-owner "$ODOO_DATABASE_NAME_PRD" | remote_exec "cat > $remote_staging/tmp/dump.sql"; then
+    log_error "pg_dump stream to Secondary VPS failed."
+    exit 1
+  fi
+
+  if [ -d "$odoo_filestore_path" ]; then
+    log_info "Syncing filestore catch-up changes to Secondary VPS..."
+    remote_sync -az "$odoo_filestore_path/" "$user@$host:$remote_mirror/"
+  fi
+
+  local git_hashes_file
+  git_hashes_file=$(mktemp --tmpdir "git_hashes_XXXXXX.txt")
+  chmod 644 "$git_hashes_file"
+  writeGitHash "$PATH_TO_ODOO/git" "$git_hashes_file"
+  writeGitHash "$PATH_TO_ODOO/odoo-base" "$git_hashes_file"
+  remote_sync -az "$git_hashes_file" "$user@$host:$remote_staging/tmp/git_hashes.txt"
+  rm -f "$git_hashes_file"
+
+  log_info "Syncing configuration files to Secondary VPS staging..."
+  local files_to_sync=()
+  [ -d "$PATH_TO_ODOO/.secrets" ] && files_to_sync+=("$PATH_TO_ODOO/.secrets")
+  [ -f "$PATH_TO_ODOO/conf/odoo.conf" ] && files_to_sync+=("$PATH_TO_ODOO/conf/odoo.conf")
+  [ -f "$PATH_TO_ODOO/.env" ] && files_to_sync+=("$PATH_TO_ODOO/.env")
+  [ -f "$PATH_TO_ODOO/requirements.txt" ] && files_to_sync+=("$PATH_TO_ODOO/requirements.txt")
+  [ -f "$PATH_TO_ODOO/scripts/backupdata-$SERVICE_NAME" ] && files_to_sync+=("$PATH_TO_ODOO/scripts/backupdata-$SERVICE_NAME")
+  [ -f "$PATH_TO_ODOO/scripts/databasecloner-$SERVICE_NAME" ] && files_to_sync+=("$PATH_TO_ODOO/scripts/databasecloner-$SERVICE_NAME")
+  [ -f "$PATH_TO_ODOO/scripts/snapshot-$SERVICE_NAME" ] && files_to_sync+=("$PATH_TO_ODOO/scripts/snapshot-$SERVICE_NAME")
+
+  if [ -n "$SNAPSHOT_CUSTOM_DIRS" ]; then
+    IFS=';' read -ra ADDR <<< "$SNAPSHOT_CUSTOM_DIRS"
+    for dir in "${ADDR[@]}"; do
+      dir=$(echo "$dir" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+      if [ -n "$dir" ] && [ -e "$dir" ]; then
+        files_to_sync+=("$dir")
+      fi
+    done
+  fi
+
+  remote_sync -azR "${files_to_sync[@]}" "$user@$host:$remote_staging/"
+
+  log_info "Packaging and assembling snapshot archive on Secondary VPS..."
+  local remote_output
+  remote_output=$(remote_exec bash -s <<REMOTE_SCRIPT_EOF
+set -e
+TAR_FILE_NAME="snapshot-$SERVICE_NAME.tar.zst"
+ZIP_FILE_NAME="backupdata-$SERVICE_NAME.zip"
+ZIP_STAGING="$remote_staging/tmp/zip_staging"
+
+mkdir -p "\$ZIP_STAGING"
+
+cat <<MANIFEST_EOF > "\$ZIP_STAGING/manifest.json"
+{
+    "odoo_dump": "1",
+    "db_name": "$ODOO_DATABASE_NAME_PRD",
+    "version": "$MANIFEST_VERSION",
+    "version_info": $MANIFEST_VERSION_INFO,
+    "major_version": "$MANIFEST_MAJOR_VERSION",
+    "modules": {}
+}
+MANIFEST_EOF
+
+if [ -f "$remote_staging/tmp/dump.sql" ]; then
+  mv "$remote_staging/tmp/dump.sql" "\$ZIP_STAGING/dump.sql"
+fi
+
+if [ -d "$remote_mirror" ] && [ "\$(ls -A "$remote_mirror" 2>/dev/null)" ]; then
+  ln -sfn "$remote_mirror" "\$ZIP_STAGING/filestore"
+  (cd "\$ZIP_STAGING" && zip -r -q "$remote_staging/tmp/\$ZIP_FILE_NAME" dump.sql manifest.json filestore)
+else
+  (cd "\$ZIP_STAGING" && zip -r -q "$remote_staging/tmp/\$ZIP_FILE_NAME" dump.sql manifest.json)
+fi
+rm -rf "\$ZIP_STAGING"
+
+(cd "$remote_staging" && tar -cf "$remote_staging/\$TAR_FILE_NAME" -I "zstd -vT0 -$compression_level --ultra" *)
+
+if [ -n "$GCS_BUCKET_NAME" ]; then
+  if gcloud storage mv "$remote_staging/\$TAR_FILE_NAME" "gs://$GCS_BUCKET_NAME/\$TAR_FILE_NAME"; then
+    echo "STATUS_GCS_SUCCESS"
+  else
+    mv "$remote_staging/\$TAR_FILE_NAME" "$remote_archives/\$TAR_FILE_NAME"
+    echo "STATUS_GCS_FAILED"
+  fi
+else
+  mv "$remote_staging/\$TAR_FILE_NAME" "$remote_archives/\$TAR_FILE_NAME"
+  echo "STATUS_LOCAL_SAVED"
+fi
+
+rm -rf "$remote_staging"/*
+REMOTE_SCRIPT_EOF
+  )
+
+  if echo "$remote_output" | grep -q "STATUS_GCS_SUCCESS"; then
+    log_success "Remote snapshot successfully created and moved to gs://$GCS_BUCKET_NAME/snapshot-$SERVICE_NAME.tar.zst (Secondary VPS archive disk freed)."
+  elif echo "$remote_output" | grep -q "STATUS_GCS_FAILED"; then
+    log_warn "Failed to upload snapshot to gs://$GCS_BUCKET_NAME. Fallback archive preserved on Secondary VPS at $remote_archives/snapshot-$SERVICE_NAME.tar.zst."
+  else
+    log_success "Remote snapshot successfully created and stored on Secondary VPS at $remote_archives/snapshot-$SERVICE_NAME.tar.zst."
+  fi
 }
 
 function main() {
@@ -233,6 +466,29 @@ function main() {
     exit 1
   fi
 
+  # Secondary VPS Remote Snapshot Config
+  SNAPSHOT_REMOTE_HOST=$(grep "^SNAPSHOT_REMOTE_HOST=" "$PATH_TO_ODOO/.env" 2>/dev/null | cut -d '=' -f2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//')
+  SNAPSHOT_REMOTE_USER=$(grep "^SNAPSHOT_REMOTE_USER=" "$PATH_TO_ODOO/.env" 2>/dev/null | cut -d '=' -f2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//')
+  SNAPSHOT_REMOTE_PORT=$(grep "^SNAPSHOT_REMOTE_PORT=" "$PATH_TO_ODOO/.env" 2>/dev/null | cut -d '=' -f2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//')
+  SNAPSHOT_REMOTE_KEY=$(grep "^SNAPSHOT_REMOTE_KEY=" "$PATH_TO_ODOO/.env" 2>/dev/null | cut -d '=' -f2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//')
+  [ -z "$SNAPSHOT_REMOTE_PORT" ] && SNAPSHOT_REMOTE_PORT="22"
+
+  # Extract Odoo version metadata
+  extract_odoo_version_info
+
+  # --- Branch: Remote Secondary VPS Snapshot Mode ---
+  if [ -n "$SNAPSHOT_REMOTE_HOST" ]; then
+    if [ -z "$SNAPSHOT_REMOTE_USER" ]; then
+      log_error "SNAPSHOT_REMOTE_USER is required when SNAPSHOT_REMOTE_HOST is set in .env!"
+      exit 1
+    fi
+    log_info "Executing snapshot in Remote Secondary VPS Mode ($SNAPSHOT_REMOTE_USER@$SNAPSHOT_REMOTE_HOST)..."
+    run_remote_snapshot "$SNAPSHOT_REMOTE_HOST" "$SNAPSHOT_REMOTE_USER" "$SNAPSHOT_REMOTE_PORT" "$SNAPSHOT_REMOTE_KEY" "$SNAPSHOT_COMPRESSION_LEVEL"
+    echo
+    return 0
+  fi
+
+  # --- Branch: Local Snapshot Mode (Default) ---
   if ! command -v zstd >/dev/null 2>&1; then
     log_error "zstd is not installed. Please install zstd first."
     echo "For Ubuntu: sudo apt install zstd"
@@ -255,61 +511,6 @@ function main() {
   if ! run_pg_dump --no-owner "$ODOO_DATABASE_NAME_PRD" > "$ZIP_STAGING_DIR/dump.sql"; then
     log_error "pg_dump failed."
     exit 1
-  fi
-
-  ACTIVE_BASE_PATH=$(grep "^ACTIVE_ODOO_BASE_PATH=" "$PATH_TO_ODOO/.env" 2>/dev/null | cut -d '=' -f2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//')
-  if [ -n "$ACTIVE_BASE_PATH" ] && [ -d "$PATH_TO_ODOO/$ACTIVE_BASE_PATH" ]; then
-    ODOO_BASE_DIR_PATH="$PATH_TO_ODOO/$ACTIVE_BASE_PATH"
-  else
-    ODOO_BASE_DIR_PATH=$(find "$PATH_TO_ODOO/odoo-base" -mindepth 1 -maxdepth 1 -type d -print -quit 2>/dev/null || true)
-  fi
-  RELEASE_PY_FILE=""
-  if [ -n "$ODOO_BASE_DIR_PATH" ] && [ -f "$ODOO_BASE_DIR_PATH/odoo/release.py" ]; then
-    RELEASE_PY_FILE="$ODOO_BASE_DIR_PATH/odoo/release.py"
-  else
-    RELEASE_PY_FILE=$(find "$PATH_TO_ODOO/odoo-base" "$PATH_TO_ODOO/odoo" -name "release.py" -path "*/odoo/release.py" 2>/dev/null | head -n 1 || true)
-  fi
-
-  MANIFEST_VERSION="16.0"
-  MANIFEST_MAJOR_VERSION="16"
-  MANIFEST_VERSION_INFO='[16, 0, 0, "final", 0, ""]'
-
-  if [ -n "$RELEASE_PY_FILE" ] && [ -f "$RELEASE_PY_FILE" ] && command -v python3 >/dev/null 2>&1; then
-    VERSION_JSON=$(python3 -c '
-import sys, json, ast
-try:
-    with open(sys.argv[1], "r") as f:
-        tree = ast.parse(f.read())
-    version = "16.0"
-    version_info = [16, 0, 0, "final", 0, ""]
-    major_version = "16"
-    for node in tree.body:
-        if isinstance(node, ast.Assign):
-            for target in node.targets:
-                if isinstance(target, ast.Name):
-                    if target.id == "version" and isinstance(node.value, ast.Constant):
-                        version = str(node.value.value)
-                    elif target.id in ("major_version", "series", "serie") and isinstance(node.value, ast.Constant):
-                        major_version = str(node.value.value)
-                    elif target.id == "version_info" and isinstance(node.value, ast.Tuple):
-                        version_info = [
-                            elt.value if isinstance(elt, ast.Constant)
-                            else (elt.id.lower() if isinstance(elt, ast.Name) else str(elt))
-                            for elt in node.value.elts
-                        ]
-    print(json.dumps({"version": version, "version_info": version_info, "major_version": major_version}))
-except Exception:
-    print(json.dumps({"version": "16.0", "version_info": [16, 0, 0, "final", 0, ""], "major_version": "16"}))
-' "$RELEASE_PY_FILE" 2>/dev/null || true)
-
-    if [ -n "$VERSION_JSON" ]; then
-      EXTRACTED_V=$(echo "$VERSION_JSON" | python3 -c 'import sys, json; print(json.load(sys.stdin).get("version", ""))' 2>/dev/null || true)
-      EXTRACTED_MV=$(echo "$VERSION_JSON" | python3 -c 'import sys, json; print(json.load(sys.stdin).get("major_version", ""))' 2>/dev/null || true)
-      EXTRACTED_VI=$(echo "$VERSION_JSON" | python3 -c 'import sys, json; print(json.dumps(json.load(sys.stdin).get("version_info", [])))' 2>/dev/null || true)
-      [ -n "$EXTRACTED_V" ] && MANIFEST_VERSION="$EXTRACTED_V"
-      [ -n "$EXTRACTED_MV" ] && MANIFEST_MAJOR_VERSION="$EXTRACTED_MV"
-      [ -n "$EXTRACTED_VI" ] && [ "$EXTRACTED_VI" != "[]" ] && MANIFEST_VERSION_INFO="$EXTRACTED_VI"
-    fi
   fi
 
   log_info "Generating manifest.json for backup bundle (Odoo version: $MANIFEST_VERSION)..."
