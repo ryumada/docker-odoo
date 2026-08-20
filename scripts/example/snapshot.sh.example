@@ -275,13 +275,20 @@ function run_remote_snapshot() {
     log_success "Secondary VPS has verified access to gs://$GCS_BUCKET_NAME."
   fi
 
-  local remote_base="~/.odoo-snapshots/$SERVICE_NAME"
+  local remote_home
+  remote_home=$(remote_exec 'echo "$HOME"' 2>/dev/null | tr -d '\r\n')
+  if [ -z "$remote_home" ]; then
+    log_error "Could not determine HOME directory on Secondary VPS."
+    exit 1
+  fi
+
+  local remote_base="$remote_home/.odoo-snapshots/$SERVICE_NAME"
   local remote_mirror="$remote_base/mirror/filestore"
   local remote_staging="$remote_base/staging"
   local remote_archives="$remote_base/archives"
 
-  log_info "Preparing directory structure on Secondary VPS under ~/.odoo-snapshots/$SERVICE_NAME/..."
-  remote_exec "mkdir -p $remote_mirror $remote_staging/tmp $remote_archives && chmod 700 ~/.odoo-snapshots"
+  log_info "Preparing directory structure on Secondary VPS under $remote_base/..."
+  remote_exec "mkdir -p '$remote_mirror' '$remote_staging/tmp' '$remote_archives' && chmod 700 '$remote_home/.odoo-snapshots'"
 
   local odoo_filestore_path="/var/lib/odoo/$SERVICE_NAME/filestore/$ODOO_DATABASE_NAME_PRD"
   if [ -d "$odoo_filestore_path" ]; then
