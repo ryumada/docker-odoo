@@ -142,6 +142,8 @@ function main() {
 
   log_info "Installing snapshot utility"
 
+  OWNER_HOME=$(eval echo "~$REPOSITORY_OWNER")
+
   # Validate remote SSH connectivity & prerequisites if SNAPSHOT_REMOTE_HOST is set
   if [ -n "$SNAPSHOT_REMOTE_HOST" ]; then
     if [ -z "$SNAPSHOT_REMOTE_USER" ]; then
@@ -149,26 +151,64 @@ function main() {
       exit 1
     fi
 
-    local ssh_test_opts=(-p "$SNAPSHOT_REMOTE_PORT" -o StrictHostKeyChecking=accept-new)
-    if [ -n "$SNAPSHOT_REMOTE_KEY" ]; then
-      ssh_test_opts+=(-i "$SNAPSHOT_REMOTE_KEY")
+    if [ -z "$SNAPSHOT_REMOTE_KEY" ]; then
+      SNAPSHOT_REMOTE_KEY="$OWNER_HOME/.ssh/id_ed25519-snapshot-$SERVICE_NAME"
+      log_info "SNAPSHOT_REMOTE_KEY is not defined in .env, defaulting to $SNAPSHOT_REMOTE_KEY"
+      if grep -q "^SNAPSHOT_REMOTE_KEY=" "$PATH_TO_ODOO/.env"; then
+        sed -i "s|^SNAPSHOT_REMOTE_KEY=.*|SNAPSHOT_REMOTE_KEY=$SNAPSHOT_REMOTE_KEY|" "$PATH_TO_ODOO/.env"
+      else
+        echo "SNAPSHOT_REMOTE_KEY=$SNAPSHOT_REMOTE_KEY" >> "$PATH_TO_ODOO/.env"
+      fi
     fi
 
-    log_info "Testing SSH connectivity to Secondary VPS ($SNAPSHOT_REMOTE_USER@$SNAPSHOT_REMOTE_HOST:$SNAPSHOT_REMOTE_PORT)..."
-    if ! ssh "${ssh_test_opts[@]}" "$SNAPSHOT_REMOTE_USER@$SNAPSHOT_REMOTE_HOST" "true" 2>/dev/null; then
-      log_warn "Could not connect to Secondary VPS via SSH. Please verify SSH key setup and network connectivity."
-    else
-      log_success "SSH connection to Secondary VPS verified."
+    # Expand tilde if user configured path with ~
+    SNAPSHOT_REMOTE_KEY="${SNAPSHOT_REMOTE_KEY/#\~/$OWNER_HOME}"
 
-      if [ -n "$GCS_BUCKET_NAME" ]; then
-        log_info "Checking Google Cloud Storage access on Secondary VPS..."
-        if ! ssh "${ssh_test_opts[@]}" "$SNAPSHOT_REMOTE_USER@$SNAPSHOT_REMOTE_HOST" "command -v gcloud >/dev/null 2>&1" 2>/dev/null; then
-          log_warn "gcloud CLI is not installed on Secondary VPS ($SNAPSHOT_REMOTE_HOST)."
-        elif ! ssh "${ssh_test_opts[@]}" "$SNAPSHOT_REMOTE_USER@$SNAPSHOT_REMOTE_HOST" "gcloud storage ls 'gs://$GCS_BUCKET_NAME' >/dev/null 2>&1" 2>/dev/null; then
-          log_warn "Secondary VPS cannot access bucket gs://$GCS_BUCKET_NAME. Ensure gcloud is authenticated on Secondary VPS."
-        else
-          log_success "Secondary VPS has verified access to gs://$GCS_BUCKET_NAME."
-        fi
+    # Generate SSH key pair if not exists
+    if [ ! -f "$SNAPSHOT_REMOTE_KEY" ]; then
+      log_info "Generating dedicated SSH key pair at $SNAPSHOT_REMOTE_KEY..."
+      mkdir -p "$(dirname "$SNAPSHOT_REMOTE_KEY")"
+      chown "$REPOSITORY_OWNER": "$(dirname "$SNAPSHOT_REMOTE_KEY")"
+      chmod 700 "$(dirname "$SNAPSHOT_REMOTE_KEY")"
+      ssh-keygen -t ed25519 -N "" -f "$SNAPSHOT_REMOTE_KEY" -C "docker-odoo-snapshot-$SERVICE_NAME@$(hostname)"
+      chown "$REPOSITORY_OWNER": "$SNAPSHOT_REMOTE_KEY" "${SNAPSHOT_REMOTE_KEY}.pub"
+      chmod 600 "$SNAPSHOT_REMOTE_KEY"
+      chmod 644 "${SNAPSHOT_REMOTE_KEY}.pub"
+      log_success "Generated SSH key pair: $SNAPSHOT_REMOTE_KEY"
+    fi
+
+    # Verify passwordless SSH connectivity strictly with BatchMode=yes
+    log_info "Verifying passwordless SSH key authentication with Secondary VPS ($SNAPSHOT_REMOTE_USER@$SNAPSHOT_REMOTE_HOST:$SNAPSHOT_REMOTE_PORT)..."
+    if ! ssh -i "$SNAPSHOT_REMOTE_KEY" -p "$SNAPSHOT_REMOTE_PORT" -o BatchMode=yes -o StrictHostKeyChecking=accept-new "$SNAPSHOT_REMOTE_USER@$SNAPSHOT_REMOTE_HOST" "true" 2>/dev/null; then
+      log_info "Passwordless SSH key not yet installed on Secondary VPS."
+      log_info "Copying public SSH key to Secondary VPS (you may be prompted for password once)..."
+
+      if command -v ssh-copy-id >/dev/null 2>&1; then
+        ssh-copy-id -i "${SNAPSHOT_REMOTE_KEY}.pub" -p "$SNAPSHOT_REMOTE_PORT" -o StrictHostKeyChecking=accept-new "$SNAPSHOT_REMOTE_USER@$SNAPSHOT_REMOTE_HOST"
+      else
+        cat "${SNAPSHOT_REMOTE_KEY}.pub" | ssh -p "$SNAPSHOT_REMOTE_PORT" -o StrictHostKeyChecking=accept-new "$SNAPSHOT_REMOTE_USER@$SNAPSHOT_REMOTE_HOST" "mkdir -p ~/.ssh && chmod 700 ~/.ssh && cat >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys"
+      fi
+
+      # Re-verify with BatchMode=yes
+      if ! ssh -i "$SNAPSHOT_REMOTE_KEY" -p "$SNAPSHOT_REMOTE_PORT" -o BatchMode=yes -o StrictHostKeyChecking=accept-new "$SNAPSHOT_REMOTE_USER@$SNAPSHOT_REMOTE_HOST" "true" 2>/dev/null; then
+        log_error "Failed to establish passwordless SSH key authentication with Secondary VPS."
+        exit 1
+      fi
+      log_success "Passwordless SSH key installed and verified on Secondary VPS."
+    else
+      log_success "Passwordless SSH key authentication verified on Secondary VPS."
+    fi
+
+    local ssh_test_opts=(-i "$SNAPSHOT_REMOTE_KEY" -p "$SNAPSHOT_REMOTE_PORT" -o BatchMode=yes -o StrictHostKeyChecking=accept-new)
+
+    if [ -n "$GCS_BUCKET_NAME" ]; then
+      log_info "Checking Google Cloud Storage access on Secondary VPS..."
+      if ! ssh "${ssh_test_opts[@]}" "$SNAPSHOT_REMOTE_USER@$SNAPSHOT_REMOTE_HOST" "command -v gcloud >/dev/null 2>&1" 2>/dev/null; then
+        log_warn "gcloud CLI is not installed on Secondary VPS ($SNAPSHOT_REMOTE_HOST)."
+      elif ! ssh "${ssh_test_opts[@]}" "$SNAPSHOT_REMOTE_USER@$SNAPSHOT_REMOTE_HOST" "gcloud storage ls 'gs://$GCS_BUCKET_NAME' >/dev/null 2>&1" 2>/dev/null; then
+        log_warn "Secondary VPS cannot access bucket gs://$GCS_BUCKET_NAME. Ensure gcloud is authenticated on Secondary VPS."
+      else
+        log_success "Secondary VPS has verified access to gs://$GCS_BUCKET_NAME."
       fi
     fi
   fi

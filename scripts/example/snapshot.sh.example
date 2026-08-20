@@ -10,6 +10,7 @@ CURRENT_DIR_USER=$(stat -c '%U' "$CURRENT_DIR")
 PATH_TO_ODOO=$(sudo -u "$CURRENT_DIR_USER" git -C "$(dirname "$(readlink -f "$0")")" rev-parse --show-toplevel)
 SERVICE_NAME=$(basename "$PATH_TO_ODOO")
 REPOSITORY_OWNER=$(stat -c '%U' "$PATH_TO_ODOO")
+OWNER_HOME=$(eval echo "~$REPOSITORY_OWNER")
 TAR_PROJECT_ROOT="${PATH_TO_ODOO#/}"
 
 # --- Logging Functions & Colors ---
@@ -228,9 +229,19 @@ function run_remote_snapshot() {
   local key="$4"
   local compression_level="$5"
 
-  local ssh_opts=(-p "$port" -o StrictHostKeyChecking=accept-new -o ServerAliveInterval=30 -o ServerAliveCountMax=5)
-  local rsync_ssh="ssh -p $port -o StrictHostKeyChecking=accept-new -o ServerAliveInterval=30 -o ServerAliveCountMax=5"
-  if [ -n "$key" ]; then
+  if [ -z "$key" ]; then
+    if [ -f "$OWNER_HOME/.ssh/id_ed25519-snapshot-$SERVICE_NAME" ]; then
+      key="$OWNER_HOME/.ssh/id_ed25519-snapshot-$SERVICE_NAME"
+    elif [ -f "$OWNER_HOME/.ssh/id_ed25519_snapshot" ]; then
+      key="$OWNER_HOME/.ssh/id_ed25519_snapshot"
+    else
+      key="$OWNER_HOME/.ssh/id_ed25519-snapshot-$SERVICE_NAME"
+    fi
+  fi
+  key="${key/#\~/$OWNER_HOME}"
+  local ssh_opts=(-p "$port" -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o ServerAliveInterval=30 -o ServerAliveCountMax=5)
+  local rsync_ssh="ssh -p $port -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o ServerAliveInterval=30 -o ServerAliveCountMax=5"
+  if [ -n "$key" ] && [ -f "$key" ]; then
     ssh_opts+=(-i "$key")
     rsync_ssh+=" -i $key"
   fi
