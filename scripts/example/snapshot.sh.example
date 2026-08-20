@@ -228,8 +228,8 @@ function run_remote_snapshot() {
   local key="$4"
   local compression_level="$5"
 
-  local ssh_opts=(-p "$port" -o StrictHostKeyChecking=accept-new)
-  local rsync_ssh="ssh -p $port -o StrictHostKeyChecking=accept-new"
+  local ssh_opts=(-p "$port" -o StrictHostKeyChecking=accept-new -o ServerAliveInterval=30 -o ServerAliveCountMax=5)
+  local rsync_ssh="ssh -p $port -o StrictHostKeyChecking=accept-new -o ServerAliveInterval=30 -o ServerAliveCountMax=5"
   if [ -n "$key" ]; then
     ssh_opts+=(-i "$key")
     rsync_ssh+=" -i $key"
@@ -332,64 +332,48 @@ function run_remote_snapshot() {
 
   remote_sync -azR "${files_to_sync[@]}" "$user@$host:$remote_staging/"
 
-  log_info "Packaging and assembling snapshot archive on Secondary VPS..."
-  local remote_output
-  remote_output=$(remote_exec bash -s <<REMOTE_SCRIPT_EOF
-set -e
-TAR_FILE_NAME="snapshot-$SERVICE_NAME.tar.zst"
-ZIP_FILE_NAME="backupdata-$SERVICE_NAME.zip"
-ZIP_STAGING="$remote_staging/tmp/zip_staging"
-
-mkdir -p "\$ZIP_STAGING"
-
-cat <<MANIFEST_EOF > "\$ZIP_STAGING/manifest.json"
+  log_info "Preparing manifest.json on Secondary VPS..."
+  remote_exec "mkdir -p '$remote_staging/tmp/zip_staging' && cat <<'MANIFEST_EOF' > '$remote_staging/tmp/zip_staging/manifest.json'
 {
-    "odoo_dump": "1",
-    "db_name": "$ODOO_DATABASE_NAME_PRD",
-    "version": "$MANIFEST_VERSION",
-    "version_info": $MANIFEST_VERSION_INFO,
-    "major_version": "$MANIFEST_MAJOR_VERSION",
-    "modules": {}
+    \"odoo_dump\": \"1\",
+    \"db_name\": \"$ODOO_DATABASE_NAME_PRD\",
+    \"version\": \"$MANIFEST_VERSION\",
+    \"version_info\": $MANIFEST_VERSION_INFO,
+    \"major_version\": \"$MANIFEST_MAJOR_VERSION\",
+    \"modules\": {}
 }
-MANIFEST_EOF
+MANIFEST_EOF"
 
-if [ -f "$remote_staging/tmp/dump.sql" ]; then
-  mv "$remote_staging/tmp/dump.sql" "\$ZIP_STAGING/dump.sql"
-fi
+  log_info "Moving database dump to zip staging on Secondary VPS..."
+  remote_exec "if [ -f '$remote_staging/tmp/dump.sql' ]; then mv '$remote_staging/tmp/dump.sql' '$remote_staging/tmp/zip_staging/dump.sql'; fi"
 
-if [ -d "$remote_mirror" ] && [ "\$(ls -A "$remote_mirror" 2>/dev/null)" ]; then
-  ln -sfn "$remote_mirror" "\$ZIP_STAGING/filestore"
-  (cd "\$ZIP_STAGING" && zip -r -q "$remote_staging/tmp/\$ZIP_FILE_NAME" dump.sql manifest.json filestore)
-else
-  (cd "\$ZIP_STAGING" && zip -r -q "$remote_staging/tmp/\$ZIP_FILE_NAME" dump.sql manifest.json)
-fi
-rm -rf "\$ZIP_STAGING"
-
-(cd "$remote_staging" && tar -cf "$remote_staging/\$TAR_FILE_NAME" -I "zstd -vT0 -$compression_level --ultra" *)
-
-if [ -n "$GCS_BUCKET_NAME" ]; then
-  if gcloud storage mv "$remote_staging/\$TAR_FILE_NAME" "gs://$GCS_BUCKET_NAME/\$TAR_FILE_NAME"; then
-    echo "STATUS_GCS_SUCCESS"
+  log_info "Creating backupdata-$SERVICE_NAME.zip on Secondary VPS..."
+  if remote_exec "[ -d '$remote_mirror' ] && [ -n \"\$(ls -A '$remote_mirror' 2>/dev/null)\" ]"; then
+    remote_exec "ln -sfn '$remote_mirror' '$remote_staging/tmp/zip_staging/filestore' && cd '$remote_staging/tmp/zip_staging' && zip -r -q '$remote_staging/tmp/backupdata-$SERVICE_NAME.zip' dump.sql manifest.json filestore"
   else
-    mv "$remote_staging/\$TAR_FILE_NAME" "$remote_archives/\$TAR_FILE_NAME"
-    echo "STATUS_GCS_FAILED"
+    remote_exec "cd '$remote_staging/tmp/zip_staging' && zip -r -q '$remote_staging/tmp/backupdata-$SERVICE_NAME.zip' dump.sql manifest.json"
   fi
-else
-  mv "$remote_staging/\$TAR_FILE_NAME" "$remote_archives/\$TAR_FILE_NAME"
-  echo "STATUS_LOCAL_SAVED"
-fi
+  remote_exec "rm -rf '$remote_staging/tmp/zip_staging'"
 
-rm -rf "$remote_staging"/*
-REMOTE_SCRIPT_EOF
-  )
+  log_info "Packaging snapshot-$SERVICE_NAME.tar.zst on Secondary VPS (compression level: $compression_level)..."
+  remote_exec "cd '$remote_staging' && tar -cf '$remote_staging/snapshot-$SERVICE_NAME.tar.zst' -I 'zstd -vT0 -$compression_level --ultra' *"
 
-  if echo "$remote_output" | grep -q "STATUS_GCS_SUCCESS"; then
-    log_success "Remote snapshot successfully created and moved to gs://$GCS_BUCKET_NAME/snapshot-$SERVICE_NAME.tar.zst (Secondary VPS archive disk freed)."
-  elif echo "$remote_output" | grep -q "STATUS_GCS_FAILED"; then
-    log_warn "Failed to upload snapshot to gs://$GCS_BUCKET_NAME. Fallback archive preserved on Secondary VPS at $remote_archives/snapshot-$SERVICE_NAME.tar.zst."
+  if [ -n "$GCS_BUCKET_NAME" ]; then
+    log_info "Moving snapshot archive to Google Cloud Storage (gs://$GCS_BUCKET_NAME)..."
+    if remote_exec "gcloud storage mv '$remote_staging/snapshot-$SERVICE_NAME.tar.zst' 'gs://$GCS_BUCKET_NAME/snapshot-$SERVICE_NAME.tar.zst'"; then
+      log_success "Remote snapshot successfully uploaded to gs://$GCS_BUCKET_NAME/snapshot-$SERVICE_NAME.tar.zst (Secondary VPS archive disk freed)."
+    else
+      log_warn "Failed to upload snapshot to gs://$GCS_BUCKET_NAME. Fallback archive preserved on Secondary VPS at $remote_archives/snapshot-$SERVICE_NAME.tar.zst."
+      remote_exec "mv '$remote_staging/snapshot-$SERVICE_NAME.tar.zst' '$remote_archives/snapshot-$SERVICE_NAME.tar.zst'"
+    fi
   else
+    log_info "Storing snapshot archive locally on Secondary VPS..."
+    remote_exec "mv '$remote_staging/snapshot-$SERVICE_NAME.tar.zst' '$remote_archives/snapshot-$SERVICE_NAME.tar.zst'"
     log_success "Remote snapshot successfully created and stored on Secondary VPS at $remote_archives/snapshot-$SERVICE_NAME.tar.zst."
   fi
+
+  log_info "Cleaning staging directory on Secondary VPS..."
+  remote_exec "rm -rf '$remote_staging'/*"
 }
 
 function main() {
