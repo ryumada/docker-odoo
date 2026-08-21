@@ -159,51 +159,87 @@ function get_gdrive_access_token_from_sa() {
     return 1
   fi
 
-  python3 - << 'EOF' "$sa_json_content" 2>/dev/null
-import sys, time, json, base64, urllib.request, urllib.parse, subprocess
+  local client_email token_uri key_pem
+  client_email=$(echo "$sa_json_content" | grep -o '"client_email": *"[^"]*"' | cut -d'"' -f4)
+  token_uri=$(echo "$sa_json_content" | grep -o '"token_uri": *"[^"]*"' | cut -d'"' -f4)
+  [ -z "$token_uri" ] && token_uri="https://oauth2.googleapis.com/token"
 
-try:
-    sa = json.loads(sys.argv[1])
-except Exception:
-    sys.exit(1)
+  key_pem=$(echo "$sa_json_content" | grep -o '"private_key": *"[^"]*"' | sed 's/^"private_key": *"//;s/"$//')
 
-client_email = sa.get("client_email")
-private_key = sa.get("private_key")
-token_uri = sa.get("token_uri", "https://oauth2.googleapis.com/token")
+  if [ -z "$client_email" ] || [ -z "$key_pem" ]; then
+    log_error "Could not parse client_email or private_key from Service Account JSON."
+    return 1
+  fi
 
-if not client_email or not private_key:
-    sys.exit(1)
+  local b64url_cmd='openssl base64 -e -A | tr "+/" "-_" | tr -d "="'
+  local now exp header_b64 claims claims_b64 unsigned_jwt sig_b64 jwt
+  now=$(date +%s)
+  exp=$((now + 3600))
 
-header = base64.urlsafe_b64encode(json.dumps({"alg": "RS256", "typ": "JWT"}).encode()).decode().rstrip("=")
-now = int(time.time())
-claims = {
-    "iss": client_email,
-    "scope": "https://www.googleapis.com/auth/drive",
-    "aud": token_uri,
-    "exp": now + 3600,
-    "iat": now
+  header_b64=$(echo -n '{"alg":"RS256","typ":"JWT"}' | eval "$b64url_cmd")
+  claims="{\"iss\":\"$client_email\",\"scope\":\"https://www.googleapis.com/auth/drive\",\"aud\":\"$token_uri\",\"exp\":$exp,\"iat\":$now}"
+  claims_b64=$(echo -n "$claims" | eval "$b64url_cmd")
+
+  unsigned_jwt="${header_b64}.${claims_b64}"
+  sig_b64=$(printf "%s" "$unsigned_jwt" | openssl dgst -sha256 -sign <(printf '%b' "$key_pem") -binary 2>/dev/null | eval "$b64url_cmd")
+
+  if [ -z "$sig_b64" ]; then
+    log_error "Failed to sign Service Account JWT with openssl."
+    return 1
+  fi
+
+  jwt="${unsigned_jwt}.${sig_b64}"
+
+  local token_response
+  token_response=$(curl -s -X POST \
+    -d "grant_type=urn:ietf:params:oauth:grant-type:jwt-bearer" \
+    --data-urlencode "assertion=$jwt" \
+    "$token_uri")
+
+  echo "$token_response" | grep -o '"access_token": *"[^"]*"' | cut -d'"' -f4
 }
-claims_b64 = base64.urlsafe_b64encode(json.dumps(claims).encode()).decode().rstrip("=")
-unsigned_jwt = f"{header}.{claims_b64}"
 
-proc = subprocess.Popen(["openssl", "dgst", "-sha256", "-sign", "-"], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-sig, _ = proc.communicate(input=private_key.encode())
-if proc.returncode != 0:
-    sys.exit(1)
+function cleanup_gdrive_old_snapshots() {
+  local access_token="$1"
+  local folder_id="$2"
+  local service_name="$3"
+  local max_backups="$4"
 
-sig_b64 = base64.urlsafe_b64encode(sig).decode().rstrip("=")
-jwt = f"{unsigned_jwt}.{sig_b64}"
+  if [ -z "$max_backups" ] || ! [[ "$max_backups" =~ ^[0-9]+$ ]] || [ "$max_backups" -le 0 ]; then
+    return 0
+  fi
 
-data = urllib.parse.urlencode({
-    "grant_type": "urn:ietf:params:oauth:grant-type:jwt-bearer",
-    "assertion": jwt
-}).encode()
+  log_info "Running Google Drive lifecycle retention (keeping latest $max_backups snapshot(s) for $service_name)..."
 
-req = urllib.request.Request(token_uri, data=data)
-with urllib.request.urlopen(req) as resp:
-    res = json.loads(resp.read().decode())
-    print(res.get("access_token", ""))
-EOF
+  local query="name contains 'snapshot-${service_name}' and trashed = false"
+  if [ -n "$folder_id" ]; then
+    query="$query and '$folder_id' in parents"
+  fi
+
+  local response
+  response=$(curl -s -G \
+    -H "Authorization: Bearer $access_token" \
+    --data-urlencode "q=$query" \
+    --data-urlencode "orderBy=createdTime desc" \
+    --data-urlencode "fields=files(id, name, createdTime)" \
+    --data-urlencode "supportsAllDrives=true" \
+    --data-urlencode "includeItemsFromAllDrives=true" \
+    --data-urlencode "pageSize=100" \
+    "https://www.googleapis.com/drive/v3/files")
+
+  local file_ids
+  file_ids=$(echo "$response" | grep -o '"id": *"[^"]*"' | cut -d'"' -f4)
+
+  local to_delete
+  to_delete=$(echo "$file_ids" | tail -n +$((max_backups + 1)))
+
+  for file_id in $to_delete; do
+    if [ -n "$file_id" ]; then
+      curl -s -X DELETE \
+        -H "Authorization: Bearer $access_token" \
+        "https://www.googleapis.com/drive/v3/files/${file_id}?supportsAllDrives=true" >/dev/null 2>&1 || true
+    fi
+  done
 }
 
 function upload_to_gdrive() {
@@ -212,6 +248,7 @@ function upload_to_gdrive() {
   local sa_key_path="$3"
   local folder_id="$4"
   local chunk_size_cfg="$5"
+  local max_backups_cfg="$6"
 
   if [ ! -f "$file_path" ]; then
     log_error "Snapshot file '$file_path' not found for Google Drive upload."
@@ -251,8 +288,10 @@ function upload_to_gdrive() {
     fi
   fi
 
-  local file_name file_size mime_type
-  file_name=$(basename "$file_path")
+  local upload_timestamp
+  upload_timestamp=$(date +"%Y%m%d-%H%M%S")
+  local file_name="snapshot-${SERVICE_NAME}-${upload_timestamp}.tar.zst"
+  local file_size mime_type
   file_size=$(wc -c < "$file_path" | tr -d ' ')
   mime_type="application/octet-stream"
 
@@ -272,7 +311,7 @@ function upload_to_gdrive() {
     -H "X-Upload-Content-Length: $file_size" \
     -H "Content-Type: application/json; charset=UTF-8" \
     -d "$metadata" \
-    "https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable")
+    "https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&supportsAllDrives=true")
 
   local session_uri
   session_uri=$(echo "$init_response" | grep -i "^location:" | tr -d '\r' | awk '{print $2}')
@@ -319,6 +358,9 @@ function upload_to_gdrive() {
     elif [ "$http_status" = "200" ] || [ "$http_status" = "201" ]; then
       # 200/201: File upload completed
       log_success "Google Drive chunked upload completed successfully for $file_name."
+      if [ -n "$max_backups_cfg" ]; then
+        cleanup_gdrive_old_snapshots "$access_token" "$folder_id" "$SERVICE_NAME" "$max_backups_cfg"
+      fi
       return 0
     else
       log_warn "Chunk upload failed with HTTP status: $http_status. Response: $response_body"
@@ -505,8 +547,8 @@ function run_remote_snapshot() {
       exit 1
     fi
     if [ -n "$GDRIVE_SERVICE_ACCOUNT_KEY" ]; then
-      if ! remote_exec "command -v python3 >/dev/null 2>&1 && command -v openssl >/dev/null 2>&1"; then
-        log_error "Secondary VPS ($host) is missing python3 or openssl, which are required for Service Account token generation."
+      if ! remote_exec "command -v openssl >/dev/null 2>&1"; then
+        log_error "Secondary VPS ($host) is missing openssl, which is required for Service Account token generation."
         exit 1
       fi
     fi
@@ -618,11 +660,11 @@ MANIFEST_EOF"
     fi
 
     local upload_funcs
-    upload_funcs=$(declare -f log log_info log_success log_warn log_error get_gdrive_access_token_from_sa upload_to_gdrive)
+    upload_funcs=$(declare -f log log_info log_success log_warn log_error get_gdrive_access_token_from_sa cleanup_gdrive_old_snapshots upload_to_gdrive)
 
     if remote_exec "bash -s" << REMOTE_EOF
 $upload_funcs
-upload_to_gdrive '$remote_staging/snapshot-$SERVICE_NAME.tar.zst' '$GDRIVE_ACCESS_TOKEN' '$remote_sa_content' '$GDRIVE_FOLDER_ID' '$GDRIVE_CHUNK_SIZE'
+upload_to_gdrive '$remote_staging/snapshot-$SERVICE_NAME.tar.zst' '$GDRIVE_ACCESS_TOKEN' '$remote_sa_content' '$GDRIVE_FOLDER_ID' '$GDRIVE_CHUNK_SIZE' '$GDRIVE_MAX_BACKUPS'
 REMOTE_EOF
     then
       remote_upload_success=true
@@ -728,6 +770,8 @@ function main() {
   GDRIVE_SERVICE_ACCOUNT_KEY=$(grep "^GDRIVE_SERVICE_ACCOUNT_KEY=" "$PATH_TO_ODOO/.env" 2>/dev/null | cut -d '=' -f2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//')
   GDRIVE_FOLDER_ID=$(grep "^GDRIVE_FOLDER_ID=" "$PATH_TO_ODOO/.env" 2>/dev/null | cut -d '=' -f2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//')
   GDRIVE_CHUNK_SIZE=$(grep "^GDRIVE_CHUNK_SIZE=" "$PATH_TO_ODOO/.env" 2>/dev/null | cut -d '=' -f2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//')
+  GDRIVE_MAX_BACKUPS=$(grep "^GDRIVE_MAX_BACKUPS=" "$PATH_TO_ODOO/.env" 2>/dev/null | cut -d '=' -f2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//')
+  [ -z "$GDRIVE_MAX_BACKUPS" ] && GDRIVE_MAX_BACKUPS="7"
 
   # The number represents the compression level for Zstandard (zstd)
   SNAPSHOT_COMPRESSION_LEVEL=$(grep "^SNAPSHOT_COMPRESSION_LEVEL=" "$PATH_TO_ODOO/.env" 2>/dev/null | cut -d '=' -f2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//')
@@ -902,7 +946,7 @@ EOF
   if [ -n "$GDRIVE_ACCESS_TOKEN" ] || [ -n "$GDRIVE_SERVICE_ACCOUNT_KEY" ]; then
     remote_upload_attempted=true
     log_info "Uploading snapshot file to Google Drive..."
-    if upload_to_gdrive "$TAR_FILE_PATH" "$GDRIVE_ACCESS_TOKEN" "$GDRIVE_SERVICE_ACCOUNT_KEY" "$GDRIVE_FOLDER_ID" "$GDRIVE_CHUNK_SIZE"; then
+    if upload_to_gdrive "$TAR_FILE_PATH" "$GDRIVE_ACCESS_TOKEN" "$GDRIVE_SERVICE_ACCOUNT_KEY" "$GDRIVE_FOLDER_ID" "$GDRIVE_CHUNK_SIZE" "$GDRIVE_MAX_BACKUPS"; then
       remote_upload_success=true
       log_success "The snapshot File Uploaded Successfully to Google Drive: $TAR_FILE_NAME"
     else
