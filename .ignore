@@ -1,3 +1,29 @@
-# VS Code: include all directories when searching files ignored by .gitignore
-# Duplicated in .aiexclude for Gemini Code Assist — keep in sync.
-!*
+# VS Code / Search Tool Exclusion Configuration
+# Keeps workspace search scoped to project configs, scripts, and custom modules while excluding heavy upstream sources and dumps.
+
+# Exclude heavy upstream source and runtime caches/tools
+odoo-base/**
+.mypy_cache/**
+.antigravitycli/**
+.kilocode/**
+.kilo/**
+.vscode/**
+deployments/**/.secrets/**
+*.tar*
+*.sql
+*.dump
+*.swp
+
+# Explicitly include operational directories
+!conf/
+!conf/**
+!scripts/
+!scripts/**
+!utilities/
+!utilities/**
+!deployments/
+!deployments/**
+!git/
+!git/**
+!.env*
+!*.md

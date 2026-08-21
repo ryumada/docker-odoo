@@ -13,7 +13,7 @@ Use this skill when creating or modifying bash scripts to ensure consistency wit
 #!/bin/bash
 
 # Detect Repository Owner to run non-root commands as that user
-set -escripts/long-process-mode.sh
+set -e
 CURRENT_DIR=$(dirname "$(readlink -f "$0")")
 CURRENT_DIR_USER=$(stat -c '%U' "$CURRENT_DIR")
 # Only use sudo if the current user differs from the file owner

@@ -3,7 +3,7 @@ set -e
 # Category: Utility
 # Description: Creates a full Odoo snapshot (database dump + filestore + configs) locally or via secondary VPS over SSH.
 # Usage: ./scripts/snapshot-SERVICE_NAME [auto]
-# Dependencies: sudo, git, zstd, tar, docker, pg_dump, gcloud, rsync, ssh
+# Dependencies: sudo, git, zstd, tar, docker, pg_dump, gcloud, rsync, ssh, curl, dd
 
 CURRENT_DIR=$(dirname "$(readlink -f "$0")")
 CURRENT_DIR_USER=$(stat -c '%U' "$CURRENT_DIR")
@@ -49,7 +49,8 @@ function run_pg_dump() {
     docker_net=$(grep "^DOCKER_NETWORK_MODE=" "$env_file" 2>/dev/null | cut -d "=" -f 2 | sed 's/^[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^[""'\\']//;s/[""'\\']$//')
     [ -z "$db_port" ] && db_port="5432"
     [ -z "$docker_net" ] && docker_net="host"
-    local net=$(echo "$docker_net" | cut -d "," -f 1)
+    local net
+    net=$(echo "$docker_net" | cut -d "," -f 1)
     docker run -i --rm --network="$net" -e PGPASSWORD="$db_pass" postgres pg_dump -h "$db_host" -p "$db_port" -U "$db_user" "$@"
   else
     sudo -u postgres pg_dump "$@"
@@ -86,7 +87,8 @@ function areYouReallySure() {
 function getGitHash() {
   local git_path=$1
   local output_file=$2
-  local git_real_owner=$(stat -c '%U' "$git_path")
+  local git_real_owner
+  git_real_owner=$(stat -c '%U' "$git_path")
 
   {
       echo "  Updated at [$(date +"%Y-%m-%d %H:%M:%S")]"
@@ -143,6 +145,215 @@ function moveSnapshotFileToTempDir() {
 
   log_success "The snapshot File Created Successfully named $tar_file_name. File Backed up at $temp_dir/$tar_file_name"
 }
+
+function get_gdrive_access_token_from_sa() {
+  local sa_input="$1"
+  local sa_json_content=""
+
+  if [ -f "$sa_input" ]; then
+    sa_json_content=$(cat "$sa_input")
+  elif [[ "$sa_input" =~ ^\{.*\}$ ]]; then
+    sa_json_content="$sa_input"
+  else
+    log_error "Service Account JSON key file or content '$sa_input' not found."
+    return 1
+  fi
+
+  python3 - << 'EOF' "$sa_json_content" 2>/dev/null
+import sys, time, json, base64, urllib.request, urllib.parse, subprocess
+
+try:
+    sa = json.loads(sys.argv[1])
+except Exception:
+    sys.exit(1)
+
+client_email = sa.get("client_email")
+private_key = sa.get("private_key")
+token_uri = sa.get("token_uri", "https://oauth2.googleapis.com/token")
+
+if not client_email or not private_key:
+    sys.exit(1)
+
+header = base64.urlsafe_b64encode(json.dumps({"alg": "RS256", "typ": "JWT"}).encode()).decode().rstrip("=")
+now = int(time.time())
+claims = {
+    "iss": client_email,
+    "scope": "https://www.googleapis.com/auth/drive",
+    "aud": token_uri,
+    "exp": now + 3600,
+    "iat": now
+}
+claims_b64 = base64.urlsafe_b64encode(json.dumps(claims).encode()).decode().rstrip("=")
+unsigned_jwt = f"{header}.{claims_b64}"
+
+proc = subprocess.Popen(["openssl", "dgst", "-sha256", "-sign", "-"], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+sig, _ = proc.communicate(input=private_key.encode())
+if proc.returncode != 0:
+    sys.exit(1)
+
+sig_b64 = base64.urlsafe_b64encode(sig).decode().rstrip("=")
+jwt = f"{unsigned_jwt}.{sig_b64}"
+
+data = urllib.parse.urlencode({
+    "grant_type": "urn:ietf:params:oauth:grant-type:jwt-bearer",
+    "assertion": jwt
+}).encode()
+
+req = urllib.request.Request(token_uri, data=data)
+with urllib.request.urlopen(req) as resp:
+    res = json.loads(resp.read().decode())
+    print(res.get("access_token", ""))
+EOF
+}
+
+function upload_to_gdrive() {
+  local file_path="$1"
+  local raw_access_token="$2"
+  local sa_key_path="$3"
+  local folder_id="$4"
+  local chunk_size_cfg="$5"
+
+  if [ ! -f "$file_path" ]; then
+    log_error "Snapshot file '$file_path' not found for Google Drive upload."
+    return 1
+  fi
+
+  local access_token=""
+  if [ -n "$raw_access_token" ]; then
+    if [ -f "$raw_access_token" ]; then
+      if [[ "$raw_access_token" == *.json ]] || grep -q '"type": *"service_account"' "$raw_access_token" 2>/dev/null; then
+        log_info "Exchanging Google Drive Service Account key file '$raw_access_token' for access token..."
+        access_token=$(get_gdrive_access_token_from_sa "$raw_access_token")
+      else
+        access_token=$(tr -d '\r\n' < "$raw_access_token")
+      fi
+    else
+      access_token="$raw_access_token"
+    fi
+  elif [ -n "$sa_key_path" ]; then
+    log_info "Exchanging Google Drive Service Account key file '$sa_key_path' for access token..."
+    access_token=$(get_gdrive_access_token_from_sa "$sa_key_path")
+  fi
+
+  if [ -z "$access_token" ]; then
+    log_error "Google Drive access token could not be obtained (check your access token or Service Account key file)."
+    return 1
+  fi
+
+  # Default chunk size: 5 MiB (5 * 1024 * 1024 = 5242880 bytes)
+  # Chunk size MUST be a positive multiple of 256 KiB (262144 bytes)
+  local chunk_size=5242880
+  if [ -n "$chunk_size_cfg" ]; then
+    if [[ "$chunk_size_cfg" =~ ^[0-9]+$ ]] && [ "$chunk_size_cfg" -gt 0 ] && [ "$((chunk_size_cfg % 262144))" -eq 0 ]; then
+      chunk_size="$chunk_size_cfg"
+    else
+      log_warn "Invalid GDRIVE_CHUNK_SIZE '$chunk_size_cfg'. It must be a positive multiple of 262144 bytes. Using default 5242880 (5 MiB)."
+    fi
+  fi
+
+  local file_name file_size mime_type
+  file_name=$(basename "$file_path")
+  file_size=$(wc -c < "$file_path" | tr -d ' ')
+  mime_type="application/octet-stream"
+
+  log_info "Initiating Google Drive resumable upload session for $file_name ($file_size bytes, chunk size: $chunk_size bytes)..."
+
+  # Build JSON metadata
+  local metadata="{\"name\": \"$file_name\""
+  if [ -n "$folder_id" ]; then
+    metadata="$metadata, \"parents\": [\"$folder_id\"]"
+  fi
+  metadata="$metadata}"
+
+  local init_response
+  init_response=$(curl -s -i -X POST \
+    -H "Authorization: Bearer $access_token" \
+    -H "X-Upload-Content-Type: $mime_type" \
+    -H "X-Upload-Content-Length: $file_size" \
+    -H "Content-Type: application/json; charset=UTF-8" \
+    -d "$metadata" \
+    "https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable")
+
+  local session_uri
+  session_uri=$(echo "$init_response" | grep -i "^location:" | tr -d '\r' | awk '{print $2}')
+
+  if [ -z "$session_uri" ]; then
+    log_error "Failed to initiate Google Drive upload session."
+    log_error "Google Drive API Response: $init_response"
+    return 1
+  fi
+
+  log_info "Google Drive upload session created successfully."
+
+  local start_byte=0
+  local chunk_index=0
+  local max_retries=3
+  local retry_count=0
+
+  while [ "$start_byte" -lt "$file_size" ]; do
+    local end_byte=$((start_byte + chunk_size - 1))
+    if [ "$end_byte" -ge "$file_size" ]; then
+      end_byte=$((file_size - 1))
+    fi
+
+    local current_chunk_len=$((end_byte - start_byte + 1))
+
+    log_info "Uploading bytes ${start_byte}-${end_byte}/${file_size} to Google Drive..."
+
+    local http_response http_status response_body
+    http_response=$( (dd if="$file_path" bs="$chunk_size" skip="$chunk_index" count=1 status=none | \
+      curl -s -w "\n%{http_code}" -X PUT \
+        -H "Content-Length: $current_chunk_len" \
+        -H "Content-Range: bytes ${start_byte}-${end_byte}/${file_size}" \
+        --data-binary @- \
+        "$session_uri") 2>/dev/null || true )
+
+    http_status=$(echo "$http_response" | tail -n1)
+    response_body=$(echo "$http_response" | sed '$d')
+
+    if [ "$http_status" = "308" ]; then
+      # 308 Resume Incomplete: Chunk uploaded successfully
+      start_byte=$((end_byte + 1))
+      chunk_index=$((chunk_index + 1))
+      retry_count=0
+    elif [ "$http_status" = "200" ] || [ "$http_status" = "201" ]; then
+      # 200/201: File upload completed
+      log_success "Google Drive chunked upload completed successfully for $file_name."
+      return 0
+    else
+      log_warn "Chunk upload failed with HTTP status: $http_status. Response: $response_body"
+      retry_count=$((retry_count + 1))
+      if [ "$retry_count" -gt "$max_retries" ]; then
+        log_error "Max retries ($max_retries) reached for Google Drive chunk upload."
+        return 1
+      fi
+
+      log_info "Querying Google Drive upload session status (retry $retry_count/$max_retries)..."
+      sleep 2
+      local status_response query_status last_byte
+      status_response=$(curl -s -i -X PUT \
+        -H "Content-Length: 0" \
+        -H "Content-Range: bytes */$file_size" \
+        "$session_uri")
+
+      query_status=$(echo "$status_response" | grep "^HTTP" | awk '{print $2}')
+      if [ "$query_status" = "308" ]; then
+        last_byte=$(echo "$status_response" | grep -i "^range:" | tr -d '\r' | awk -F'-' '{print $2}')
+        if [ -n "$last_byte" ]; then
+          start_byte=$((last_byte + 1))
+          chunk_index=$((start_byte / chunk_size))
+          log_info "Resuming Google Drive upload from byte $start_byte (Chunk #$chunk_index)..."
+        fi
+      elif [ "$query_status" = "200" ] || [ "$query_status" = "201" ]; then
+        log_success "Google Drive upload was completed during session query."
+        return 0
+      fi
+    fi
+  done
+
+  return 0
+}
+
 
 function writeGitHash() {
   local search_dir=$1
@@ -286,6 +497,22 @@ function run_remote_snapshot() {
     log_success "Secondary VPS has verified access to gs://$GCS_BUCKET_NAME."
   fi
 
+  # Check Google Drive access prerequisites on Secondary VPS if configured
+  if [ -n "$GDRIVE_ACCESS_TOKEN" ] || [ -n "$GDRIVE_SERVICE_ACCOUNT_KEY" ]; then
+    log_info "Verifying Google Drive upload tools on Secondary VPS..."
+    if ! remote_exec "command -v curl >/dev/null 2>&1 && command -v dd >/dev/null 2>&1"; then
+      log_error "Secondary VPS ($host) is missing curl or dd, which are required for Google Drive upload."
+      exit 1
+    fi
+    if [ -n "$GDRIVE_SERVICE_ACCOUNT_KEY" ]; then
+      if ! remote_exec "command -v python3 >/dev/null 2>&1 && command -v openssl >/dev/null 2>&1"; then
+        log_error "Secondary VPS ($host) is missing python3 or openssl, which are required for Service Account token generation."
+        exit 1
+      fi
+    fi
+    log_success "Secondary VPS has verified prerequisites for Google Drive upload."
+  fi
+
   local remote_home
   remote_home=$(remote_exec 'echo "$HOME"' 2>/dev/null | tr -d '\r\n')
   if [ -z "$remote_home" ]; then
@@ -376,12 +603,52 @@ MANIFEST_EOF"
   log_info "Packaging snapshot-$SERVICE_NAME.tar.zst on Secondary VPS (compression level: $compression_level)..."
   remote_exec "cd '$remote_staging' && tar -cf '$remote_staging/snapshot-$SERVICE_NAME.tar.zst' -I 'zstd -vT0 -$compression_level --ultra' *"
 
-  if [ -n "$GCS_BUCKET_NAME" ]; then
-    log_info "Moving snapshot archive to Google Cloud Storage (gs://$GCS_BUCKET_NAME)..."
-    if remote_exec "gcloud storage mv '$remote_staging/snapshot-$SERVICE_NAME.tar.zst' 'gs://$GCS_BUCKET_NAME/snapshot-$SERVICE_NAME.tar.zst'"; then
-      log_success "Remote snapshot successfully uploaded to gs://$GCS_BUCKET_NAME/snapshot-$SERVICE_NAME.tar.zst (Secondary VPS archive disk freed)."
+  local remote_upload_attempted=false
+  local remote_upload_success=false
+
+  if [ -n "$GDRIVE_ACCESS_TOKEN" ] || [ -n "$GDRIVE_SERVICE_ACCOUNT_KEY" ]; then
+    remote_upload_attempted=true
+    log_info "Uploading snapshot archive from Secondary VPS to Google Drive..."
+
+    local remote_sa_content=""
+    if [ -n "$GDRIVE_SERVICE_ACCOUNT_KEY" ] && [ -f "$GDRIVE_SERVICE_ACCOUNT_KEY" ]; then
+      remote_sa_content=$(cat "$GDRIVE_SERVICE_ACCOUNT_KEY")
+    elif [ -n "$GDRIVE_SERVICE_ACCOUNT_KEY" ]; then
+      remote_sa_content="$GDRIVE_SERVICE_ACCOUNT_KEY"
+    fi
+
+    local upload_funcs
+    upload_funcs=$(declare -f log log_info log_success log_warn log_error get_gdrive_access_token_from_sa upload_to_gdrive)
+
+    if remote_exec "bash -s" << REMOTE_EOF
+$upload_funcs
+upload_to_gdrive '$remote_staging/snapshot-$SERVICE_NAME.tar.zst' '$GDRIVE_ACCESS_TOKEN' '$remote_sa_content' '$GDRIVE_FOLDER_ID' '$GDRIVE_CHUNK_SIZE'
+REMOTE_EOF
+    then
+      remote_upload_success=true
+      log_success "Remote snapshot successfully uploaded to Google Drive from Secondary VPS."
     else
-      log_warn "Failed to upload snapshot to gs://$GCS_BUCKET_NAME. Fallback archive preserved on Secondary VPS at $remote_archives/snapshot-$SERVICE_NAME.tar.zst."
+      log_error "Failed to upload snapshot to Google Drive from Secondary VPS."
+    fi
+  fi
+
+  if [ -n "$GCS_BUCKET_NAME" ]; then
+    remote_upload_attempted=true
+    log_info "Moving snapshot archive to Google Cloud Storage (gs://$GCS_BUCKET_NAME)..."
+    if remote_exec "gcloud storage cp '$remote_staging/snapshot-$SERVICE_NAME.tar.zst' 'gs://$GCS_BUCKET_NAME/snapshot-$SERVICE_NAME.tar.zst'"; then
+      remote_upload_success=true
+      log_success "Remote snapshot successfully uploaded to gs://$GCS_BUCKET_NAME/snapshot-$SERVICE_NAME.tar.zst from Secondary VPS."
+    else
+      log_error "Failed to upload snapshot to gs://$GCS_BUCKET_NAME from Secondary VPS."
+    fi
+  fi
+
+  if [ "$remote_upload_attempted" = true ]; then
+    if [ "$remote_upload_success" = true ]; then
+      log_info "Remote cloud upload succeeded. Cleaning up temporary archive on Secondary VPS..."
+      remote_exec "rm -f '$remote_staging/snapshot-$SERVICE_NAME.tar.zst'"
+    else
+      log_warn "Remote cloud upload failed. Preserving fallback archive on Secondary VPS at $remote_archives/snapshot-$SERVICE_NAME.tar.zst."
       remote_exec "mv '$remote_staging/snapshot-$SERVICE_NAME.tar.zst' '$remote_archives/snapshot-$SERVICE_NAME.tar.zst'"
     fi
   else
@@ -412,7 +679,6 @@ function main() {
   ZIP_FILE_NAME="backupdata-$SERVICE_NAME.zip"
   ZIP_STAGING_DIR="/tmp/backupdata_staging_$SERVICE_NAME"
   BACKUPDATA_ZIP_PATH="/tmp/$ZIP_FILE_NAME"
-  SQL_DUMP_FILE=""
   GIT_HASHES_FILE=""
 
   cleanup_temp_files() {
@@ -456,6 +722,12 @@ function main() {
 
   # you can leave it as is to back up to the /tmp directory instead of Google Cloud Storage (GCS)
   GCS_BUCKET_NAME=$(grep "^GCS_BUCKET_NAME=" "$PATH_TO_ODOO/.env" | cut -d '=' -f2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//')
+
+  # Google Drive upload configuration
+  GDRIVE_ACCESS_TOKEN=$(grep "^GDRIVE_ACCESS_TOKEN=" "$PATH_TO_ODOO/.env" 2>/dev/null | cut -d '=' -f2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//')
+  GDRIVE_SERVICE_ACCOUNT_KEY=$(grep "^GDRIVE_SERVICE_ACCOUNT_KEY=" "$PATH_TO_ODOO/.env" 2>/dev/null | cut -d '=' -f2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//')
+  GDRIVE_FOLDER_ID=$(grep "^GDRIVE_FOLDER_ID=" "$PATH_TO_ODOO/.env" 2>/dev/null | cut -d '=' -f2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//')
+  GDRIVE_CHUNK_SIZE=$(grep "^GDRIVE_CHUNK_SIZE=" "$PATH_TO_ODOO/.env" 2>/dev/null | cut -d '=' -f2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//')
 
   # The number represents the compression level for Zstandard (zstd)
   SNAPSHOT_COMPRESSION_LEVEL=$(grep "^SNAPSHOT_COMPRESSION_LEVEL=" "$PATH_TO_ODOO/.env" 2>/dev/null | cut -d '=' -f2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//')
@@ -502,6 +774,18 @@ function main() {
     log_error "zip is not installed. Please install zip first."
     echo "For Ubuntu: sudo apt install zip"
     echo "For CentOS: sudo yum install zip"
+    exit 1
+  fi
+
+  if ! command -v curl >/dev/null 2>&1; then
+    log_error "curl is not installed. Please install curl first."
+    echo "For Ubuntu: sudo apt install curl"
+    echo "For CentOS: sudo yum install curl"
+    exit 1
+  fi
+
+  if ! command -v dd >/dev/null 2>&1; then
+    log_error "dd is not installed. Please install coreutils first."
     exit 1
   fi
 
@@ -612,22 +896,45 @@ EOF
   log_info "Changing the ownership of the snapshot file..."
   chown "$REPOSITORY_OWNER": "$TAR_FILE_PATH"
 
-  if [ "$GCS_BUCKET_NAME" != "" ]; then
+  local remote_upload_attempted=false
+  local remote_upload_success=false
+
+  if [ -n "$GDRIVE_ACCESS_TOKEN" ] || [ -n "$GDRIVE_SERVICE_ACCOUNT_KEY" ]; then
+    remote_upload_attempted=true
+    log_info "Uploading snapshot file to Google Drive..."
+    if upload_to_gdrive "$TAR_FILE_PATH" "$GDRIVE_ACCESS_TOKEN" "$GDRIVE_SERVICE_ACCOUNT_KEY" "$GDRIVE_FOLDER_ID" "$GDRIVE_CHUNK_SIZE"; then
+      remote_upload_success=true
+      log_success "The snapshot File Uploaded Successfully to Google Drive: $TAR_FILE_NAME"
+    else
+      log_error "Failed to upload snapshot file to Google Drive."
+    fi
+  fi
+
+  if [ -n "$GCS_BUCKET_NAME" ]; then
+    remote_upload_attempted=true
     # Disable parallel composite upload compatibility check to avoid permission errors if not already set.
     if [ "$(sudo -u "$REPOSITORY_OWNER" gcloud config get-value storage/parallel_composite_upload_compatibility_check 2>/dev/null)" != "false" ]; then
       sudo -u "$REPOSITORY_OWNER" gcloud config set storage/parallel_composite_upload_compatibility_check false 2>/dev/null
     fi
     if sudo -u "$REPOSITORY_OWNER" gcloud storage ls "gs://$GCS_BUCKET_NAME" > /dev/null 2>&1; then
-      log_info "Moving the snapshot file to Google Cloud Storage bucket: gs://$GCS_BUCKET_NAME."
-      if sudo -u "$REPOSITORY_OWNER" gcloud storage mv "$TAR_FILE_PATH" "gs://$GCS_BUCKET_NAME/$TAR_FILE_NAME"; then
+      log_info "Uploading the snapshot file to Google Cloud Storage bucket: gs://$GCS_BUCKET_NAME."
+      if sudo -u "$REPOSITORY_OWNER" gcloud storage cp "$TAR_FILE_PATH" "gs://$GCS_BUCKET_NAME/$TAR_FILE_NAME"; then
+        remote_upload_success=true
         log_success "The snapshot File Created Successfully named $TAR_FILE_NAME. File Backed up at gs://$GCS_BUCKET_NAME/$TAR_FILE_NAME."
       else
-        log_error "Error can't move the snapshot file to gs://$GCS_BUCKET_NAME. Exit code: $?"
-        moveSnapshotFileToTempDir "$TAR_FILE_PATH" "$TAR_FILE_NAME"
+        log_error "Error can't copy the snapshot file to gs://$GCS_BUCKET_NAME. Exit code: $?"
       fi
     else
-      log_error "Error cannot move the snapshot file to Google Cloud Storage (GCS). Exit code: $?"
+      log_error "Error cannot access Google Cloud Storage (GCS). Exit code: $?"
       log_error "Please make sure the GCS_BUCKET_NAME on your .env file is the valid GCS Bucket Name."
+    fi
+  fi
+
+  if [ "$remote_upload_attempted" = true ]; then
+    if [ "$remote_upload_success" = true ]; then
+      rm -f "$TAR_FILE_PATH"
+    else
+      log_warn "Remote upload failed. Preserving snapshot file locally in temporary directory."
       moveSnapshotFileToTempDir "$TAR_FILE_PATH" "$TAR_FILE_NAME"
     fi
   else

@@ -3,7 +3,7 @@ set -e
 # Category: Installer
 # Description: Upgrades and installs the snapshot utility from the example script.
 # Usage: ./scripts/installer/install-snapshot.sh
-# Dependencies: rsync, git, sudo, cron, ssh
+# Dependencies: rsync, git, sudo, cron, ssh, curl
 
 # Detect Repository Owner to run non-root commands as that user
 CURRENT_DIR=$(dirname "$(readlink -f "$0")")
@@ -55,9 +55,13 @@ trap 'error_handler $? $LINENO "$BASH_COMMAND"' ERR
 function installCronJob() {
   local GCS_BUCKET_NAME="$1"
   local SNAPSHOT_TIME_LIST="$2"
+  local GDRIVE_ACCESS_TOKEN="$3"
+  local GDRIVE_SERVICE_ACCOUNT_KEY="$4"
+  local SNAPSHOT_REMOTE_HOST="$5"
+  local ENABLE_SNAPSHOT="$6"
 
-  if [ -z "$GCS_BUCKET_NAME" ]; then
-    log_warn "GCS_BUCKET_NAME is not set in the .env file. The snapshot will not run automatically."
+  if [ -z "$ENABLE_SNAPSHOT" ] && [ -z "$GCS_BUCKET_NAME" ] && [ -z "$GDRIVE_ACCESS_TOKEN" ] && [ -z "$GDRIVE_SERVICE_ACCOUNT_KEY" ] && [ -z "$SNAPSHOT_REMOTE_HOST" ]; then
+    log_warn "ENABLE_SNAPSHOT is not set in .env. The snapshot will not run automatically."
   else
     log_info "Create a cron to run automatically the snapshot script."
     cat << EOF > "$HOME/snapshot-$SERVICE_NAME"
@@ -127,7 +131,10 @@ function main() {
     exit 1
   fi
 
+  ENABLE_SNAPSHOT=$(grep "^ENABLE_SNAPSHOT=" "$PATH_TO_ODOO/.env" 2>/dev/null | cut -d "=" -f 2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//')
   GCS_BUCKET_NAME=$(grep "^GCS_BUCKET_NAME=" "$PATH_TO_ODOO/.env" 2>/dev/null | cut -d "=" -f 2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//')
+  GDRIVE_ACCESS_TOKEN=$(grep "^GDRIVE_ACCESS_TOKEN=" "$PATH_TO_ODOO/.env" 2>/dev/null | cut -d '=' -f2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//')
+  GDRIVE_SERVICE_ACCOUNT_KEY=$(grep "^GDRIVE_SERVICE_ACCOUNT_KEY=" "$PATH_TO_ODOO/.env" 2>/dev/null | cut -d '=' -f2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//')
   SNAPSHOT_TIME_LIST=$(grep "^SNAPSHOT_TIME=" "$PATH_TO_ODOO/.env" 2>/dev/null | cut -d "=" -f 2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//')
   SNAPSHOT_REMOTE_HOST=$(grep "^SNAPSHOT_REMOTE_HOST=" "$PATH_TO_ODOO/.env" 2>/dev/null | cut -d "=" -f 2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//')
   SNAPSHOT_REMOTE_USER=$(grep "^SNAPSHOT_REMOTE_USER=" "$PATH_TO_ODOO/.env" 2>/dev/null | cut -d "=" -f 2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//')
@@ -231,7 +238,7 @@ function main() {
     log_warn "Failed to create a symbolic link to /usr/local/sbin/snapshot-$SERVICE_NAME ➡️ $OUTPUT_LN_COMMAND"
   fi
 
-  installCronJob "$GCS_BUCKET_NAME" "$SNAPSHOT_TIME_LIST"
+  installCronJob "$GCS_BUCKET_NAME" "$SNAPSHOT_TIME_LIST" "$GDRIVE_ACCESS_TOKEN" "$GDRIVE_SERVICE_ACCOUNT_KEY" "$SNAPSHOT_REMOTE_HOST" "$ENABLE_SNAPSHOT"
 
   # Ensure local prerequisites
   if zstd --version > /dev/null 2>&1; then
@@ -254,6 +261,18 @@ function main() {
       log_success "zip is installed"
     else
       log_error "Failed to install zip"
+      exit 1
+    fi
+  fi
+
+  if curl --version > /dev/null 2>&1; then
+    log_success "curl is already installed"
+  else
+    log_info "Install curl"
+    if sudo apt install curl -y; then
+      log_success "curl is installed"
+    else
+      log_error "Failed to install curl"
       exit 1
     fi
   fi

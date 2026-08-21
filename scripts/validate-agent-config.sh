@@ -104,13 +104,6 @@ if [ -f "$PATH_TO_REPO/.clinerules" ]; then
         warn ".clinerules may contain duplicate content"
     fi
 fi
-if [ -f "$PATH_TO_REPO/.kilocode/rules/rtk-rules.md" ]; then
-    if grep -q "canonical rule" "$PATH_TO_REPO/.kilocode/rules/rtk-rules.md"; then
-        ok ".kilocode/rules/rtk-rules.md is a thin reference"
-    else
-        warn ".kilocode/rules/rtk-rules.md may contain duplicate content"
-    fi
-fi
 
 log ""
 if [ "$failures" -gt 0 ]; then
