@@ -238,6 +238,14 @@ function main() {
     log_warn "Failed to create a symbolic link to /usr/local/sbin/snapshot-$SERVICE_NAME ➡️ $OUTPUT_LN_COMMAND"
   fi
 
+  if [ -f "$PATH_TO_ODOO/scripts/list-snapshot.sh" ]; then
+    ln -sf "$PATH_TO_ODOO/scripts/list-snapshot.sh" "/usr/local/sbin/list-snapshot-$SERVICE_NAME" 2>/dev/null || true
+  fi
+
+  if [ -f "$PATH_TO_ODOO/scripts/download-snapshot.sh" ]; then
+    ln -sf "$PATH_TO_ODOO/scripts/download-snapshot.sh" "/usr/local/sbin/download-snapshot-$SERVICE_NAME" 2>/dev/null || true
+  fi
+
   installCronJob "$GCS_BUCKET_NAME" "$SNAPSHOT_TIME_LIST" "$GDRIVE_ACCESS_TOKEN" "$GDRIVE_SERVICE_ACCOUNT_KEY" "$SNAPSHOT_REMOTE_HOST" "$ENABLE_SNAPSHOT"
 
   # Ensure local prerequisites

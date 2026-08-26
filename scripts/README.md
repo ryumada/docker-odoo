@@ -106,6 +106,55 @@ Before you run the restore snapshot script, you need to prepare [snapshot utilit
 </details>
 
 <details>
+<summary>
+
+# List Snapshot
+
+</summary>
+
+Lists available Odoo snapshot archives stored on Google Drive using Google Service Account credentials.
+
+```bash
+# List snapshots for the current project
+./scripts/list-snapshot.sh
+
+# List all snapshots across all projects/services
+./scripts/list-snapshot.sh --all
+
+# Output listing in JSON format
+./scripts/list-snapshot.sh --json
+```
+
+</details>
+
+<details>
+<summary>
+
+# Download Snapshot
+
+</summary>
+
+Downloads an Odoo snapshot archive directly from Google Drive by File ID, sharing URL, filename, or `latest`.
+
+```bash
+# Download the latest snapshot for this project
+./scripts/download-snapshot.sh latest
+
+# Download using Google Drive File ID
+./scripts/download-snapshot.sh 1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OIvE2up0Y
+
+# Download using Google Drive sharing URL
+./scripts/download-snapshot.sh "https://drive.google.com/file/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OIvE2up0Y/view"
+
+# Interactive selection menu
+./scripts/download-snapshot.sh
+```
+
+By default, `download-snapshot.sh` saves the file to `/tmp/<filename>` and creates `/tmp/snapshot-<service>.tar.zst`, allowing immediate restoration with `./scripts/restore-snapshot.sh`.
+
+</details>
+
+<details>
   <summary>
 
   # Snapshot Utilities

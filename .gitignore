@@ -29,6 +29,7 @@ scripts/*
 !scripts/dataodoo-password_changer.sh
 !scripts/dataodoo-remover.sh
 !scripts/disk_free_monitor.sh
+!scripts/download-snapshot.sh
 !scripts/generate_map.sh
 !scripts/generate_app_tree.sh
 !scripts/git_addons_updater.sh
@@ -36,6 +37,7 @@ scripts/*
 !scripts/installer
 !scripts/install-font.sh
 !scripts/list_databases.sh
+!scripts/list-snapshot.sh
 !scripts/README.md
 !scripts/rename_project.sh
 !scripts/restore-snapshot.sh
