@@ -33,9 +33,6 @@ Arguments:
   SNAPSHOT_FILE                  Optional path to snapshot file (default: /tmp/$DEFAULT_TAR_FILE_NAME)
 
 Examples:
-  ./scripts/restore-snapshot.sh --data-only
-  ./scripts/restore-snapshot.sh --restore-backupdata
-  ./scripts/restore-snapshot.sh --restore-backupdata /tmp/snapshot-myproject-20260826.tar.zst
   ./scripts/restore-snapshot.sh --data-only -n my_new_db
   ./scripts/restore-snapshot.sh --restore-backupdata -n my_renamed_db
   ./scripts/restore-snapshot.sh /tmp/$DEFAULT_TAR_FILE_NAME
@@ -300,9 +297,6 @@ function restoreOdooData() {
       fi
 
       local target_db
-      target_db=$(grep "^DB_NAME=" "$PATH_TO_ODOO/.env" 2>/dev/null | cut -d '=' -f2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//' || true)
-      if [ -z "$target_db" ] && [ -f "$zip_stage/manifest.json" ]; then
-        target_db=$(grep -o '"db_name": *"[^"]*"' "$zip_stage/manifest.json" | cut -d'"' -f4 || true)
       if [ -n "$TARGET_DB_NAME" ]; then
         target_db="$TARGET_DB_NAME"
       else
@@ -312,7 +306,6 @@ function restoreOdooData() {
         fi
         [ -z "$target_db" ] && target_db="$SERVICE_NAME"
       fi
-      [ -z "$target_db" ] && target_db="$SERVICE_NAME"
 
       ODOO_DATABASE_NAME_PRD="$target_db"
       ODOO_DATABASE_USER=$(cat "$PATH_TO_ODOO/.secrets/db_user" 2>/dev/null || grep "^ACTIVE_DB_USER=" "$PATH_TO_ODOO/.env" 2>/dev/null | cut -d '=' -f2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//' || echo "odoo")
@@ -352,11 +345,9 @@ function restoreOdooData() {
     return 1
   fi
 
-  ODOO_DATABASE_NAME_PRD=$(find "$filestore_base_in_tar" -mindepth 1 -maxdepth 1 -type d -print | head -n 1 | xargs -n 1 basename)
   local discovered_db
   discovered_db=$(find "$filestore_base_in_tar" -mindepth 1 -maxdepth 1 -type d -print | head -n 1 | xargs -n 1 basename)
 
-  if [ -z "$ODOO_DATABASE_NAME_PRD" ]; then
   if [ -n "$TARGET_DB_NAME" ]; then
     ODOO_DATABASE_NAME_PRD="$TARGET_DB_NAME"
   elif [ -n "$discovered_db" ]; then
@@ -368,11 +359,9 @@ function restoreOdooData() {
 
   # Discover SQL dump file (supports randomized filename)
   local sql_dump_file
-  sql_dump_file=$(find "$TEMP_DIR/tmp" -name "${ODOO_DATABASE_NAME_PRD}_*.sql" -print | head -n 1)
   sql_dump_file=$(find "$TEMP_DIR/tmp" -name "${discovered_db}_*.sql" -o -name "*.sql" -print | head -n 1)
 
   if [ -z "$sql_dump_file" ]; then
-    log_error "SQL dump file for $ODOO_DATABASE_NAME_PRD not found in /tmp/ directory of snapshot."
     log_error "SQL dump file for $discovered_db not found in /tmp/ directory of snapshot."
     return 1
   fi
@@ -385,7 +374,6 @@ function restoreOdooData() {
   rm -rf "$target_filestore"
   mkdir -p "$(dirname "$target_filestore")"
 
-  mv "$filestore_base_in_tar/$ODOO_DATABASE_NAME_PRD" "$target_filestore" || { log_error "Can't restore filestore"; }
   if [ -n "$discovered_db" ] && [ -d "$filestore_base_in_tar/$discovered_db" ]; then
     mv "$filestore_base_in_tar/$discovered_db" "$target_filestore" || { log_error "Can't restore filestore"; }
   fi
@@ -438,18 +426,12 @@ function restoreFromSnapshotViaBackupData() {
   fi
 
   if [ -f "$PATH_TO_ODOO/scripts/restore_backupdata-$SERVICE_NAME" ]; then
-    log_info "Executing $PATH_TO_ODOO/scripts/restore_backupdata-$SERVICE_NAME..."
-    "$PATH_TO_ODOO/scripts/restore_backupdata-$SERVICE_NAME" "/tmp/backupdata-$SERVICE_NAME.zip"
     log_info "Executing $PATH_TO_ODOO/scripts/restore_backupdata-$SERVICE_NAME ${restore_args[*]}..."
     "$PATH_TO_ODOO/scripts/restore_backupdata-$SERVICE_NAME" "${restore_args[@]}"
   elif [ -f "$PATH_TO_ODOO/scripts/restore_backupdata_manual-$SERVICE_NAME" ]; then
-    log_info "Executing $PATH_TO_ODOO/scripts/restore_backupdata_manual-$SERVICE_NAME..."
-    "$PATH_TO_ODOO/scripts/restore_backupdata_manual-$SERVICE_NAME" "/tmp/backupdata-$SERVICE_NAME.zip"
     log_info "Executing $PATH_TO_ODOO/scripts/restore_backupdata_manual-$SERVICE_NAME ${restore_args[*]}..."
     "$PATH_TO_ODOO/scripts/restore_backupdata_manual-$SERVICE_NAME" "${restore_args[@]}"
   elif [ -f "$PATH_TO_ODOO/scripts/restore_backupdata.sh" ]; then
-    log_info "Executing $PATH_TO_ODOO/scripts/restore_backupdata.sh..."
-    "$PATH_TO_ODOO/scripts/restore_backupdata.sh" "/tmp/backupdata-$SERVICE_NAME.zip"
     log_info "Executing $PATH_TO_ODOO/scripts/restore_backupdata.sh ${restore_args[*]}..."
     "$PATH_TO_ODOO/scripts/restore_backupdata.sh" "${restore_args[@]}"
   else
