@@ -246,6 +246,10 @@ function main() {
     ln -sf "$PATH_TO_ODOO/scripts/download-snapshot.sh" "/usr/local/sbin/download-snapshot-$SERVICE_NAME" 2>/dev/null || true
   fi
 
+  if [ -f "$PATH_TO_ODOO/scripts/upload-snapshot.sh" ]; then
+    ln -sf "$PATH_TO_ODOO/scripts/upload-snapshot.sh" "/usr/local/sbin/upload-snapshot-$SERVICE_NAME" 2>/dev/null || true
+  fi
+
   installCronJob "$GCS_BUCKET_NAME" "$SNAPSHOT_TIME_LIST" "$GDRIVE_ACCESS_TOKEN" "$GDRIVE_SERVICE_ACCOUNT_KEY" "$SNAPSHOT_REMOTE_HOST" "$ENABLE_SNAPSHOT"
 
   # Ensure local prerequisites

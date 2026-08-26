@@ -47,6 +47,7 @@ scripts/*
 !scripts/.uninstall-odoo.sh
 !scripts/update-env-file.sh
 !scripts/update-odoo-config.sh
+!scripts/upload-snapshot.sh
 !scripts/lib/
 !scripts/long-process-mode.sh
 !scripts/validate-agent-config.sh

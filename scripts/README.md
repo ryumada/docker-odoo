@@ -166,6 +166,28 @@ By default, `download-snapshot.sh` saves the file to `/tmp/<filename>` and creat
 </details>
 
 <details>
+<summary>
+
+# Upload Snapshot
+
+</summary>
+
+Uploads a local Odoo snapshot archive to Google Drive using Google Service Account credentials or OAuth2 token configured in `.env`.
+
+```bash
+# Upload automatically detected snapshot for the current project
+./scripts/upload-snapshot.sh
+
+# Upload a specific snapshot file
+./scripts/upload-snapshot.sh /tmp/snapshot-docker-odoo-20260826.tar.zst
+
+# Upload with overridden Google Drive folder ID
+./scripts/upload-snapshot.sh --folder-id "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OIvE2up0Y"
+```
+
+</details>
+
+<details>
   <summary>
 
   # Snapshot Utilities

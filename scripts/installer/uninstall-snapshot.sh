@@ -81,7 +81,7 @@ function main() {
     rm -f -- "$SOFTLINK_FILE"
   fi
 
-  rm -f -- "/usr/local/sbin/list-snapshot-$SERVICE_NAME" "/usr/local/sbin/download-snapshot-$SERVICE_NAME"
+  rm -f -- "/usr/local/sbin/list-snapshot-$SERVICE_NAME" "/usr/local/sbin/download-snapshot-$SERVICE_NAME" "/usr/local/sbin/upload-snapshot-$SERVICE_NAME"
 
   if [ -f "$SCRIPT_FILE" ]; then
     log_info "Removing snapshot script file: $SCRIPT_FILE"
