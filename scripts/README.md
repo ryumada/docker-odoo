@@ -103,6 +103,17 @@ To use restore snapshot, make sure the main directory (`../`) is has the same na
 
 Before you run the restore snapshot script, you need to prepare [snapshot utilities first](#snapshot-utilities).
 
+```bash
+# Full snapshot restore (replaces database, filestore, and environment/config files)
+./scripts/restore-snapshot.sh
+
+# Fast data-only restore (restores database + filestore only, skips config/environment overwrite and container restart)
+./scripts/restore-snapshot.sh --data-only
+
+# Fast data-only restore with specific file and skip confirmation
+./scripts/restore-snapshot.sh --data-only /tmp/snapshot-docker-odoo.tar.zst -y
+```
+
 </details>
 
 <details>

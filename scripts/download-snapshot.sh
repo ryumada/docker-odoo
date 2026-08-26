@@ -484,4 +484,5 @@ fi
 
 echo ""
 echo "Snapshot is ready. You can restore it anytime with:"
-echo "  ./scripts/restore-snapshot.sh"
+echo "  ./scripts/restore-snapshot.sh --data-only   # (Fast mode: database + filestore only)"
+echo "  ./scripts/restore-snapshot.sh               # (Full mode: data + configs)"
