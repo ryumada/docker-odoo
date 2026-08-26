@@ -11,6 +11,44 @@ CURRENT_DIR_USER=$(stat -c '%U' "$CURRENT_DIR")
 PATH_TO_ODOO=$(sudo -u "$CURRENT_DIR_USER" git -C "$CURRENT_DIR" rev-parse --show-toplevel 2>/dev/null || git -C "$CURRENT_DIR" rev-parse --show-toplevel 2>/dev/null || dirname "$CURRENT_DIR")
 SERVICE_NAME=$(basename "$PATH_TO_ODOO")
 REPOSITORY_OWNER=$(stat -c '%U' "$PATH_TO_ODOO" 2>/dev/null || echo "$USER")
+DEFAULT_TAR_FILE_NAME="snapshot-$SERVICE_NAME.tar.zst"
+
+show_help() {
+  cat << EOF
+Usage: $(basename "$0") [OPTIONS] [SNAPSHOT_FILE]
+
+Restores an Odoo snapshot from a .tar.zst archive.
+
+Options:
+  -d, --data, --data-only   Restore ONLY database and filestore (fast mode).
+                            Does not stop container stack or overwrite configs/.env.
+  -f, --file <PATH>         Path to snapshot .tar.zst file
+  -y, --yes, --force        Skip confirmation prompt
+  -h, --help                Show this help message
+
+Arguments:
+  SNAPSHOT_FILE             Optional path to snapshot file (default: /tmp/$DEFAULT_TAR_FILE_NAME)
+
+Examples:
+  ./scripts/restore-snapshot.sh --data-only
+  ./scripts/restore-snapshot.sh --data-only /tmp/snapshot-myproject-20260826.tar.zst -y
+  ./scripts/restore-snapshot.sh /tmp/$DEFAULT_TAR_FILE_NAME
+EOF
+}
+
+# Handle --help before elevating
+for arg in "$@"; do
+  if [ "$arg" = "-h" ] || [ "$arg" = "--help" ]; then
+    show_help
+    exit 0
+  fi
+done
+
+# Self-elevate to root if not already, preserving all arguments
+if [ "$(id -u)" -ne 0 ]; then
+  exec sudo "$0" "$@"
+  exit 1
+fi
 
 # Source common utilities
 # shellcheck source=/dev/null
@@ -57,34 +95,10 @@ trap 'error_handler $? $LINENO "$BASH_COMMAND"' ERR
 # The path inside the tar is the absolute path without the leading slash
 TAR_PROJECT_ROOT="${PATH_TO_ODOO#/}"
 
-DEFAULT_TAR_FILE_NAME="snapshot-$SERVICE_NAME.tar.zst"
 SNAPSHOT_FILE_PATH=""
 DATA_ONLY=false
 AUTO_CONFIRM=false
 TEMP_DIR="/tmp/snapshot-$SERVICE_NAME"
-
-show_help() {
-  cat << EOF
-Usage: $(basename "$0") [OPTIONS] [SNAPSHOT_FILE]
-
-Restores an Odoo snapshot from a .tar.zst archive.
-
-Options:
-  -d, --data, --data-only   Restore ONLY database and filestore (fast mode).
-                            Does not stop container stack or overwrite configs/.env.
-  -f, --file <PATH>         Path to snapshot .tar.zst file
-  -y, --yes, --force        Skip confirmation prompt
-  -h, --help                Show this help message
-
-Arguments:
-  SNAPSHOT_FILE             Optional path to snapshot file (default: /tmp/$DEFAULT_TAR_FILE_NAME)
-
-Examples:
-  ./scripts/restore-snapshot.sh --data-only
-  ./scripts/restore-snapshot.sh --data-only /tmp/snapshot-myproject-20260826.tar.zst -y
-  ./scripts/restore-snapshot.sh /tmp/$DEFAULT_TAR_FILE_NAME
-EOF
-}
 
 # --- Parse CLI Arguments ---
 while [[ $# -gt 0 ]]; do
@@ -132,7 +146,7 @@ if [ -z "$SNAPSHOT_FILE_PATH" ]; then
     SNAPSHOT_FILE_PATH="/tmp/$DEFAULT_TAR_FILE_NAME"
   else
     # Find latest snapshot in /tmp matching prefix
-    LATEST_TMP_SNAPSHOT=$(find /tmp -maxdepth 1 -name "snapshot-${SERVICE_NAME}*.tar.zst" -printf '%T@ %p\n' 2>/dev/null | sort -k1 -nr | head -n1 | cut -d' ' -f2-)
+    LATEST_TMP_SNAPSHOT=$(find /tmp -maxdepth 1 -name "snapshot-${SERVICE_NAME}*.tar.zst" -printf '%T@ %p\n' 2>/dev/null | sort -k1 -nr | head -n1 | cut -d' ' -f2- || true)
     if [ -n "$LATEST_TMP_SNAPSHOT" ] && [ -f "$LATEST_TMP_SNAPSHOT" ]; then
       SNAPSHOT_FILE_PATH="$LATEST_TMP_SNAPSHOT"
     else
@@ -149,7 +163,7 @@ function areYouReallySure() {
   if [ "$DATA_ONLY" = true ]; then
     echo -e "\nAre you sure?\n⚠️ This script will restore Odoo DATA ONLY (database and filestore) for $SERVICE_NAME. ⚠️\nConfigurations, .env, and secrets will remain untouched.\nType 'yes I am sure' and press enter to continue.\n"
   else
-    echo -e "\nAre you sure?\n⚠️ This script will replace your current Odoo data and deployment files. ⚠️\nType 'yes I am sure' and press enter to continue.\n"
+    echo -e "\nAre you sure?\n⚠️ This script will restore FULL SNAPSHOT (database, filestore, AND deployment configs/.env/secrets) for $SERVICE_NAME. ⚠️\nType 'yes I am sure' and press enter to continue.\n"
   fi
 
   read -rp ": " response
@@ -244,16 +258,16 @@ function restoreOdooData() {
     log_info "Found bundled backup data: $extracted_zip"
     cp -f "$extracted_zip" "/tmp/backupdata-$SERVICE_NAME.zip"
 
-    if [ -f "$PATH_TO_ODOO/scripts/restore_backupdata-$SERVICE_NAME" ]; then
+    if [ "$DATA_ONLY" = false ] && [ -f "$PATH_TO_ODOO/scripts/restore_backupdata-$SERVICE_NAME" ]; then
       log_info "Running restore_backupdata script..."
       "$PATH_TO_ODOO/scripts/restore_backupdata-$SERVICE_NAME"
       return 0
-    elif [ -f "$PATH_TO_ODOO/scripts/restore_backupdata_manual-$SERVICE_NAME" ]; then
+    elif [ "$DATA_ONLY" = false ] && [ -f "$PATH_TO_ODOO/scripts/restore_backupdata_manual-$SERVICE_NAME" ]; then
       log_info "Running restore_backupdata_manual script..."
       "$PATH_TO_ODOO/scripts/restore_backupdata_manual-$SERVICE_NAME"
       return 0
     else
-      log_info "Restoring directly from backup bundle zip..."
+      log_info "Restoring database and filestore directly from backup zip bundle..."
       local zip_stage="$TEMP_DIR/zip_stage"
       mkdir -p "$zip_stage"
       if ! unzip -q -o "$extracted_zip" -d "$zip_stage"; then
@@ -262,9 +276,9 @@ function restoreOdooData() {
       fi
 
       local target_db
-      target_db=$(grep "^DB_NAME=" "$PATH_TO_ODOO/.env" 2>/dev/null | cut -d '=' -f2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//')
+      target_db=$(grep "^DB_NAME=" "$PATH_TO_ODOO/.env" 2>/dev/null | cut -d '=' -f2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//' || true)
       if [ -z "$target_db" ] && [ -f "$zip_stage/manifest.json" ]; then
-        target_db=$(grep -o '"db_name": *"[^"]*"' "$zip_stage/manifest.json" | cut -d'"' -f4)
+        target_db=$(grep -o '"db_name": *"[^"]*"' "$zip_stage/manifest.json" | cut -d'"' -f4 || true)
       fi
       [ -z "$target_db" ] && target_db="$SERVICE_NAME"
 
@@ -439,11 +453,6 @@ function restoreSnapshotFull() {
 }
 
 function main() {
-  if [ "$(id -u)" -ne 0 ]; then
-      exec sudo "$0" "$@"
-      exit 1
-  fi
-
   if [ "$DATA_ONLY" = true ]; then
     restoreSnapshotDataOnly
   else
