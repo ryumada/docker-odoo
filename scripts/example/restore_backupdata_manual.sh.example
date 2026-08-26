@@ -1,19 +1,60 @@
 #!/usr/bin/env bash
 set -e
 # Category: Utility
-# Description: Restores Odoo data using rsync for filestore and native localhost endpoint for SQL dump.
-# Usage: ./scripts/restore_backupdata_manual.sh
-# Dependencies: zip, pg_restore, rsync, unzip, curl, sudo, git
+# Description: Restores Odoo data using rsync and native SQL dump with optional database renaming.
+# Usage: ./scripts/restore_backupdata_manual.sh [BACKUP_FILE] [-n DB_NAME]
+# Dependencies: zip, pg_restore, rsync, unzip, curl, sudo, git, tar, zstd
 
 # Detect Repository Owner to run non-root commands as that user
 CURRENT_DIR=$(dirname "$(readlink -f "$0")")
-CURRENT_DIR_USER=$(stat -c '%U' "$CURRENT_DIR")
-PATH_TO_ODOO=$(sudo -u "$CURRENT_DIR_USER" git -C "$(dirname "$(readlink -f "$0")")" rev-parse --show-toplevel)
+CURRENT_DIR_USER=$(stat -c '%U' "$CURRENT_DIR" 2>/dev/null || echo "$USER")
+PATH_TO_ODOO=$(git -C "$CURRENT_DIR" rev-parse --show-toplevel 2>/dev/null || dirname "$CURRENT_DIR")
 SERVICE_NAME=$(basename "$PATH_TO_ODOO")
-REPOSITORY_OWNER=$(stat -c '%U' "$PATH_TO_ODOO")
+REPOSITORY_OWNER=$(stat -c '%U' "$PATH_TO_ODOO" 2>/dev/null || echo "$USER")
+
+show_help() {
+  cat << EOF
+Usage: $(basename "$0") [OPTIONS] [BACKUP_OR_SNAPSHOT_FILE]
+
+Restores Odoo database and filestore using rsync and native SQL dump / endpoint.
+
+Options:
+  -n, --name, --dbname <NAME>    Rename restored database to specified name
+  -h, --help                     Show this help message
+
+Arguments:
+  BACKUP_OR_SNAPSHOT_FILE        Path to backupdata (.zip) or snapshot (.tar.zst) archive
+                                 (default: /tmp/backupdata-$SERVICE_NAME.zip)
+
+Examples:
+  ./scripts/restore_backupdata_manual-$SERVICE_NAME -n my_new_db
+  ./scripts/restore_backupdata_manual-$SERVICE_NAME /tmp/snapshot-$SERVICE_NAME.tar.zst --name test_db
+  ./scripts/restore_backupdata_manual-$SERVICE_NAME /tmp/backupdata-$SERVICE_NAME.zip
+EOF
+}
+
+# Handle --help before elevating
+for arg in "$@"; do
+  if [ "$arg" = "-h" ] || [ "$arg" = "--help" ]; then
+    show_help
+    exit 0
+  fi
+done
+
+# Self-elevate to root if not already
+if [ "$(id -u)" -ne 0 ]; then
+  exec sudo "$0" "$@"
+  exit 1
+fi
 
 # Source common utilities
-source "$CURRENT_DIR/lib/odoo_utils.sh"
+if [ -f "$CURRENT_DIR/lib/odoo_utils.sh" ]; then
+  # shellcheck source=/dev/null
+  source "$CURRENT_DIR/lib/odoo_utils.sh"
+elif [ -f "$PATH_TO_ODOO/scripts/lib/odoo_utils.sh" ]; then
+  # shellcheck source=/dev/null
+  source "$PATH_TO_ODOO/scripts/lib/odoo_utils.sh"
+fi
 
 # Configuration
 ENV_FILE=".env"
@@ -40,7 +81,6 @@ log_info() { log "${COLOR_INFO}" "ℹ️" "$1"; }
 log_success() { log "${COLOR_SUCCESS}" "✅" "$1"; }
 log_warn() { log "${COLOR_WARN}" "⚠️" "$1"; }
 log_error() { log "${COLOR_ERROR}" "❌" "$1"; }
-
 
 error_handler() {
   local exit_code=$1
@@ -81,6 +121,9 @@ cleanup_temp_files() {
     if [ -n "$TEMP_DIR" ] && [ -d "$TEMP_DIR" ]; then
         rm -rf "$TEMP_DIR"
     fi
+    if [ -n "${TEMP_EXTRACT_DIR:-}" ] && [ -d "$TEMP_EXTRACT_DIR" ]; then
+        rm -rf "$TEMP_EXTRACT_DIR"
+    fi
     if [ -n "$SAFETY_BACKUP_DIR" ] && [ -d "$SAFETY_BACKUP_DIR" ]; then
         rm -rf "$SAFETY_BACKUP_DIR"
     fi
@@ -98,7 +141,7 @@ function get_next_prefix() {
   local next_count
 
   # Read existing count
-  current_count=$(grep "^DB_PREFIX_COUNT=" "$env_file" | cut -d "=" -f 2 | tr -d '[:space:]')
+  current_count=$(grep "^DB_PREFIX_COUNT=" "$env_file" 2>/dev/null | cut -d "=" -f 2 | tr -d '[:space:]' || true)
 
   # Initialize if empty or not a number
   if [[ ! "$current_count" =~ ^[0-9]+$ ]]; then
@@ -124,10 +167,118 @@ function get_next_prefix() {
   printf "%03d" "$next_count"
 }
 
+function resolve_backup_file() {
+  local input_file="$1"
+
+  if [ -z "$input_file" ] && [ ! -f "$BACKUPDATA_FILE_PATH" ]; then
+    local default_snapshot="/tmp/snapshot-$SERVICE_NAME.tar.zst"
+    if [ -f "$default_snapshot" ]; then
+      input_file="$default_snapshot"
+    else
+      # Find latest snapshot matching prefix in /tmp
+      local latest_tmp_snapshot
+      latest_tmp_snapshot=$(find /tmp -maxdepth 1 -name "snapshot-${SERVICE_NAME}*.tar.zst" -printf '%T@ %p\n' 2>/dev/null | sort -k1 -nr | head -n1 | cut -d' ' -f2- || true)
+      if [ -n "$latest_tmp_snapshot" ] && [ -f "$latest_tmp_snapshot" ]; then
+        input_file="$latest_tmp_snapshot"
+      fi
+    fi
+  fi
+
+  if [ -n "$input_file" ]; then
+    BACKUPDATA_FILE_PATH="$input_file"
+  fi
+
+  if [[ "$BACKUPDATA_FILE_PATH" == *.tar.zst ]]; then
+    if [ ! -f "$BACKUPDATA_FILE_PATH" ]; then
+      log_error "Snapshot file '$BACKUPDATA_FILE_PATH' not found."
+      exit 1
+    fi
+    log_info "Detected snapshot archive '$BACKUPDATA_FILE_PATH'. Extracting bundled backupdata zip..."
+    TEMP_EXTRACT_DIR=$(mktemp -d "/tmp/snapshot_extract_XXXXXX")
+    if ! tar -xaf "$BACKUPDATA_FILE_PATH" -C "$TEMP_EXTRACT_DIR" --wildcards "*backupdata*.zip" 2>/dev/null; then
+      tar -xaf "$BACKUPDATA_FILE_PATH" -C "$TEMP_EXTRACT_DIR"
+    fi
+    local extracted_zip
+    extracted_zip=$(find "$TEMP_EXTRACT_DIR" -name "backupdata-$SERVICE_NAME.zip" -o -name "backupdata-*.zip" -o -name "backupdata.zip" 2>/dev/null | head -n 1)
+    if [ -n "$extracted_zip" ] && [ -f "$extracted_zip" ]; then
+      cp -f "$extracted_zip" "/tmp/backupdata-$SERVICE_NAME.zip"
+      BACKUPDATA_FILE_PATH="/tmp/backupdata-$SERVICE_NAME.zip"
+      log_success "Extracted backup data bundle to $BACKUPDATA_FILE_PATH"
+    else
+      log_error "Could not find bundled backupdata zip inside snapshot $BACKUPDATA_FILE_PATH"
+      exit 1
+    fi
+  fi
+}
+
+function determineRestoredDBName() {
+  local env_file="$1"
+  local target_name="$2"
+
+  if [ -n "$target_name" ]; then
+    echo "$target_name"
+    return 0
+  fi
+
+  local prompt_for_db
+  prompt_for_db=$(grep "^PROMPT_FOR_DATABASE_NAME=" "$env_file" 2>/dev/null | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
+
+  if [ "$prompt_for_db" = "Y" ] || [ "$prompt_for_db" = "y" ] || [ "$prompt_for_db" = "prompt" ]; then
+    local user_db_name=""
+    read -rp "Enter the new database name: " user_db_name
+    echo "$user_db_name"
+    return 0
+  fi
+
+  local base_db_name
+  base_db_name=$(grep "^DB_NAME=" "$env_file" 2>/dev/null | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
+  [ -z "$base_db_name" ] && base_db_name="$SERVICE_NAME"
+
+  local db_prefix=""
+  if grep -q "^DB_PREFIX_COUNT=" "$env_file"; then
+    db_prefix="$(get_next_prefix "$env_file")-"
+  fi
+
+  local use_date_suffix
+  use_date_suffix=$(grep "^USE_DATE_SUFFIX=" "$env_file" 2>/dev/null | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
+
+  local date_suffix=""
+  case "$use_date_suffix" in
+    Y|y)
+      date_suffix="-$(date +"%Y%m%d_%H%M")"
+      ;;
+    prompt)
+      while true; do
+        read -rp "Do you want to use a date suffix for the restored database name? [Y/n]: " use_date_input
+        case "$use_date_input" in
+          Y|y)
+            date_suffix="-$(date +"%Y%m%d_%H%M")"
+            break
+            ;;
+          N|n)
+            date_suffix=""
+            break
+            ;;
+          *)
+            log_error "Invalid option. Please enter Y or n."
+            ;;
+        esac
+      done
+      ;;
+    *)
+      if [ -z "$db_prefix" ] && [ -z "$(grep "^DB_NAME=" "$env_file" 2>/dev/null | cut -d "=" -f 2 | tr -d '[:space:]')" ]; then
+        date_suffix="-$(date +"%Y%m%d-%H%M%S")"
+      fi
+      ;;
+  esac
+
+  echo "${db_prefix}${base_db_name}${date_suffix}"
+}
+
 function isBackupDataExists() {
   local backupdata_file_path="$1"
   if [ ! -f "$backupdata_file_path" ]; then
-    log_error "Backup data file '$backupdata_file_path' does not exist. Please place your backupdata file in the /tmp directory."
+    log_error "Backup data file '$backupdata_file_path' does not exist. Please place your backupdata file or snapshot file in /tmp directory."
     exit 1
   fi
 }
@@ -167,7 +318,8 @@ function isZipAndUnzipInstalled() {
 
 function run_psql() {
   local env_file="${PSQL_ENV_FILE:-$PATH_TO_ODOO/.env}"
-  local db_host=$(grep "^DB_HOST=" "$env_file" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
+  local db_host
+  db_host=$(grep "^DB_HOST=" "$env_file" 2>/dev/null | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
   local has_db=false
   for arg in "$@"; do
     if [[ "$arg" == "-d" || "$arg" == -d* || "$arg" == "--dbname="* || "$arg" == "--dbname" ]]; then
@@ -180,11 +332,12 @@ function run_psql() {
     db_default=(-d postgres)
   fi
   if [ -n "$db_host" ] && [ "$db_host" != "localhost" ]; then
-    local db_port=$(grep "^DB_PORT=" "$env_file" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
-    local db_user=$(grep "^ACTIVE_DB_USER=" "$env_file" 2>/dev/null | cut -d '=' -f2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//')
+    local db_port db_user db_pass docker_net net
+    db_port=$(grep "^DB_PORT=" "$env_file" 2>/dev/null | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
+    db_user=$(grep "^ACTIVE_DB_USER=" "$env_file" 2>/dev/null | cut -d '=' -f2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//')
     [ -z "$db_user" ] && db_user=$(cat "$(dirname "$env_file")/.secrets/db_user" 2>/dev/null || true)
-    local db_pass=$(cat "$(dirname "$env_file")/.secrets/db_password" 2>/dev/null || true)
-    local docker_net=$(grep "^DOCKER_NETWORK_MODE=" "$env_file" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
+    db_pass=$(cat "$(dirname "$env_file")/.secrets/db_password" 2>/dev/null || true)
+    docker_net=$(grep "^DOCKER_NETWORK_MODE=" "$env_file" 2>/dev/null | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
     [ -z "$db_port" ] && db_port="5432"
     [ -z "$docker_net" ] && docker_net="host"
     local net=$(echo "$docker_net" | cut -d "," -f 1)
@@ -196,13 +349,15 @@ function run_psql() {
 
 function run_pg_dump() {
   local env_file="${PSQL_ENV_FILE:-$PATH_TO_ODOO/.env}"
-  local db_host=$(grep "^DB_HOST=" "$env_file" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
+  local db_host
+  db_host=$(grep "^DB_HOST=" "$env_file" 2>/dev/null | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
   if [ -n "$db_host" ] && [ "$db_host" != "localhost" ]; then
-    local db_port=$(grep "^DB_PORT=" "$env_file" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
-    local db_user=$(grep "^ACTIVE_DB_USER=" "$env_file" 2>/dev/null | cut -d '=' -f2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//')
+    local db_port db_user db_pass docker_net net
+    db_port=$(grep "^DB_PORT=" "$env_file" 2>/dev/null | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
+    db_user=$(grep "^ACTIVE_DB_USER=" "$env_file" 2>/dev/null | cut -d '=' -f2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//')
     [ -z "$db_user" ] && db_user=$(cat "$(dirname "$env_file")/.secrets/db_user" 2>/dev/null || true)
-    local db_pass=$(cat "$(dirname "$env_file")/.secrets/db_password" 2>/dev/null || true)
-    local docker_net=$(grep "^DOCKER_NETWORK_MODE=" "$env_file" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
+    db_pass=$(cat "$(dirname "$env_file")/.secrets/db_password" 2>/dev/null || true)
+    docker_net=$(grep "^DOCKER_NETWORK_MODE=" "$env_file" 2>/dev/null | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
     [ -z "$db_port" ] && db_port="5432"
     [ -z "$docker_net" ] && docker_net="host"
     local net=$(echo "$docker_net" | cut -d "," -f 1)
@@ -214,84 +369,33 @@ function run_pg_dump() {
 
 function sanitizeDatabase() {
   local restored_db_name="$1"
-  log_info "Neutralizing the database (SMTP, Crons, Webhooks, Payments, and activating Neutralized Banner)..."
+  log_info "Sanitizing restored database $restored_db_name..."
 
-  # SQL commands to disable outgoing email, crons, mail servers, and activate the banner.
-  # Wrapped in a PL/pgSQL DO block to avoid failures if optional modules are not installed.
-  local SANITIZE_SQL
-  SANITIZE_SQL=$(cat << 'EOF'
+  local SANITIZE_SQL=$(cat << 'EOF'
+    -- Disable mail servers
+    UPDATE ir_mail_server SET active = false;
+
+    -- Deactivate crons
+    UPDATE ir_cron SET active = false;
+
+    -- Update database neutralization parameter
+    INSERT INTO ir_config_parameter (key, value)
+    VALUES ('database.is_neutralized', 'True')
+    ON CONFLICT (key) DO UPDATE SET value = 'True';
+
+    -- Block external integrations safely
     DO $$
     BEGIN
-        -- 1. Base Module Neutralization
-        IF EXISTS (SELECT FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'ir_mail_server' AND column_name = 'active') THEN
-            EXECUTE 'UPDATE ir_mail_server SET active = false';
-            EXECUTE 'INSERT INTO ir_mail_server(name, smtp_port, smtp_host, smtp_encryption, active, smtp_authentication)
-            VALUES (''neutralization - disable emails'', 1025, ''invalid'', ''none'', true, ''login'')
-            ON CONFLICT DO NOTHING';
+        -- Deactivate payment acquirers/providers
+        IF EXISTS (SELECT FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'payment_provider') THEN
+            EXECUTE 'UPDATE payment_provider SET state = ''disabled''';
+        ELSIF EXISTS (SELECT FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'payment_acquirer') THEN
+            EXECUTE 'UPDATE payment_acquirer SET state = ''disabled''';
         END IF;
 
-        IF EXISTS (SELECT FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'ir_cron' AND column_name = 'active') THEN
-            EXECUTE 'UPDATE ir_cron
-               SET active = false
-             WHERE id NOT IN (
-                   SELECT res_id
-                     FROM ir_model_data
-                    WHERE model = ''ir.cron''
-                      AND name = ''autovacuum_job''
-                      AND module = ''base''
-             )';
-        END IF;
-
-        IF EXISTS (SELECT FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'ir_config_parameter' AND column_name = 'key') THEN
-            EXECUTE 'INSERT INTO ir_config_parameter (key, value)
-            VALUES (''database.is_neutralized'', true)
-                ON CONFLICT (key) DO UPDATE SET value = true';
-        END IF;
-
-        IF EXISTS (SELECT FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'ir_act_server' AND column_name = 'webhook_url') THEN
-            EXECUTE 'UPDATE ir_act_server SET webhook_url = ''neutralization - disable webhook'' WHERE state = ''webhook''';
-        END IF;
-
-        -- 2. Mail Module Neutralization
-        IF EXISTS (SELECT FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'mail_template' AND column_name = 'mail_server_id') THEN
-            EXECUTE 'UPDATE mail_template SET mail_server_id = NULL';
-        END IF;
-
-        IF EXISTS (SELECT FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'fetchmail_server' AND column_name = 'active') THEN
+        -- Disable incoming mail servers (fetchmail)
+        IF EXISTS (SELECT FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'fetchmail_server') THEN
             EXECUTE 'UPDATE fetchmail_server SET active = false';
-        END IF;
-
-        IF EXISTS (SELECT FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'ir_config_parameter' AND column_name = 'key') THEN
-            EXECUTE 'DELETE FROM ir_config_parameter WHERE key IN (''mail.web_push_vapid_private_key'', ''mail.web_push_vapid_public_key'', ''mail.sfu_server_key'')';
-        END IF;
-
-        IF EXISTS (SELECT FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'mail_push') THEN
-            EXECUTE 'TRUNCATE mail_push CASCADE';
-        END IF;
-
-        IF EXISTS (SELECT FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'mail_push_device') THEN
-            EXECUTE 'DELETE FROM mail_push_device';
-        END IF;
-
-        -- 3. Web Module Neutralization (Activate Neutralize Banner)
-        IF EXISTS (SELECT FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'ir_ui_view' AND column_name = 'active') THEN
-            EXECUTE 'UPDATE ir_ui_view SET active = true WHERE key = ''web.neutralize_banner''';
-        END IF;
-
-        -- 4. Additional Common Services
-        -- Disable Payment Providers
-        IF EXISTS (SELECT FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'payment_provider' AND column_name = 'state') THEN
-            EXECUTE 'UPDATE payment_provider SET state = ''disabled'' WHERE state NOT IN (''test'', ''disabled'')';
-        END IF;
-
-        -- Disable OAuth login
-        IF EXISTS (SELECT FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'auth_oauth_provider' AND column_name = 'enabled') THEN
-            EXECUTE 'UPDATE auth_oauth_provider SET enabled = false';
-        END IF;
-
-        -- Disable Google Calendar sync
-        IF EXISTS (SELECT FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'res_users_settings' AND column_name = 'google_calendar_rtoken') THEN
-            EXECUTE 'UPDATE res_users_settings SET google_calendar_rtoken = NULL, google_calendar_token = NULL, google_synchronization_stopped = True';
         END IF;
 
         -- Disable IAP accounts
@@ -312,14 +416,6 @@ EOF
 }
 
 function main() {
-  # Self-elevate to root if not already
-  if [ "$(id -u)" -ne 0 ]; then
-      log_info "Elevating permissions to root..."
-      # shellcheck disable=SC2093
-      exec sudo "$0" "$@" # Re-run the script with sudo
-      exit 1
-  fi
-
   # Ensure secret file exists
   if [ ! -f "$PATH_TO_ODOO/.secrets/db_user" ]; then
     log_error "Secret file .secrets/db_user not found in $PATH_TO_ODOO"
@@ -345,6 +441,41 @@ function main() {
   BACKUPDATA_FILE_PATH="/tmp/$BACKUPDATA_FILE_NAME"
   TEMP_DIR="/tmp/backupdata-$SERVICE_NAME"
   RESTORED_DB_NAME=""
+  TARGET_DB_NAME=""
+  CUSTOM_INPUT_FILE=""
+
+  # Parse CLI arguments
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      -n|--name|--dbname)
+        TARGET_DB_NAME="$2"
+        shift 2
+        ;;
+      --name=*|--dbname=*)
+        TARGET_DB_NAME="${1#*=}"
+        shift
+        ;;
+      -h|--help)
+        show_help
+        exit 0
+        ;;
+      -*)
+        log_error "Unknown option: $1"
+        show_help
+        exit 1
+        ;;
+      *)
+        if [ -z "$CUSTOM_INPUT_FILE" ]; then
+          CUSTOM_INPUT_FILE="$1"
+        elif [ -z "$TARGET_DB_NAME" ]; then
+          TARGET_DB_NAME="$1"
+        fi
+        shift
+        ;;
+    esac
+  done
+
+  resolve_backup_file "$CUSTOM_INPUT_FILE"
 
   isBackupDataExists "$BACKUPDATA_FILE_PATH"
   isRsyncInstalled
@@ -354,21 +485,7 @@ function main() {
   log_info "Start restoring backup data for $SERVICE_NAME"
 
   while true; do
-    # Using || true to prevent grep failure from triggering set -e if key is missing
-    PROMPT_FOR_DATABASE_NAME=$(grep "^PROMPT_FOR_DATABASE_NAME=" "$PATH_TO_ODOO/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
-
-    if [ -z "$PROMPT_FOR_DATABASE_NAME" ]; then
-      ODOO_DATABASE_NAME_PRD=$(grep "^DB_NAME=" "$PATH_TO_ODOO/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
-      if [ -z "$ODOO_DATABASE_NAME_PRD" ]; then
-        RESTORED_DB_NAME="$(get_next_prefix "$PATH_TO_ODOO/.env")-$SERVICE_NAME-$(date +"%Y%m%d-%H%M%S")"
-      else
-        RESTORED_DB_NAME="$ODOO_DATABASE_NAME_PRD"
-      fi
-    else
-      # Prompting logic
-      echo -n -e "${COLOR_INFO}[$(date +"%Y-%m-%d %H:%M:%S")] ℹ️  Enter the new database name: ${COLOR_RESET}"
-      read -r RESTORED_DB_NAME
-    fi
+    RESTORED_DB_NAME=$(determineRestoredDBName "$PATH_TO_ODOO/.env" "$TARGET_DB_NAME")
 
     log_info "Database name would be: $RESTORED_DB_NAME"
 
@@ -402,7 +519,7 @@ function main() {
           exit 1
       fi
 
-      chown "$SUDO_USER:$SUDO_USER" "$SAFETY_ZIP_PATH"
+      chown "$SUDO_USER:$SUDO_USER" "$SAFETY_ZIP_PATH" 2>/dev/null || true
       log_success "Safety backup created at $SAFETY_ZIP_PATH"
 
       log_info "Dropping existing database $RESTORED_DB_NAME..."
@@ -446,7 +563,7 @@ function main() {
   log_info "Changing the ownership of $FILESTORE_PATH to odoo user"
   chown -R odoo: "$FILESTORE_PATH"
 
-  NEUTRALIZE_DB=$(grep "^NEUTRALIZE_DATABASE=" "$PATH_TO_ODOO/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]]*//g' | sed 's/[[:space:]]*$//g' || true)
+  NEUTRALIZE_DB=$(grep "^NEUTRALIZE_DATABASE=" "$PATH_TO_ODOO/.env" 2>/dev/null | cut -d "=" -f 2 | sed 's/^[[:space:]]*//g' | sed 's/[[:space:]]*$//g' || true)
   if [ -z "$NEUTRALIZE_DB" ]; then
     NEUTRALIZE_DB="true"
   fi
@@ -455,7 +572,7 @@ function main() {
 
   if [ "$BACKUP_RESTORE_METHOD" = "manual" ]; then
       # --- PURE MANUAL PSQL RESTORE ---
-      ODOO_VERSION=$(grep "^ODOO_VERSION=" "$PATH_TO_ODOO/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
+      ODOO_VERSION=$(grep "^ODOO_VERSION=" "$PATH_TO_ODOO/.env" 2>/dev/null | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
       ODOO_VERSION_NUM=${ODOO_VERSION%%.*}
       if [[ ! "$ODOO_VERSION_NUM" =~ ^[0-9]+$ ]]; then
         if [[ "$ODOO_VERSION" == "latest" ]]; then
@@ -538,7 +655,7 @@ function main() {
         exit 1
       fi
 
-      ODOO_VERSION=$(grep "^ODOO_VERSION=" "$PATH_TO_ODOO/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
+      ODOO_VERSION=$(grep "^ODOO_VERSION=" "$PATH_TO_ODOO/.env" 2>/dev/null | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
       ODOO_VERSION_NUM=${ODOO_VERSION%%.*}
       if [[ ! "$ODOO_VERSION_NUM" =~ ^[0-9]+$ ]]; then
         if [[ "$ODOO_VERSION" == "latest" ]]; then
