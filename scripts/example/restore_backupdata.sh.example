@@ -1,16 +1,51 @@
 #!/usr/bin/env bash
 set -e
 # Category: Utility
-# Description: Restores Odoo data via the web endpoint.
-# Usage: ./scripts/restore_backupdata.sh
-# Dependencies: curl, sudo, git
+# Description: Restores Odoo data via the web endpoint with optional database renaming.
+# Usage: ./scripts/restore_backupdata.sh [BACKUP_FILE] [-n DB_NAME]
+# Dependencies: curl, sudo, git, tar, zstd
 
 # Detect Repository Owner to run non-root commands as that user
 CURRENT_DIR=$(dirname "$(readlink -f "$0")")
 CURRENT_DIR_USER=$(stat -c '%U' "$CURRENT_DIR")
-PATH_TO_ODOO=$(sudo -u "$CURRENT_DIR_USER" git -C "$(dirname "$(readlink -f "$0")")" rev-parse --show-toplevel)
+PATH_TO_ODOO=$(sudo -u "$CURRENT_DIR_USER" git -C "$CURRENT_DIR" rev-parse --show-toplevel 2>/dev/null || git -C "$CURRENT_DIR" rev-parse --show-toplevel 2>/dev/null || dirname "$CURRENT_DIR")
 SERVICE_NAME=$(basename "$PATH_TO_ODOO")
-REPOSITORY_OWNER=$(stat -c '%U' "$PATH_TO_ODOO")
+REPOSITORY_OWNER=$(stat -c '%U' "$PATH_TO_ODOO" 2>/dev/null || echo "$USER")
+
+show_help() {
+  cat << EOF
+Usage: $(basename "$0") [OPTIONS] [BACKUP_OR_SNAPSHOT_FILE]
+
+Restores Odoo database and filestore via the Odoo web restore endpoint.
+
+Options:
+  -n, --name, --dbname <NAME>    Rename restored database to specified name
+  -h, --help                     Show this help message
+
+Arguments:
+  BACKUP_OR_SNAPSHOT_FILE        Path to backupdata (.zip) or snapshot (.tar.zst) archive
+                                 (default: /tmp/backupdata-$SERVICE_NAME.zip)
+
+Examples:
+  ./scripts/restore_backupdata-$SERVICE_NAME -n my_new_db
+  ./scripts/restore_backupdata-$SERVICE_NAME /tmp/snapshot-$SERVICE_NAME.tar.zst --name test_db
+  ./scripts/restore_backupdata-$SERVICE_NAME /tmp/backupdata-$SERVICE_NAME.zip
+EOF
+}
+
+# Handle --help before elevating
+for arg in "$@"; do
+  if [ "$arg" = "-h" ] || [ "$arg" = "--help" ]; then
+    show_help
+    exit 0
+  fi
+done
+
+# Self-elevate to root if not already
+if [ "$(id -u)" -ne 0 ]; then
+  exec sudo "$0" "$@"
+  exit 1
+fi
 
 # Configuration
 ENV_FILE=".env"
@@ -18,14 +53,12 @@ UPDATE_SCRIPT="./scripts/update-env-file.sh"
 MAX_BACKUPS=3
 
 # --- Logging Functions & Colors ---
-# Define colors for log messages
 readonly COLOR_RESET="\033[0m"
 readonly COLOR_INFO="\033[0;34m"
 readonly COLOR_SUCCESS="\033[0;32m"
 readonly COLOR_WARN="\033[1;33m"
 readonly COLOR_ERROR="\033[0;31m"
 
-# Function to log messages with a specific color and emoji
 log() {
   local color="$1"
   local emoji="$2"
@@ -74,12 +107,14 @@ trap 'error_handler $? $LINENO "$BASH_COMMAND"' ERR
 
 # --- Centralized Cleanup Hook ---
 cleanup_temp_files() {
-    if [ -n "${STDERR_LOG:-}" ] && [ -f "$STDERR_LOG" ]; then
-        rm -f "$STDERR_LOG"
-    fi
+  if [ -n "${TEMP_EXTRACT_DIR:-}" ] && [ -d "$TEMP_EXTRACT_DIR" ]; then
+    rm -rf "$TEMP_EXTRACT_DIR"
+  fi
+  if [ -n "${STDERR_LOG:-}" ] && [ -f "$STDERR_LOG" ]; then
+    rm -f "$STDERR_LOG"
+  fi
 }
 trap cleanup_temp_files EXIT
-# ------------------------------------
 
 function get_next_prefix() {
   local env_file="$1"
@@ -87,7 +122,7 @@ function get_next_prefix() {
   local next_count
 
   # Read existing count
-  current_count=$(grep "^DB_PREFIX_COUNT=" "$env_file" | cut -d "=" -f 2 | tr -d '[:space:]')
+  current_count=$(grep "^DB_PREFIX_COUNT=" "$env_file" 2>/dev/null | cut -d "=" -f 2 | tr -d '[:space:]' || true)
 
   # Initialize if empty or not a number
   if [[ ! "$current_count" =~ ^[0-9]+$ ]]; then
@@ -113,10 +148,47 @@ function get_next_prefix() {
   printf "%03d" "$next_count"
 }
 
+function resolve_backup_file() {
+  local input_file="$1"
+
+  if [ -z "$input_file" ] && [ ! -f "$BACKUPDATA_FILE_PATH" ]; then
+    local default_snapshot="/tmp/snapshot-$SERVICE_NAME.tar.zst"
+    if [ -f "$default_snapshot" ]; then
+      input_file="$default_snapshot"
+    fi
+  fi
+
+  if [ -n "$input_file" ]; then
+    BACKUPDATA_FILE_PATH="$input_file"
+  fi
+
+  if [[ "$BACKUPDATA_FILE_PATH" == *.tar.zst ]]; then
+    if [ ! -f "$BACKUPDATA_FILE_PATH" ]; then
+      log_error "Snapshot file '$BACKUPDATA_FILE_PATH' not found."
+      exit 1
+    fi
+    log_info "Detected snapshot archive '$BACKUPDATA_FILE_PATH'. Extracting bundled backupdata zip..."
+    TEMP_EXTRACT_DIR=$(mktemp -d "/tmp/snapshot_extract_XXXXXX")
+    if ! tar -xaf "$BACKUPDATA_FILE_PATH" -C "$TEMP_EXTRACT_DIR" --wildcards "*backupdata*.zip" 2>/dev/null; then
+      tar -xaf "$BACKUPDATA_FILE_PATH" -C "$TEMP_EXTRACT_DIR"
+    fi
+    local extracted_zip
+    extracted_zip=$(find "$TEMP_EXTRACT_DIR" -name "backupdata-$SERVICE_NAME.zip" -o -name "backupdata-*.zip" -o -name "backupdata.zip" 2>/dev/null | head -n 1)
+    if [ -n "$extracted_zip" ] && [ -f "$extracted_zip" ]; then
+      cp -f "$extracted_zip" "/tmp/backupdata-$SERVICE_NAME.zip"
+      BACKUPDATA_FILE_PATH="/tmp/backupdata-$SERVICE_NAME.zip"
+      log_success "Extracted backup data bundle to $BACKUPDATA_FILE_PATH"
+    else
+      log_error "Could not find bundled backupdata zip inside snapshot $BACKUPDATA_FILE_PATH"
+      exit 1
+    fi
+  fi
+}
+
 function isBackupDataExists() {
-  backupdata_file_path="$1"
+  local backupdata_file_path="$1"
   if [ ! -f "$backupdata_file_path" ]; then
-    log_error "Backup data file $backupdata_file_path does not exist. Please place your backupdata file on /tmp directory."
+    log_error "Backup data file '$backupdata_file_path' does not exist. Please place your backupdata file or snapshot file in /tmp directory."
     exit 1
   fi
 }
@@ -150,7 +222,8 @@ function checkOdooEndpoint() {
 
 function run_psql() {
   local env_file="${PSQL_ENV_FILE:-$ENV_FILE_FULL_PATH}"
-  local db_host=$(grep "^DB_HOST=" "$env_file" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
+  local db_host
+  db_host=$(grep "^DB_HOST=" "$env_file" 2>/dev/null | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
   local has_db=false
   for arg in "$@"; do
     if [[ "$arg" == "-d" || "$arg" == -d* || "$arg" == "--dbname="* || "$arg" == "--dbname" ]]; then
@@ -163,10 +236,11 @@ function run_psql() {
     db_default=(-d postgres)
   fi
   if [ -n "$db_host" ] && [ "$db_host" != "localhost" ]; then
-    local db_port=$(grep "^DB_PORT=" "$env_file" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
-    local db_user=$(cat "$PATH_TO_ODOO/.secrets/db_user" 2>/dev/null || true)
-    local db_pass=$(cat "$PATH_TO_ODOO/.secrets/db_password" 2>/dev/null || true)
-    local docker_net=$(grep "^DOCKER_NETWORK_MODE=" "$env_file" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
+    local db_port db_user db_pass docker_net net
+    db_port=$(grep "^DB_PORT=" "$env_file" 2>/dev/null | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
+    db_user=$(cat "$PATH_TO_ODOO/.secrets/db_user" 2>/dev/null || true)
+    db_pass=$(cat "$PATH_TO_ODOO/.secrets/db_password" 2>/dev/null || true)
+    docker_net=$(grep "^DOCKER_NETWORK_MODE=" "$env_file" 2>/dev/null | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
     [ -z "$db_port" ] && db_port="5432"
     [ -z "$docker_net" ] && docker_net="host"
     local net=$(echo "$docker_net" | cut -d "," -f 1)
@@ -177,8 +251,7 @@ function run_psql() {
 }
 
 function restoreOdooDataViaEndpoint() {
-  # Note: ENV_FILE_FULL_PATH is used here (which defaults to $PATH_TO_ODOO/.env)
-  NEUTRALIZE_DB=$(grep "^NEUTRALIZE_DATABASE=" "$ENV_FILE_FULL_PATH" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
+  NEUTRALIZE_DB=$(grep "^NEUTRALIZE_DATABASE=" "$ENV_FILE_FULL_PATH" 2>/dev/null | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
   if [ -z "$NEUTRALIZE_DB" ]; then
     NEUTRALIZE_DB="true"
   fi
@@ -186,6 +259,7 @@ function restoreOdooDataViaEndpoint() {
   log_info "Restoring database via Odoo endpoint..."
   log_info "Neutralize database option: $NEUTRALIZE_DB"
 
+  local response
   if [ "$NEUTRALIZE_DB" = "true" ]; then
     response=$(curl -s -X POST \
       -F "master_pwd=$ADMIN_PASSWD" \
@@ -203,7 +277,7 @@ function restoreOdooDataViaEndpoint() {
       "http://localhost:$PORT/web/database/restore")
   fi
 
-  response_lower="${response,,}"
+  local response_lower="${response,,}"
 
   if [[ "$response_lower" == *"redirecting"* ]] && [[ "$response_lower" == *"/web/database/manager"* ]]; then
     log_success "Database restore command sent successfully. (Redirect received)"
@@ -224,20 +298,46 @@ function main() {
   BACKUPDATA_FILE_NAME="backupdata-$SERVICE_NAME.zip"
   BACKUPDATA_FILE_PATH="/tmp/$BACKUPDATA_FILE_NAME"
   RESTORED_DB_NAME=""
+  TARGET_DB_NAME=""
+  CUSTOM_INPUT_FILE=""
 
-  ADMIN_PASSWD=$(grep "^ADMIN_PASSWD=" "$ENV_FILE_FULL_PATH" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
-  PORT=$(grep "^PORT=" "$ENV_FILE_FULL_PATH" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
+  # Parse CLI arguments
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      -n|--name|--dbname)
+        TARGET_DB_NAME="$2"
+        shift 2
+        ;;
+      --name=*|--dbname=*)
+        TARGET_DB_NAME="${1#*=}"
+        shift
+        ;;
+      -h|--help)
+        show_help
+        exit 0
+        ;;
+      -*)
+        log_error "Unknown option: $1"
+        show_help
+        exit 1
+        ;;
+      *)
+        if [ -z "$CUSTOM_INPUT_FILE" ]; then
+          CUSTOM_INPUT_FILE="$1"
+        elif [ -z "$TARGET_DB_NAME" ]; then
+          TARGET_DB_NAME="$1"
+        fi
+        shift
+        ;;
+    esac
+  done
+
+  resolve_backup_file "$CUSTOM_INPUT_FILE"
+
+  ADMIN_PASSWD=$(grep "^ADMIN_PASSWD=" "$ENV_FILE_FULL_PATH" 2>/dev/null | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
+  PORT=$(grep "^PORT=" "$ENV_FILE_FULL_PATH" 2>/dev/null | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
   if [ -z "$ADMIN_PASSWD" ] || [ -z "$PORT" ]; then
       log_error "ADMIN_PASSWD and/or PORT not set in .env file. Cannot proceed with restore."
-      exit 1
-  fi
-
-  # Self-elevate to root if not already
-  if [ "$(id -u)" -ne 0 ]; then
-      log_info "Elevating permissions to root..."
-      # shellcheck disable=SC2093
-      exec sudo "$0" "$@" # Re-run the script with sudo
-      log_error "Failed to elevate to root. Please run with sudo." # This will only run if exec fails
       exit 1
   fi
 
@@ -248,17 +348,20 @@ function main() {
   log_info "Start restoring backup data for $SERVICE_NAME"
 
   while true; do
-
-    PROMPT_FOR_DATABASE_NAME=$(grep "^PROMPT_FOR_DATABASE_NAME=" "$PATH_TO_ODOO/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
-    if [ -z "$PROMPT_FOR_DATABASE_NAME" ]; then
-      ODOO_DATABASE_NAME_PRD=$(grep "^DB_NAME=" "$PATH_TO_ODOO/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
-      if [ -z "$ODOO_DATABASE_NAME_PRD" ]; then
-        RESTORED_DB_NAME="$(get_next_prefix "$ENV_FILE_FULL_PATH")-$SERVICE_NAME-$(date +"%Y%m%d-%H%M%S")"
-      else
-        RESTORED_DB_NAME="$ODOO_DATABASE_NAME_PRD"
-      fi
+    if [ -n "$TARGET_DB_NAME" ]; then
+      RESTORED_DB_NAME="$TARGET_DB_NAME"
     else
-      read -rp "Enter the new database name: " RESTORED_DB_NAME
+      PROMPT_FOR_DATABASE_NAME=$(grep "^PROMPT_FOR_DATABASE_NAME=" "$PATH_TO_ODOO/.env" 2>/dev/null | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
+      if [ -z "$PROMPT_FOR_DATABASE_NAME" ]; then
+        ODOO_DATABASE_NAME_PRD=$(grep "^DB_NAME=" "$PATH_TO_ODOO/.env" 2>/dev/null | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
+        if [ -z "$ODOO_DATABASE_NAME_PRD" ]; then
+          RESTORED_DB_NAME="$(get_next_prefix "$ENV_FILE_FULL_PATH")-$SERVICE_NAME-$(date +"%Y%m%d-%H%M%S")"
+        else
+          RESTORED_DB_NAME="$ODOO_DATABASE_NAME_PRD"
+        fi
+      else
+        read -rp "Enter the new database name: " RESTORED_DB_NAME
+      fi
     fi
 
     log_info "Database name would be $RESTORED_DB_NAME"
@@ -293,10 +396,7 @@ function main() {
         -F "name=$RESTORED_DB_NAME" \
         "http://localhost:$PORT/web/database/drop")
 
-      # Verify Drop - if API returned valid HTML/JSON it might still have failed, so we check existence again or check response
-      drop_response_lower="${drop_response,,}"
-
-      # Simplest is to check existence via psql again
+      # Verify Drop
       if run_psql -lqt | cut -d \| -f 1 | grep -qw "$RESTORED_DB_NAME"; then
          log_warn "API drop might have failed or is slow. Attempting force drop via psql..."
          if run_psql -c "DROP DATABASE \"$RESTORED_DB_NAME\"" >/dev/null 2>&1; then
@@ -306,7 +406,7 @@ function main() {
              ODOO_FILESTORE_PATH="/var/lib/odoo/$SERVICE_NAME/filestore/$RESTORED_DB_NAME"
              if [ -d "$ODOO_FILESTORE_PATH" ]; then
                  log_info "Removing filestore at $ODOO_FILESTORE_PATH..."
-                 sudo rm -rf "$ODOO_FILESTORE_PATH"
+                 rm -rf "$ODOO_FILESTORE_PATH"
                  log_success "Filestore removed."
              fi
          else

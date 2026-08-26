@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -e
 # Category: Utility
-# Description: Restores an Odoo snapshot (full or data-only) from a tar archive.
-# Usage: ./scripts/restore-snapshot.sh [--data-only] [SNAPSHOT_FILE] [-y]
+# Description: Restores an Odoo snapshot (full, data-only, or via restore_backupdata) from a tar archive.
+# Usage: ./scripts/restore-snapshot.sh [--data-only | --restore-backupdata] [SNAPSHOT_FILE] [-y]
 # Dependencies: tar, zstd, docker, sudo, psql, unzip
 
 # Detect Repository Owner to run non-root commands as that user
@@ -20,18 +20,24 @@ Usage: $(basename "$0") [OPTIONS] [SNAPSHOT_FILE]
 Restores an Odoo snapshot from a .tar.zst archive.
 
 Options:
-  -d, --data, --data-only   Restore ONLY database and filestore (fast mode).
-                            Does not stop container stack or overwrite configs/.env.
-  -f, --file <PATH>         Path to snapshot .tar.zst file
-  -y, --yes, --force        Skip confirmation prompt
-  -h, --help                Show this help message
+  -d, --data, --data-only        Restore ONLY database and filestore (fast mode).
+                                 Does not stop container stack or overwrite configs/.env.
+  -b, --restore-backupdata,      Extract backup bundle and run restore_backupdata utility
+      --backupdata               (with DB prefixing / web endpoint / manual runner).
+  -n, --name, --dbname <NAME>    Rename/specify target database name
+  -f, --file <PATH>              Path to snapshot .tar.zst file
+  -y, --yes, --force             Skip confirmation prompt
+  -h, --help                     Show this help message
 
 Arguments:
-  SNAPSHOT_FILE             Optional path to snapshot file (default: /tmp/$DEFAULT_TAR_FILE_NAME)
+  SNAPSHOT_FILE                  Optional path to snapshot file (default: /tmp/$DEFAULT_TAR_FILE_NAME)
 
 Examples:
   ./scripts/restore-snapshot.sh --data-only
-  ./scripts/restore-snapshot.sh --data-only /tmp/snapshot-myproject-20260826.tar.zst -y
+  ./scripts/restore-snapshot.sh --restore-backupdata
+  ./scripts/restore-snapshot.sh --restore-backupdata /tmp/snapshot-myproject-20260826.tar.zst
+  ./scripts/restore-snapshot.sh --data-only -n my_new_db
+  ./scripts/restore-snapshot.sh --restore-backupdata -n my_renamed_db
   ./scripts/restore-snapshot.sh /tmp/$DEFAULT_TAR_FILE_NAME
 EOF
 }
@@ -97,7 +103,9 @@ TAR_PROJECT_ROOT="${PATH_TO_ODOO#/}"
 
 SNAPSHOT_FILE_PATH=""
 DATA_ONLY=false
+RESTORE_VIA_BACKUPDATA=false
 AUTO_CONFIRM=false
+TARGET_DB_NAME=""
 TEMP_DIR="/tmp/snapshot-$SERVICE_NAME"
 
 # --- Parse CLI Arguments ---
@@ -105,6 +113,18 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     -d|--data|--data-only)
       DATA_ONLY=true
+      shift
+      ;;
+    -b|--restore-backupdata|--backupdata)
+      RESTORE_VIA_BACKUPDATA=true
+      shift
+      ;;
+    -n|--name|--dbname)
+      TARGET_DB_NAME="$2"
+      shift 2
+      ;;
+    --name=*|--dbname=*)
+      TARGET_DB_NAME="${1#*=}"
       shift
       ;;
     -f|--file)
@@ -131,6 +151,8 @@ while [[ $# -gt 0 ]]; do
     *)
       if [ -z "$SNAPSHOT_FILE_PATH" ]; then
         SNAPSHOT_FILE_PATH="$1"
+      elif [ -z "$TARGET_DB_NAME" ]; then
+        TARGET_DB_NAME="$1"
       else
         log_error "Unexpected argument: $1"
         show_help
@@ -160,7 +182,9 @@ function areYouReallySure() {
     return 0
   fi
 
-  if [ "$DATA_ONLY" = true ]; then
+  if [ "$RESTORE_VIA_BACKUPDATA" = true ]; then
+    echo -e "\nAre you sure?\n⚠️ This script will extract snapshot data and run restore_backupdata for $SERVICE_NAME. ⚠️\nType 'yes I am sure' and press enter to continue.\n"
+  elif [ "$DATA_ONLY" = true ]; then
     echo -e "\nAre you sure?\n⚠️ This script will restore Odoo DATA ONLY (database and filestore) for $SERVICE_NAME. ⚠️\nConfigurations, .env, and secrets will remain untouched.\nType 'yes I am sure' and press enter to continue.\n"
   else
     echo -e "\nAre you sure?\n⚠️ This script will restore FULL SNAPSHOT (database, filestore, AND deployment configs/.env/secrets) for $SERVICE_NAME. ⚠️\nType 'yes I am sure' and press enter to continue.\n"
@@ -258,11 +282,11 @@ function restoreOdooData() {
     log_info "Found bundled backup data: $extracted_zip"
     cp -f "$extracted_zip" "/tmp/backupdata-$SERVICE_NAME.zip"
 
-    if [ "$DATA_ONLY" = false ] && [ -f "$PATH_TO_ODOO/scripts/restore_backupdata-$SERVICE_NAME" ]; then
+    if [ "$DATA_ONLY" = false ] && [ "$RESTORE_VIA_BACKUPDATA" = false ] && [ -f "$PATH_TO_ODOO/scripts/restore_backupdata-$SERVICE_NAME" ]; then
       log_info "Running restore_backupdata script..."
       "$PATH_TO_ODOO/scripts/restore_backupdata-$SERVICE_NAME"
       return 0
-    elif [ "$DATA_ONLY" = false ] && [ -f "$PATH_TO_ODOO/scripts/restore_backupdata_manual-$SERVICE_NAME" ]; then
+    elif [ "$DATA_ONLY" = false ] && [ "$RESTORE_VIA_BACKUPDATA" = false ] && [ -f "$PATH_TO_ODOO/scripts/restore_backupdata_manual-$SERVICE_NAME" ]; then
       log_info "Running restore_backupdata_manual script..."
       "$PATH_TO_ODOO/scripts/restore_backupdata_manual-$SERVICE_NAME"
       return 0
@@ -279,6 +303,14 @@ function restoreOdooData() {
       target_db=$(grep "^DB_NAME=" "$PATH_TO_ODOO/.env" 2>/dev/null | cut -d '=' -f2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//' || true)
       if [ -z "$target_db" ] && [ -f "$zip_stage/manifest.json" ]; then
         target_db=$(grep -o '"db_name": *"[^"]*"' "$zip_stage/manifest.json" | cut -d'"' -f4 || true)
+      if [ -n "$TARGET_DB_NAME" ]; then
+        target_db="$TARGET_DB_NAME"
+      else
+        target_db=$(grep "^DB_NAME=" "$PATH_TO_ODOO/.env" 2>/dev/null | cut -d '=' -f2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//' || true)
+        if [ -z "$target_db" ] && [ -f "$zip_stage/manifest.json" ]; then
+          target_db=$(grep -o '"db_name": *"[^"]*"' "$zip_stage/manifest.json" | cut -d'"' -f4 || true)
+        fi
+        [ -z "$target_db" ] && target_db="$SERVICE_NAME"
       fi
       [ -z "$target_db" ] && target_db="$SERVICE_NAME"
 
@@ -321,8 +353,15 @@ function restoreOdooData() {
   fi
 
   ODOO_DATABASE_NAME_PRD=$(find "$filestore_base_in_tar" -mindepth 1 -maxdepth 1 -type d -print | head -n 1 | xargs -n 1 basename)
+  local discovered_db
+  discovered_db=$(find "$filestore_base_in_tar" -mindepth 1 -maxdepth 1 -type d -print | head -n 1 | xargs -n 1 basename)
 
   if [ -z "$ODOO_DATABASE_NAME_PRD" ]; then
+  if [ -n "$TARGET_DB_NAME" ]; then
+    ODOO_DATABASE_NAME_PRD="$TARGET_DB_NAME"
+  elif [ -n "$discovered_db" ]; then
+    ODOO_DATABASE_NAME_PRD="$discovered_db"
+  else
     log_error "Could not determine database name from filestore."
     return 1
   fi
@@ -330,9 +369,11 @@ function restoreOdooData() {
   # Discover SQL dump file (supports randomized filename)
   local sql_dump_file
   sql_dump_file=$(find "$TEMP_DIR/tmp" -name "${ODOO_DATABASE_NAME_PRD}_*.sql" -print | head -n 1)
+  sql_dump_file=$(find "$TEMP_DIR/tmp" -name "${discovered_db}_*.sql" -o -name "*.sql" -print | head -n 1)
 
   if [ -z "$sql_dump_file" ]; then
     log_error "SQL dump file for $ODOO_DATABASE_NAME_PRD not found in /tmp/ directory of snapshot."
+    log_error "SQL dump file for $discovered_db not found in /tmp/ directory of snapshot."
     return 1
   fi
 
@@ -345,6 +386,9 @@ function restoreOdooData() {
   mkdir -p "$(dirname "$target_filestore")"
 
   mv "$filestore_base_in_tar/$ODOO_DATABASE_NAME_PRD" "$target_filestore" || { log_error "Can't restore filestore"; }
+  if [ -n "$discovered_db" ] && [ -d "$filestore_base_in_tar/$discovered_db" ]; then
+    mv "$filestore_base_in_tar/$discovered_db" "$target_filestore" || { log_error "Can't restore filestore"; }
+  fi
   chown -R odoo: "/var/lib/odoo/$SERVICE_NAME"
 
   log_info "Restore database $ODOO_DATABASE_NAME_PRD from $(basename "$sql_dump_file")"
@@ -355,6 +399,65 @@ function restoreOdooData() {
   sed -i "1i SET ROLE \"$ODOO_DATABASE_USER\";" "$sql_dump_file"
 
   run_psql -d "$ODOO_DATABASE_NAME_PRD" --quiet -t -P pager=off < "$sql_dump_file" 2> /dev/null > /dev/null || log_error "Can't restore database"
+}
+
+function restoreFromSnapshotViaBackupData() {
+  log_info "Starting snapshot restoration via restore_backupdata for $SERVICE_NAME"
+
+  areYouReallySure
+  isZstdInstalled
+  isSnapshotFileExist
+
+  log_info "Extracting backupdata bundle from $SNAPSHOT_FILE_PATH to /tmp/backupdata-$SERVICE_NAME.zip..."
+  rm -rf "$TEMP_DIR" && mkdir -p "$TEMP_DIR"
+
+  if ! tar -xaf "$SNAPSHOT_FILE_PATH" -C "$TEMP_DIR" --wildcards "*backupdata*.zip" 2>/dev/null; then
+    log_info "Selective extraction not matched, extracting full archive..."
+    if ! tar -xaf "$SNAPSHOT_FILE_PATH" -C "$TEMP_DIR"; then
+      log_error "Failed to extract snapshot."
+      exit 1
+    fi
+  fi
+
+  local extracted_zip
+  extracted_zip=$(find "$TEMP_DIR" -name "backupdata-$SERVICE_NAME.zip" -o -name "backupdata-*.zip" 2>/dev/null | head -n 1)
+
+  if [ -z "$extracted_zip" ] || [ ! -f "$extracted_zip" ]; then
+    log_error "Bundled backupdata zip not found inside snapshot $SNAPSHOT_FILE_PATH."
+    exit 1
+  fi
+
+  cp -f "$extracted_zip" "/tmp/backupdata-$SERVICE_NAME.zip"
+  chown "$REPOSITORY_OWNER": "/tmp/backupdata-$SERVICE_NAME.zip" 2>/dev/null || true
+  chmod 644 "/tmp/backupdata-$SERVICE_NAME.zip" 2>/dev/null || true
+  log_success "Backup bundle extracted and placed at /tmp/backupdata-$SERVICE_NAME.zip"
+
+  local restore_args=("/tmp/backupdata-$SERVICE_NAME.zip")
+  if [ -n "$TARGET_DB_NAME" ]; then
+    restore_args+=("-n" "$TARGET_DB_NAME")
+  fi
+
+  if [ -f "$PATH_TO_ODOO/scripts/restore_backupdata-$SERVICE_NAME" ]; then
+    log_info "Executing $PATH_TO_ODOO/scripts/restore_backupdata-$SERVICE_NAME..."
+    "$PATH_TO_ODOO/scripts/restore_backupdata-$SERVICE_NAME" "/tmp/backupdata-$SERVICE_NAME.zip"
+    log_info "Executing $PATH_TO_ODOO/scripts/restore_backupdata-$SERVICE_NAME ${restore_args[*]}..."
+    "$PATH_TO_ODOO/scripts/restore_backupdata-$SERVICE_NAME" "${restore_args[@]}"
+  elif [ -f "$PATH_TO_ODOO/scripts/restore_backupdata_manual-$SERVICE_NAME" ]; then
+    log_info "Executing $PATH_TO_ODOO/scripts/restore_backupdata_manual-$SERVICE_NAME..."
+    "$PATH_TO_ODOO/scripts/restore_backupdata_manual-$SERVICE_NAME" "/tmp/backupdata-$SERVICE_NAME.zip"
+    log_info "Executing $PATH_TO_ODOO/scripts/restore_backupdata_manual-$SERVICE_NAME ${restore_args[*]}..."
+    "$PATH_TO_ODOO/scripts/restore_backupdata_manual-$SERVICE_NAME" "${restore_args[@]}"
+  elif [ -f "$PATH_TO_ODOO/scripts/restore_backupdata.sh" ]; then
+    log_info "Executing $PATH_TO_ODOO/scripts/restore_backupdata.sh..."
+    "$PATH_TO_ODOO/scripts/restore_backupdata.sh" "/tmp/backupdata-$SERVICE_NAME.zip"
+    log_info "Executing $PATH_TO_ODOO/scripts/restore_backupdata.sh ${restore_args[*]}..."
+    "$PATH_TO_ODOO/scripts/restore_backupdata.sh" "${restore_args[@]}"
+  else
+    log_warn "No installed restore_backupdata utility found in scripts/. Running direct data restore..."
+    restoreOdooData
+  fi
+
+  log_success "Restoration via restore_backupdata completed."
 }
 
 function restoreSnapshotDataOnly() {
@@ -453,7 +556,9 @@ function restoreSnapshotFull() {
 }
 
 function main() {
-  if [ "$DATA_ONLY" = true ]; then
+  if [ "$RESTORE_VIA_BACKUPDATA" = true ]; then
+    restoreFromSnapshotViaBackupData
+  elif [ "$DATA_ONLY" = true ]; then
     restoreSnapshotDataOnly
   else
     restoreSnapshotFull
