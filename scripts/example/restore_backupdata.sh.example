@@ -174,6 +174,19 @@ function resolve_backup_file() {
       log_error "Snapshot file '$BACKUPDATA_FILE_PATH' not found."
       exit 1
     fi
+
+    if ! command -v tar >/dev/null 2>&1; then
+      log_error "tar command could not be found. Please install tar."
+      exit 1
+    fi
+
+    if ! command -v zstd >/dev/null 2>&1; then
+      log_error "zstd command could not be found. Please install zstd first."
+      echo "For Ubuntu: sudo apt install zstd"
+      echo "For CentOS: sudo yum install zstd"
+      exit 1
+    fi
+
     log_info "Detected snapshot archive '$BACKUPDATA_FILE_PATH'. Extracting bundled backupdata zip..."
     TEMP_EXTRACT_DIR=$(mktemp -d "/tmp/snapshot_extract_XXXXXX")
     if ! tar -xaf "$BACKUPDATA_FILE_PATH" -C "$TEMP_EXTRACT_DIR" --wildcards "*backupdata*.zip" 2>/dev/null; then
