@@ -313,10 +313,37 @@ function cleanup_gdrive_old_snapshots() {
 
   for fid in $to_delete; do
     if [ -n "$fid" ]; then
-      local del_status
-      del_status=$(curl -s -o /dev/null -w "%{http_code}" -X DELETE \
+      local del_resp del_status
+      del_resp=$(curl -s -w "\n%{http_code}" -X DELETE \
         -H "Authorization: Bearer $token" \
         "https://www.googleapis.com/drive/v3/files/${fid}?supportsAllDrives=true")
+      del_status=$(echo "$del_resp" | tail -n1)
+
+      if [ "$del_status" != "204" ] && [ "$del_status" != "200" ]; then
+        local trash_resp trash_status
+        trash_resp=$(curl -s -w "\n%{http_code}" -X PATCH \
+          -H "Authorization: Bearer $token" \
+          -H "Content-Type: application/json" \
+          -d '{"trashed": true}' \
+          "https://www.googleapis.com/drive/v3/files/${fid}?supportsAllDrives=true")
+        trash_status=$(echo "$trash_resp" | tail -n1)
+        if [ "$trash_status" = "200" ]; then
+          del_status="200"
+        fi
+      fi
+
+      if [ "$del_status" != "204" ] && [ "$del_status" != "200" ] && [ -n "$folder" ]; then
+        local unparent_resp unparent_status
+        unparent_resp=$(curl -s -w "\n%{http_code}" -X PATCH \
+          -H "Authorization: Bearer $token" \
+          -H "Content-Type: application/json" \
+          "https://www.googleapis.com/drive/v3/files/${fid}?removeParents=${folder}&supportsAllDrives=true")
+        unparent_status=$(echo "$unparent_resp" | tail -n1)
+        if [ "$unparent_status" = "200" ]; then
+          del_status="200"
+        fi
+      fi
+
       if [ "$del_status" = "204" ] || [ "$del_status" = "200" ]; then
         log_info "Deleted old remote snapshot (ID: $fid)"
       else

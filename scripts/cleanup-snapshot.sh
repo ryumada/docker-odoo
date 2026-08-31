@@ -325,8 +325,26 @@ if [ "$TOTAL_FILES" -le "$MAX_BACKUPS" ]; then
   exit 0
 fi
 
-TO_DELETE_IDS=$(echo "$FILE_IDS" | tail -n +$((MAX_BACKUPS + 1)))
-DELETE_COUNT=$(echo "$TO_DELETE_IDS" | grep -c . || echo "0")
+TO_DELETE_ITEMS=$(python3 -c '
+import sys, json
+try:
+    data = json.load(sys.stdin)
+    files = data.get("files", [])
+    max_keep = int(sys.argv[1])
+    excess = files[max_keep:]
+    for f in excess:
+        fid = f.get("id", "")
+        fname = f.get("name", "")
+        if fid:
+            print(f"{fid}\t{fname}")
+except Exception:
+    pass
+' "$MAX_BACKUPS" <<< "$RESPONSE")
+
+DELETE_COUNT=0
+if [ -n "$TO_DELETE_ITEMS" ]; then
+  DELETE_COUNT=$(echo "$TO_DELETE_ITEMS" | grep -c . || echo "0")
+fi
 
 echo ""
 if [ "$DRY_RUN" = true ]; then
@@ -336,7 +354,7 @@ if [ "$DRY_RUN" = true ]; then
 fi
 
 if [ "$FORCE" = false ]; then
-  echo -ne "${COLOR_WARN}Are you sure you want to permanently delete $DELETE_COUNT older snapshot(s) from Google Drive? [y/N]: ${COLOR_RESET}"
+  echo -ne "${COLOR_WARN}Are you sure you want to delete $DELETE_COUNT older snapshot(s) from Google Drive? [y/N]: ${COLOR_RESET}"
   read -r confirmation
   if [[ ! "$confirmation" =~ ^[Yy]$ ]]; then
     log_info "Cleanup operation aborted by user."
@@ -348,20 +366,48 @@ log_info "Deleting $DELETE_COUNT old snapshot(s) from Google Drive..."
 DELETED_COUNT=0
 FAILED_COUNT=0
 
-for fid in $TO_DELETE_IDS; do
-  if [ -n "$fid" ]; then
-    DEL_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X DELETE \
+while IFS=$'\t' read -r fid fname; do
+  [ -z "$fid" ] && continue
+
+  # Strategy 1: Permanent DELETE (requires ownership or Admin)
+  DEL_RESP=$(curl -s -w "\n%{http_code}" -X DELETE \
+    -H "Authorization: Bearer $ACCESS_TOKEN" \
+    "https://www.googleapis.com/drive/v3/files/${fid}?supportsAllDrives=true")
+  DEL_STATUS=$(echo "$DEL_RESP" | tail -n1)
+
+  # Strategy 2: Fallback to Move to Trash (works for Editors / shared folders)
+  if [ "$DEL_STATUS" != "204" ] && [ "$DEL_STATUS" != "200" ]; then
+    TRASH_RESP=$(curl -s -w "\n%{http_code}" -X PATCH \
       -H "Authorization: Bearer $ACCESS_TOKEN" \
+      -H "Content-Type: application/json" \
+      -d '{"trashed": true}' \
       "https://www.googleapis.com/drive/v3/files/${fid}?supportsAllDrives=true")
-    if [ "$DEL_STATUS" = "204" ] || [ "$DEL_STATUS" = "200" ]; then
-      log_success "Deleted snapshot (ID: $fid)"
-      DELETED_COUNT=$((DELETED_COUNT + 1))
-    else
-      log_warn "Failed to delete snapshot ID $fid (HTTP status: $DEL_STATUS)"
-      FAILED_COUNT=$((FAILED_COUNT + 1))
+    TRASH_STATUS=$(echo "$TRASH_RESP" | tail -n1)
+    if [ "$TRASH_STATUS" = "200" ]; then
+      DEL_STATUS="200"
     fi
   fi
-done
+
+  # Strategy 3: Fallback to Unparenting from Folder
+  if [ "$DEL_STATUS" != "204" ] && [ "$DEL_STATUS" != "200" ] && [ -n "$GDRIVE_FOLDER_ID" ]; then
+    UNPARENT_RESP=$(curl -s -w "\n%{http_code}" -X PATCH \
+      -H "Authorization: Bearer $ACCESS_TOKEN" \
+      -H "Content-Type: application/json" \
+      "https://www.googleapis.com/drive/v3/files/${fid}?removeParents=${GDRIVE_FOLDER_ID}&supportsAllDrives=true")
+    UNPARENT_STATUS=$(echo "$UNPARENT_RESP" | tail -n1)
+    if [ "$UNPARENT_STATUS" = "200" ]; then
+      DEL_STATUS="200"
+    fi
+  fi
+
+  if [ "$DEL_STATUS" = "204" ] || [ "$DEL_STATUS" = "200" ]; then
+    log_success "Deleted snapshot: ${fname:-$fid}"
+    DELETED_COUNT=$((DELETED_COUNT + 1))
+  else
+    log_warn "Failed to delete snapshot '${fname:-$fid}' (ID: $fid, HTTP status: $DEL_STATUS)"
+    FAILED_COUNT=$((FAILED_COUNT + 1))
+  fi
+done <<< "$TO_DELETE_ITEMS"
 
 echo ""
 if [ "$FAILED_COUNT" -eq 0 ]; then
