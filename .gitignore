@@ -9,6 +9,7 @@
 !.vscode/launch.json.template
 
 .antigravitycli/
+.omo/
 
 conf/*
 !conf/odoo.conf.example
