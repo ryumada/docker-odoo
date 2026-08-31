@@ -225,8 +225,8 @@ function determineRestoredDBName() {
 
   local date_suffix=""
   case "$use_date_suffix" in
-    Y|y)
-      date_suffix="-$(date +"%Y%m%d_%H%M")"
+    N|n)
+      date_suffix=""
       ;;
     prompt)
       while true; do
@@ -247,9 +247,7 @@ function determineRestoredDBName() {
       done
       ;;
     *)
-      if [ -z "$db_prefix" ] && [ -z "$(grep "^DB_NAME=" "$env_file" 2>/dev/null | cut -d "=" -f 2 | tr -d '[:space:]')" ]; then
-        date_suffix="-$(date +"%Y%m%d-%H%M%S")"
-      fi
+      date_suffix="-$(date +"%Y%m%d_%H%M")"
       ;;
   esac
 

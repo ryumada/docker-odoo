@@ -196,8 +196,8 @@ function promptClonedDBName() {
   local USE_DATE_SUFFIX_INPUT
 
   case "$use_date_suffix" in
-    Y|y)
-      ODOO_DB_NAME_ENV="$DB_PREFIX-$ODOO_DEPLOYMENT_ENVIRONMENT-$(date +"%Y%m%d_%H%M")"
+    N|n)
+      ODOO_DB_NAME_ENV="$DB_PREFIX-$ODOO_DEPLOYMENT_ENVIRONMENT"
       ;;
     prompt)
       while true; do
@@ -214,7 +214,7 @@ function promptClonedDBName() {
       done
       ;;
     *)
-      ODOO_DB_NAME_ENV="$DB_PREFIX-$ODOO_DEPLOYMENT_ENVIRONMENT"
+      ODOO_DB_NAME_ENV="$DB_PREFIX-$ODOO_DEPLOYMENT_ENVIRONMENT-$(date +"%Y%m%d_%H%M")"
       ;;
   esac
 
