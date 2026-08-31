@@ -316,7 +316,9 @@ function upload_to_gdrive() {
   if [ -n "$raw_access_token" ]; then
     if [ -f "$raw_access_token" ]; then
       if [[ "$raw_access_token" == *.json ]] || grep -q '"type": *"service_account"' "$raw_access_token" 2>/dev/null; then
-        log_info "Exchanging Google Drive Service Account key file '$raw_access_token' for access token..."
+        local key_label="${sa_key_path:-$raw_access_token}"
+        [[ "$key_label" =~ ^\{ ]] && key_label="Service Account JSON"
+        log_info "Exchanging Google Drive Service Account key '$key_label' for access token..."
         access_token=$(get_gdrive_access_token_from_sa "$raw_access_token")
       else
         access_token=$(tr -d '\r\n' < "$raw_access_token")
@@ -325,7 +327,9 @@ function upload_to_gdrive() {
       access_token="$raw_access_token"
     fi
   elif [ -n "$sa_key_path" ]; then
-    log_info "Exchanging Google Drive Service Account key file '$sa_key_path' for access token..."
+    local key_label="$sa_key_path"
+    [[ "$key_label" =~ ^\{ ]] && key_label="Service Account JSON"
+    log_info "Exchanging Google Drive Service Account key '$key_label' for access token..."
     access_token=$(get_gdrive_access_token_from_sa "$sa_key_path")
   fi
 
