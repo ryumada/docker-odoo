@@ -336,8 +336,9 @@ function upload_to_gdrive() {
     fi
 
     local current_chunk_len=$((end_byte - start_byte + 1))
+    local pct=$(( (end_byte + 1) * 100 / file_size ))
 
-    log_info "Uploading bytes ${start_byte}-${end_byte}/${file_size} to Google Drive..."
+    log_info "Uploading bytes ${start_byte}-${end_byte}/${file_size} (${pct}%) to Google Drive..."
 
     local http_response http_status response_body
     http_response=$( (dd if="$file_path" bs="$chunk_size" skip="$chunk_index" count=1 status=none | \
