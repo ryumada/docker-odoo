@@ -67,7 +67,7 @@ Examples:
   ./scripts/cleanup-snapshot.sh --keep 24
   ./scripts/cleanup-snapshot.sh --keep 24 --force
   ./scripts/cleanup-snapshot.sh --all --keep 10
-EOFsnapshot
+EOF
 }
 
 while [[ $# -gt 0 ]]; do
