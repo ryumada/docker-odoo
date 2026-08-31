@@ -641,7 +641,7 @@ MANIFEST_EOF"
   if remote_exec "[ -f '$remote_cache_zip' ]"; then
     remote_exec "cd '$remote_staging/tmp/zip_staging' && zip -u -q '$remote_cache_zip' dump.sql manifest.json"
     if remote_exec "[ -d '$remote_mirror' ] && [ -n \"\$(ls -A '$remote_mirror' 2>/dev/null)\" ]"; then
-      remote_exec "ln -sfn '$remote_mirror' '$remote_staging/tmp/zip_staging/filestore' && cd '$remote_staging/tmp/zip_staging' && zip -u -FS -0 -r -q '$remote_cache_zip' filestore"
+      remote_exec "ln -sfn '$remote_mirror' '$remote_staging/tmp/zip_staging/filestore' && cd '$remote_staging/tmp/zip_staging' && zip -FS -0 -r -q '$remote_cache_zip' filestore"
     fi
   else
     if remote_exec "[ -d '$remote_mirror' ] && [ -n \"\$(ls -A '$remote_mirror' 2>/dev/null)\" ]"; then
@@ -898,7 +898,7 @@ EOF
     log_info "Updating cached $ZIP_FILE_NAME incrementally..."
     (cd "$ZIP_STAGING_DIR" && zip -u -q "$SNAPSHOT_CACHE_ZIP" dump.sql manifest.json)
     if [ -d "$ZIP_STAGING_DIR/filestore" ]; then
-      (cd "$ZIP_STAGING_DIR" && zip -u -FS -0 -r -q "$SNAPSHOT_CACHE_ZIP" filestore)
+      (cd "$ZIP_STAGING_DIR" && zip -FS -0 -r -q "$SNAPSHOT_CACHE_ZIP" filestore)
     fi
   else
     log_info "Creating initial cached $ZIP_FILE_NAME (store mode)..."

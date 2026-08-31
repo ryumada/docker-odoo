@@ -349,7 +349,7 @@ if [ -f "$CACHE_ZIP" ]; then
   log_info "Updating $ZIP_FILE_NAME in /tmp incrementally..."
   zip -u -q "$BACKUP_FILE_PATH" "${FILES_TO_UPDATE[@]}"
   if [ -d "filestore" ]; then
-    zip -u -FS -0 -r -q "$BACKUP_FILE_PATH" filestore
+    zip -FS -0 -r -q "$BACKUP_FILE_PATH" filestore
   fi
 else
   log_info "Creating $ZIP_FILE_NAME in /tmp (store mode)..."
