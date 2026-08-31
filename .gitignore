@@ -26,6 +26,7 @@ scripts/*
 !scripts/add_hostname_to_btop_titlebar.sh
 !scripts/bump_image_version.sh
 !scripts/change_database.sh
+!scripts/cleanup-snapshot.sh
 !scripts/dataodoo-backupper.sh
 !scripts/dataodoo-password_changer.sh
 !scripts/dataodoo-remover.sh

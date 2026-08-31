@@ -270,7 +270,7 @@ function cleanup_gdrive_old_snapshots() {
 
   log_info "Running Google Drive retention lifecycle (keeping latest $max_keep snapshots for $service)..."
 
-  local query="name contains 'snapshot-${service}' and trashed = false"
+  local query="(name contains 'snapshot-${service}' or name contains 'snapshot--') and trashed = false"
   if [ -n "$folder" ]; then
     query="$query and '$folder' in parents"
   fi
@@ -286,18 +286,42 @@ function cleanup_gdrive_old_snapshots() {
     --data-urlencode "pageSize=100" \
     "https://www.googleapis.com/drive/v3/files")
 
+  if echo "$response" | grep -q '"error":'; then
+    log_error "Google Drive API returned an error during retention cleanup:"
+    log_error "$response"
+    return 1
+  fi
+
   local file_ids
   file_ids=$(echo "$response" | grep -o '"id": *"[^"]*"' | cut -d'"' -f4)
+
+  local total_count=0
+  if [ -n "$file_ids" ]; then
+    total_count=$(echo "$file_ids" | grep -c . || echo "0")
+  fi
+
+  if [ "$total_count" -le "$max_keep" ]; then
+    log_info "Total snapshots found on Google Drive ($total_count) is within retention limit ($max_keep). Nothing to delete."
+    return 0
+  fi
+
+  local delete_count=$((total_count - max_keep))
+  log_info "Found $total_count remote snapshots. Deleting $delete_count older snapshot(s)..."
 
   local to_delete
   to_delete=$(echo "$file_ids" | tail -n +$((max_keep + 1)))
 
   for fid in $to_delete; do
     if [ -n "$fid" ]; then
-      log_info "Deleting old remote snapshot: $fid"
-      curl -s -X DELETE \
+      local del_status
+      del_status=$(curl -s -o /dev/null -w "%{http_code}" -X DELETE \
         -H "Authorization: Bearer $token" \
-        "https://www.googleapis.com/drive/v3/files/${fid}?supportsAllDrives=true" >/dev/null 2>&1 || true
+        "https://www.googleapis.com/drive/v3/files/${fid}?supportsAllDrives=true")
+      if [ "$del_status" = "204" ] || [ "$del_status" = "200" ]; then
+        log_info "Deleted old remote snapshot (ID: $fid)"
+      else
+        log_warn "Failed to delete remote snapshot ID $fid (HTTP $del_status). Check Service Account permissions (requires Editor/Manager on Google Drive folder)."
+      fi
     fi
   done
 }
