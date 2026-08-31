@@ -249,6 +249,11 @@ function upload_to_gdrive() {
   local folder_id="$4"
   local chunk_size_cfg="$5"
   local max_backups_cfg="$6"
+  local service_name="${7:-$SERVICE_NAME}"
+
+  if [ -z "$service_name" ]; then
+    service_name=$(basename "$file_path" | sed -E 's/^snapshot-(.*)\.tar\.zst$/\1/' | sed -E 's/-[0-9]{8}-[0-9]{6}$//')
+  fi
 
   if [ ! -f "$file_path" ]; then
     log_error "Snapshot file '$file_path' not found for Google Drive upload."
@@ -290,7 +295,7 @@ function upload_to_gdrive() {
 
   local upload_timestamp
   upload_timestamp=$(date +"%Y%m%d-%H%M%S")
-  local file_name="snapshot-${SERVICE_NAME}-${upload_timestamp}.tar.zst"
+  local file_name="snapshot-${service_name}-${upload_timestamp}.tar.zst"
   local file_size mime_type
   file_size=$(wc -c < "$file_path" | tr -d ' ')
   mime_type="application/octet-stream"
@@ -360,7 +365,7 @@ function upload_to_gdrive() {
       # 200/201: File upload completed
       log_success "Google Drive chunked upload completed successfully for $file_name."
       if [ -n "$max_backups_cfg" ]; then
-        cleanup_gdrive_old_snapshots "$access_token" "$folder_id" "$SERVICE_NAME" "$max_backups_cfg"
+        cleanup_gdrive_old_snapshots "$access_token" "$folder_id" "$service_name" "$max_backups_cfg"
       fi
       return 0
     else
@@ -676,8 +681,14 @@ MANIFEST_EOF"
     upload_funcs=$(declare -f log log_info log_success log_warn log_error get_gdrive_access_token_from_sa cleanup_gdrive_old_snapshots upload_to_gdrive)
 
     if remote_exec "bash -s" << REMOTE_EOF
+COLOR_RESET='$COLOR_RESET'
+COLOR_INFO='$COLOR_INFO'
+COLOR_SUCCESS='$COLOR_SUCCESS'
+COLOR_WARN='$COLOR_WARN'
+COLOR_ERROR='$COLOR_ERROR'
+SERVICE_NAME='$SERVICE_NAME'
 $upload_funcs
-upload_to_gdrive '$remote_staging/snapshot-$SERVICE_NAME.tar.zst' '$GDRIVE_ACCESS_TOKEN' '$remote_sa_content' '$GDRIVE_FOLDER_ID' '$GDRIVE_CHUNK_SIZE' '$GDRIVE_MAX_BACKUPS'
+upload_to_gdrive '$remote_staging/snapshot-$SERVICE_NAME.tar.zst' '$GDRIVE_ACCESS_TOKEN' '$remote_sa_content' '$GDRIVE_FOLDER_ID' '$GDRIVE_CHUNK_SIZE' '$GDRIVE_MAX_BACKUPS' '$SERVICE_NAME'
 REMOTE_EOF
     then
       remote_upload_success=true
