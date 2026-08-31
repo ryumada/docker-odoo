@@ -3,7 +3,7 @@ set -e
 # Category: Utility
 # Description: Creates a full Odoo snapshot (database dump + filestore + configs) locally or via secondary VPS over SSH.
 # Usage: ./scripts/snapshot-SERVICE_NAME [auto]
-# Dependencies: sudo, git, zstd, tar, docker, pg_dump, gcloud, rsync, ssh, curl, dd, flock
+# Dependencies: sudo, git, zstd, tar, docker, pg_dump, gcloud, rsync, ssh, curl, dd, flock, zip
 
 CURRENT_DIR=$(dirname "$(readlink -f "$0")")
 CURRENT_DIR_USER=$(stat -c '%U' "$CURRENT_DIR")
@@ -564,11 +564,12 @@ function run_remote_snapshot() {
 
   local remote_base="$remote_home/.odoo-snapshots/$SERVICE_NAME"
   local remote_mirror="$remote_base/mirror/filestore"
+  local remote_cache="$remote_base/cache"
   local remote_staging="$remote_base/staging"
   local remote_archives="$remote_base/archives"
 
   log_info "Preparing directory structure on Secondary VPS under $remote_base/..."
-  remote_exec "mkdir -p '$remote_mirror' '$remote_staging/tmp' '$remote_archives' && chmod 700 '$remote_home/.odoo-snapshots'"
+  remote_exec "mkdir -p '$remote_mirror' '$remote_cache' '$remote_staging/tmp' '$remote_archives' && chmod 700 '$remote_home/.odoo-snapshots'"
 
   local odoo_filestore_path="/var/lib/odoo/$SERVICE_NAME/filestore/$ODOO_DATABASE_NAME_PRD"
   if [ -d "$odoo_filestore_path" ]; then
@@ -634,13 +635,24 @@ MANIFEST_EOF"
   log_info "Moving database dump to zip staging on Secondary VPS..."
   remote_exec "if [ -f '$remote_staging/tmp/dump.sql' ]; then mv '$remote_staging/tmp/dump.sql' '$remote_staging/tmp/zip_staging/dump.sql'; fi"
 
-  log_info "Creating backupdata-$SERVICE_NAME.zip on Secondary VPS..."
-  if remote_exec "[ -d '$remote_mirror' ] && [ -n \"\$(ls -A '$remote_mirror' 2>/dev/null)\" ]"; then
-    remote_exec "ln -sfn '$remote_mirror' '$remote_staging/tmp/zip_staging/filestore' && cd '$remote_staging/tmp/zip_staging' && zip -r -q '$remote_staging/tmp/backupdata-$SERVICE_NAME.zip' dump.sql manifest.json filestore"
+  local remote_cache_zip="$remote_cache/backupdata-$SERVICE_NAME.zip"
+  log_info "Updating cached backupdata-$SERVICE_NAME.zip incrementally on Secondary VPS..."
+  if remote_exec "[ -f '$remote_cache_zip' ]"; then
+    remote_exec "cd '$remote_staging/tmp/zip_staging' && zip -u -q '$remote_cache_zip' dump.sql manifest.json"
+    if remote_exec "[ -d '$remote_mirror' ] && [ -n \"\$(ls -A '$remote_mirror' 2>/dev/null)\" ]"; then
+      remote_exec "ln -sfn '$remote_mirror' '$remote_staging/tmp/zip_staging/filestore' && cd '$remote_staging/tmp/zip_staging' && zip -u -FS -0 -r -q '$remote_cache_zip' filestore"
+    fi
   else
-    remote_exec "cd '$remote_staging/tmp/zip_staging' && zip -r -q '$remote_staging/tmp/backupdata-$SERVICE_NAME.zip' dump.sql manifest.json"
+    if remote_exec "[ -d '$remote_mirror' ] && [ -n \"\$(ls -A '$remote_mirror' 2>/dev/null)\" ]"; then
+      remote_exec "ln -sfn '$remote_mirror' '$remote_staging/tmp/zip_staging/filestore' && cd '$remote_staging/tmp/zip_staging' && zip -0 -r -q '$remote_cache_zip' dump.sql manifest.json filestore"
+    else
+      remote_exec "cd '$remote_staging/tmp/zip_staging' && zip -0 -r -q '$remote_cache_zip' dump.sql manifest.json"
+    fi
   fi
   remote_exec "rm -rf '$remote_staging/tmp/zip_staging'"
+
+  log_info "Copying cached backup bundle to staging on Secondary VPS..."
+  remote_exec "cp -f '$remote_cache_zip' '$remote_staging/tmp/backupdata-$SERVICE_NAME.zip'"
 
   log_info "Packaging snapshot-$SERVICE_NAME.tar.zst on Secondary VPS (compression level: $compression_level)..."
   remote_exec "cd '$remote_staging' && tar -cf '$remote_staging/snapshot-$SERVICE_NAME.tar.zst' -I 'zstd -vT0 -$compression_level --ultra' *"
@@ -732,6 +744,8 @@ function main() {
   ZIP_FILE_NAME="backupdata-$SERVICE_NAME.zip"
   ZIP_STAGING_DIR="/tmp/backupdata_staging_$SERVICE_NAME"
   BACKUPDATA_ZIP_PATH="/tmp/$ZIP_FILE_NAME"
+  SNAPSHOT_CACHE_DIR="$OWNER_HOME/.odoo-snapshots/$SERVICE_NAME/cache"
+  SNAPSHOT_CACHE_ZIP="$SNAPSHOT_CACHE_DIR/backupdata-$SERVICE_NAME.zip"
   GIT_HASHES_FILE=""
 
   cleanup_temp_files() {
@@ -850,6 +864,8 @@ function main() {
   # --- Dynamic Odoo Version Extraction & Staging ---
   rm -rf "$ZIP_STAGING_DIR" "$BACKUPDATA_ZIP_PATH"
   mkdir -p "$ZIP_STAGING_DIR"
+  mkdir -p "$SNAPSHOT_CACHE_DIR"
+  chmod 700 "$OWNER_HOME/.odoo-snapshots" "$SNAPSHOT_CACHE_DIR" 2>/dev/null || true
 
   log_info "Dumping $ODOO_DATABASE_NAME_PRD database to staging dump.sql..."
   if ! run_pg_dump --no-owner "$ODOO_DATABASE_NAME_PRD" > "$ZIP_STAGING_DIR/dump.sql"; then
@@ -877,15 +893,30 @@ EOF
     log_warn "Filestore path not found: $ODOO_FILESTORE_PATH"
   fi
 
-  log_info "Creating $ZIP_FILE_NAME..."
-  if [ -d "$ZIP_STAGING_DIR/filestore" ]; then
-    (cd "$ZIP_STAGING_DIR" && zip -r -q "$BACKUPDATA_ZIP_PATH" dump.sql manifest.json filestore)
+  if [ -f "$SNAPSHOT_CACHE_ZIP" ]; then
+    log_info "Updating cached $ZIP_FILE_NAME incrementally..."
+    (cd "$ZIP_STAGING_DIR" && zip -u -q "$SNAPSHOT_CACHE_ZIP" dump.sql manifest.json)
+    if [ -d "$ZIP_STAGING_DIR/filestore" ]; then
+      (cd "$ZIP_STAGING_DIR" && zip -u -FS -0 -r -q "$SNAPSHOT_CACHE_ZIP" filestore)
+    fi
   else
-    (cd "$ZIP_STAGING_DIR" && zip -r -q "$BACKUPDATA_ZIP_PATH" dump.sql manifest.json)
+    log_info "Creating initial cached $ZIP_FILE_NAME (store mode)..."
+    if [ -d "$ZIP_STAGING_DIR/filestore" ]; then
+      (cd "$ZIP_STAGING_DIR" && zip -0 -r -q "$SNAPSHOT_CACHE_ZIP" dump.sql manifest.json filestore)
+    else
+      (cd "$ZIP_STAGING_DIR" && zip -0 -r -q "$SNAPSHOT_CACHE_ZIP" dump.sql manifest.json)
+    fi
   fi
+
+  # Maintain correct ownership and permissions on cache
+  chown -R "$REPOSITORY_OWNER": "$SNAPSHOT_CACHE_DIR" 2>/dev/null || true
+  chmod 644 "$SNAPSHOT_CACHE_ZIP" 2>/dev/null || true
 
   # Clean up staging directory after zipping
   rm -rf "$ZIP_STAGING_DIR"
+
+  log_info "Copying cached backup bundle to staging..."
+  cp -f "$SNAPSHOT_CACHE_ZIP" "$BACKUPDATA_ZIP_PATH"
 
   ## This variable below to define the new variable (DON'T EDIT)
   # Use array for files
