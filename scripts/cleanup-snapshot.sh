@@ -290,8 +290,11 @@ try:
         print("NO_FILES")
         sys.exit(0)
 
+    header_fmt = "{:<4} | {:<9} | {:<45} | {:<10} | {:<19}"
+    row_fmt = "{:<4} | {:<18} | {:<45} | {:<10} | {:<19}"
+
     print("=" * 110)
-    print(f"{'No':<4} | {'Action':<9} | {'Snapshot File Name':<45} | {'Size':<10} | {'Created At':<19}")
+    print(header_fmt.format("No", "Action", "Snapshot File Name", "Size", "Created At"))
     print("-" * 110)
 
     for idx, f in enumerate(files, 1):
@@ -302,7 +305,7 @@ try:
             action = "\033[0;32m[KEEP]\033[0m"
         else:
             action = "\033[0;31m[DELETE]\033[0m"
-        print(f"{idx:<4} | {action:<18} | {name:<45} | {size:<10} | {created:<19}")
+        print(row_fmt.format(idx, action, name, size, created))
 
     print("=" * 110)
     total = len(files)
