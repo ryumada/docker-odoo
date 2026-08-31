@@ -3,7 +3,7 @@ set -e
 # Category: Utility
 # Description: Creates a full Odoo snapshot (database dump + filestore + configs) locally or via secondary VPS over SSH.
 # Usage: ./scripts/snapshot-SERVICE_NAME [auto]
-# Dependencies: sudo, git, zstd, tar, docker, pg_dump, gcloud, rsync, ssh, curl, dd
+# Dependencies: sudo, git, zstd, tar, docker, pg_dump, gcloud, rsync, ssh, curl, dd, flock
 
 CURRENT_DIR=$(dirname "$(readlink -f "$0")")
 CURRENT_DIR_USER=$(stat -c '%U' "$CURRENT_DIR")
@@ -718,6 +718,17 @@ function main() {
       exit 1
   fi
 
+  # Prevent multiple snapshot instances from running simultaneously
+  LOCK_FILE="/var/run/snapshot-$SERVICE_NAME.lock"
+  exec 200>"$LOCK_FILE"
+  if ! flock -n 200; then
+    local running_pid
+    running_pid=$(cat "$LOCK_FILE" 2>/dev/null || echo "unknown")
+    log_warn "Another snapshot instance for $SERVICE_NAME is already running (PID: $running_pid). Exiting."
+    exit 0
+  fi
+  echo "$$" > "$LOCK_FILE"
+
   ZIP_FILE_NAME="backupdata-$SERVICE_NAME.zip"
   ZIP_STAGING_DIR="/tmp/backupdata_staging_$SERVICE_NAME"
   BACKUPDATA_ZIP_PATH="/tmp/$ZIP_FILE_NAME"
@@ -725,6 +736,9 @@ function main() {
 
   cleanup_temp_files() {
       local exit_code=$?
+      if [[ -n "$LOCK_FILE" && -f "$LOCK_FILE" ]]; then
+          rm -f "$LOCK_FILE"
+      fi
       if [[ -n "$ZIP_STAGING_DIR" && -d "$ZIP_STAGING_DIR" ]]; then
           rm -rf "$ZIP_STAGING_DIR"
       fi

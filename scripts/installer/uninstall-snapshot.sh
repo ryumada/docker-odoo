@@ -88,6 +88,8 @@ function main() {
     rm -f -- "$SCRIPT_FILE"
   fi
 
+  rm -f -- "/var/run/snapshot-$SERVICE_NAME.lock"
+
   log_success "Snapshot utility uninstalled successfully."
 }
 
