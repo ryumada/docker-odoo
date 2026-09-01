@@ -245,7 +245,11 @@ function determineRestoredDBName() {
 
   local base_db_name
   base_db_name=$(grep "^DB_NAME=" "$env_file" 2>/dev/null | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
-  [ -z "$base_db_name" ] && base_db_name="$SERVICE_NAME"
+
+  if [ -n "$base_db_name" ]; then
+    echo "$base_db_name"
+    return 0
+  fi
 
   local db_prefix=""
   if grep -q "^DB_PREFIX_COUNT=" "$env_file"; then
@@ -283,7 +287,7 @@ function determineRestoredDBName() {
       ;;
   esac
 
-  echo "${db_prefix}${base_db_name}${date_suffix}"
+  echo "${db_prefix}${SERVICE_NAME}${date_suffix}"
 }
 
 function isBackupDataExists() {
