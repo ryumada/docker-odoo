@@ -65,56 +65,64 @@ function installCronJob() {
   local SNAPSHOT_REMOTE_HOST="$5"
   local ENABLE_SNAPSHOT="$6"
 
+  local cron_target="/etc/cron.d/snapshot-$SERVICE_NAME"
+
+  if [ -z "$SNAPSHOT_TIME_LIST" ]; then
+    if [ -f "$cron_target" ]; then
+      log_info "Removing existing snapshot cron job: $cron_target"
+      sudo rm -f "$cron_target"
+      log_info "Restarting cron service..."
+      sudo systemctl restart cron || true
+    fi
+    log_info "SNAPSHOT_TIME is empty. Periodic snapshot cron is disabled (tool available for manual execution)."
+    return 0
+  fi
+
   if [ -z "$ENABLE_SNAPSHOT" ] && [ -z "$GCS_BUCKET_NAME" ] && [ -z "$GDRIVE_ACCESS_TOKEN" ] && [ -z "$GDRIVE_SERVICE_ACCOUNT_KEY" ] && [ -z "$SNAPSHOT_REMOTE_HOST" ]; then
     log_warn "ENABLE_SNAPSHOT is not set in .env. The snapshot will not run automatically."
-  else
-    log_info "Create a cron to run automatically the snapshot script."
-    cat << EOF > "$HOME/snapshot-$SERVICE_NAME"
+    return 0
+  fi
+
+  log_info "Creating cron job to run snapshot script periodically..."
+  cat << EOF > "$HOME/snapshot-$SERVICE_NAME"
 SHELL=/bin/bash
 PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
 
 EOF
 
-    # Why on minute 27? I just want to avoid the cron from the application run altogether with this snapshot cron
-    if [ -z "$SNAPSHOT_TIME_LIST" ]; then
-      cat << EOF >> "$HOME/snapshot-$SERVICE_NAME"
-# Run the snapshot script every 4 hours
-27 */4 * * * root "/usr/local/sbin/snapshot-$SERVICE_NAME"
-
-EOF
-    else
-      for SNAPSHOT_TIME in $(echo "$SNAPSHOT_TIME_LIST" | tr "," "\n"); do
-        cat << EOF >> "$HOME/snapshot-$SERVICE_NAME"
+  for SNAPSHOT_TIME in $(echo "$SNAPSHOT_TIME_LIST" | tr "," "\n"); do
+    cat << EOF >> "$HOME/snapshot-$SERVICE_NAME"
 # Run the snapshot script at $SNAPSHOT_TIME
 27 $SNAPSHOT_TIME * * * root "/usr/local/sbin/snapshot-$SERVICE_NAME"
 
 EOF
-      done
-    fi
+  done
 
-    log_info "Move the cron file to /etc/cron.d"
-    sudo mv "$HOME/snapshot-$SERVICE_NAME" "/etc/cron.d/snapshot-$SERVICE_NAME"
-    log_info "Change the ownership of the snapshot file"
-    sudo chown root: "/etc/cron.d/snapshot-$SERVICE_NAME"
-    log_info "Change the permission of the snapshot file"
-    sudo chmod 644 "/etc/cron.d/snapshot-$SERVICE_NAME"
-    log_info "Restart the cron service"
-    sudo systemctl restart cron
-  fi
+  log_info "Move the cron file to /etc/cron.d"
+  sudo mv "$HOME/snapshot-$SERVICE_NAME" "$cron_target"
+  log_info "Change the ownership of the snapshot file"
+  sudo chown root: "$cron_target"
+  log_info "Change the permission of the snapshot file"
+  sudo chmod 644 "$cron_target"
+  log_info "Restart the cron service"
+  sudo systemctl restart cron
 }
 
 validateSnapshotTimeList() {
   local snapshot_times="$1"
 
   if [ -z "$snapshot_times" ]; then
-    log_warn "SNAPSHOT_TIME_LIST is empty. No validation needed."
+    log_info "SNAPSHOT_TIME is empty. Snapshot utility will be installed for manual execution only."
     return 0
   fi
 
   IFS=',' read -ra times <<< "$snapshot_times"
   for time in "${times[@]}"; do
+    if [[ "$time" =~ ^\*/[1-9][0-9]*$ ]] || [[ "$time" =~ ^[0-9]+-[0-9]+(/[1-9][0-9]*)?$ ]]; then
+      continue
+    fi
     if ! [[ "$time" =~ ^[0-9]+$ ]] || [ "$time" -lt 0 ] || [ "$time" -gt 23 ]; then
-      log_error "Invalid snapshot time: $time. It must be an integer between 0 and 23."
+      log_error "Invalid snapshot time: '$time'. It must be an integer between 0 and 23 or a cron interval like '*/4'."
       return 1
     fi
   done

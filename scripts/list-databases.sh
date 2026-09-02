@@ -2,7 +2,7 @@
 set -e
 # Category: Utility
 # Description: Lists all databases owned by the project's pg user.
-# Usage: ./scripts/list_databases.sh
+# Usage: ./scripts/list-databases.sh
 # Dependencies: docker, psql
 
 # Detect Repository Owner to run non-root commands as that user

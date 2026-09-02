@@ -332,7 +332,7 @@ main() {
         display_usage
         exit 0
     elif [[ "$1" == "-l" || "$1" == "--list-db" ]]; then
-        "$PATH_TO_ODOO/scripts/list_databases.sh"
+        "$PATH_TO_ODOO/scripts/list-databases.sh"
     fi
 
     # --- Inputs ---

@@ -121,7 +121,7 @@ function main() {
   create_sudoers_file "devops" "scripts" "change_database"
   create_sudoers_file "devops" "scripts" "git_addons_updater"
   create_sudoers_file "devops" "scripts" "git_odoo-base_updater"
-  create_sudoers_file "devops" "scripts" "list_databases"
+  create_sudoers_file "devops" "scripts" "list-databases"
   create_sudoers_file "devops" "scripts" "deploy_release_candidate-$SERVICE_NAME"
   create_sudoers_file "devops" "scripts" "restore_backupdata-$SERVICE_NAME"
 
@@ -129,7 +129,7 @@ function main() {
   create_sudoers_file "odoo" "scripts" "change_database"
   create_sudoers_file "odoo" "scripts" "git_addons_updater"
   create_sudoers_file "odoo" "scripts" "git_odoo-base_updater"
-  create_sudoers_file "odoo" "scripts" "list_databases"
+  create_sudoers_file "odoo" "scripts" "list-databases"
   create_sudoers_file "odoo" "scripts" "deploy_release_candidate-$SERVICE_NAME"
   create_sudoers_file "odoo" "scripts" "restore_backupdata-$SERVICE_NAME"
 
@@ -140,7 +140,7 @@ function main() {
     create_sudoers_file "$logged_in_user" "scripts" "change_database"
     create_sudoers_file "$logged_in_user" "scripts" "git_addons_updater"
     create_sudoers_file "$logged_in_user" "scripts" "git_odoo-base_updater"
-    create_sudoers_file "$logged_in_user" "scripts" "list_databases"
+    create_sudoers_file "$logged_in_user" "scripts" "list-databases"
     create_sudoers_file "$logged_in_user" "scripts" "backupdata-$SERVICE_NAME"
     create_sudoers_file "$logged_in_user" "scripts" "databasecloner-$SERVICE_NAME"
     create_sudoers_file "$logged_in_user" "scripts" "deploy_release_candidate-$SERVICE_NAME"

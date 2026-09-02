@@ -39,7 +39,7 @@ scripts/*
 !scripts/git_odoo-base_updater.sh
 !scripts/installer
 !scripts/install-font.sh
-!scripts/list_databases.sh
+!scripts/list-databases.sh
 !scripts/list-snapshot.sh
 !scripts/README.md
 !scripts/rename_project.sh
