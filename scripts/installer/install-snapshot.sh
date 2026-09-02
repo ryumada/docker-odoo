@@ -24,6 +24,11 @@ readonly COLOR_INFO="\033[0;34m"
 readonly COLOR_SUCCESS="\033[0;32m"
 readonly COLOR_WARN="\033[1;33m"
 readonly COLOR_ERROR="\033[0;31m"
+readonly COLOR_BOLD="\033[1m"
+readonly COLOR_CYAN="\033[0;36m"
+
+TODO_LIST=()
+
 
 # Function to log messages with a specific color and emoji
 log() {
@@ -188,37 +193,69 @@ function main() {
     fi
 
     # Verify passwordless SSH connectivity strictly with BatchMode=yes
+    local ssh_verified=false
     log_info "Verifying passwordless SSH key authentication with Secondary VPS ($SNAPSHOT_REMOTE_USER@$SNAPSHOT_REMOTE_HOST:$SNAPSHOT_REMOTE_PORT)..."
-    if ! ssh -i "$SNAPSHOT_REMOTE_KEY" -p "$SNAPSHOT_REMOTE_PORT" -o BatchMode=yes -o StrictHostKeyChecking=accept-new "$SNAPSHOT_REMOTE_USER@$SNAPSHOT_REMOTE_HOST" "true" 2>/dev/null; then
-      log_info "Passwordless SSH key not yet installed on Secondary VPS."
-      log_info "Copying public SSH key to Secondary VPS (you may be prompted for password once)..."
-
-      if command -v ssh-copy-id >/dev/null 2>&1; then
-        ssh-copy-id -i "${SNAPSHOT_REMOTE_KEY}.pub" -p "$SNAPSHOT_REMOTE_PORT" -o StrictHostKeyChecking=accept-new "$SNAPSHOT_REMOTE_USER@$SNAPSHOT_REMOTE_HOST"
-      else
-        cat "${SNAPSHOT_REMOTE_KEY}.pub" | ssh -p "$SNAPSHOT_REMOTE_PORT" -o StrictHostKeyChecking=accept-new "$SNAPSHOT_REMOTE_USER@$SNAPSHOT_REMOTE_HOST" "mkdir -p ~/.ssh && chmod 700 ~/.ssh && cat >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys"
-      fi
-
-      # Re-verify with BatchMode=yes
-      if ! ssh -i "$SNAPSHOT_REMOTE_KEY" -p "$SNAPSHOT_REMOTE_PORT" -o BatchMode=yes -o StrictHostKeyChecking=accept-new "$SNAPSHOT_REMOTE_USER@$SNAPSHOT_REMOTE_HOST" "true" 2>/dev/null; then
-        log_error "Failed to establish passwordless SSH key authentication with Secondary VPS."
-        exit 1
-      fi
-      log_success "Passwordless SSH key installed and verified on Secondary VPS."
-    else
+    if ssh -i "$SNAPSHOT_REMOTE_KEY" -p "$SNAPSHOT_REMOTE_PORT" -o BatchMode=yes -o StrictHostKeyChecking=accept-new "$SNAPSHOT_REMOTE_USER@$SNAPSHOT_REMOTE_HOST" "true" 2>/dev/null; then
       log_success "Passwordless SSH key authentication verified on Secondary VPS."
+      ssh_verified=true
+    else
+      log_warn "Passwordless SSH key not yet verified on Secondary VPS ($SNAPSHOT_REMOTE_HOST)."
+      echo -ne "${COLOR_WARN}Do you want to automatically copy the public SSH key to Secondary VPS ($SNAPSHOT_REMOTE_USER@$SNAPSHOT_REMOTE_HOST)? [y/N]: ${COLOR_RESET}"
+      read -r copy_confirm
+      if [[ "$copy_confirm" =~ ^[Yy]$ ]]; then
+        log_info "Copying public SSH key to Secondary VPS (you may be prompted for password)..."
+
+        if command -v ssh-copy-id >/dev/null 2>&1; then
+          ssh-copy-id -i "${SNAPSHOT_REMOTE_KEY}.pub" -p "$SNAPSHOT_REMOTE_PORT" -o StrictHostKeyChecking=accept-new "$SNAPSHOT_REMOTE_USER@$SNAPSHOT_REMOTE_HOST" || true
+        else
+          cat "${SNAPSHOT_REMOTE_KEY}.pub" | ssh -p "$SNAPSHOT_REMOTE_PORT" -o StrictHostKeyChecking=accept-new "$SNAPSHOT_REMOTE_USER@$SNAPSHOT_REMOTE_HOST" "mkdir -p ~/.ssh && chmod 700 ~/.ssh && cat >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys" || true
+        fi
+
+        # Re-verify with BatchMode=yes
+        if ssh -i "$SNAPSHOT_REMOTE_KEY" -p "$SNAPSHOT_REMOTE_PORT" -o BatchMode=yes -o StrictHostKeyChecking=accept-new "$SNAPSHOT_REMOTE_USER@$SNAPSHOT_REMOTE_HOST" "true" 2>/dev/null; then
+          log_success "Passwordless SSH key installed and verified on Secondary VPS."
+          ssh_verified=true
+        else
+          log_warn "Automatic key copy did not result in verified passwordless SSH access."
+        fi
+      else
+        log_info "Skipping automatic SSH key copy to Secondary VPS."
+      fi
+    fi
+
+    if [ "$ssh_verified" = false ]; then
+      local pub_key_content
+      pub_key_content=$(cat "${SNAPSHOT_REMOTE_KEY}.pub" 2>/dev/null || echo "")
+      TODO_LIST+=("SSH Key Registration on Secondary VPS:
+  Key File   : $SNAPSHOT_REMOTE_KEY
+  Public Key :
+  ${pub_key_content}
+
+  Please manually authorize this public key on the Secondary VPS (${SNAPSHOT_REMOTE_HOST}) as user '${SNAPSHOT_REMOTE_USER}':
+    mkdir -p ~/.ssh && chmod 700 ~/.ssh
+    echo '${pub_key_content}' >> ~/.ssh/authorized_keys
+    chmod 600 ~/.ssh/authorized_keys
+
+  Test the connection afterwards from this VPS:
+    ssh -i $SNAPSHOT_REMOTE_KEY -p $SNAPSHOT_REMOTE_PORT -o BatchMode=yes $SNAPSHOT_REMOTE_USER@$SNAPSHOT_REMOTE_HOST 'echo Connection successful'")
     fi
 
     local ssh_test_opts=(-i "$SNAPSHOT_REMOTE_KEY" -p "$SNAPSHOT_REMOTE_PORT" -o BatchMode=yes -o StrictHostKeyChecking=accept-new)
 
     if [ -n "$GCS_BUCKET_NAME" ]; then
-      log_info "Checking Google Cloud Storage access on Secondary VPS..."
-      if ! ssh "${ssh_test_opts[@]}" "$SNAPSHOT_REMOTE_USER@$SNAPSHOT_REMOTE_HOST" "command -v gcloud >/dev/null 2>&1" 2>/dev/null; then
-        log_warn "gcloud CLI is not installed on Secondary VPS ($SNAPSHOT_REMOTE_HOST)."
-      elif ! ssh "${ssh_test_opts[@]}" "$SNAPSHOT_REMOTE_USER@$SNAPSHOT_REMOTE_HOST" "gcloud storage ls 'gs://$GCS_BUCKET_NAME' >/dev/null 2>&1" 2>/dev/null; then
-        log_warn "Secondary VPS cannot access bucket gs://$GCS_BUCKET_NAME. Ensure gcloud is authenticated on Secondary VPS."
+      if [ "$ssh_verified" = true ]; then
+        log_info "Checking Google Cloud Storage access on Secondary VPS..."
+        if ! ssh "${ssh_test_opts[@]}" "$SNAPSHOT_REMOTE_USER@$SNAPSHOT_REMOTE_HOST" "command -v gcloud >/dev/null 2>&1" 2>/dev/null; then
+          log_warn "gcloud CLI is not installed on Secondary VPS ($SNAPSHOT_REMOTE_HOST)."
+        elif ! ssh "${ssh_test_opts[@]}" "$SNAPSHOT_REMOTE_USER@$SNAPSHOT_REMOTE_HOST" "gcloud storage ls 'gs://$GCS_BUCKET_NAME' >/dev/null 2>&1" 2>/dev/null; then
+          log_warn "Secondary VPS cannot access bucket gs://$GCS_BUCKET_NAME. Ensure gcloud is authenticated on Secondary VPS."
+        else
+          log_success "Secondary VPS has verified access to gs://$GCS_BUCKET_NAME."
+        fi
       else
-        log_success "Secondary VPS has verified access to gs://$GCS_BUCKET_NAME."
+        log_warn "Google Cloud Storage verification skipped because SSH access to Secondary VPS is pending."
+        TODO_LIST+=("Google Cloud Storage on Secondary VPS:
+  Once SSH key is authorized, ensure gcloud is installed and authenticated to access gs://$GCS_BUCKET_NAME.")
       fi
     fi
   fi
@@ -334,6 +371,18 @@ EOF
   sudo mv "$HOME/snapshot-$SERVICE_NAME" "/etc/logrotate.d/snapshot-$SERVICE_NAME"
 
   log_success "Installation finished"
+
+  if [ ${#TODO_LIST[@]} -gt 0 ]; then
+    echo ""
+    echo -e "${COLOR_BOLD}================================================================================${COLOR_RESET}"
+    echo -e "${COLOR_WARN}${COLOR_BOLD}📋 TODO / PENDING ACTIONS FOR SNAPSHOT SETUP${COLOR_RESET}"
+    echo -e "${COLOR_BOLD}================================================================================${COLOR_RESET}"
+    for todo in "${TODO_LIST[@]}"; do
+      echo -e "$todo"
+      echo -e "${COLOR_BOLD}--------------------------------------------------------------------------------${COLOR_RESET}"
+    done
+    echo ""
+  fi
 }
 
 main "$@"

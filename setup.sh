@@ -1421,6 +1421,23 @@ function main() {
     ODOO_DB_NAME=$(grep "^DB_NAME=" "$REPOSITORY_DIRPATH/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
     if [ -n "$ENABLE_SNAPSHOT" ] && [ -n "$ODOO_DB_NAME" ]; then
       "$REPOSITORY_DIRPATH/scripts/installer/install-snapshot.sh"
+
+      local remote_host remote_user remote_port remote_key owner_home
+      remote_host=$(grep "^SNAPSHOT_REMOTE_HOST=" "$REPOSITORY_DIRPATH/.env" 2>/dev/null | cut -d "=" -f 2- | sed 's/[[:space:]]*#.*//;s/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//')
+      if [ -n "$remote_host" ]; then
+        remote_user=$(grep "^SNAPSHOT_REMOTE_USER=" "$REPOSITORY_DIRPATH/.env" 2>/dev/null | cut -d "=" -f 2- | sed 's/[[:space:]]*#.*//;s/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//')
+        remote_port=$(grep "^SNAPSHOT_REMOTE_PORT=" "$REPOSITORY_DIRPATH/.env" 2>/dev/null | cut -d "=" -f 2- | sed 's/[[:space:]]*#.*//;s/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//')
+        remote_key=$(grep "^SNAPSHOT_REMOTE_KEY=" "$REPOSITORY_DIRPATH/.env" 2>/dev/null | cut -d "=" -f 2- | sed 's/[[:space:]]*#.*//;s/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//')
+        [ -z "$remote_port" ] && remote_port="22"
+        owner_home=$(eval echo "~$REPOSITORY_OWNER")
+        remote_key="${remote_key/#\~/$owner_home}"
+
+        if [ -n "$remote_key" ] && [ -f "$remote_key" ]; then
+          if ! ssh -i "$remote_key" -p "$remote_port" -o BatchMode=yes -o StrictHostKeyChecking=accept-new "$remote_user@$remote_host" "true" 2>/dev/null; then
+            TODO+=("Secondary VPS SSH Key not yet verified for $remote_user@$remote_host. Please add '$remote_key.pub' to ~/.ssh/authorized_keys on the Secondary VPS.")
+          fi
+        fi
+      fi
     else
       "$REPOSITORY_DIRPATH/scripts/installer/uninstall-snapshot.sh"
       log_warn "snapshot utility is not installed. Please fill ENABLE_SNAPSHOT and DB_NAME variables in your .env file, then re-run this install script to install snapshot utility."
