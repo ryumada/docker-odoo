@@ -158,8 +158,11 @@ function main() {
       exit 1
     fi
 
+    THIS_VPS_HOSTNAME=$(hostname -s 2>/dev/null || hostname 2>/dev/null || echo "vps-source")
+    CLEAN_TARGET_HOSTNAME=$(echo "$SNAPSHOT_REMOTE_HOST" | sed -e 's|^.*://||' -e 's|^.*@||' -e 's|:.*$||' -e 's|/.*$||' -e 's|[^a-zA-Z0-9._-]|_|g')
+
     if [ -z "$SNAPSHOT_REMOTE_KEY" ]; then
-      SNAPSHOT_REMOTE_KEY="$OWNER_HOME/.ssh/id_ed25519-snapshot-$SERVICE_NAME"
+      SNAPSHOT_REMOTE_KEY="$OWNER_HOME/.ssh/snapshot-${THIS_VPS_HOSTNAME}-${CLEAN_TARGET_HOSTNAME}"
       log_info "SNAPSHOT_REMOTE_KEY is not defined in .env, defaulting to $SNAPSHOT_REMOTE_KEY"
       if grep -q "^SNAPSHOT_REMOTE_KEY=" "$PATH_TO_ODOO/.env"; then
         sed -i "s|^SNAPSHOT_REMOTE_KEY=.*|SNAPSHOT_REMOTE_KEY=$SNAPSHOT_REMOTE_KEY|" "$PATH_TO_ODOO/.env"
@@ -177,7 +180,7 @@ function main() {
       mkdir -p "$(dirname "$SNAPSHOT_REMOTE_KEY")"
       chown "$REPOSITORY_OWNER": "$(dirname "$SNAPSHOT_REMOTE_KEY")"
       chmod 700 "$(dirname "$SNAPSHOT_REMOTE_KEY")"
-      ssh-keygen -t ed25519 -N "" -f "$SNAPSHOT_REMOTE_KEY" -C "docker-odoo-snapshot-$SERVICE_NAME@$(hostname)"
+      ssh-keygen -t ed25519 -N "" -f "$SNAPSHOT_REMOTE_KEY" -C "snapshot-${THIS_VPS_HOSTNAME}-${CLEAN_TARGET_HOSTNAME}@${THIS_VPS_HOSTNAME}"
       chown "$REPOSITORY_OWNER": "$SNAPSHOT_REMOTE_KEY" "${SNAPSHOT_REMOTE_KEY}.pub"
       chmod 600 "$SNAPSHOT_REMOTE_KEY"
       chmod 644 "${SNAPSHOT_REMOTE_KEY}.pub"

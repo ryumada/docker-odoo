@@ -34,6 +34,7 @@ scripts/*
 !scripts/download-snapshot.sh
 !scripts/generate_map.sh
 !scripts/generate_app_tree.sh
+!scripts/generate-snapshot-ssh-key.sh
 !scripts/git_addons_updater.sh
 !scripts/git_odoo-base_updater.sh
 !scripts/installer

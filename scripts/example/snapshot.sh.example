@@ -545,12 +545,17 @@ function run_remote_snapshot() {
   local compression_level="$5"
 
   if [ -z "$key" ]; then
-    if [ -f "$OWNER_HOME/.ssh/id_ed25519-snapshot-$SERVICE_NAME" ]; then
+    local this_vps clean_tgt
+    this_vps=$(hostname -s 2>/dev/null || hostname 2>/dev/null || echo "vps-source")
+    clean_tgt=$(echo "$host" | sed -e 's|^.*://||' -e 's|^.*@||' -e 's|:.*$||' -e 's|/.*$||' -e 's|[^a-zA-Z0-9._-]|_|g')
+    if [ -f "$OWNER_HOME/.ssh/snapshot-${this_vps}-${clean_tgt}" ]; then
+      key="$OWNER_HOME/.ssh/snapshot-${this_vps}-${clean_tgt}"
+    elif [ -f "$OWNER_HOME/.ssh/id_ed25519-snapshot-$SERVICE_NAME" ]; then
       key="$OWNER_HOME/.ssh/id_ed25519-snapshot-$SERVICE_NAME"
     elif [ -f "$OWNER_HOME/.ssh/id_ed25519_snapshot" ]; then
       key="$OWNER_HOME/.ssh/id_ed25519_snapshot"
     else
-      key="$OWNER_HOME/.ssh/id_ed25519-snapshot-$SERVICE_NAME"
+      key="$OWNER_HOME/.ssh/snapshot-${this_vps}-${clean_tgt}"
     fi
   fi
   key="${key/#\~/$OWNER_HOME}"

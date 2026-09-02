@@ -188,6 +188,47 @@ Uploads a local Odoo snapshot archive to Google Drive using Google Service Accou
 </details>
 
 <details>
+<summary>
+
+# Cleanup Snapshot
+
+</summary>
+
+Inspects and cleans up older Odoo snapshots on Google Drive based on retention policy.
+
+```bash
+# List snapshots with total size and retention status without deleting
+./scripts/cleanup-snapshot.sh -l
+
+# Dry-run deletion simulation
+./scripts/cleanup-snapshot.sh --dry-run
+
+# Delete snapshots keeping the latest 10
+./scripts/cleanup-snapshot.sh --keep 10 --force
+```
+
+</details>
+
+<details>
+<summary>
+
+# Generate Snapshot SSH Key
+
+</summary>
+
+Generates an ed25519 SSH key pair named `snapshot-$THIS_VPS_HOSTNAME-$TARGET_VPS_HOSTNAME` in `~/.ssh`, updates `.env`, and outputs the public key for manual installation on the Secondary VPS.
+
+```bash
+# Generate key interactively or using .env SNAPSHOT_REMOTE_HOST
+./scripts/generate-snapshot-ssh-key.sh
+
+# Specify target VPS host directly
+./scripts/generate-snapshot-ssh-key.sh --target-host backup-vps.example.com
+```
+
+</details>
+
+<details>
   <summary>
 
   # Snapshot Utilities
