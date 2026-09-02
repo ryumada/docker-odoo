@@ -3,7 +3,7 @@ set -e
 # Category: Utility
 # Description: Deploys release candidates using rsync for filestore and native localhost endpoint for SQL dump.
 # Usage: ./scripts/deploy_release_candidate_manual.sh <REPO_NAME> <BRANCH> <RENEW_DB> [MODULES]
-# Dependencies: git, docker, pg_dump, psql, rsync, zip, curl, sudo
+# Dependencies: git, docker, pg_dump, psql, rsync, zip, curl, sudo, ssh
 
 # Detect Repository Owner to run non-root commands as that user
 CURRENT_DIR=$(dirname "$(readlink -f "$0")")
@@ -13,7 +13,17 @@ SERVICE_NAME=$(basename "$PATH_TO_ODOO")
 REPOSITORY_OWNER=$(stat -c '%U' "$PATH_TO_ODOO")
 
 # Source common utilities
-source "$CURRENT_DIR/lib/odoo_utils.sh"
+if [ -f "$CURRENT_DIR/lib/odoo_utils.sh" ]; then
+    source "$CURRENT_DIR/lib/odoo_utils.sh"
+elif [ -f "$PATH_TO_ODOO/scripts/lib/odoo_utils.sh" ]; then
+    source "$PATH_TO_ODOO/scripts/lib/odoo_utils.sh"
+fi
+
+if [ -f "$CURRENT_DIR/lib/ssh_utils.sh" ]; then
+    source "$CURRENT_DIR/lib/ssh_utils.sh"
+elif [ -f "$PATH_TO_ODOO/scripts/lib/ssh_utils.sh" ]; then
+    source "$PATH_TO_ODOO/scripts/lib/ssh_utils.sh"
+fi
 
 # --- Logging Functions & Colors ---
 # Define colors for log messages
@@ -85,7 +95,7 @@ trap 'error_handler $? $LINENO "$BASH_COMMAND"' ERR
 
 # --- Centralized Cleanup Hook ---
 cleanup_temp_files() {
-    rm -f "/tmp/$STG_DB_NAME.sql" "/tmp/dump.sql" "/tmp/db_dump_only_$STG_DB_NAME.zip" 2>/dev/null || true
+    rm -f "/tmp/$STG_DB_NAME.sql" "/tmp/dump.sql" "/tmp/db_dump_only_$STG_DB_NAME.zip" "/tmp/backupdata-$SERVICE_NAME.zip" 2>/dev/null || true
     # Delete temp stderr log
     if [ -n "${STDERR_LOG:-}" ] && [ -f "$STDERR_LOG" ]; then
         rm -f "$STDERR_LOG"
@@ -554,210 +564,289 @@ main() {
     # 2. CLONE DATABASE (Manual)
     # ---------------------------------------------------------
     if [ "$IS_RENEW_DB" == "true" ]; then
-        PRD_PATH_TO_ODOO="$STG_PATH_TO_ODOO/../$SERVICE_NAME_PRD"
-        PRD_ENV_FILE="$PRD_PATH_TO_ODOO/.env"
-        if [ ! -f "$PRD_ENV_FILE" ]; then log_error "Prod .env not found."; exit 1; fi
+        PRD_SSH_HOST=$(grep "^PRD_SSH_HOST=" "$STG_ENV_FILE" 2>/dev/null | cut -d '=' -f2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//' || true)
+        PRD_SSH_USER=$(grep "^PRD_SSH_USER=" "$STG_ENV_FILE" 2>/dev/null | cut -d '=' -f2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//' || true)
+        PRD_SSH_PORT=$(grep "^PRD_SSH_PORT=" "$STG_ENV_FILE" 2>/dev/null | cut -d '=' -f2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//' || true)
+        PRD_SSH_KEY=$(grep "^PRD_SSH_KEY=" "$STG_ENV_FILE" 2>/dev/null | cut -d '=' -f2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//' || true)
+        PRD_SSH_PATH=$(grep "^PRD_SSH_PATH=" "$STG_ENV_FILE" 2>/dev/null | cut -d '=' -f2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//' || true)
+        [ -z "$PRD_SSH_PORT" ] && PRD_SSH_PORT="22"
 
-        PRD_DB_NAME=$(grep "^DB_NAME=" "$PRD_ENV_FILE" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
-        if [ -z "$PRD_DB_NAME" ]; then log_error "DB_NAME not set in prod."; exit 1; fi
-
-        STG_ADMIN_PASSWD=$(grep "^ADMIN_PASSWD=" "$STG_ENV_FILE" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
-        STG_PORT=$(grep "^PORT=" "$STG_ENV_FILE" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
-        if [ "$BACKUP_RESTORE_METHOD" != "manual" ]; then
-            if [ -z "$STG_ADMIN_PASSWD" ] || [ -z "$STG_PORT" ]; then
-                log_error "ADMIN_PASSWD and/or PORT not set in staging .env file. Cannot proceed with endpoint cloning."
-                exit 1
+        if [ -n "$PRD_SSH_HOST" ]; then
+            if [ -z "$PRD_SSH_USER" ] || [ -z "$PRD_SSH_PATH" ]; then
+                fail_with_json "PRD_SSH_USER and PRD_SSH_PATH are required when PRD_SSH_HOST is configured in .env!"
             fi
-        fi
 
-        if [ "$BACKUP_RESTORE_METHOD" = "manual" ]; then
-            log_stage "[2/4] Cloning Production Database to Staging (Manual PSQL Mode)..."
-        else
-            log_stage "[2/4] Cloning Production Database to Staging (Endpoint Mode)..."
-        fi
+            local PRD_SERVICE_NAME
+            PRD_SERVICE_NAME=$(basename "$PRD_SSH_PATH")
 
-        ODOO_FILESTORE_PATH_PRD="/var/lib/odoo/$SERVICE_NAME_PRD/filestore/$PRD_DB_NAME"
-        ODOO_FILESTORE_PATH_ENV="/var/lib/odoo/$SERVICE_NAME/filestore/$STG_DB_NAME"
+            log_stage "[2/4] Cloning Remote Production Database to Staging (SSH Mode)..."
 
-        log_info "Dump $PRD_DB_NAME to temporary file"
-        PSQL_ENV_FILE="$PRD_ENV_FILE" run_pg_dump --no-owner -d "$PRD_DB_NAME" > "/tmp/$STG_DB_NAME.sql"
-
-        # From this point onwards, all database commands (run_psql) target the staging environment database.
-        export PSQL_ENV_FILE="$STG_ENV_FILE"
-
-        # Sync Filestore
-        if [ -d "$ODOO_FILESTORE_PATH_ENV" ]; then
-            log_warn "Remove old filestore $STG_DB_NAME"
-            rm -rf "$ODOO_FILESTORE_PATH_ENV"
-        fi
-        mkdir -p "$ODOO_FILESTORE_PATH_ENV"
-        rsync -a "$ODOO_FILESTORE_PATH_PRD/" "$ODOO_FILESTORE_PATH_ENV"
-        chown -R odoo: "$ODOO_FILESTORE_PATH_ENV"
-
-        log_warn "Drop old database $STG_DB_NAME"
-        run_psql -d postgres -c "DROP DATABASE IF EXISTS \"$STG_DB_NAME\" WITH (FORCE)" >/dev/null 2>&1 || log_warn "Error dropping DB, proceeding..."
-
-        if [ "$BACKUP_RESTORE_METHOD" != "manual" ]; then
-            log_info "Ensuring staging environment is running to receive endpoint restore command..."
-            if curl -s -o /dev/null http://localhost:$STG_PORT; then
-                log_success "Staging environment is running."
+            local key_path
+            if declare -f ensure_ssh_key_for_remote >/dev/null 2>&1; then
+                key_path=$(ensure_ssh_key_for_remote "deploy_rc" "$PRD_SSH_HOST" "$PRD_SSH_USER" "$PRD_SSH_KEY" "$REPOSITORY_OWNER" "PRD_SSH_KEY" "$STG_ENV_FILE")
             else
-                log_warn "Staging environment is not running. Starting it...";
-                docker compose -f "$STG_PATH_TO_ODOO/docker-compose.yml" up -d > /dev/null 2>&1 || true
-                log_info "Waiting for 15 seconds until the Odoo Instance is ready..."
-                sleep 15
+                local owner_home
+                owner_home=$(eval echo "~$REPOSITORY_OWNER")
+                [ -z "$owner_home" ] && owner_home="$HOME"
+                key_path="${PRD_SSH_KEY/#\~/$owner_home}"
             fi
-        else
-            log_info "Skipping staging environment readiness check (pure manual PSQL mode)."
-        fi
 
-        NEUTRALIZE_DB=$(grep "^NEUTRALIZE_DATABASE=" "$PRD_ENV_FILE" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' | tr '[:upper:]' '[:lower:]' || true)
-        if [ -z "$NEUTRALIZE_DB" ]; then NEUTRALIZE_DB="true"; fi
-
-        if [ "$BACKUP_RESTORE_METHOD" = "manual" ]; then
-            # --- PURE MANUAL PSQL RESTORE ---
-            # No endpoint needed: direct SQL dump restoration via psql
-
-            ODOO_VERSION=$(grep "^ODOO_VERSION=" "$STG_ENV_FILE" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
-            ODOO_VERSION_NUM=${ODOO_VERSION%%.*}
-            if [[ ! "$ODOO_VERSION_NUM" =~ ^[0-9]+$ ]]; then
-              if [[ "$ODOO_VERSION" == "latest" ]]; then
-                ODOO_VERSION_NUM=18
-              else
-                ODOO_VERSION_NUM=16
-              fi
+            local prd_ssh_opts=(-p "$PRD_SSH_PORT" -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o ServerAliveInterval=30 -o ServerAliveCountMax=5)
+            local prd_rsync_ssh="ssh -p $PRD_SSH_PORT -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o ServerAliveInterval=30 -o ServerAliveCountMax=5"
+            if [ -n "$key_path" ] && [ -f "$key_path" ]; then
+                prd_ssh_opts+=(-i "$key_path")
+                prd_rsync_ssh+=" -i $key_path"
             fi
-            log_info "Detected staging Odoo Version: ${ODOO_VERSION:-16} (Numeric: $ODOO_VERSION_NUM)"
 
-            # Re-create database with correct owner
-            DB_USER=$(grep "^ACTIVE_DB_USER=" "$STG_ENV_FILE" 2>/dev/null | cut -d '=' -f2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//')
-            [ -z "$DB_USER" ] && DB_USER=$(cat "$(dirname "$STG_ENV_FILE")/.secrets/db_user" 2>/dev/null || echo "odoo")
+            log_info "Connecting to Remote Production VPS ($PRD_SSH_USER@$PRD_SSH_HOST:$PRD_SSH_PORT)..."
+            if ! ssh "${prd_ssh_opts[@]}" "$PRD_SSH_USER@$PRD_SSH_HOST" "true" 2>/dev/null; then
+                fail_with_json "Failed to establish SSH connection with Remote Production VPS at $PRD_SSH_USER@$PRD_SSH_HOST:$PRD_SSH_PORT."
+            fi
+            log_success "SSH connection to Production VPS established."
 
-            log_info "Dropping old database $STG_DB_NAME (with force)"
-            run_psql -d postgres -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '$STG_DB_NAME' AND pid <> pg_backend_pid();" > /dev/null 2>&1 || true
-            run_psql -d postgres -c "DROP DATABASE IF EXISTS \"$STG_DB_NAME\"" >/dev/null
-
-            log_info "Creating new database $STG_DB_NAME with owner $DB_USER"
-            run_psql -d postgres -c "CREATE DATABASE \"$STG_DB_NAME\" OWNER \"$DB_USER\"" >/dev/null
-
-            # Restore from SQL dump
-            log_info "Restoring database from SQL dump via psql..."
-            run_psql -d "$STG_DB_NAME" < "/tmp/$STG_DB_NAME.sql" >/dev/null
-
-            log_success "Database restored successfully via psql."
-
-            log_info "Altering database object ownership..."
-            local POSTGRES_USER_DEV="$DB_USER"
-            run_psql -d "$STG_DB_NAME" -c "
-              -- Change the owner of all tables
-              DO \$\$
-              DECLARE
-                  rec RECORD;
-              BEGIN
-                  FOR rec IN (SELECT tablename FROM pg_tables WHERE schemaname = 'public') LOOP
-                      EXECUTE 'ALTER TABLE ' || quote_ident(rec.tablename) || ' OWNER TO \"${POSTGRES_USER_DEV}\"';
-                  END LOOP;
-              END \$\$;
-
-              -- Change the owner of all sequences
-              DO \$\$
-              DECLARE
-                  rec RECORD;
-              BEGIN
-                  FOR rec IN (SELECT sequence_name FROM information_schema.sequences WHERE sequence_schema = 'public') LOOP
-                      EXECUTE 'ALTER SEQUENCE ' || quote_ident(rec.sequence_name) || ' OWNER TO \"${POSTGRES_USER_DEV}\"';
-                  END LOOP;
-              END \$\$;
-
-              -- Change the owner of all views (Standard)
-              DO \$\$
-              DECLARE
-                  rec RECORD;
-              BEGIN
-                  FOR rec IN (SELECT table_name FROM information_schema.views WHERE table_schema = 'public') LOOP
-                      EXECUTE 'ALTER VIEW ' || quote_ident(rec.table_name) || ' OWNER TO \"${POSTGRES_USER_DEV}\"';
-                  END LOOP;
-              END \$\$;
-
-              -- Change the owner of all materialized views
-              DO \$\$
-              DECLARE
-                  rec RECORD;
-              BEGIN
-                  FOR rec IN (SELECT matviewname FROM pg_matviews WHERE schemaname = 'public') LOOP
-                      EXECUTE 'ALTER MATERIALIZED VIEW ' || quote_ident(rec.matviewname) || ' OWNER TO \"${POSTGRES_USER_DEV}\"';
-                  END LOOP;
-              END \$\$;
+            log_info "Step 1/3: Triggering backup on Remote Production VPS for service '$PRD_SERVICE_NAME'..."
+            ssh "${prd_ssh_opts[@]}" "$PRD_SSH_USER@$PRD_SSH_HOST" "
+                if command -v backupdata-$PRD_SERVICE_NAME &>/dev/null; then
+                    sudo backupdata-$PRD_SERVICE_NAME
+                elif [ -f '$PRD_SSH_PATH/scripts/backupdata-$PRD_SERVICE_NAME.sh' ]; then
+                    sudo '$PRD_SSH_PATH/scripts/backupdata-$PRD_SERVICE_NAME.sh'
+                elif [ -f '$PRD_SSH_PATH/scripts/backupdata.sh' ]; then
+                    sudo '$PRD_SSH_PATH/scripts/backupdata.sh'
+                elif [ -f '$PRD_SSH_PATH/scripts/dataodoo-backupper.sh' ]; then
+                    sudo '$PRD_SSH_PATH/scripts/dataodoo-backupper.sh'
+                else
+                    echo '❌ backupdata script not found on remote production VPS at $PRD_SSH_PATH' >&2
+                    exit 1
+                fi
             "
 
-            # Neutralize if enabled (manual method uses SQL neutralize)
-            if [ "$NEUTRALIZE_DB" = "true" ]; then
-                sanitize_database "$STG_DB_NAME"
+            log_info "Step 2/3: Downloading backup archive from Remote Production VPS to /tmp/backupdata-$SERVICE_NAME.zip..."
+            rsync -e "$prd_rsync_ssh" -avz "$PRD_SSH_USER@$PRD_SSH_HOST:/tmp/backupdata-$PRD_SERVICE_NAME.zip" "/tmp/backupdata-$SERVICE_NAME.zip"
+            log_success "Download completed."
+
+            # Remote cleanup
+            ssh "${prd_ssh_opts[@]}" "$PRD_SSH_USER@$PRD_SSH_HOST" "rm -f /tmp/backupdata-$PRD_SERVICE_NAME.zip" 2>/dev/null || true
+
+            log_info "Step 3/3: Restoring backup data into Staging database '$STG_DB_NAME'..."
+            if command -v restore_backupdata-$SERVICE_NAME &>/dev/null; then
+                restore_backupdata-$SERVICE_NAME "/tmp/backupdata-$SERVICE_NAME.zip" --name "$STG_DB_NAME"
+            elif [ -f "$STG_PATH_TO_ODOO/scripts/restore_backupdata-$SERVICE_NAME.sh" ]; then
+                "$STG_PATH_TO_ODOO/scripts/restore_backupdata-$SERVICE_NAME.sh" "/tmp/backupdata-$SERVICE_NAME.zip" --name "$STG_DB_NAME"
+            elif [ -f "$STG_PATH_TO_ODOO/scripts/restore_backupdata.sh" ]; then
+                "$STG_PATH_TO_ODOO/scripts/restore_backupdata.sh" "/tmp/backupdata-$SERVICE_NAME.zip" --name "$STG_DB_NAME"
+            else
+                fail_with_json "restore_backupdata utility not found on local staging instance."
             fi
+
+            rm -f "/tmp/backupdata-$SERVICE_NAME.zip" 2>/dev/null || true
+            trigger_registry_reload "$STG_DB_NAME" "$STG_PATH_TO_ODOO"
+            log_success "Database clone from remote production completed successfully."
         else
-            # --- SEMI_MANUAL ENDPOINT RESTORE ---
+            PRD_PATH_TO_ODOO="$STG_PATH_TO_ODOO/../$SERVICE_NAME_PRD"
+            PRD_ENV_FILE="$PRD_PATH_TO_ODOO/.env"
+            if [ ! -f "$PRD_ENV_FILE" ]; then log_error "Prod .env not found."; exit 1; fi
 
-            log_info "Preparing db_dump_only.zip archive containing dump.sql for staging endpoint import..."
-            rm -f "/tmp/dump.sql" "/tmp/db_dump_only_$STG_DB_NAME.zip"
-            mv "/tmp/$STG_DB_NAME.sql" "/tmp/dump.sql"
-            (cd /tmp && zip -q "db_dump_only_$STG_DB_NAME.zip" dump.sql)
-            rm -f "/tmp/dump.sql"
+            PRD_DB_NAME=$(grep "^DB_NAME=" "$PRD_ENV_FILE" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
+            if [ -z "$PRD_DB_NAME" ]; then log_error "DB_NAME not set in prod."; exit 1; fi
 
-            ODOO_VERSION=$(grep "^ODOO_VERSION=" "$STG_ENV_FILE" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
-            ODOO_VERSION_NUM=${ODOO_VERSION%%.*}
-            if [[ ! "$ODOO_VERSION_NUM" =~ ^[0-9]+$ ]]; then
-              if [[ "$ODOO_VERSION" == "latest" ]]; then
-                ODOO_VERSION_NUM=18
-              else
-                ODOO_VERSION_NUM=16
-              fi
+            STG_ADMIN_PASSWD=$(grep "^ADMIN_PASSWD=" "$STG_ENV_FILE" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
+            STG_PORT=$(grep "^PORT=" "$STG_ENV_FILE" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
+            if [ "$BACKUP_RESTORE_METHOD" != "manual" ]; then
+                if [ -z "$STG_ADMIN_PASSWD" ] || [ -z "$STG_PORT" ]; then
+                    log_error "ADMIN_PASSWD and/or PORT not set in staging .env file. Cannot proceed with endpoint cloning."
+                    exit 1
+                fi
             fi
-            log_info "Detected staging Odoo Version: ${ODOO_VERSION:-16} (Numeric: $ODOO_VERSION_NUM)"
 
-            log_info "Restoring database schema/data via direct localhost endpoint..."
-
-            CURL_OUT=$(mktemp)
-
-            if [ "$ODOO_VERSION_NUM" -ge 16 ]; then
-              curl -s -X POST \
-                -F "master_pwd=$STG_ADMIN_PASSWD" \
-                -F "name=$STG_DB_NAME" \
-                -F "backup_file=@/tmp/db_dump_only_$STG_DB_NAME.zip" \
-                -F "copy=true" \
-                -F "neutralize_database=$NEUTRALIZE_DB" \
-                "http://localhost:$STG_PORT/web/database/restore" > "$CURL_OUT" 2>&1 || true
+            if [ "$BACKUP_RESTORE_METHOD" = "manual" ]; then
+                log_stage "[2/4] Cloning Production Database to Staging (Manual PSQL Mode)..."
             else
-              curl -s -X POST \
-                -F "master_pwd=$STG_ADMIN_PASSWD" \
-                -F "name=$STG_DB_NAME" \
-                -F "backup_file=@/tmp/db_dump_only_$STG_DB_NAME.zip" \
-                -F "copy=true" \
-                "http://localhost:$STG_PORT/web/database/restore" > "$CURL_OUT" 2>&1 || true
+                log_stage "[2/4] Cloning Production Database to Staging (Endpoint Mode)..."
             fi
-            response=$(cat "$CURL_OUT")
-            rm -f "$CURL_OUT"
 
-            response_lower="${response,,}"
-            if [[ "$response_lower" == *"redirecting"* ]] && [[ "$response_lower" == *"/web/database/manager"* ]]; then
-              log_success "Database clone command completed successfully."
-            elif [[ "$response_lower" == *"error"* ]] || \
-                 [[ "$response_lower" == *"incorrect master password"* ]] || \
-                 [ -z "$response" ]; then
-              log_error "Failed to clone database via endpoint. Response: ${response:-'Empty response'}"
-              exit 1
+            ODOO_FILESTORE_PATH_PRD="/var/lib/odoo/$SERVICE_NAME_PRD/filestore/$PRD_DB_NAME"
+            ODOO_FILESTORE_PATH_ENV="/var/lib/odoo/$SERVICE_NAME/filestore/$STG_DB_NAME"
+
+            log_info "Dump $PRD_DB_NAME to temporary file"
+            PSQL_ENV_FILE="$PRD_ENV_FILE" run_pg_dump --no-owner -d "$PRD_DB_NAME" > "/tmp/$STG_DB_NAME.sql"
+
+            # From this point onwards, all database commands (run_psql) target the staging environment database.
+            export PSQL_ENV_FILE="$STG_ENV_FILE"
+
+            # Sync Filestore
+            if [ -d "$ODOO_FILESTORE_PATH_ENV" ]; then
+                log_warn "Remove old filestore $STG_DB_NAME"
+                rm -rf "$ODOO_FILESTORE_PATH_ENV"
+            fi
+            mkdir -p "$ODOO_FILESTORE_PATH_ENV"
+            rsync -a "$ODOO_FILESTORE_PATH_PRD/" "$ODOO_FILESTORE_PATH_ENV"
+            chown -R odoo: "$ODOO_FILESTORE_PATH_ENV"
+
+            log_warn "Drop old database $STG_DB_NAME"
+            run_psql -d postgres -c "DROP DATABASE IF EXISTS \"$STG_DB_NAME\" WITH (FORCE)" >/dev/null 2>&1 || log_warn "Error dropping DB, proceeding..."
+
+            if [ "$BACKUP_RESTORE_METHOD" != "manual" ]; then
+                log_info "Ensuring staging environment is running to receive endpoint restore command..."
+                if curl -s -o /dev/null http://localhost:$STG_PORT; then
+                    log_success "Staging environment is running."
+                else
+                    log_warn "Staging environment is not running. Starting it...";
+                    docker compose -f "$STG_PATH_TO_ODOO/docker-compose.yml" up -d > /dev/null 2>&1 || true
+                    log_info "Waiting for 15 seconds until the Odoo Instance is ready..."
+                    sleep 15
+                fi
             else
-              log_success "Database clone command completed."
+                log_info "Skipping staging environment readiness check (pure manual PSQL mode)."
             fi
 
-            if [ "$NEUTRALIZE_DB" = "true" ] && [ "$ODOO_VERSION_NUM" -lt 16 ]; then
-              log_info "Staging Odoo version < 16 detected. Performing manual SQL database neutralization fallback..."
-              sanitize_database "$STG_DB_NAME"
+            NEUTRALIZE_DB=$(grep "^NEUTRALIZE_DATABASE=" "$PRD_ENV_FILE" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' | tr '[:upper:]' '[:lower:]' || true)
+            if [ -z "$NEUTRALIZE_DB" ]; then NEUTRALIZE_DB="true"; fi
+
+            if [ "$BACKUP_RESTORE_METHOD" = "manual" ]; then
+                # --- PURE MANUAL PSQL RESTORE ---
+                # No endpoint needed: direct SQL dump restoration via psql
+
+                ODOO_VERSION=$(grep "^ODOO_VERSION=" "$STG_ENV_FILE" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
+                ODOO_VERSION_NUM=${ODOO_VERSION%%.*}
+                if [[ ! "$ODOO_VERSION_NUM" =~ ^[0-9]+$ ]]; then
+                  if [[ "$ODOO_VERSION" == "latest" ]]; then
+                    ODOO_VERSION_NUM=18
+                  else
+                    ODOO_VERSION_NUM=16
+                  fi
+                fi
+                log_info "Detected staging Odoo Version: ${ODOO_VERSION:-16} (Numeric: $ODOO_VERSION_NUM)"
+
+                # Re-create database with correct owner
+                DB_USER=$(grep "^ACTIVE_DB_USER=" "$STG_ENV_FILE" 2>/dev/null | cut -d '=' -f2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//')
+                [ -z "$DB_USER" ] && DB_USER=$(cat "$(dirname "$STG_ENV_FILE")/.secrets/db_user" 2>/dev/null || echo "odoo")
+
+                log_info "Dropping old database $STG_DB_NAME (with force)"
+                run_psql -d postgres -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '$STG_DB_NAME' AND pid <> pg_backend_pid();" > /dev/null 2>&1 || true
+                run_psql -d postgres -c "DROP DATABASE IF EXISTS \"$STG_DB_NAME\"" >/dev/null
+
+                log_info "Creating new database $STG_DB_NAME with owner $DB_USER"
+                run_psql -d postgres -c "CREATE DATABASE \"$STG_DB_NAME\" OWNER \"$DB_USER\"" >/dev/null
+
+                # Restore from SQL dump
+                log_info "Restoring database from SQL dump via psql..."
+                run_psql -d "$STG_DB_NAME" < "/tmp/$STG_DB_NAME.sql" >/dev/null
+
+                log_success "Database restored successfully via psql."
+
+                log_info "Altering database object ownership..."
+                local POSTGRES_USER_DEV="$DB_USER"
+                run_psql -d "$STG_DB_NAME" -c "
+                  -- Change the owner of all tables
+                  DO \$\$
+                  DECLARE
+                      rec RECORD;
+                  BEGIN
+                      FOR rec IN (SELECT tablename FROM pg_tables WHERE schemaname = 'public') LOOP
+                          EXECUTE 'ALTER TABLE ' || quote_ident(rec.tablename) || ' OWNER TO \"${POSTGRES_USER_DEV}\"';
+                      END LOOP;
+                  END \$\$;
+
+                  -- Change the owner of all sequences
+                  DO \$\$
+                  DECLARE
+                      rec RECORD;
+                  BEGIN
+                      FOR rec IN (SELECT sequence_name FROM information_schema.sequences WHERE sequence_schema = 'public') LOOP
+                          EXECUTE 'ALTER SEQUENCE ' || quote_ident(rec.sequence_name) || ' OWNER TO \"${POSTGRES_USER_DEV}\"';
+                      END LOOP;
+                  END \$\$;
+
+                  -- Change the owner of all views (Standard)
+                  DO \$\$
+                  DECLARE
+                      rec RECORD;
+                  BEGIN
+                      FOR rec IN (SELECT table_name FROM information_schema.views WHERE table_schema = 'public') LOOP
+                          EXECUTE 'ALTER VIEW ' || quote_ident(rec.table_name) || ' OWNER TO \"${POSTGRES_USER_DEV}\"';
+                      END LOOP;
+                  END \$\$;
+
+                  -- Change the owner of all materialized views
+                  DO \$\$
+                  DECLARE
+                      rec RECORD;
+                  BEGIN
+                      FOR rec IN (SELECT matviewname FROM pg_matviews WHERE schemaname = 'public') LOOP
+                          EXECUTE 'ALTER MATERIALIZED VIEW ' || quote_ident(rec.matviewname) || ' OWNER TO \"${POSTGRES_USER_DEV}\"';
+                      END LOOP;
+                  END \$\$;
+                "
+
+                # Neutralize if enabled (manual method uses SQL neutralize)
+                if [ "$NEUTRALIZE_DB" = "true" ]; then
+                    sanitize_database "$STG_DB_NAME"
+                fi
+            else
+                # --- SEMI_MANUAL ENDPOINT RESTORE ---
+
+                log_info "Preparing db_dump_only.zip archive containing dump.sql for staging endpoint import..."
+                rm -f "/tmp/dump.sql" "/tmp/db_dump_only_$STG_DB_NAME.zip"
+                mv "/tmp/$STG_DB_NAME.sql" "/tmp/dump.sql"
+                (cd /tmp && zip -q "db_dump_only_$STG_DB_NAME.zip" dump.sql)
+                rm -f "/tmp/dump.sql"
+
+                ODOO_VERSION=$(grep "^ODOO_VERSION=" "$STG_ENV_FILE" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
+                ODOO_VERSION_NUM=${ODOO_VERSION%%.*}
+                if [[ ! "$ODOO_VERSION_NUM" =~ ^[0-9]+$ ]]; then
+                  if [[ "$ODOO_VERSION" == "latest" ]]; then
+                    ODOO_VERSION_NUM=18
+                  else
+                    ODOO_VERSION_NUM=16
+                  fi
+                fi
+                log_info "Detected staging Odoo Version: ${ODOO_VERSION:-16} (Numeric: $ODOO_VERSION_NUM)"
+
+                log_info "Restoring database schema/data via direct localhost endpoint..."
+
+                CURL_OUT=$(mktemp)
+
+                if [ "$ODOO_VERSION_NUM" -ge 16 ]; then
+                  curl -s -X POST \
+                    -F "master_pwd=$STG_ADMIN_PASSWD" \
+                    -F "name=$STG_DB_NAME" \
+                    -F "backup_file=@/tmp/db_dump_only_$STG_DB_NAME.zip" \
+                    -F "copy=true" \
+                    -F "neutralize_database=$NEUTRALIZE_DB" \
+                    "http://localhost:$STG_PORT/web/database/restore" > "$CURL_OUT" 2>&1 || true
+                else
+                  curl -s -X POST \
+                    -F "master_pwd=$STG_ADMIN_PASSWD" \
+                    -F "name=$STG_DB_NAME" \
+                    -F "backup_file=@/tmp/db_dump_only_$STG_DB_NAME.zip" \
+                    -F "copy=true" \
+                    "http://localhost:$STG_PORT/web/database/restore" > "$CURL_OUT" 2>&1 || true
+                fi
+                response=$(cat "$CURL_OUT")
+                rm -f "$CURL_OUT"
+
+                response_lower="${response,,}"
+                if [[ "$response_lower" == *"redirecting"* ]] && [[ "$response_lower" == *"/web/database/manager"* ]]; then
+                  log_success "Database clone command completed successfully."
+                elif [[ "$response_lower" == *"error"* ]] || \
+                     [[ "$response_lower" == *"incorrect master password"* ]] || \
+                     [ -z "$response" ]; then
+                  log_error "Failed to clone database via endpoint. Response: ${response:-'Empty response'}"
+                  exit 1
+                else
+                  log_success "Database clone command completed."
+                fi
+
+                if [ "$NEUTRALIZE_DB" = "true" ] && [ "$ODOO_VERSION_NUM" -lt 16 ]; then
+                  log_info "Staging Odoo version < 16 detected. Performing manual SQL database neutralization fallback..."
+                  sanitize_database "$STG_DB_NAME"
+                fi
             fi
+
+            trigger_registry_reload "$STG_DB_NAME" "$STG_PATH_TO_ODOO"
+
+            log_success "Database clone complete."
         fi
-
-        trigger_registry_reload "$STG_DB_NAME" "$STG_PATH_TO_ODOO"
-
-        log_success "Database clone complete."
     else
         log_stage "[2/4] Skipping Database Clone."
     fi

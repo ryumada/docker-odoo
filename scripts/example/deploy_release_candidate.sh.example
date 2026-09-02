@@ -3,7 +3,7 @@ set -e
 # Category: Utility
 # Description: Deploys release candidates (standard).
 # Usage: ./scripts/deploy_release_candidate.sh <REPO_NAME> <BRANCH> <RENEW_DB> [MODULES]
-# Dependencies: git, docker, curl, sudo
+# Dependencies: git, docker, curl, sudo, rsync, ssh
 
 # Detect Repository Owner to run non-root commands as that user
 CURRENT_DIR=$(dirname "$(readlink -f "$0")")
@@ -11,6 +11,12 @@ CURRENT_DIR_USER=$(stat -c '%U' "$CURRENT_DIR")
 PATH_TO_ODOO=$(sudo -u "$CURRENT_DIR_USER" git -C "$(dirname "$(readlink -f "$0")")" rev-parse --show-toplevel)
 SERVICE_NAME=$(basename "$PATH_TO_ODOO")
 REPOSITORY_OWNER=$(stat -c '%U' "$PATH_TO_ODOO")
+
+if [ -f "$CURRENT_DIR/lib/ssh_utils.sh" ]; then
+    source "$CURRENT_DIR/lib/ssh_utils.sh"
+elif [ -f "$PATH_TO_ODOO/scripts/lib/ssh_utils.sh" ]; then
+    source "$PATH_TO_ODOO/scripts/lib/ssh_utils.sh"
+fi
 
 # Configuration
 ENV_FILE=".env"
@@ -90,6 +96,7 @@ cleanup_temp_files() {
     if [ -n "$TEMP_BACKUP_FILE" ] && [ -f "$TEMP_BACKUP_FILE" ]; then
         rm -f "$TEMP_BACKUP_FILE"
     fi
+    rm -f "/tmp/backupdata-$SERVICE_NAME.zip" 2>/dev/null || true
     # Delete temp stderr log
     if [ -n "${STDERR_LOG:-}" ] && [ -f "$STDERR_LOG" ]; then
         rm -f "$STDERR_LOG"
@@ -488,144 +495,222 @@ fi
 # 2. CLONE DATABASE (Data Reset)
 # ---------------------------------------------------------
 if [ "$IS_RENEW_DB" == "true" ]; then
-    PRD_PATH_TO_ODOO="$STG_PATH_TO_ODOO/../$SERVICE_NAME_PRD"
-    PRD_ENV_FILE="$PRD_PATH_TO_ODOO/.env"
+    PRD_SSH_HOST=$(grep "^PRD_SSH_HOST=" "$STG_ENV_FILE" 2>/dev/null | cut -d '=' -f2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//' || true)
+    PRD_SSH_USER=$(grep "^PRD_SSH_USER=" "$STG_ENV_FILE" 2>/dev/null | cut -d '=' -f2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//' || true)
+    PRD_SSH_PORT=$(grep "^PRD_SSH_PORT=" "$STG_ENV_FILE" 2>/dev/null | cut -d '=' -f2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//' || true)
+    PRD_SSH_KEY=$(grep "^PRD_SSH_KEY=" "$STG_ENV_FILE" 2>/dev/null | cut -d '=' -f2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//' || true)
+    PRD_SSH_PATH=$(grep "^PRD_SSH_PATH=" "$STG_ENV_FILE" 2>/dev/null | cut -d '=' -f2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//' || true)
+    [ -z "$PRD_SSH_PORT" ] && PRD_SSH_PORT="22"
 
-    if [ ! -f "$PRD_ENV_FILE" ]; then
-        log_error "Production .env file not found at: $PRD_ENV_FILE"
-        exit 1
-    fi
+    if [ -n "$PRD_SSH_HOST" ]; then
+        if [ -z "$PRD_SSH_USER" ] || [ -z "$PRD_SSH_PATH" ]; then
+            fail_with_json "PRD_SSH_USER and PRD_SSH_PATH are required when PRD_SSH_HOST is configured in .env!"
+        fi
 
-    PRD_DB_NAME=$(grep "^DB_NAME=" "$PRD_ENV_FILE" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
+        local PRD_SERVICE_NAME
+        PRD_SERVICE_NAME=$(basename "$PRD_SSH_PATH")
 
-    if [ -z "$PRD_DB_NAME" ]; then
-        log_error "DB_NAME is not set in the production environment. Please set it at: $PRD_ENV_FILE"
-        exit 1
-    fi
+        log_stage "[2/4] Cloning Remote Production Database to Staging (SSH Mode)..."
 
-    log_stage "[2/4] Cloning Production Database to Staging..."
-
-    # if the DB_NAME variable is set in Staging Environment file, drop it first
-    STG_PORT=$(grep "^PORT=" "$STG_ENV_FILE" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
-    STG_ADMIN_PASSWD=$(grep "^ADMIN_PASSWD=" "$STG_ENV_FILE" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
-
-    # Check Staging (Destination) Health
-    log_info "Checking Staging ($SERVICE_NAME) Health..."
-    checkOdooEndpoint "$STG_PORT"
-
-    if [ -n "$STG_DB_NAME_FROM_ENV" ]; then
-        log_info "Dropping old database '$STG_DB_NAME_FROM_ENV' if it exists..."
-
-        drop_response=$(curl -s -X POST \
-            -d "master_pwd=$STG_ADMIN_PASSWD" \
-            -d "name=$STG_DB_NAME_FROM_ENV" \
-            "http://localhost:$STG_PORT/web/database/drop")
-
-        drop_response_lower="${drop_response,,}"
-
-        if [[ "$drop_response_lower" == *"error"* ]] && [[ "$drop_response_lower" != *"does not exist"* ]] || \
-           [[ "$drop_response_lower" == *"no space left"* ]] || \
-           [[ "$drop_response_lower" == *"<html"* ]]; then
-            log_warn "Could not drop database '$STG_DB_NAME_FROM_ENV'. It might not exist or another error occurred. Response: $drop_response"
+        local key_path
+        if declare -f ensure_ssh_key_for_remote >/dev/null 2>&1; then
+            key_path=$(ensure_ssh_key_for_remote "deploy_rc" "$PRD_SSH_HOST" "$PRD_SSH_USER" "$PRD_SSH_KEY" "$REPOSITORY_OWNER" "PRD_SSH_KEY" "$STG_ENV_FILE")
         else
-            log_success "Drop database command completed for '$STG_DB_NAME_FROM_ENV'."
+            local owner_home
+            owner_home=$(eval echo "~$REPOSITORY_OWNER")
+            [ -z "$owner_home" ] && owner_home="$HOME"
+            key_path="${PRD_SSH_KEY/#\~/$owner_home}"
         fi
-    fi
 
-    # backup the database from production environment
-    TEMP_BACKUP_FILE="/tmp/temp_backup_db-$SERVICE_NAME_PRD-$(date +"%Y%m%d_%H%M%S").zip"
-    PRD_PORT=$(grep "^PORT=" "$PRD_ENV_FILE" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
-    PRD_ADMIN_PASSWD=$(grep "^ADMIN_PASSWD=" "$PRD_ENV_FILE" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
+        local prd_ssh_opts=(-p "$PRD_SSH_PORT" -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o ServerAliveInterval=30 -o ServerAliveCountMax=5)
+        local prd_rsync_ssh="ssh -p $PRD_SSH_PORT -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o ServerAliveInterval=30 -o ServerAliveCountMax=5"
+        if [ -n "$key_path" ] && [ -f "$key_path" ]; then
+            prd_ssh_opts+=(-i "$key_path")
+            prd_rsync_ssh+=" -i $key_path"
+        fi
 
-    # Check Production (Source) Health
-    log_info "Checking Production ($SERVICE_NAME_PRD) Health..."
-    checkOdooEndpoint "$PRD_PORT"
+        log_info "Connecting to Remote Production VPS ($PRD_SSH_USER@$PRD_SSH_HOST:$PRD_SSH_PORT)..."
+        if ! ssh "${prd_ssh_opts[@]}" "$PRD_SSH_USER@$PRD_SSH_HOST" "true" 2>/dev/null; then
+            fail_with_json "Failed to establish SSH connection with Remote Production VPS at $PRD_SSH_USER@$PRD_SSH_HOST:$PRD_SSH_PORT."
+        fi
+        log_success "SSH connection to Production VPS established."
 
-    log_info "Requesting backup from production $SERVICE_NAME_PRD instance..."
-    if [ "$JSON_MODE" = "true" ]; then
-        curl -s -X POST \
-            -F "master_pwd=$PRD_ADMIN_PASSWD" \
-            -F "name=$PRD_DB_NAME" \
-            -F "backup_format=zip" \
-            -o "$TEMP_BACKUP_FILE" \
-            "http://localhost:$PRD_PORT/web/database/backup" >&2
+        log_info "Step 1/3: Triggering backup on Remote Production VPS for service '$PRD_SERVICE_NAME'..."
+        ssh "${prd_ssh_opts[@]}" "$PRD_SSH_USER@$PRD_SSH_HOST" "
+            if command -v backupdata-$PRD_SERVICE_NAME &>/dev/null; then
+                sudo backupdata-$PRD_SERVICE_NAME
+            elif [ -f '$PRD_SSH_PATH/scripts/backupdata-$PRD_SERVICE_NAME.sh' ]; then
+                sudo '$PRD_SSH_PATH/scripts/backupdata-$PRD_SERVICE_NAME.sh'
+            elif [ -f '$PRD_SSH_PATH/scripts/backupdata.sh' ]; then
+                sudo '$PRD_SSH_PATH/scripts/backupdata.sh'
+            elif [ -f '$PRD_SSH_PATH/scripts/dataodoo-backupper.sh' ]; then
+                sudo '$PRD_SSH_PATH/scripts/dataodoo-backupper.sh'
+            else
+                echo '❌ backupdata script not found on remote production VPS at $PRD_SSH_PATH' >&2
+                exit 1
+            fi
+        "
+
+        log_info "Step 2/3: Downloading backup archive from Remote Production VPS to /tmp/backupdata-$SERVICE_NAME.zip..."
+        rsync -e "$prd_rsync_ssh" -avz "$PRD_SSH_USER@$PRD_SSH_HOST:/tmp/backupdata-$PRD_SERVICE_NAME.zip" "/tmp/backupdata-$SERVICE_NAME.zip"
+        log_success "Download completed."
+
+        # Remote cleanup
+        ssh "${prd_ssh_opts[@]}" "$PRD_SSH_USER@$PRD_SSH_HOST" "rm -f /tmp/backupdata-$PRD_SERVICE_NAME.zip" 2>/dev/null || true
+
+        log_info "Step 3/3: Restoring backup data into Staging database '$STG_DB_NAME'..."
+        if command -v restore_backupdata-$SERVICE_NAME &>/dev/null; then
+            restore_backupdata-$SERVICE_NAME "/tmp/backupdata-$SERVICE_NAME.zip" --name "$STG_DB_NAME"
+        elif [ -f "$STG_PATH_TO_ODOO/scripts/restore_backupdata-$SERVICE_NAME.sh" ]; then
+            "$STG_PATH_TO_ODOO/scripts/restore_backupdata-$SERVICE_NAME.sh" "/tmp/backupdata-$SERVICE_NAME.zip" --name "$STG_DB_NAME"
+        elif [ -f "$STG_PATH_TO_ODOO/scripts/restore_backupdata.sh" ]; then
+            "$STG_PATH_TO_ODOO/scripts/restore_backupdata.sh" "/tmp/backupdata-$SERVICE_NAME.zip" --name "$STG_DB_NAME"
+        else
+            fail_with_json "restore_backupdata utility not found on local staging instance."
+        fi
+
+        rm -f "/tmp/backupdata-$SERVICE_NAME.zip" 2>/dev/null || true
+        log_success "Database clone from remote production completed successfully."
     else
-        curl -s -X POST \
-            -F "master_pwd=$PRD_ADMIN_PASSWD" \
-            -F "name=$PRD_DB_NAME" \
-            -F "backup_format=zip" \
-            -o "$TEMP_BACKUP_FILE" \
-            "http://localhost:$PRD_PORT/web/database/backup"
-    fi
+        PRD_PATH_TO_ODOO="$STG_PATH_TO_ODOO/../$SERVICE_NAME_PRD"
+        PRD_ENV_FILE="$PRD_PATH_TO_ODOO/.env"
 
-    if [ ! -s "$TEMP_BACKUP_FILE" ]; then
-        log_error "Backup failed for production $SERVICE_NAME_PRD instance. The output file is empty or was not created. Check source Odoo logs."
-        exit 1
-    fi
-
-    # check if the zip backup file actually an html file
-    if grep -q -i "<html" "$TEMP_BACKUP_FILE"; then
-        ODOO_ERROR_MSG=$(grep -oP '<div class="alert alert-danger">\K.*(?=</div)' "$TEMP_BACKUP_FILE")
-
-        if [ -z "$ODOO_ERROR_MSG" ]; then
-            ODOO_ERROR_MSG="Unknown error (The response was an HTML page, but the specific error message could not be parsed)."
+        if [ ! -f "$PRD_ENV_FILE" ]; then
+            log_error "Production .env file not found at: $PRD_ENV_FILE"
+            exit 1
         fi
 
-        log_error "Backup failed! Odoo returned an HTML error page instead of a ZIP file."
-        log_error "Odoo Message: $ODOO_ERROR_MSG"
+        PRD_DB_NAME=$(grep "^DB_NAME=" "$PRD_ENV_FILE" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
 
-        exit 1
+        if [ -z "$PRD_DB_NAME" ]; then
+            log_error "DB_NAME is not set in the production environment. Please set it at: $PRD_ENV_FILE"
+            exit 1
+        fi
+
+        log_stage "[2/4] Cloning Production Database to Staging..."
+
+        # if the DB_NAME variable is set in Staging Environment file, drop it first
+        STG_PORT=$(grep "^PORT=" "$STG_ENV_FILE" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
+        STG_ADMIN_PASSWD=$(grep "^ADMIN_PASSWD=" "$STG_ENV_FILE" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
+
+        # Check Staging (Destination) Health
+        log_info "Checking Staging ($SERVICE_NAME) Health..."
+        checkOdooEndpoint "$STG_PORT"
+
+        if [ -n "$STG_DB_NAME_FROM_ENV" ]; then
+            log_info "Dropping old database '$STG_DB_NAME_FROM_ENV' if it exists..."
+
+            drop_response=$(curl -s -X POST \
+                -d "master_pwd=$STG_ADMIN_PASSWD" \
+                -d "name=$STG_DB_NAME_FROM_ENV" \
+                "http://localhost:$STG_PORT/web/database/drop")
+
+            drop_response_lower="${drop_response,,}"
+
+            if [[ "$drop_response_lower" == *"error"* ]] && [[ "$drop_response_lower" != *"does not exist"* ]] || \
+               [[ "$drop_response_lower" == *"no space left"* ]] || \
+               [[ "$drop_response_lower" == *"<html"* ]]; then
+                log_warn "Could not drop database '$STG_DB_NAME_FROM_ENV'. It might not exist or another error occurred. Response: $drop_response"
+            else
+                log_success "Drop database command completed for '$STG_DB_NAME_FROM_ENV'."
+            fi
+        fi
+
+        # backup the database from production environment
+        TEMP_BACKUP_FILE="/tmp/temp_backup_db-$SERVICE_NAME_PRD-$(date +"%Y%m%d_%H%M%S").zip"
+        PRD_PORT=$(grep "^PORT=" "$PRD_ENV_FILE" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
+        PRD_ADMIN_PASSWD=$(grep "^ADMIN_PASSWD=" "$PRD_ENV_FILE" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
+
+        # Check Production (Source) Health
+        log_info "Checking Production ($SERVICE_NAME_PRD) Health..."
+        checkOdooEndpoint "$PRD_PORT"
+
+        log_info "Requesting backup from production $SERVICE_NAME_PRD instance..."
+        if [ "$JSON_MODE" = "true" ]; then
+            curl -s -X POST \
+                -F "master_pwd=$PRD_ADMIN_PASSWD" \
+                -F "name=$PRD_DB_NAME" \
+                -F "backup_format=zip" \
+                -o "$TEMP_BACKUP_FILE" \
+                "http://localhost:$PRD_PORT/web/database/backup" >&2
+        else
+            curl -s -X POST \
+                -F "master_pwd=$PRD_ADMIN_PASSWD" \
+                -F "name=$PRD_DB_NAME" \
+                -F "backup_format=zip" \
+                -o "$TEMP_BACKUP_FILE" \
+                "http://localhost:$PRD_PORT/web/database/backup"
+        fi
+
+        if [ ! -s "$TEMP_BACKUP_FILE" ]; then
+            log_error "Backup failed for production $SERVICE_NAME_PRD instance. The output file is empty or was not created. Check source Odoo logs."
+            exit 1
+        fi
+
+        # check if the zip backup file actually an html file
+        if grep -q -i "<html" "$TEMP_BACKUP_FILE"; then
+            ODOO_ERROR_MSG=$(grep -oP '<div class="alert alert-danger">\K.*(?=</div)' "$TEMP_BACKUP_FILE")
+
+            if [ -z "$ODOO_ERROR_MSG" ]; then
+                ODOO_ERROR_MSG="Unknown error (The response was an HTML page, but the specific error message could not be parsed)."
+            fi
+
+            log_error "Backup failed! Odoo returned an HTML error page instead of a ZIP file."
+            log_error "Odoo Message: $ODOO_ERROR_MSG"
+
+            exit 1
+        fi
+
+        log_success "Backup of '$PRD_DB_NAME' completed successfully to $TEMP_BACKUP_FILE"
+
+        # restore the database
+        NEUTRALIZE_DB=$(grep "^NEUTRALIZE_DATABASE=" "$PRD_ENV_FILE" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' | tr '[:upper:]' '[:lower:]')
+        if [ -z "$NEUTRALIZE_DB" ]; then
+            NEUTRALIZE_DB="true"
+        fi
+
+        log_info "Requesting restore to destination Odoo instance..."
+        log_info "Neutralize database option: $NEUTRALIZE_DB"
+
+        # Build curl arguments
+        CURL_RESTORE_ARGS=(
+            -sS -X POST
+            -F "master_pwd=$STG_ADMIN_PASSWD"
+            -F "name=$STG_DB_NAME"
+            -F "backup_file=@$TEMP_BACKUP_FILE"
+            -F "copy=true"
+        )
+
+        # Always pass neutralize_database if it's set in config
+        if [ -n "$NEUTRALIZE_DB" ]; then
+            CURL_RESTORE_ARGS+=(-F "neutralize_database=$NEUTRALIZE_DB")
+        fi
+
+        # Execute restore with high timeout (database restore can be slow)
+        # --connect-timeout: max time to establish connection
+        # --max-time: max time for the entire operation (1 hour default)
+        response=$(curl "${CURL_RESTORE_ARGS[@]}" \
+            --connect-timeout 10 \
+            --max-time 3600 \
+            "http://localhost:$STG_PORT/web/database/restore")
+
+        log_info "Removing temporary backup file: $TEMP_BACKUP_FILE"
+        rm -f "$TEMP_BACKUP_FILE"
+
+        response_lower="${response,,}"
+
+        # Catch empty responses, explicit errors, or any HTML error pages
+        if [[ "$response_lower" == *"error"* ]] || \
+           [[ "$response_lower" == *"incorrect master password"* ]] || \
+           [[ "$response_lower" == *"no space left"* ]] || \
+           [[ "$response_lower" == *"<html"* ]] || \
+           [ -z "$response" ]; then
+            log_error "Failed to restore database to staging environment. Server Response: ${response:-'Empty response (Likely timeout or bad gateway)'}"
+            exit 1
+        fi
+
+        log_success "Database restore command completed successfully."
     fi
-
-    log_success "Backup of '$PRD_DB_NAME' completed successfully to $TEMP_BACKUP_FILE"
-
-    # restore the database
-    NEUTRALIZE_DB=$(grep "^NEUTRALIZE_DATABASE=" "$PRD_ENV_FILE" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' | tr '[:upper:]' '[:lower:]')
-    if [ -z "$NEUTRALIZE_DB" ]; then
-        NEUTRALIZE_DB="true"
-    fi
-
-    log_info "Requesting restore to destination Odoo instance..."
-    log_info "Neutralize database option: $NEUTRALIZE_DB"
-
-    # Build curl arguments
-    CURL_RESTORE_ARGS=(
-        -sS -X POST
-        -F "master_pwd=$STG_ADMIN_PASSWD"
-        -F "name=$STG_DB_NAME"
-        -F "backup_file=@$TEMP_BACKUP_FILE"
-        -F "copy=true"
-    )
-
-    # Always pass neutralize_database if it's set in config
-    if [ -n "$NEUTRALIZE_DB" ]; then
-        CURL_RESTORE_ARGS+=(-F "neutralize_database=$NEUTRALIZE_DB")
-    fi
-
-    # Execute restore with high timeout (database restore can be slow)
-    # --connect-timeout: max time to establish connection
-    # --max-time: max time for the entire operation (1 hour default)
-    response=$(curl "${CURL_RESTORE_ARGS[@]}" \
-        --connect-timeout 10 \
-        --max-time 3600 \
-        "http://localhost:$STG_PORT/web/database/restore")
-
-    log_info "Removing temporary backup file: $TEMP_BACKUP_FILE"
-    rm -f "$TEMP_BACKUP_FILE"
-
-    response_lower="${response,,}"
-
-    # Catch empty responses, explicit errors, or any HTML error pages
-    if [[ "$response_lower" == *"error"* ]] || \
-       [[ "$response_lower" == *"incorrect master password"* ]] || \
-       [[ "$response_lower" == *"no space left"* ]] || \
-       [[ "$response_lower" == *"<html"* ]] || \
-       [ -z "$response" ]; then
-        log_error "Failed to restore database to staging environment. Server Response: ${response:-'Empty response (Likely timeout or bad gateway)'}"
-        exit 1
-    fi
-
-    log_success "Database restore command completed successfully."
 else
     log_stage "[2/4] Skipping Database Clone (IS_RENEW_DB is false)."
 fi

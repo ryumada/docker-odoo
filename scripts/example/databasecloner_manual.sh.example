@@ -3,7 +3,7 @@ set -e
 # Category: Utility
 # Description: Clones Odoo database using rsync for filestore and native localhost endpoint/PSQL mode. Supports interactive push and automated pull mode.
 # Usage: ./scripts/databasecloner_manual.sh [TARGET_DB_NAME] [MODULES] [json]
-# Dependencies: sudo, git, docker, pg_dump, psql, rsync, zip, curl
+# Dependencies: sudo, git, docker, pg_dump, psql, rsync, zip, curl, ssh
 
 # Detect Repository Owner to run non-root commands as that user
 CURRENT_DIR=$(dirname "$(readlink -f "$0")")
@@ -81,7 +81,7 @@ exec 2> >(tee -a "$STDERR_LOG" >&3)
 trap 'error_handler $? $LINENO "$BASH_COMMAND"' ERR
 
 cleanup_temp_files() {
-    rm -f "/tmp/$ODOO_DB_NAME_ENV.sql" "/tmp/$STG_DB_NAME.sql" "/tmp/dump.sql" "/tmp/db_dump_only_$ODOO_DB_NAME_ENV.zip" 2>/dev/null || true
+    rm -f "/tmp/$ODOO_DB_NAME_ENV.sql" "/tmp/$STG_DB_NAME.sql" "/tmp/dump.sql" "/tmp/db_dump_only_$ODOO_DB_NAME_ENV.zip" "/tmp/backupdata-$SERVICE_NAME.zip" 2>/dev/null || true
     if [ -n "${STDERR_LOG:-}" ] && [ -f "$STDERR_LOG" ]; then
         rm -f "$STDERR_LOG"
     fi
@@ -456,8 +456,97 @@ function run_interactive_push_mode() {
         read -rp "Enter the database name: " ODOO_DATABASE_NAME_PRD
     fi
 
-    CLONED_ENV=$(grep "^CLONED_ENV=" "$PATH_TO_ODOO/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
     USE_DATE_SUFFIX=$(grep "^USE_DATE_SUFFIX=" "$PATH_TO_ODOO/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
+
+    # Remote SSH Cloner Detection
+    CLONER_SSH_HOST=$(grep "^CLONER_SSH_HOST=" "$PATH_TO_ODOO/.env" 2>/dev/null | cut -d '=' -f2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//' || true)
+    CLONER_SSH_USER=$(grep "^CLONER_SSH_USER=" "$PATH_TO_ODOO/.env" 2>/dev/null | cut -d '=' -f2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//' || true)
+    CLONER_SSH_PORT=$(grep "^CLONER_SSH_PORT=" "$PATH_TO_ODOO/.env" 2>/dev/null | cut -d '=' -f2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//' || true)
+    CLONER_SSH_KEY=$(grep "^CLONER_SSH_KEY=" "$PATH_TO_ODOO/.env" 2>/dev/null | cut -d '=' -f2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//' || true)
+    CLONER_SSH_DEST_PATH=$(grep "^CLONER_SSH_DEST_PATH=" "$PATH_TO_ODOO/.env" 2>/dev/null | cut -d '=' -f2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//' || true)
+    [ -z "$CLONER_SSH_PORT" ] && CLONER_SSH_PORT="22"
+
+    if [ -n "$CLONER_SSH_HOST" ]; then
+        if [ -z "$CLONER_SSH_USER" ] || [ -z "$CLONER_SSH_DEST_PATH" ]; then
+            log_error "CLONER_SSH_USER and CLONER_SSH_DEST_PATH are required when CLONER_SSH_HOST is configured in .env!"
+            exit 1
+        fi
+
+        local DEST_SERVICE_NAME
+        DEST_SERVICE_NAME=$(basename "$CLONER_SSH_DEST_PATH")
+        local ODOO_DB_NAME_ENV
+        ODOO_DB_NAME_ENV=$(promptClonedDBName "$PATH_TO_ODOO/.env" "$USE_DATE_SUFFIX" "$DEST_SERVICE_NAME")
+
+        log_info "🚀 Remote SSH Cloner Mode: Cloning to $CLONER_SSH_USER@$CLONER_SSH_HOST:$CLONER_SSH_DEST_PATH"
+        log_info "   Target Database: $ODOO_DB_NAME_ENV"
+
+        local owner_home
+        owner_home=$(eval echo "~$REPOSITORY_OWNER")
+        [ -z "$owner_home" ] && owner_home="$HOME"
+        local key_expanded="${CLONER_SSH_KEY/#\~/$owner_home}"
+
+        local ssh_opts=(-p "$CLONER_SSH_PORT" -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o ServerAliveInterval=30 -o ServerAliveCountMax=5)
+        local rsync_ssh="ssh -p $CLONER_SSH_PORT -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o ServerAliveInterval=30 -o ServerAliveCountMax=5"
+        if [ -n "$key_expanded" ] && [ -f "$key_expanded" ]; then
+            ssh_opts+=(-i "$key_expanded")
+            rsync_ssh+=" -i $key_expanded"
+        fi
+
+        log_info "Connecting to Remote VPS ($CLONER_SSH_USER@$CLONER_SSH_HOST:$CLONER_SSH_PORT)..."
+        if ! ssh "${ssh_opts[@]}" "$CLONER_SSH_USER@$CLONER_SSH_HOST" "true" 2>/dev/null; then
+            log_error "Failed to establish SSH connection with Remote VPS at $CLONER_SSH_USER@$CLONER_SSH_HOST:$CLONER_SSH_PORT."
+            exit 1
+        fi
+        log_success "SSH connection established."
+
+        log_info "Step 1/3: Creating backup of '$ODOO_DATABASE_NAME_PRD' on local VPS..."
+        if command -v "backupdata-$SERVICE_NAME" &>/dev/null; then
+            "backupdata-$SERVICE_NAME"
+        elif [ -f "$PATH_TO_ODOO/scripts/backupdata-$SERVICE_NAME.sh" ]; then
+            "$PATH_TO_ODOO/scripts/backupdata-$SERVICE_NAME.sh"
+        elif [ -f "$PATH_TO_ODOO/scripts/backupdata.sh" ]; then
+            "$PATH_TO_ODOO/scripts/backupdata.sh"
+        elif [ -f "$PATH_TO_ODOO/scripts/dataodoo-backupper.sh" ]; then
+            "$PATH_TO_ODOO/scripts/dataodoo-backupper.sh"
+        else
+            log_error "backupdata utility not found in PATH or scripts directory."
+            exit 1
+        fi
+
+        if [ ! -s "/tmp/backupdata-$SERVICE_NAME.zip" ]; then
+            log_error "Backup failed: /tmp/backupdata-$SERVICE_NAME.zip is missing or empty."
+            exit 1
+        fi
+        log_success "Backup archive ready at /tmp/backupdata-$SERVICE_NAME.zip"
+
+        log_info "Step 2/3: Transferring backup archive to Remote VPS as /tmp/backupdata-$DEST_SERVICE_NAME.zip..."
+        rsync -e "$rsync_ssh" -avz "/tmp/backupdata-$SERVICE_NAME.zip" "$CLONER_SSH_USER@$CLONER_SSH_HOST:/tmp/backupdata-$DEST_SERVICE_NAME.zip"
+        log_success "Transfer completed."
+
+        log_info "Step 3/3: Restoring database on Remote VPS for service '$DEST_SERVICE_NAME'..."
+        ssh "${ssh_opts[@]}" "$CLONER_SSH_USER@$CLONER_SSH_HOST" "
+            if command -v restore_backupdata-$DEST_SERVICE_NAME &>/dev/null; then
+                sudo restore_backupdata-$DEST_SERVICE_NAME /tmp/backupdata-$DEST_SERVICE_NAME.zip --name '$ODOO_DB_NAME_ENV'
+            elif [ -f '$CLONER_SSH_DEST_PATH/scripts/restore_backupdata-$DEST_SERVICE_NAME.sh' ]; then
+                sudo '$CLONER_SSH_DEST_PATH/scripts/restore_backupdata-$DEST_SERVICE_NAME.sh' /tmp/backupdata-$DEST_SERVICE_NAME.zip --name '$ODOO_DB_NAME_ENV'
+            elif [ -f '$CLONER_SSH_DEST_PATH/scripts/restore_backupdata.sh' ]; then
+                sudo '$CLONER_SSH_DEST_PATH/scripts/restore_backupdata.sh' /tmp/backupdata-$DEST_SERVICE_NAME.zip --name '$ODOO_DB_NAME_ENV'
+            else
+                echo '❌ restore_backupdata script not found on remote VPS at $CLONER_SSH_DEST_PATH' >&2
+                exit 1
+            fi
+        "
+
+        # Remote and local cleanup
+        ssh "${ssh_opts[@]}" "$CLONER_SSH_USER@$CLONER_SSH_HOST" "rm -f /tmp/backupdata-$DEST_SERVICE_NAME.zip" 2>/dev/null || true
+        rm -f "/tmp/backupdata-$SERVICE_NAME.zip" 2>/dev/null || true
+
+        log_success "Finished cloning database '$ODOO_DB_NAME_ENV' to remote VPS ($CLONER_SSH_HOST) for service '$DEST_SERVICE_NAME'!"
+        return 0
+    fi
+
+    # Local Sibling Environment Clone Mode (Default)
+    CLONED_ENV=$(grep "^CLONED_ENV=" "$PATH_TO_ODOO/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
 
     ODOO_DEPLOYMENT_ENVIRONMENT=$(promptWhichEnvironment "$CLONED_ENV")
     PATH_TO_ODOO_ENV="$PATH_TO_ODOO/../$SERVICE_NAME-$ODOO_DEPLOYMENT_ENVIRONMENT"

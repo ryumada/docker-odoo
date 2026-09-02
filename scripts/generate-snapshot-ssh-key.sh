@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -e
 # Category: Utility
-# Description: Generates ed25519 SSH key pair for remote snapshot backup and displays the public key.
-# Usage: ./scripts/generate-snapshot-ssh-key.sh [--target-host HOST] [--target-user USER] [--force]
+# Description: Generates ed25519 SSH key pair for cross-VPS operations (snapshot, cloner, deploy_rc) and displays authorization snippet.
+# Usage: ./scripts/generate-snapshot-ssh-key.sh [--tool snapshot|cloner|deploy_rc] [--target-host HOST] [--target-user USER] [--force]
 # Dependencies: ssh-keygen, git, sudo
 
 # Detect Repository Owner to run non-root commands as that user
@@ -12,6 +12,13 @@ PATH_TO_ODOO=$(sudo -u "$CURRENT_DIR_USER" git -C "$CURRENT_DIR" rev-parse --sho
 SERVICE_NAME=$(basename "$PATH_TO_ODOO")
 REPOSITORY_OWNER=$(stat -c '%U' "$PATH_TO_ODOO" 2>/dev/null || echo "$USER")
 OWNER_HOME=$(eval echo "~$REPOSITORY_OWNER")
+
+# Source shared SSH utilities
+if [ -f "$CURRENT_DIR/lib/ssh_utils.sh" ]; then
+  source "$CURRENT_DIR/lib/ssh_utils.sh"
+elif [ -f "$PATH_TO_ODOO/scripts/lib/ssh_utils.sh" ]; then
+  source "$PATH_TO_ODOO/scripts/lib/ssh_utils.sh"
+fi
 
 # --- Logging Functions & Colors ---
 readonly COLOR_RESET="\033[0m"
@@ -36,9 +43,7 @@ log_error() { log "${COLOR_ERROR}" "❌" "$1"; }
 
 # --- Load Default Configuration from .env ---
 ENV_FILE="$PATH_TO_ODOO/.env"
-ENV_REMOTE_HOST=$(grep "^SNAPSHOT_REMOTE_HOST=" "$ENV_FILE" 2>/dev/null | cut -d '=' -f2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//' || true)
-ENV_REMOTE_USER=$(grep "^SNAPSHOT_REMOTE_USER=" "$ENV_FILE" 2>/dev/null | cut -d '=' -f2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//' || true)
-
+TOOL_TYPE="snapshot"
 TARGET_HOST=""
 TARGET_USER=""
 FORCE=false
@@ -47,25 +52,33 @@ show_help() {
   cat << EOF
 Usage: $(basename "$0") [OPTIONS]
 
-Generates a dedicated ed25519 SSH key pair for Secondary VPS remote snapshot backup,
-saves it to ~/.ssh/snapshot-\$THIS_VPS_HOSTNAME-\$TARGET_VPS_HOSTNAME, updates .env,
-and outputs the public key for manual copying.
+Generates a dedicated ed25519 SSH key pair for cross-VPS remote operations (snapshot, databasecloner, deploy_rc),
+saves it to ~/.ssh/<tool>-\$THIS_VPS_HOSTNAME-\$TARGET_VPS_HOSTNAME, updates .env, and outputs the public key.
 
 Options:
-  -t, --target-host <HOST>   Hostname or IP of the Secondary VPS (default from .env: ${ENV_REMOTE_HOST:-none})
-  -u, --target-user <USER>   SSH username on Secondary VPS (default from .env: ${ENV_REMOTE_USER:-none})
+  --tool <TOOL>              Tool name: 'snapshot' (default), 'cloner', or 'deploy_rc'
+  -t, --target-host <HOST>   Hostname or IP of the Remote VPS
+  -u, --target-user <USER>   SSH username on Remote VPS (default: from .env or root)
   -f, --force                Overwrite existing SSH key if it already exists
   -h, --help                 Show this help message
 
 Examples:
   ./scripts/generate-snapshot-ssh-key.sh
-  ./scripts/generate-snapshot-ssh-key.sh --target-host backup-vps.example.com
-  ./scripts/generate-snapshot-ssh-key.sh -t 192.168.1.50 -u odoo-backup --force
+  ./scripts/generate-snapshot-ssh-key.sh --tool cloner --target-host dev-vps.example.com --target-user devops
+  ./scripts/generate-snapshot-ssh-key.sh --tool deploy_rc --target-host prd-vps.example.com -f
 EOF
 }
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
+    --tool)
+      TOOL_TYPE="$2"
+      shift 2
+      ;;
+    --tool=*)
+      TOOL_TYPE="${1#*=}"
+      shift
+      ;;
     -t|--target-host)
       TARGET_HOST="$2"
       shift 2
@@ -98,14 +111,45 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-THIS_VPS_HOSTNAME=$(hostname -s 2>/dev/null || hostname 2>/dev/null || echo "vps-source")
+# Resolve default host/user and env variable name based on tool
+ENV_VAR_KEY=""
+ENV_VAR_HOST=""
+ENV_VAR_USER=""
+
+case "$TOOL_TYPE" in
+  snapshot)
+    ENV_VAR_KEY="SNAPSHOT_REMOTE_KEY"
+    ENV_VAR_HOST="SNAPSHOT_REMOTE_HOST"
+    ENV_VAR_USER="SNAPSHOT_REMOTE_USER"
+    ;;
+  cloner|databasecloner)
+    TOOL_TYPE="cloner"
+    ENV_VAR_KEY="CLONER_SSH_KEY"
+    ENV_VAR_HOST="CLONER_SSH_HOST"
+    ENV_VAR_USER="CLONER_SSH_USER"
+    ;;
+  deploy_rc|deploy|deploy_release_candidate)
+    TOOL_TYPE="deploy_rc"
+    ENV_VAR_KEY="PRD_SSH_KEY"
+    ENV_VAR_HOST="PRD_SSH_HOST"
+    ENV_VAR_USER="PRD_SSH_USER"
+    ;;
+  *)
+    ENV_VAR_KEY="${TOOL_TYPE^^}_SSH_KEY"
+    ENV_VAR_HOST="${TOOL_TYPE^^}_SSH_HOST"
+    ENV_VAR_USER="${TOOL_TYPE^^}_SSH_USER"
+    ;;
+esac
+
+ENV_REMOTE_HOST=$(grep "^${ENV_VAR_HOST}=" "$ENV_FILE" 2>/dev/null | cut -d '=' -f2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//' || true)
+ENV_REMOTE_USER=$(grep "^${ENV_VAR_USER}=" "$ENV_FILE" 2>/dev/null | cut -d '=' -f2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//' || true)
 
 if [ -z "$TARGET_HOST" ]; then
   TARGET_HOST="$ENV_REMOTE_HOST"
 fi
 
 if [ -z "$TARGET_HOST" ]; then
-  echo -ne "${COLOR_CYAN}Enter Target VPS Hostname or IP: ${COLOR_RESET}"
+  echo -ne "${COLOR_CYAN}Enter Target VPS Hostname or IP (for ${TOOL_TYPE}): ${COLOR_RESET}"
   read -r TARGET_HOST
 fi
 
@@ -118,80 +162,13 @@ if [ -z "$TARGET_USER" ]; then
   TARGET_USER="${ENV_REMOTE_USER:-root}"
 fi
 
-# Sanitize hostname for filename (remove port, protocol, user@, and slashes)
-CLEAN_TARGET_HOSTNAME=$(echo "$TARGET_HOST" | sed -e 's|^.*://||' -e 's|^.*@||' -e 's|:.*$||' -e 's|/.*$||' -e 's|[^a-zA-Z0-9._-]|_|g')
+generate_ssh_key_pair "$TOOL_TYPE" "$TARGET_HOST" "$TARGET_USER" "$REPOSITORY_OWNER" "$FORCE" "$ENV_VAR_KEY" "$ENV_FILE" >/dev/null
 
-KEY_NAME="snapshot-${THIS_VPS_HOSTNAME}-${CLEAN_TARGET_HOSTNAME}"
-SSH_DIR="$OWNER_HOME/.ssh"
-KEY_PATH="$SSH_DIR/$KEY_NAME"
-PUB_KEY_PATH="${KEY_PATH}.pub"
-
-log_info "Source VPS Hostname : $THIS_VPS_HOSTNAME"
-log_info "Target VPS Hostname : $CLEAN_TARGET_HOSTNAME"
-log_info "SSH Key Destination : $KEY_PATH"
-
-# Ensure .ssh directory exists with proper permissions
-if [ ! -d "$SSH_DIR" ]; then
-  mkdir -p "$SSH_DIR"
-  chmod 700 "$SSH_DIR"
-  chown "$REPOSITORY_OWNER": "$SSH_DIR" 2>/dev/null || true
-fi
-
-# Key generation
-if [ -f "$KEY_PATH" ]; then
-  if [ "$FORCE" = true ]; then
-    log_warn "Overwriting existing SSH key pair at $KEY_PATH..."
-    rm -f "$KEY_PATH" "$PUB_KEY_PATH"
-  else
-    log_info "SSH key already exists at $KEY_PATH. Using existing key."
-  fi
-fi
-
-if [ ! -f "$KEY_PATH" ]; then
-  log_info "Generating ed25519 SSH key pair..."
-  ssh-keygen -t ed25519 -N "" -f "$KEY_PATH" -C "${KEY_NAME}@${THIS_VPS_HOSTNAME}"
-  chmod 600 "$KEY_PATH"
-  chmod 644 "$PUB_KEY_PATH"
-  chown "$REPOSITORY_OWNER": "$KEY_PATH" "$PUB_KEY_PATH" 2>/dev/null || true
-  log_success "Generated new ed25519 SSH key pair: $KEY_PATH"
-fi
-
-# Update SNAPSHOT_REMOTE_KEY in .env if .env exists
 if [ -f "$ENV_FILE" ]; then
-  if grep -q "^SNAPSHOT_REMOTE_KEY=" "$ENV_FILE"; then
-    sed -i "s|^SNAPSHOT_REMOTE_KEY=.*|SNAPSHOT_REMOTE_KEY=$KEY_PATH|" "$ENV_FILE"
-    log_success "Updated SNAPSHOT_REMOTE_KEY in $ENV_FILE ➡️ $KEY_PATH"
-  else
-    echo "SNAPSHOT_REMOTE_KEY=$KEY_PATH" >> "$ENV_FILE"
-    log_success "Added SNAPSHOT_REMOTE_KEY to $ENV_FILE ➡️ $KEY_PATH"
+  if [ -n "$TARGET_HOST" ] && ! grep -q "^${ENV_VAR_HOST}=" "$ENV_FILE"; then
+    echo "${ENV_VAR_HOST}=$TARGET_HOST" >> "$ENV_FILE"
   fi
-  if [ -n "$TARGET_HOST" ] && ! grep -q "^SNAPSHOT_REMOTE_HOST=" "$ENV_FILE"; then
-    echo "SNAPSHOT_REMOTE_HOST=$TARGET_HOST" >> "$ENV_FILE"
-  fi
-  if [ -n "$TARGET_USER" ] && ! grep -q "^SNAPSHOT_REMOTE_USER=" "$ENV_FILE"; then
-    echo "SNAPSHOT_REMOTE_USER=$TARGET_USER" >> "$ENV_FILE"
+  if [ -n "$TARGET_USER" ] && ! grep -q "^${ENV_VAR_USER}=" "$ENV_FILE"; then
+    echo "${ENV_VAR_USER}=$TARGET_USER" >> "$ENV_FILE"
   fi
 fi
-
-PUB_KEY_CONTENT=$(cat "$PUB_KEY_PATH")
-
-echo ""
-echo -e "${COLOR_BOLD}================================================================================${COLOR_RESET}"
-echo -e "${COLOR_SUCCESS}${COLOR_BOLD}🔑 SNAPSHOT ED25519 PUBLIC KEY FOR TARGET VPS (${CLEAN_TARGET_HOSTNAME})${COLOR_RESET}"
-echo -e "${COLOR_BOLD}================================================================================${COLOR_RESET}"
-echo ""
-echo -e "${COLOR_CYAN}${PUB_KEY_CONTENT}${COLOR_RESET}"
-echo ""
-echo -e "${COLOR_BOLD}--------------------------------------------------------------------------------${COLOR_RESET}"
-echo -e "${COLOR_INFO}Instructions to authorize this key on Target VPS (${TARGET_USER}@${TARGET_HOST}):${COLOR_RESET}"
-echo -e "1. Copy the public key string above."
-echo -e "2. Run this command on the Target VPS (${TARGET_HOST}):"
-echo ""
-echo -e "   ${COLOR_BOLD}mkdir -p ~/.ssh && chmod 700 ~/.ssh${COLOR_RESET}"
-echo -e "   ${COLOR_BOLD}echo '${PUB_KEY_CONTENT}' >> ~/.ssh/authorized_keys${COLOR_RESET}"
-echo -e "   ${COLOR_BOLD}chmod 600 ~/.ssh/authorized_keys${COLOR_RESET}"
-echo ""
-echo -e "3. Verify connection from this VPS:"
-echo -e "   ${COLOR_BOLD}ssh -i $KEY_PATH -o BatchMode=yes ${TARGET_USER}@${TARGET_HOST} 'echo Connection successful'${COLOR_RESET}"
-echo -e "${COLOR_BOLD}================================================================================${COLOR_RESET}"
-echo ""
