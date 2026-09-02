@@ -2,7 +2,7 @@
 set -e
 # Category: Utility
 # Description: Checks and deletes old Odoo snapshots on Google Drive based on retention policy.
-# Usage: ./scripts/cleanup-snapshot.sh [--keep N] [--dry-run] [--force] [--all]
+# Usage: ./scripts/cleanup-snapshot.sh [-l|--list] [--keep N] [--dry-run] [--force] [--all]
 # Dependencies: curl, openssl, sudo, git, python3
 
 # Detect Repository Owner to run non-root commands as that user
@@ -43,6 +43,7 @@ MAX_BACKUPS=$(grep "^GDRIVE_MAX_BACKUPS=" "$ENV_FILE" 2>/dev/null | cut -d '=' -
 DRY_RUN=false
 FORCE=false
 SHOW_ALL=false
+LIST_ONLY=false
 CUSTOM_SERVICE_NAME=""
 
 show_help() {
@@ -52,6 +53,7 @@ Usage: $(basename "$0") [OPTIONS]
 Checks and deletes oldest Odoo snapshot files stored on Google Drive.
 
 Options:
+  -l, --list                     List snapshot files on Google Drive with sizes and exit
   -k, --keep, --max-backups <N>  Number of latest snapshots to retain (default from .env: $MAX_BACKUPS)
   -d, --dry-run                  Simulate deletion without actually deleting files
   -y, --force                    Skip interactive confirmation prompt
@@ -63,6 +65,8 @@ Options:
   -h, --help                     Show this help message
 
 Examples:
+  ./scripts/cleanup-snapshot.sh -l
+  ./scripts/cleanup-snapshot.sh --list --all
   ./scripts/cleanup-snapshot.sh --dry-run
   ./scripts/cleanup-snapshot.sh --keep 24
   ./scripts/cleanup-snapshot.sh --keep 24 --force
@@ -72,6 +76,10 @@ EOF
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
+    -l|--list)
+      LIST_ONLY=true
+      shift
+      ;;
     -k|--keep|--max-backups)
       MAX_BACKUPS="$2"
       shift 2
@@ -238,7 +246,11 @@ if [ -n "$GDRIVE_FOLDER_ID" ]; then
   QUERY="$QUERY and '$GDRIVE_FOLDER_ID' in parents"
 fi
 
-log_info "Fetching snapshots from Google Drive (retention policy: keep latest $MAX_BACKUPS)..."
+if [ "$LIST_ONLY" = true ]; then
+  log_info "Fetching snapshots from Google Drive..."
+else
+  log_info "Fetching snapshots from Google Drive (retention policy: keep latest $MAX_BACKUPS)..."
+fi
 
 RESPONSE=$(curl -s -G \
   -H "Authorization: Bearer $ACCESS_TOKEN" \
@@ -285,9 +297,12 @@ try:
     data = json.load(sys.stdin)
     files = data.get("files", [])
     max_keep = int(sys.argv[1])
+    is_list_only = (len(sys.argv) > 2 and sys.argv[2].lower() == "true")
 
     if not files:
-        print("NO_FILES")
+        print("-" * 110)
+        print(" No snapshot files found on Google Drive.")
+        print("-" * 110)
         sys.exit(0)
 
     header_fmt = "{:<4} | {:<9} | {:<45} | {:<10} | {:<19}"
@@ -297,27 +312,51 @@ try:
     print(header_fmt.format("No", "Action", "Snapshot File Name", "Size", "Created At"))
     print("-" * 110)
 
+    total_bytes = 0
+    keep_bytes = 0
+    delete_bytes = 0
+
     for idx, f in enumerate(files, 1):
         name = f.get("name", "")
-        size = format_size(f.get("size"))
+        f_size_raw = f.get("size")
+        size = format_size(f_size_raw)
         created = format_date(f.get("createdTime"))
+        try:
+            b_val = int(f_size_raw or 0)
+        except Exception:
+            b_val = 0
+        total_bytes += b_val
+
         if idx <= max_keep:
             action = "\033[0;32m[KEEP]\033[0m"
+            keep_bytes += b_val
         else:
             action = "\033[0;31m[DELETE]\033[0m"
+            delete_bytes += b_val
         print(row_fmt.format(idx, action, name, size, created))
 
     print("=" * 110)
     total = len(files)
     to_delete = max(0, total - max_keep)
-    print(f"Total: {total} snapshot(s) found | Keeping: {min(total, max_keep)} | Scheduled to delete: {to_delete}")
+    if is_list_only:
+        print(f"Total: {total} snapshot(s) found | Total Size: {format_size(total_bytes)}")
+    else:
+        print(f"Total: {total} snapshot(s) found ({format_size(total_bytes)}) | Keeping: {min(total, max_keep)} ({format_size(keep_bytes)}) | Scheduled to delete: {to_delete} ({format_size(delete_bytes)})")
 except Exception as e:
     sys.stderr.write(f"Error parsing response: {e}\n")
     sys.exit(1)
-' "$MAX_BACKUPS" <<< "$RESPONSE"
+' "$MAX_BACKUPS" "$LIST_ONLY" <<< "$RESPONSE"
+
+if [ "$LIST_ONLY" = true ]; then
+  exit 0
+fi
 
 FILE_IDS=$(echo "$RESPONSE" | grep -o '"id": *"[^"]*"' | cut -d'"' -f4)
 TOTAL_FILES=$(echo "$FILE_IDS" | grep -c . || echo "0")
+
+if [ "$TOTAL_FILES" -eq 0 ]; then
+  exit 0
+fi
 
 if [ "$TOTAL_FILES" -le "$MAX_BACKUPS" ]; then
   echo ""
