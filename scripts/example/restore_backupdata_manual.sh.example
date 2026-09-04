@@ -419,6 +419,11 @@ function sanitizeDatabase() {
             EXECUTE 'UPDATE iap_account SET account_token = REGEXP_REPLACE(account_token, ''(\+.*)?$'', ''+disabled'') WHERE LENGTH(account_token) <= 33';
             EXECUTE 'UPDATE iap_account SET account_token = ''dummy_value+disabled'' WHERE LENGTH(account_token) > 33 AND account_token NOT LIKE ''%+disabled''';
         END IF;
+
+        -- Activate Neutralize Banner (Odoo 16+)
+        IF EXISTS (SELECT FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'ir_ui_view' AND column_name = 'active') THEN
+            EXECUTE 'UPDATE ir_ui_view SET active = true WHERE key = ''web.neutralize_banner''';
+        END IF;
     END $$;
 EOF
 )
