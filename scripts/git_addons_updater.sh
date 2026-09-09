@@ -113,7 +113,36 @@ function process_repo() {
         old_commit=$(sudo -u "$REPOSITORY_OWNER" git -C "$subdir" rev-parse "$current_branch" 2>/dev/null || true)
 
         log_info "Fetching $repo_name..."
-        if ! sudo -u "$REPOSITORY_OWNER" git -C "$subdir" fetch --prune --tags -q 2>/dev/null; then
+        local fetch_output=""
+        local fetch_exit_code=0
+        fetch_output=$(sudo -u "$REPOSITORY_OWNER" git -C "$subdir" fetch --prune --tags -q 2>&1) || fetch_exit_code=$?
+
+        if [ $fetch_exit_code -ne 0 ]; then
+            if echo "$fetch_output" | grep -q "fatal: cannot lock ref"; then
+                local conflicting_branch
+                conflicting_branch=$(echo "$fetch_output" | sed -n "s/.*fatal: cannot lock ref '[^']*': '\([^']*\)' exists.*/\1/p" | head -n 1)
+                log_warn "Detected git ref conflict in $repo_name: ${conflicting_branch:-$current_branch}"
+                log_info "Switching branch and deleting conflicting ref..."
+                if [ "$current_branch" != "main" ] && sudo -u "$REPOSITORY_OWNER" git -C "$subdir" checkout main -q 2>/dev/null; then
+                    :
+                elif [ "$current_branch" != "master" ] && sudo -u "$REPOSITORY_OWNER" git -C "$subdir" checkout master -q 2>/dev/null; then
+                    :
+                else
+                    sudo -u "$REPOSITORY_OWNER" git -C "$subdir" checkout --detach -q 2>/dev/null || true
+                fi
+                if [ -n "$conflicting_branch" ]; then
+                    sudo -u "$REPOSITORY_OWNER" git -C "$subdir" branch -D "$conflicting_branch" 2>/dev/null || true
+                fi
+                sudo -u "$REPOSITORY_OWNER" git -C "$subdir" branch -D "$current_branch" 2>/dev/null || true
+                if sudo -u "$REPOSITORY_OWNER" git -C "$subdir" fetch --prune --tags -q 2>/dev/null; then
+                    log_info "Ref conflict resolved for $repo_name."
+                    sudo -u "$REPOSITORY_OWNER" git -C "$subdir" checkout "$current_branch" -q 2>/dev/null || true
+                    fetch_exit_code=0
+                fi
+            fi
+        fi
+
+        if [ $fetch_exit_code -ne 0 ]; then
             log_warn "Failed to fetch $repo_name"
             status="fetch_failed"
             error_message="Failed to fetch updates from remote."
@@ -124,23 +153,54 @@ function process_repo() {
             repo_updated=1 # false
         else
             log_info "Pulling updates for $repo_name..."
-            local pull_output
-            pull_output=$(sudo -u "$REPOSITORY_OWNER" git -C "$subdir" pull -q 2>&1)
-            local pull_exit_code=$?
+            local pull_output=""
+            local pull_exit_code=0
+            pull_output=$(sudo -u "$REPOSITORY_OWNER" git -C "$subdir" pull -q 2>&1) || pull_exit_code=$?
             if [ $pull_exit_code -ne 0 ]; then
                 if echo "$pull_output" | grep -q "You are not currently on a branch"; then
                     log_warn "Skipping pull for $repo_name: Not currently on a branch."
                     status="not_on_branch"
                     repo_updated=1 # false
                 else
-                    log_warn "Failed to pull $repo_name"
-                    status="clean_failed"
-                    # Remove ANSI colour codes and escape quotes/newlines
-                    local clean_err
-                    clean_err=$(echo "$pull_output" | sed -r 's/\x1B\[[0-9;]*[mK]//g' | sed 's/"/\\"/g' | awk '{printf "%s\\n", $0}')
-                    # Clean up the trailing '\n' added by awk
-                    error_message="${clean_err%\\n}"
-                    HAS_ERROR=1
+                    log_warn "Pull failed for $repo_name ($current_branch). Attempting auto-recovery for divergent branch/conflict..."
+                    sudo -u "$REPOSITORY_OWNER" git -C "$subdir" merge --abort 2>/dev/null || true
+                    sudo -u "$REPOSITORY_OWNER" git -C "$subdir" reset --hard 2>/dev/null || true
+
+                    if [ "$current_branch" != "main" ] && sudo -u "$REPOSITORY_OWNER" git -C "$subdir" checkout main -q 2>/dev/null; then
+                        :
+                    elif [ "$current_branch" != "master" ] && sudo -u "$REPOSITORY_OWNER" git -C "$subdir" checkout master -q 2>/dev/null; then
+                        :
+                    else
+                        sudo -u "$REPOSITORY_OWNER" git -C "$subdir" checkout --detach -q 2>/dev/null || true
+                    fi
+
+                    sudo -u "$REPOSITORY_OWNER" git -C "$subdir" branch -D "$current_branch" 2>/dev/null || true
+                    sudo -u "$REPOSITORY_OWNER" git -C "$subdir" fetch --prune --tags -q 2>/dev/null || true
+
+                    if sudo -u "$REPOSITORY_OWNER" git -C "$subdir" checkout "$current_branch" -q 2>/dev/null; then
+                        sudo -u "$REPOSITORY_OWNER" git -C "$subdir" pull -q 2>/dev/null || true
+                        local recovered_commit
+                        recovered_commit=$(sudo -u "$REPOSITORY_OWNER" git -C "$subdir" rev-parse "$current_branch" 2>/dev/null || true)
+                        if [ -n "$old_commit" ] && [ -n "$recovered_commit" ] && [ "$old_commit" != "$recovered_commit" ]; then
+                            status="success"
+                            repo_updated=0 # true
+                            log_success "Updated $repo_name successfully after auto-recovery."
+                            changed_files=$(sudo -u "$REPOSITORY_OWNER" git -C "$subdir" diff --name-only "$old_commit" "$recovered_commit" 2>/dev/null || true)
+                        else
+                            status="clean"
+                            repo_updated=1 # false
+                            log_success "$repo_name recovered and is up to date."
+                        fi
+                    else
+                        log_warn "Failed to pull $repo_name even after auto-recovery"
+                        status="clean_failed"
+                        # Remove ANSI colour codes and escape quotes/newlines
+                        local clean_err
+                        clean_err=$(echo "$pull_output" | sed -r 's/\x1B\[[0-9;]*[mK]//g' | sed 's/"/\\"/g' | awk '{printf "%s\\n", $0}')
+                        # Clean up the trailing '\n' added by awk
+                        error_message="${clean_err%\\n}"
+                        HAS_ERROR=1
+                    fi
                 fi
             else
                 local new_commit

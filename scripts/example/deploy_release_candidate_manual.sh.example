@@ -555,7 +555,41 @@ main() {
         else
             GIT_PULL_CMD="sudo -u \"$CURRENT_DIR_USER\" git -C \"$STG_GIT_PATH\" pull"
         fi
-        if eval "$GIT_PULL_CMD"; then log_success "Code is up to date."; else log_error "Failed to pull code."; exit 1; fi
+        if eval "$GIT_PULL_CMD"; then
+            log_success "Code is up to date."
+        else
+            log_warn "Failed to pull latest code. Attempting auto-recovery for divergent branch/conflict..."
+            if [ "$JSON_MODE" = "true" ]; then
+                sudo -u "$CURRENT_DIR_USER" git -C "$STG_GIT_PATH" merge --abort >&2 || true
+                sudo -u "$CURRENT_DIR_USER" git -C "$STG_GIT_PATH" reset --hard >&2 || true
+                if [ "$RELEASE_BRANCH" != "main" ] && sudo -u "$CURRENT_DIR_USER" git -C "$STG_GIT_PATH" checkout main >&2; then
+                    :
+                elif [ "$RELEASE_BRANCH" != "master" ] && sudo -u "$CURRENT_DIR_USER" git -C "$STG_GIT_PATH" checkout master >&2; then
+                    :
+                else
+                    sudo -u "$CURRENT_DIR_USER" git -C "$STG_GIT_PATH" checkout --detach >&2 || true
+                fi
+                sudo -u "$CURRENT_DIR_USER" git -C "$STG_GIT_PATH" branch -D "$RELEASE_BRANCH" >&2 || true
+                sudo -u "$CURRENT_DIR_USER" git -C "$STG_GIT_PATH" fetch --prune --tags >&2 || true
+                sudo -u "$CURRENT_DIR_USER" git -C "$STG_GIT_PATH" checkout "$RELEASE_BRANCH" >&2 || { log_error "Failed to checkout $RELEASE_BRANCH after recovery."; exit 1; }
+                sudo -u "$CURRENT_DIR_USER" git -C "$STG_GIT_PATH" pull >&2 || { log_error "Failed to pull code after recovery."; exit 1; }
+            else
+                sudo -u "$CURRENT_DIR_USER" git -C "$STG_GIT_PATH" merge --abort || true
+                sudo -u "$CURRENT_DIR_USER" git -C "$STG_GIT_PATH" reset --hard || true
+                if [ "$RELEASE_BRANCH" != "main" ] && sudo -u "$CURRENT_DIR_USER" git -C "$STG_GIT_PATH" checkout main; then
+                    :
+                elif [ "$RELEASE_BRANCH" != "master" ] && sudo -u "$CURRENT_DIR_USER" git -C "$STG_GIT_PATH" checkout master; then
+                    :
+                else
+                    sudo -u "$CURRENT_DIR_USER" git -C "$STG_GIT_PATH" checkout --detach || true
+                fi
+                sudo -u "$CURRENT_DIR_USER" git -C "$STG_GIT_PATH" branch -D "$RELEASE_BRANCH" || true
+                sudo -u "$CURRENT_DIR_USER" git -C "$STG_GIT_PATH" fetch --prune --tags || true
+                sudo -u "$CURRENT_DIR_USER" git -C "$STG_GIT_PATH" checkout "$RELEASE_BRANCH" || { log_error "Failed to checkout $RELEASE_BRANCH after recovery."; exit 1; }
+                sudo -u "$CURRENT_DIR_USER" git -C "$STG_GIT_PATH" pull || { log_error "Failed to pull code after recovery."; exit 1; }
+            fi
+            log_success "Code is up to date after auto-recovery."
+        fi
     else
         log_info "HEAD is detached ($RELEASE_BRANCH is a tag/commit). Skipping git pull."
     fi
