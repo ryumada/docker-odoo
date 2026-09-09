@@ -347,17 +347,22 @@ if [ -f "$CACHE_ZIP" ]; then
   log_info "Copying cached backup bundle from snapshot cache to $BACKUP_FILE_PATH..."
   cp -f "$CACHE_ZIP" "$BACKUP_FILE_PATH"
   log_info "Updating $ZIP_FILE_NAME in /tmp incrementally..."
-  zip -u -q "$BACKUP_FILE_PATH" "${FILES_TO_UPDATE[@]}"
   if [ -d "filestore" ]; then
-    zip -FS -0 -r -q "$BACKUP_FILE_PATH" filestore
+    zip -FS -0 -r -q "$BACKUP_FILE_PATH" "${FILES_TO_UPDATE[@]}" filestore
+  else
+    zip -u -q "$BACKUP_FILE_PATH" "${FILES_TO_UPDATE[@]}"
   fi
+  cp -f "$BACKUP_FILE_PATH" "$CACHE_ZIP"
 else
   log_info "Creating $ZIP_FILE_NAME in /tmp (store mode)..."
   FILES_TO_ZIP=("${FILES_TO_UPDATE[@]}")
   [ -d "filestore" ] && FILES_TO_ZIP+=("filestore")
   zip -0 -r -q "$BACKUP_FILE_PATH" "${FILES_TO_ZIP[@]}"
+  cp -f "$BACKUP_FILE_PATH" "$CACHE_ZIP"
 fi
 
+chown -R "$REPOSITORY_OWNER:" "$OWNER_HOME/.odoo-snapshots" 2>/dev/null || true
+chmod 644 "$CACHE_ZIP" 2>/dev/null || true
 chown "$REPOSITORY_OWNER:" "$BACKUP_FILE_PATH" 2>/dev/null || chown "${SUDO_USER:-$USER}:${SUDO_USER:-$USER}" "$BACKUP_FILE_PATH" 2>/dev/null || true
 
 log_success "Backup data for $SERVICE_NAME is completed. The backup file is located at $BACKUP_FILE_PATH."

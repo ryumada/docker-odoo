@@ -507,23 +507,21 @@ if [ "$IS_RENEW_DB" == "true" ]; then
             fail_with_json "PRD_SSH_USER and PRD_SSH_PATH are required when PRD_SSH_HOST is configured in .env!"
         fi
 
-        local PRD_SERVICE_NAME
         PRD_SERVICE_NAME=$(basename "$PRD_SSH_PATH")
 
         log_stage "[2/4] Cloning Remote Production Database to Staging (SSH Mode)..."
 
-        local key_path
         if declare -f ensure_ssh_key_for_remote >/dev/null 2>&1; then
             key_path=$(ensure_ssh_key_for_remote "deploy_rc" "$PRD_SSH_HOST" "$PRD_SSH_USER" "$PRD_SSH_KEY" "$REPOSITORY_OWNER" "PRD_SSH_KEY" "$STG_ENV_FILE")
         else
-            local owner_home
+
             owner_home=$(eval echo "~$REPOSITORY_OWNER")
             [ -z "$owner_home" ] && owner_home="$HOME"
             key_path="${PRD_SSH_KEY/#\~/$owner_home}"
         fi
 
-        local prd_ssh_opts=(-p "$PRD_SSH_PORT" -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o ServerAliveInterval=30 -o ServerAliveCountMax=5)
-        local prd_rsync_ssh="ssh -p $PRD_SSH_PORT -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o ServerAliveInterval=30 -o ServerAliveCountMax=5"
+        prd_ssh_opts=(-p "$PRD_SSH_PORT" -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o ServerAliveInterval=30 -o ServerAliveCountMax=5)
+        prd_rsync_ssh="ssh -p $PRD_SSH_PORT -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o ServerAliveInterval=30 -o ServerAliveCountMax=5"
         if [ -n "$key_path" ] && [ -f "$key_path" ]; then
             prd_ssh_opts+=(-i "$key_path")
             prd_rsync_ssh+=" -i $key_path"
