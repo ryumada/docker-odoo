@@ -3,7 +3,7 @@ set -e
 # Category: Utility
 # Description: Backs up Odoo data manually (PostgreSQL dump + filestore).
 # Usage: ./scripts/backupdata_manual.sh
-# Dependencies: zip, pg_dump, sudo, git
+# Dependencies: zip, pg_dump, sudo, git, ssh, rsync
 
 # Detect Repository Owner to run non-root commands as that user
 CURRENT_DIR=$(dirname "$(readlink -f "$0")")
@@ -265,6 +265,131 @@ EOF
   fi
 }
 
+function run_remote_backupdata() {
+  local host="$1"
+  local user="$2"
+  local port="${3:-22}"
+  local key="$4"
+
+  if [ -z "$key" ]; then
+    local this_vps clean_tgt
+    this_vps=$(hostname -s 2>/dev/null || hostname 2>/dev/null || echo "vps-source")
+    clean_tgt=$(echo "$host" | sed -e 's|^.*://||' -e 's|^.*@||' -e 's|:.*$||' -e 's|/.*$||' -e 's|[^a-zA-Z0-9._-]|_|g')
+    if [ -f "$OWNER_HOME/.ssh/snapshot-${this_vps}-${clean_tgt}" ]; then
+      key="$OWNER_HOME/.ssh/snapshot-${this_vps}-${clean_tgt}"
+    elif [ -f "$OWNER_HOME/.ssh/id_ed25519-snapshot-$SERVICE_NAME" ]; then
+      key="$OWNER_HOME/.ssh/id_ed25519-snapshot-$SERVICE_NAME"
+    elif [ -f "$OWNER_HOME/.ssh/id_ed25519_snapshot" ]; then
+      key="$OWNER_HOME/.ssh/id_ed25519_snapshot"
+    else
+      key="$OWNER_HOME/.ssh/snapshot-${this_vps}-${clean_tgt}"
+    fi
+  fi
+  key="${key/#\~/$OWNER_HOME}"
+  local ssh_opts=(-p "$port" -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o ServerAliveInterval=30 -o ServerAliveCountMax=5)
+  local rsync_ssh="ssh -p $port -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o ServerAliveInterval=30 -o ServerAliveCountMax=5"
+  if [ -n "$key" ] && [ -f "$key" ]; then
+    ssh_opts+=(-i "$key")
+    rsync_ssh+=" -i $key"
+  fi
+
+  remote_exec() {
+    ssh "${ssh_opts[@]}" "$user@$host" "$@"
+  }
+
+  remote_sync() {
+    rsync -e "$rsync_ssh" "$@"
+  }
+
+  log_info "Connecting to Secondary VPS ($user@$host:$port)..."
+  if ! remote_exec "true" 2>/dev/null; then
+    log_error "Failed to establish SSH connection with Secondary VPS at $user@$host:$port."
+    exit 1
+  fi
+  log_success "SSH connection established with Secondary VPS."
+
+  if ! remote_exec "command -v zip >/dev/null 2>&1"; then
+    log_error "Secondary VPS is missing zip. Please install zip on Secondary VPS."
+    exit 1
+  fi
+
+  local remote_home
+  remote_home=$(remote_exec 'echo "$HOME"' 2>/dev/null | tr -d '\r\n')
+  if [ -z "$remote_home" ]; then
+    log_error "Could not determine HOME directory on Secondary VPS."
+    exit 1
+  fi
+
+  local remote_base="$remote_home/.odoo-snapshots/$SERVICE_NAME"
+  local remote_mirror="$remote_base/mirror/filestore"
+  local remote_cache="$remote_base/cache"
+  local remote_staging="$remote_base/staging"
+  local remote_cache_zip="$remote_cache/backupdata-$SERVICE_NAME.zip"
+
+  log_info "Preparing directory structure on Secondary VPS under $remote_base/..."
+  remote_exec "mkdir -p '$remote_mirror' '$remote_cache' '$remote_staging/tmp/zip_staging' && chmod 700 '$remote_home/.odoo-snapshots'"
+
+  if [ -d "$ODOO_FILESTORE_PATH" ]; then
+    log_info "Syncing filestore to Secondary VPS (incremental pass 1)..."
+    remote_sync -az --delete "$ODOO_FILESTORE_PATH/" "$user@$host:$remote_mirror/"
+  else
+    log_warn "Filestore not found at $ODOO_FILESTORE_PATH. Skipping filestore."
+  fi
+
+  log_info "Streaming database dump directly to Secondary VPS..."
+  if ! run_pg_dump --no-owner "$ODOO_DATABASE_NAME_PRD" | remote_exec "cat > '$remote_staging/tmp/dump.sql'"; then
+    log_error "pg_dump stream to Secondary VPS failed."
+    exit 1
+  fi
+
+  if [ -d "$ODOO_FILESTORE_PATH" ]; then
+    log_info "Syncing filestore catch-up changes to Secondary VPS..."
+    remote_sync -az "$ODOO_FILESTORE_PATH/" "$user@$host:$remote_mirror/"
+  fi
+
+  local temp_manifest="/tmp/manifest-$SERVICE_NAME-$$.json"
+  generate_manifest "$ODOO_DATABASE_NAME_PRD" "$temp_manifest"
+  remote_sync -az "$temp_manifest" "$user@$host:$remote_staging/tmp/zip_staging/manifest.json"
+  rm -f "$temp_manifest"
+
+  local remote_files_to_update=("dump.sql" "manifest.json")
+
+  if [ -f "$PATH_TO_ODOO/git/git_hashes.txt" ]; then
+    log_info "Syncing git_hashes.txt to Secondary VPS..."
+    remote_sync -az "$PATH_TO_ODOO/git/git_hashes.txt" "$user@$host:$remote_staging/tmp/zip_staging/git_hashes.txt"
+    remote_files_to_update+=("git_hashes.txt")
+  fi
+
+  if [ -f "$PATH_TO_ODOO/odoo-base/git_hashes.txt" ]; then
+    log_info "Syncing odoo-base/git_hashes.txt to Secondary VPS..."
+    remote_sync -az "$PATH_TO_ODOO/odoo-base/git_hashes.txt" "$user@$host:$remote_staging/tmp/zip_staging/odoo-base_git_hashes.txt"
+    remote_files_to_update+=("odoo-base_git_hashes.txt")
+  fi
+
+  remote_exec "mv '$remote_staging/tmp/dump.sql' '$remote_staging/tmp/zip_staging/dump.sql'"
+
+  log_info "Updating cached backupdata-$SERVICE_NAME.zip incrementally on Secondary VPS..."
+  if remote_exec "[ -f '$remote_cache_zip' ]"; then
+    if remote_exec "[ -d '$remote_mirror' ] && [ -n \"\$(ls -A '$remote_mirror' 2>/dev/null)\" ]"; then
+      remote_exec "ln -sfn '$remote_mirror' '$remote_staging/tmp/zip_staging/filestore' && cd '$remote_staging/tmp/zip_staging' && zip -FS -0 -r -q '$remote_cache_zip' ${remote_files_to_update[*]} filestore"
+    else
+      remote_exec "cd '$remote_staging/tmp/zip_staging' && zip -u -q '$remote_cache_zip' ${remote_files_to_update[*]}"
+    fi
+  else
+    if remote_exec "[ -d '$remote_mirror' ] && [ -n \"\$(ls -A '$remote_mirror' 2>/dev/null)\" ]"; then
+      remote_exec "ln -sfn '$remote_mirror' '$remote_staging/tmp/zip_staging/filestore' && cd '$remote_staging/tmp/zip_staging' && zip -0 -r -q '$remote_cache_zip' ${remote_files_to_update[*]} filestore"
+    else
+      remote_exec "cd '$remote_staging/tmp/zip_staging' && zip -0 -r -q '$remote_cache_zip' ${remote_files_to_update[*]}"
+    fi
+  fi
+  remote_exec "rm -rf '$remote_staging/tmp/zip_staging'"
+
+  log_info "Copying cached backup bundle to /tmp on Secondary VPS..."
+  remote_exec "cp -f '$remote_cache_zip' '/tmp/backupdata-$SERVICE_NAME.zip' && chmod 644 '/tmp/backupdata-$SERVICE_NAME.zip'"
+
+  log_success "Backup data for $SERVICE_NAME is completed on Secondary VPS at /tmp/backupdata-$SERVICE_NAME.zip"
+}
+
 ODOO_DATABASE_NAME_PRD=$(grep "^DB_NAME=" "$PATH_TO_ODOO/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
 ZIP_FILE_NAME=backupdata-$SERVICE_NAME.zip
 BACKUP_FILE_PATH="/tmp/$ZIP_FILE_NAME"
@@ -291,6 +416,24 @@ if [ -z "$ODOO_DATABASE_NAME_PRD" ]; then
 fi
 
 ODOO_FILESTORE_PATH="/var/lib/odoo/$SERVICE_NAME/filestore/$ODOO_DATABASE_NAME_PRD"
+
+# Secondary VPS Remote Backup Config
+SNAPSHOT_REMOTE_HOST=$(grep "^SNAPSHOT_REMOTE_HOST=" "$PATH_TO_ODOO/.env" 2>/dev/null | cut -d '=' -f2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//')
+SNAPSHOT_REMOTE_USER=$(grep "^SNAPSHOT_REMOTE_USER=" "$PATH_TO_ODOO/.env" 2>/dev/null | cut -d '=' -f2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//')
+SNAPSHOT_REMOTE_PORT=$(grep "^SNAPSHOT_REMOTE_PORT=" "$PATH_TO_ODOO/.env" 2>/dev/null | cut -d '=' -f2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//')
+SNAPSHOT_REMOTE_KEY=$(grep "^SNAPSHOT_REMOTE_KEY=" "$PATH_TO_ODOO/.env" 2>/dev/null | cut -d '=' -f2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//')
+[ -z "$SNAPSHOT_REMOTE_PORT" ] && SNAPSHOT_REMOTE_PORT="22"
+
+# --- Branch: Remote Secondary VPS Backup Mode ---
+if [ -n "$SNAPSHOT_REMOTE_HOST" ]; then
+  if [ -z "$SNAPSHOT_REMOTE_USER" ]; then
+    log_error "SNAPSHOT_REMOTE_USER is required when SNAPSHOT_REMOTE_HOST is set in .env!"
+    exit 1
+  fi
+  log_info "Executing backup data in Remote Secondary VPS Mode ($SNAPSHOT_REMOTE_USER@$SNAPSHOT_REMOTE_HOST)..."
+  run_remote_backupdata "$SNAPSHOT_REMOTE_HOST" "$SNAPSHOT_REMOTE_USER" "$SNAPSHOT_REMOTE_PORT" "$SNAPSHOT_REMOTE_KEY"
+  exit 0
+fi
 
 log_info "Start backup data for $SERVICE_NAME"
 

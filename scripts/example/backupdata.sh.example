@@ -3,7 +3,7 @@ set -e
 # Category: Utility
 # Description: Backs up Odoo data via the web endpoint.
 # Usage: ./scripts/backupdata.sh
-# Dependencies: curl, sudo, git
+# Dependencies: curl, sudo, git, ssh, rsync
 
 # Detect Repository Owner to run non-root commands as that user
 CURRENT_DIR=$(dirname "$(readlink -f "$0")")
@@ -180,6 +180,50 @@ if [ -s "$BACKUP_FILE_PATH" ]; then
 
     chown "$SUDO_USER:$SUDO_USER" "$BACKUP_FILE_PATH"
     log_success "Backup for '$ODOO_DATABASE_NAME_PRD' is completed. The backup file is located at $BACKUP_FILE_PATH."
+
+    SNAPSHOT_REMOTE_HOST=$(grep "^SNAPSHOT_REMOTE_HOST=" "$PATH_TO_ODOO/.env" 2>/dev/null | cut -d '=' -f2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//')
+    if [ -n "$SNAPSHOT_REMOTE_HOST" ]; then
+        SNAPSHOT_REMOTE_USER=$(grep "^SNAPSHOT_REMOTE_USER=" "$PATH_TO_ODOO/.env" 2>/dev/null | cut -d '=' -f2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//')
+        SNAPSHOT_REMOTE_PORT=$(grep "^SNAPSHOT_REMOTE_PORT=" "$PATH_TO_ODOO/.env" 2>/dev/null | cut -d '=' -f2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//')
+        SNAPSHOT_REMOTE_KEY=$(grep "^SNAPSHOT_REMOTE_KEY=" "$PATH_TO_ODOO/.env" 2>/dev/null | cut -d '=' -f2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//')
+        [ -z "$SNAPSHOT_REMOTE_PORT" ] && SNAPSHOT_REMOTE_PORT="22"
+
+        if [ -z "$SNAPSHOT_REMOTE_USER" ]; then
+            log_error "SNAPSHOT_REMOTE_USER is required when SNAPSHOT_REMOTE_HOST is set in .env!"
+            exit 1
+        fi
+
+        OWNER_HOME=$(eval echo "~$REPOSITORY_OWNER")
+        if [ -z "$SNAPSHOT_REMOTE_KEY" ]; then
+            this_vps=$(hostname -s 2>/dev/null || hostname 2>/dev/null || echo "vps-source")
+            clean_tgt=$(echo "$SNAPSHOT_REMOTE_HOST" | sed -e 's|^.*://||' -e 's|^.*@||' -e 's|:.*$||' -e 's|/.*$||' -e 's|[^a-zA-Z0-9._-]|_|g')
+            if [ -f "$OWNER_HOME/.ssh/snapshot-${this_vps}-${clean_tgt}" ]; then
+                SNAPSHOT_REMOTE_KEY="$OWNER_HOME/.ssh/snapshot-${this_vps}-${clean_tgt}"
+            elif [ -f "$OWNER_HOME/.ssh/id_ed25519-snapshot-$SERVICE_NAME" ]; then
+                SNAPSHOT_REMOTE_KEY="$OWNER_HOME/.ssh/id_ed25519-snapshot-$SERVICE_NAME"
+            elif [ -f "$OWNER_HOME/.ssh/id_ed25519_snapshot" ]; then
+                SNAPSHOT_REMOTE_KEY="$OWNER_HOME/.ssh/id_ed25519_snapshot"
+            else
+                SNAPSHOT_REMOTE_KEY="$OWNER_HOME/.ssh/snapshot-${this_vps}-${clean_tgt}"
+            fi
+        fi
+        SNAPSHOT_REMOTE_KEY="${SNAPSHOT_REMOTE_KEY/#\~/$OWNER_HOME}"
+
+        ssh_opts=(-p "$SNAPSHOT_REMOTE_PORT" -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o ServerAliveInterval=30 -o ServerAliveCountMax=5)
+        rsync_ssh="ssh -p $SNAPSHOT_REMOTE_PORT -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o ServerAliveInterval=30 -o ServerAliveCountMax=5"
+        if [ -n "$SNAPSHOT_REMOTE_KEY" ] && [ -f "$SNAPSHOT_REMOTE_KEY" ]; then
+            ssh_opts+=(-i "$SNAPSHOT_REMOTE_KEY")
+            rsync_ssh+=" -i $SNAPSHOT_REMOTE_KEY"
+        fi
+
+        log_info "Transferring backup file to Secondary VPS ($SNAPSHOT_REMOTE_USER@$SNAPSHOT_REMOTE_HOST)..."
+        if ! rsync -e "$rsync_ssh" -avz "$BACKUP_FILE_PATH" "$SNAPSHOT_REMOTE_USER@$SNAPSHOT_REMOTE_HOST:/tmp/$ZIP_FILE_NAME"; then
+            log_error "Failed to transfer backup file to Secondary VPS."
+            exit 1
+        fi
+        ssh "${ssh_opts[@]}" "$SNAPSHOT_REMOTE_USER@$SNAPSHOT_REMOTE_HOST" "chmod 644 '/tmp/$ZIP_FILE_NAME'" 2>/dev/null || true
+        log_success "Backup file successfully saved to /tmp/$ZIP_FILE_NAME on Secondary VPS."
+    fi
 else
     log_error "Backup failed. The output file is empty. Check Odoo logs for details. Is the master password correct?"
     exit 1
