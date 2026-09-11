@@ -21,7 +21,7 @@ RUN if [ -n "$APT_RESOURCE_URL" ]; then \
 
 # install odoo dependencies
 RUN apt update; \
-    apt install -y wget software-properties-common ca-certificates build-essential libxslt-dev libzip-dev libldap2-dev libsasl2-dev node-less libpq-dev tmux xfonts-75dpi fontconfig libxrender1 xfonts-base libcups2-dev
+    apt install -y wget software-properties-common ca-certificates build-essential libxslt-dev libzip-dev libldap2-dev libsasl2-dev node-less libpq-dev tmux xfonts-75dpi fontconfig libxrender1 xfonts-base libcups2-dev libfaketime
 
 RUN if [ -n "$WKHTMLTOPDF_DIRECT_DOWNLOAD_URL" ] && { [ "$WKHTMLTOPDF_DIRECT_DOWNLOAD_URL" != "${WKHTMLTOPDF_DIRECT_DOWNLOAD_URL#[http://]}" ] || [ "$WKHTMLTOPDF_DIRECT_DOWNLOAD_URL" != "${WKHTMLTOPDF_DIRECT_DOWNLOAD_URL#[https://]}" ]; }; then \
         filename="wkhtmltox_installer.deb"; \

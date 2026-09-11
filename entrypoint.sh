@@ -44,6 +44,19 @@ trap 'error_handler $? $LINENO "$BASH_COMMAND"' ERR
 
 # ------------------------------------
 
+# Set up faketime if configured
+if [ -n "$FAKETIME" ]; then
+  if [ -f /usr/lib/x86_64-linux-gnu/faketime/libfaketime.so.1 ]; then
+    export LD_PRELOAD=/usr/lib/x86_64-linux-gnu/faketime/libfaketime.so.1
+    log_info "FAKETIME enabled: $FAKETIME"
+  elif [ -f /usr/lib/aarch64-linux-gnu/faketime/libfaketime.so.1 ]; then
+    export LD_PRELOAD=/usr/lib/aarch64-linux-gnu/faketime/libfaketime.so.1
+    log_info "FAKETIME enabled: $FAKETIME"
+  else
+    log_warn "FAKETIME is set but libfaketime.so.1 was not found."
+  fi
+fi
+
 : "${SERVICE_NAME:=$(basename "$(pwd)")}"
 : "${ODOO_VERSION:=16}"
 

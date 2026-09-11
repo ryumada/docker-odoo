@@ -450,12 +450,9 @@ function generateDockerFile() {
   log_info "Setting up $PATH_TO_ODOO/dockerfile with mount strategy..."
 
   FAKETIME=$(grep "^FAKETIME=" "$REPOSITORY_DIRPATH/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
-  [ -n "$FAKETIME" ] && validateDatetimeFormat "$FAKETIME" " FAKETIME on .env file" && {
-    log_info "Setting up faketime..."
-    sed -i '/USER root/a \
-RUN apt install -y libfaketime\
-ENV LD_PRELOAD=/usr/lib/x86_64-linux-gnu/faketime/libfaketime.so.1' dockerfile
-  } || true
+  if [ -n "$FAKETIME" ]; then
+    validateDatetimeFormat "$FAKETIME" " FAKETIME on .env file" || true
+  fi
 }
 
 function run_psql_setup() {
