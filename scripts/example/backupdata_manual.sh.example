@@ -374,9 +374,9 @@ function run_remote_backupdata() {
     log_info "Seeding /tmp/backupdata-$SERVICE_NAME.zip from persistent cache on Secondary VPS..."
     remote_exec "cp -f '$remote_cache_zip' '$remote_target_zip'"
     log_info "Updating backup bundle incrementally on Secondary VPS..."
-    remote_exec "cd '$remote_staging/tmp/zip_staging' && zip -u -q '$remote_target_zip' ${remote_files_to_update[*]}"
+    remote_exec "cd '$remote_staging/tmp/zip_staging' && { zip -u -q '$remote_target_zip' ${remote_files_to_update[*]} || [ \$? -eq 12 ]; }"
     if remote_exec "[ -d '$remote_mirror' ] && [ -n \"\$(ls -A '$remote_mirror' 2>/dev/null)\" ]"; then
-      remote_exec "ln -sfn '$remote_mirror' '$remote_staging/tmp/zip_staging/filestore' && cd '$remote_staging/tmp/zip_staging' && zip -u -0 -r -q '$remote_target_zip' filestore"
+      remote_exec "ln -sfn '$remote_mirror' '$remote_staging/tmp/zip_staging/filestore' && cd '$remote_staging/tmp/zip_staging' && { zip -u -0 -r -q '$remote_target_zip' filestore || [ \$? -eq 12 ]; }"
     fi
   else
     log_info "Creating initial backup bundle in /tmp on Secondary VPS..."
@@ -490,9 +490,9 @@ if [ -f "$CACHE_ZIP" ]; then
   log_info "Copying cached backup bundle from snapshot cache to $BACKUP_FILE_PATH..."
   cp -f "$CACHE_ZIP" "$BACKUP_FILE_PATH"
   log_info "Updating $ZIP_FILE_NAME in /tmp incrementally..."
-  zip -u -q "$BACKUP_FILE_PATH" "${FILES_TO_UPDATE[@]}"
+  zip -u -q "$BACKUP_FILE_PATH" "${FILES_TO_UPDATE[@]}" || [ $? -eq 12 ]
   if [ -d "filestore" ]; then
-    zip -u -0 -r -q "$BACKUP_FILE_PATH" filestore
+    zip -u -0 -r -q "$BACKUP_FILE_PATH" filestore || [ $? -eq 12 ]
   fi
 else
   log_info "Creating $ZIP_FILE_NAME in /tmp..."
