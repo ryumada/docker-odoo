@@ -199,15 +199,77 @@ function get_gdrive_access_token_from_sa() {
   echo "$token_response" | grep -o '"access_token": *"[^"]*"' | cut -d'"' -f4
 }
 
+function is_gdrive_token_valid() {
+  local token="$1"
+  [ -z "$token" ] && return 1
+
+  local resp http_code exp
+  resp=$(curl -s --connect-timeout 5 --max-time 10 -w "\n%{http_code}" "https://oauth2.googleapis.com/tokeninfo?access_token=${token}" 2>/dev/null || true)
+  http_code=$(echo "$resp" | tail -n1)
+
+  if [ "$http_code" = "200" ]; then
+    exp=$(echo "$resp" | sed '$d' | grep -o '"expires_in": *"[^"]*"' | cut -d'"' -f4)
+    [ -z "$exp" ] && exp=$(echo "$resp" | sed '$d' | grep -o '"expires_in": *[0-9]*' | awk '{print $2}')
+    if [ -n "$exp" ] && [ "$exp" -gt 60 ] 2>/dev/null; then
+      return 0
+    fi
+  fi
+  return 1
+}
+
+function resolve_gdrive_access_token() {
+  local current_token="$1"
+  local raw_access_token="$2"
+  local sa_input="$3"
+
+  # If current token is provided and still valid, reuse it without renewing
+  if is_gdrive_token_valid "$current_token"; then
+    echo "$current_token"
+    return 0
+  fi
+
+  # Otherwise renew bearer token
+  if [ -n "$sa_input" ]; then
+    get_gdrive_access_token_from_sa "$sa_input"
+  elif [ -n "$raw_access_token" ]; then
+    if [ -f "$raw_access_token" ]; then
+      if [[ "$raw_access_token" == *.json ]] || grep -q '"type": *"service_account"' "$raw_access_token" 2>/dev/null; then
+        get_gdrive_access_token_from_sa "$raw_access_token"
+      else
+        local file_tok
+        file_tok=$(tr -d '\r\n' < "$raw_access_token")
+        if is_gdrive_token_valid "$file_tok"; then
+          echo "$file_tok"
+        elif [ -n "$sa_input" ]; then
+          get_gdrive_access_token_from_sa "$sa_input"
+        else
+          echo "$file_tok"
+        fi
+      fi
+    elif [[ "$raw_access_token" =~ ^\{.*\}$ ]]; then
+      get_gdrive_access_token_from_sa "$raw_access_token"
+    else
+      echo "$raw_access_token"
+    fi
+  fi
+}
+
 function cleanup_gdrive_old_snapshots() {
   local access_token="$1"
   local folder_id="$2"
   local service_name="$3"
   local max_backups="$4"
+  local raw_access_token="${5:-$access_token}"
+  local sa_input="$6"
 
   if [ -z "$max_backups" ] || ! [[ "$max_backups" =~ ^[0-9]+$ ]] || [ "$max_backups" -le 0 ]; then
     return 0
   fi
+
+  # Validate and renew token if expired
+  local valid_token
+  valid_token=$(resolve_gdrive_access_token "$access_token" "$raw_access_token" "$sa_input")
+  [ -n "$valid_token" ] && access_token="$valid_token"
 
   log_info "Running Google Drive lifecycle retention (keeping latest $max_backups snapshot(s) for $service_name)..."
 
@@ -254,6 +316,11 @@ function cleanup_gdrive_old_snapshots() {
 
   for file_id in $to_delete; do
     if [ -n "$file_id" ]; then
+      # Validate and renew token before deletion action if needed
+      local del_token
+      del_token=$(resolve_gdrive_access_token "$access_token" "$raw_access_token" "$sa_input")
+      [ -n "$del_token" ] && access_token="$del_token"
+
       local del_resp del_status
       del_resp=$(curl -s -w "\n%{http_code}" -X DELETE \
         -H "Authorization: Bearer $access_token" \
@@ -312,26 +379,9 @@ function upload_to_gdrive() {
     return 1
   fi
 
-  local access_token=""
-  if [ -n "$raw_access_token" ]; then
-    if [ -f "$raw_access_token" ]; then
-      if [[ "$raw_access_token" == *.json ]] || grep -q '"type": *"service_account"' "$raw_access_token" 2>/dev/null; then
-        local key_label="${sa_key_path:-$raw_access_token}"
-        [[ "$key_label" =~ ^\{ ]] && key_label="Service Account JSON"
-        log_info "Exchanging Google Drive Service Account key '$key_label' for access token..."
-        access_token=$(get_gdrive_access_token_from_sa "$raw_access_token")
-      else
-        access_token=$(tr -d '\r\n' < "$raw_access_token")
-      fi
-    else
-      access_token="$raw_access_token"
-    fi
-  elif [ -n "$sa_key_path" ]; then
-    local key_label="$sa_key_path"
-    [[ "$key_label" =~ ^\{ ]] && key_label="Service Account JSON"
-    log_info "Exchanging Google Drive Service Account key '$key_label' for access token..."
-    access_token=$(get_gdrive_access_token_from_sa "$sa_key_path")
-  fi
+  log_info "Verifying Google Drive bearer token validity..."
+  local access_token
+  access_token=$(resolve_gdrive_access_token "$raw_access_token" "$raw_access_token" "$sa_key_path")
 
   if [ -z "$access_token" ]; then
     log_error "Google Drive access token could not be obtained (check your access token or Service Account key file)."
@@ -421,7 +471,7 @@ function upload_to_gdrive() {
       # 200/201: File upload completed
       log_success "Google Drive chunked upload completed successfully for $file_name."
       if [ -n "$max_backups_cfg" ]; then
-        cleanup_gdrive_old_snapshots "$access_token" "$folder_id" "$service_name" "$max_backups_cfg"
+        cleanup_gdrive_old_snapshots "$access_token" "$folder_id" "$service_name" "$max_backups_cfg" "$raw_access_token" "$sa_key_path"
       fi
       return 0
     else
@@ -738,7 +788,7 @@ MANIFEST_EOF"
     fi
 
     local upload_funcs
-    upload_funcs=$(declare -f log log_info log_success log_warn log_error get_gdrive_access_token_from_sa cleanup_gdrive_old_snapshots upload_to_gdrive)
+    upload_funcs=$(declare -f log log_info log_success log_warn log_error is_gdrive_token_valid get_gdrive_access_token_from_sa resolve_gdrive_access_token cleanup_gdrive_old_snapshots upload_to_gdrive)
 
     if remote_exec "bash -s" << REMOTE_EOF
 COLOR_RESET='$COLOR_RESET'

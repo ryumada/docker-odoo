@@ -212,19 +212,53 @@ function get_gdrive_access_token_from_sa() {
   echo "$token_response" | grep -o '"access_token": *"[^"]*"' | cut -d'"' -f4
 }
 
+function is_gdrive_token_valid() {
+  local token="$1"
+  [ -z "$token" ] && return 1
+
+  local resp http_code exp
+  resp=$(curl -s --connect-timeout 5 --max-time 10 -w "\n%{http_code}" "https://oauth2.googleapis.com/tokeninfo?access_token=${token}" 2>/dev/null || true)
+  http_code=$(echo "$resp" | tail -n1)
+
+  if [ "$http_code" = "200" ]; then
+    exp=$(echo "$resp" | sed '$d' | grep -o '"expires_in": *"[^"]*"' | cut -d'"' -f4)
+    [ -z "$exp" ] && exp=$(echo "$resp" | sed '$d' | grep -o '"expires_in": *[0-9]*' | awk '{print $2}')
+    if [ -n "$exp" ] && [ "$exp" -gt 60 ] 2>/dev/null; then
+      return 0
+    fi
+  fi
+  return 1
+}
+
 function resolve_access_token() {
-  if [ -n "$GDRIVE_ACCESS_TOKEN" ]; then
+  local current_token="$1"
+  if is_gdrive_token_valid "$current_token"; then
+    echo "$current_token"
+    return 0
+  fi
+
+  if [ -n "$GDRIVE_SERVICE_ACCOUNT_KEY" ]; then
+    get_gdrive_access_token_from_sa "$GDRIVE_SERVICE_ACCOUNT_KEY"
+  elif [ -n "$GDRIVE_ACCESS_TOKEN" ]; then
     if [ -f "$GDRIVE_ACCESS_TOKEN" ]; then
       if [[ "$GDRIVE_ACCESS_TOKEN" == *.json ]] || grep -q '"type": *"service_account"' "$GDRIVE_ACCESS_TOKEN" 2>/dev/null; then
         get_gdrive_access_token_from_sa "$GDRIVE_ACCESS_TOKEN"
       else
-        tr -d '\r\n' < "$GDRIVE_ACCESS_TOKEN"
+        local file_tok
+        file_tok=$(tr -d '\r\n' < "$GDRIVE_ACCESS_TOKEN")
+        if is_gdrive_token_valid "$file_tok"; then
+          echo "$file_tok"
+        elif [ -n "$GDRIVE_SERVICE_ACCOUNT_KEY" ]; then
+          get_gdrive_access_token_from_sa "$GDRIVE_SERVICE_ACCOUNT_KEY"
+        else
+          echo "$file_tok"
+        fi
       fi
+    elif [[ "$GDRIVE_ACCESS_TOKEN" =~ ^\{.*\}$ ]]; then
+      get_gdrive_access_token_from_sa "$GDRIVE_ACCESS_TOKEN"
     else
       echo "$GDRIVE_ACCESS_TOKEN"
     fi
-  elif [ -n "$GDRIVE_SERVICE_ACCOUNT_KEY" ]; then
-    get_gdrive_access_token_from_sa "$GDRIVE_SERVICE_ACCOUNT_KEY"
   fi
 }
 
@@ -251,6 +285,8 @@ if [ "$LIST_ONLY" = true ]; then
 else
   log_info "Fetching snapshots from Google Drive (retention policy: keep latest $MAX_BACKUPS)..."
 fi
+
+ACCESS_TOKEN=$(resolve_access_token "$ACCESS_TOKEN")
 
 RESPONSE=$(curl -s -G \
   -H "Authorization: Bearer $ACCESS_TOKEN" \
@@ -407,6 +443,10 @@ FAILED_COUNT=0
 
 while IFS=$'\t' read -r fid fname; do
   [ -z "$fid" ] && continue
+
+  local del_token
+  del_token=$(resolve_access_token "$ACCESS_TOKEN")
+  [ -n "$del_token" ] && ACCESS_TOKEN="$del_token"
 
   # Strategy 1: Permanent DELETE (requires ownership or Admin)
   DEL_RESP=$(curl -s -w "\n%{http_code}" -X DELETE \
