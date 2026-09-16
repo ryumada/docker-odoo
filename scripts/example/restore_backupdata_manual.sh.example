@@ -571,14 +571,13 @@ function main() {
   unzip -qqqq -d "$TEMP_DIR" "$BACKUPDATA_FILE_PATH" >&2
   chmod -R a+rX "$TEMP_DIR"
 
-  log_info "Creating the filestore directory at $FILESTORE_PATH"
-  mkdir -p "$FILESTORE_PATH"
-
   log_info "Restoring the filestore files..."
   if [ -d "$TEMP_DIR/filestore" ]; then
-    rsync -a "$TEMP_DIR/filestore/" "$FILESTORE_PATH"
+    rm -rf "$FILESTORE_PATH"
+    mv "$TEMP_DIR"/filestore "$FILESTORE_PATH"
   else
     log_warn "Filestore not found in backup. Skipping filestore restore."
+    mkdir -p "$FILESTORE_PATH"
   fi
 
   log_info "Changing the ownership of $FILESTORE_PATH to odoo user"
