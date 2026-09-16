@@ -88,31 +88,32 @@ function getGitHash() {
   local git_path=$1
   local output_file=$2
   local git_real_owner
-  git_real_owner=$(stat -c '%U' "$git_path")
+  git_real_owner=$(stat -c '%U' "$git_path" 2>/dev/null || echo "$REPOSITORY_OWNER")
 
   {
       echo "  Updated at [$(date +"%Y-%m-%d %H:%M:%S")]"
       echo "  Git Directory: $git_path"
-      echo "  Git Remote: $(sudo -u "$git_real_owner" git -C "$git_path" remote get-url origin)"
-      echo "  Git Branch: $(sudo -u "$git_real_owner" git -C "$git_path" branch --show-current)"
-      echo "  Git Hashes: $(sudo -u "$git_real_owner" git -C "$git_path" rev-parse HEAD)"
+      echo "  Git Remote: $(sudo -u "$git_real_owner" git -C "$git_path" config --get remote.origin.url 2>/dev/null || echo "N/A")"
+      echo "  Git Branch: $(sudo -u "$git_real_owner" git -C "$git_path" branch --show-current 2>/dev/null || echo "HEAD")"
+      echo "  Git Hashes: $(sudo -u "$git_real_owner" git -C "$git_path" rev-parse HEAD 2>/dev/null || echo "N/A")"
       echo ""
   } >> "$output_file"
 }
 
 function getSubDirectories() {
-  dir=$1
-  subdirs="$(ls -d "$dir"/*/)"
-  echo "$subdirs"
+  local dir=$1
+  ls -d "$dir"/*/ 2>/dev/null || true
 }
 
 function isDirectoryGitRepository() {
   # _inherit = writeGitHash
 
-  dir=$1
+  local dir=$1
+  local git_real_owner
+  git_real_owner=$(stat -c '%U' "$dir" 2>/dev/null || echo "$REPOSITORY_OWNER")
 
-  if [ -d "$dir/.git" ]; then
-    if git rev-parse --is-inside-work-tree &>/dev/null; then
+  if [ -e "$dir/.git" ]; then
+    if sudo -u "$git_real_owner" git -C "$dir" rev-parse --is-inside-work-tree &>/dev/null; then
       return 0
     else
       return 1
@@ -514,9 +515,17 @@ function writeGitHash() {
   local output_file=$2
   local subdirs
 
+  [ -d "$search_dir" ] || return 0
+
+  if isDirectoryGitRepository "$search_dir"; then
+    getGitHash "$search_dir" "$output_file"
+    return 0
+  fi
+
   subdirs="$(getSubDirectories "$search_dir")"
 
   for dir in $subdirs; do
+    dir="${dir%/}"
     if isDirectoryGitRepository "$dir"; then
       getGitHash "$dir" "$output_file"
     else
