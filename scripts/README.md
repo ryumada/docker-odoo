@@ -183,6 +183,32 @@ Uploads a local Odoo snapshot archive to Google Drive using Google Service Accou
 
 # Upload with overridden Google Drive folder ID
 ./scripts/upload-snapshot.sh --folder-id "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OIvE2up0Y"
+</details>
+
+<details>
+<summary>
+
+# Upload Temporary Snapshots
+
+</summary>
+
+Uploads all temporary Odoo snapshot files and directories (created in `/tmp` when scheduled snapshot uploads fail due to key issues or connection errors) to the configured backup storage (Google Drive, Google Cloud Storage) based on `.env`. Once uploaded successfully, the local temporary files are automatically cleaned up.
+
+```bash
+# Upload all temporary snapshots for current service
+./scripts/upload-temp-snapshots.sh
+
+# Dry-run preview without uploading or deleting
+./scripts/upload-temp-snapshots.sh --dry-run
+
+# Upload temporary snapshots for all services in /tmp
+./scripts/upload-temp-snapshots.sh --all
+
+# Upload temporary snapshots for a specific service name
+./scripts/upload-temp-snapshots.sh --service fluidco-16
+
+# Keep local temporary snapshots after successful upload
+./scripts/upload-temp-snapshots.sh --keep-local
 ```
 
 </details>

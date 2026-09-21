@@ -51,6 +51,7 @@ scripts/*
 !scripts/update-env-file.sh
 !scripts/update-odoo-config.sh
 !scripts/upload-snapshot.sh
+!scripts/upload-temp-snapshots.sh
 !scripts/lib/
 !scripts/long-process-mode.sh
 !scripts/validate-agent-config.sh
