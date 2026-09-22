@@ -65,6 +65,13 @@ log_info "Creating Nginx cache configuration..."
 # Use a temporary file instead of the user's home directory to avoid permission issues if run as root
 TEMP_CONF=$(mktemp)
 
+cleanup() {
+  if [ -n "$TEMP_CONF" ] && [ -f "$TEMP_CONF" ]; then
+    rm -f "$TEMP_CONF"
+  fi
+}
+trap cleanup EXIT
+
 log_info "Enter the domain name:"
 read -r DOMAIN
 
@@ -73,18 +80,34 @@ if [ -z "$DOMAIN" ]; then
     exit 1
 fi
 
-cat << EOF >> "$TEMP_CONF"
+cat << EOF > "$TEMP_CONF"
 proxy_cache_path /var/cache/nginx/${DOMAIN}_image_cache levels=1:2 keys_zone=${DOMAIN}_image_cache:50m max_size=2g inactive=24h use_temp_path=off;
 proxy_cache_path /var/cache/nginx/${DOMAIN}_static_cache levels=1:2 keys_zone=${DOMAIN}_static_cache:50m max_size=2g inactive=24h use_temp_path=off;
 EOF
 
 DEST_FILE="/etc/nginx/conf.d/02-nginx-cache-${DOMAIN}.conf"
-log_info "Installing configuration to $DEST_FILE"
+DEST_DIR="$(dirname "$DEST_FILE")"
+
+# Ensure /etc/nginx/conf.d directory exists before installing configuration
+if [ ! -d "$DEST_DIR" ]; then
+  log_info "Creating Nginx configuration directory: $DEST_DIR..."
+  mkdir -p "$DEST_DIR"
+fi
 
 # Since we are root, we can directly create directories and move files
 log_info "Creating cache directories..."
 mkdir -p "/var/cache/nginx/${DOMAIN}_image_cache"
 mkdir -p "/var/cache/nginx/${DOMAIN}_static_cache"
+
+# Set ownership to nginx/www-data user if available
+NGINX_USER="www-data"
+if id "www-data" &>/dev/null; then
+  NGINX_USER="www-data"
+elif id "nginx" &>/dev/null; then
+  NGINX_USER="nginx"
+fi
+chown -R "$NGINX_USER":"$NGINX_USER" "/var/cache/nginx/${DOMAIN}_image_cache" "/var/cache/nginx/${DOMAIN}_static_cache" 2>/dev/null || true
+chmod 700 "/var/cache/nginx/${DOMAIN}_image_cache" "/var/cache/nginx/${DOMAIN}_static_cache" 2>/dev/null || true
 log_success "Cache directories ensured."
 
 log_info "Installing configuration to $DEST_FILE"

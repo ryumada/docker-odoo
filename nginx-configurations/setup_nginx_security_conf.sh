@@ -57,6 +57,13 @@ log_info "Creating Nginx security configuration..."
 # Use a temporary file instead of the user's home directory to avoid permission issues if run as root
 TEMP_CONF=$(mktemp)
 
+cleanup() {
+  if [ -n "$TEMP_CONF" ] && [ -f "$TEMP_CONF" ]; then
+    rm -f "$TEMP_CONF"
+  fi
+}
+trap cleanup EXIT
+
 cat << 'EOF' > "$TEMP_CONF"
 ##
 # Security Settings
@@ -119,10 +126,21 @@ add_header Referrer-Policy "strict-origin-when-cross-origin";
 EOF
 
 DEST_FILE="/etc/nginx/conf.d/01-sudo-nginx-security.conf"
+DEST_DIR="$(dirname "$DEST_FILE")"
+
+# Ensure destination directory exists
+if [ ! -d "$DEST_DIR" ]; then
+    if [ -w "$(dirname "$DEST_DIR")" ]; then
+        mkdir -p "$DEST_DIR"
+    elif command -v sudo &> /dev/null; then
+        sudo mkdir -p "$DEST_DIR"
+    fi
+fi
+
 log_info "Installing configuration to $DEST_FILE"
 
 # Determine if we need sudo to move the file
-if [ -w "$(dirname "$DEST_FILE")" ]; then
+if [ -w "$DEST_DIR" ]; then
     mv "$TEMP_CONF" "$DEST_FILE"
     chown root:root "$DEST_FILE" || log_warn "Could not allow root ownership. Current user: $(whoami)"
 else
@@ -131,7 +149,6 @@ else
         sudo chown root:root "$DEST_FILE"
     else
         log_error "Cannot write to $DEST_FILE and sudo is not available."
-        rm -f "$TEMP_CONF"
         exit 1
     fi
 fi
