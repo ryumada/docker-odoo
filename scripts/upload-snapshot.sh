@@ -64,7 +64,7 @@ Arguments:
 
 Examples:
   ./scripts/upload-snapshot.sh
-  ./scripts/upload-snapshot.sh /tmp/snapshot-$SERVICE_NAME-20260826.tar.zst
+  ./scripts/upload-snapshot.sh ~/snapshot-$SERVICE_NAME-20260826.tar.zst
   ./scripts/upload-snapshot.sh --folder-id "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OIvE2up0Y"
 EOF
 }
@@ -158,20 +158,23 @@ if [ -n "$GDRIVE_SERVICE_ACCOUNT_KEY" ] && [[ "$GDRIVE_SERVICE_ACCOUNT_KEY" != /
 fi
 
 # Auto-detect snapshot file if not provided
+OWNER_HOME=$(eval echo "~$REPOSITORY_OWNER")
 if [ -z "$SNAPSHOT_FILE_PATH" ]; then
-  if [ -f "/tmp/snapshot-$SERVICE_NAME.tar.zst" ]; then
-    SNAPSHOT_FILE_PATH="/tmp/snapshot-$SERVICE_NAME.tar.zst"
-  else
-    # Find latest in /tmp
-    LATEST_TMP=$(find /tmp -maxdepth 1 -name "snapshot-${SERVICE_NAME}*.tar.zst" -printf '%T@ %p\n' 2>/dev/null | sort -k1 -nr | head -n1 | cut -d' ' -f2- || true)
-    if [ -n "$LATEST_TMP" ] && [ -f "$LATEST_TMP" ]; then
-      SNAPSHOT_FILE_PATH="$LATEST_TMP"
-    else
-      # Find in current project root
-      LATEST_LOCAL=$(find "$PATH_TO_ODOO" -maxdepth 1 -name "snapshot-${SERVICE_NAME}*.tar.zst" -printf '%T@ %p\n' 2>/dev/null | sort -k1 -nr | head -n1 | cut -d' ' -f2- || true)
-      if [ -n "$LATEST_LOCAL" ] && [ -f "$LATEST_LOCAL" ]; then
-        SNAPSHOT_FILE_PATH="$LATEST_LOCAL"
-      fi
+  candidates=(
+    "$OWNER_HOME/snapshot-$SERVICE_NAME.tar.zst"
+    "/tmp/snapshot-$SERVICE_NAME.tar.zst"
+  )
+  for c in "${candidates[@]}"; do
+    if [ -f "$c" ]; then
+      SNAPSHOT_FILE_PATH="$c"
+      break
+    fi
+  done
+
+  if [ -z "$SNAPSHOT_FILE_PATH" ]; then
+    LATEST_FOUND=$(find "$OWNER_HOME/.odoo-snapshots/$SERVICE_NAME/archives" "$OWNER_HOME" "$PATH_TO_ODOO" /tmp -maxdepth 2 -name "snapshot-${SERVICE_NAME}*.tar.zst" -printf '%T@ %p\n' 2>/dev/null | sort -k1 -nr | head -n1 | cut -d' ' -f2- || true)
+    if [ -n "$LATEST_FOUND" ] && [ -f "$LATEST_FOUND" ]; then
+      SNAPSHOT_FILE_PATH="$LATEST_FOUND"
     fi
   fi
 fi

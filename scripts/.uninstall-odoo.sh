@@ -178,24 +178,25 @@ function main() {
         [ -d "$dir" ] && DEP_ARR+=("$(basename "$dir")")
       done
     fi
+    OWNER_HOME=$(eval echo "~$REPOSITORY_OWNER")
     if [ ${#DEP_ARR[@]} -gt 0 ]; then
       MISSING_BACKUPS=()
       for dep in "${DEP_ARR[@]}"; do
-        if ! ls /tmp/backupdata_*${dep}* /tmp/snapshot_*${dep}* /tmp/backupdata_* /tmp/snapshot_* >/dev/null 2>&1; then
+        if ! ls "$OWNER_HOME"/backupdata_*${dep}* "$OWNER_HOME"/snapshot_*${dep}* "$OWNER_HOME"/backupdata_* "$OWNER_HOME"/snapshot_* "$OWNER_HOME"/.odoo-snapshots/* /tmp/backupdata_*${dep}* /tmp/snapshot_*${dep}* /tmp/backupdata_* /tmp/snapshot_* >/dev/null 2>&1; then
           MISSING_BACKUPS+=("$dep")
         fi
       done
 
       if [ ${#MISSING_BACKUPS[@]} -gt 0 ]; then
-        log_error "Backup files in /tmp/ are missing for deployment(s): ${MISSING_BACKUPS[*]}"
+        log_error "Backup files are missing for deployment(s): ${MISSING_BACKUPS[*]}"
         log_info "To complete uninstallation safely:"
         for dep in "${MISSING_BACKUPS[@]}"; do
           log_info "  1. Switch environment: sudo ./scripts/switch_env.sh $dep"
           log_info "  2. Run backup: sudo ./scripts/backupdata-$SERVICE_NAME.sh (or ./scripts/snapshot-$SERVICE_NAME.sh)"
-          log_info "  3. Ensure the backup file is placed in /tmp/"
+          log_info "  3. Ensure the backup file is placed in $OWNER_HOME/ or /tmp/"
         done
         log_warn "Alternatively, pass --bypass-snapshot to force uninstallation without backups."
-        die "Uninstallation aborted: Missing backup files in /tmp/."
+        die "Uninstallation aborted: Missing backup files in $OWNER_HOME/ or /tmp/."
       fi
     fi
   fi
@@ -215,7 +216,7 @@ function main() {
         die "The snapshot script failed. Uninstallation is prohibited. Please create the snapshot script first"
       fi
     else
-      log_warn "The snapshot script is missing or not executable: $SNAPSHOT_SCRIPT_FILE. Ensure backups exist in /tmp/."
+      log_warn "The snapshot script is missing or not executable: $SNAPSHOT_SCRIPT_FILE. Ensure backups exist in $OWNER_HOME/ or /tmp/."
     fi
   fi
 

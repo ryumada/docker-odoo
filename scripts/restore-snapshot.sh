@@ -30,12 +30,12 @@ Options:
   -h, --help                     Show this help message
 
 Arguments:
-  SNAPSHOT_FILE                  Optional path to snapshot file (default: /tmp/$DEFAULT_TAR_FILE_NAME)
+  SNAPSHOT_FILE                  Optional path to snapshot file (default: ~/$DEFAULT_TAR_FILE_NAME)
 
 Examples:
   ./scripts/restore-snapshot.sh --data-only -n my_new_db
   ./scripts/restore-snapshot.sh --restore-backupdata -n my_renamed_db
-  ./scripts/restore-snapshot.sh /tmp/$DEFAULT_TAR_FILE_NAME
+  ./scripts/restore-snapshot.sh ~/$DEFAULT_TAR_FILE_NAME
 EOF
 }
 
@@ -98,12 +98,28 @@ trap 'error_handler $? $LINENO "$BASH_COMMAND"' ERR
 # The path inside the tar is the absolute path without the leading slash
 TAR_PROJECT_ROOT="${PATH_TO_ODOO#/}"
 
+OWNER_HOME=$(eval echo "~$REPOSITORY_OWNER")
+ODOO_TMP_DIR="$OWNER_HOME/.odoo-tmp/$SERVICE_NAME"
+mkdir -p "$ODOO_TMP_DIR" 2>/dev/null || true
+chmod 700 "$OWNER_HOME/.odoo-tmp" "$ODOO_TMP_DIR" 2>/dev/null || true
+chown -R "$REPOSITORY_OWNER": "$OWNER_HOME/.odoo-tmp" 2>/dev/null || true
+
 SNAPSHOT_FILE_PATH=""
 DATA_ONLY=false
 RESTORE_VIA_BACKUPDATA=false
 AUTO_CONFIRM=false
 TARGET_DB_NAME=""
-TEMP_DIR="/tmp/snapshot-$SERVICE_NAME"
+TEMP_DIR="$ODOO_TMP_DIR/restore_snapshot_$$"
+
+cleanup_temp_dir() {
+  if [ -n "${TEMP_DIR:-}" ] && [ -d "$TEMP_DIR" ]; then
+    rm -rf "$TEMP_DIR"
+  fi
+  if [ -n "${EXTRACTED_BACKUPDATA_ZIP:-}" ] && [ -f "$EXTRACTED_BACKUPDATA_ZIP" ]; then
+    rm -f "$EXTRACTED_BACKUPDATA_ZIP"
+  fi
+}
+trap cleanup_temp_dir EXIT
 
 # --- Parse CLI Arguments ---
 while [[ $# -gt 0 ]]; do
@@ -161,15 +177,23 @@ while [[ $# -gt 0 ]]; do
 done
 
 if [ -z "$SNAPSHOT_FILE_PATH" ]; then
-  if [ -f "/tmp/$DEFAULT_TAR_FILE_NAME" ]; then
-    SNAPSHOT_FILE_PATH="/tmp/$DEFAULT_TAR_FILE_NAME"
-  else
-    # Find latest snapshot in /tmp matching prefix
-    LATEST_TMP_SNAPSHOT=$(find /tmp -maxdepth 1 -name "snapshot-${SERVICE_NAME}*.tar.zst" -printf '%T@ %p\n' 2>/dev/null | sort -k1 -nr | head -n1 | cut -d' ' -f2- || true)
-    if [ -n "$LATEST_TMP_SNAPSHOT" ] && [ -f "$LATEST_TMP_SNAPSHOT" ]; then
-      SNAPSHOT_FILE_PATH="$LATEST_TMP_SNAPSHOT"
+  candidates=(
+    "$OWNER_HOME/$DEFAULT_TAR_FILE_NAME"
+    "/tmp/$DEFAULT_TAR_FILE_NAME"
+  )
+  for c in "${candidates[@]}"; do
+    if [ -f "$c" ]; then
+      SNAPSHOT_FILE_PATH="$c"
+      break
+    fi
+  done
+
+  if [ -z "$SNAPSHOT_FILE_PATH" ]; then
+    LATEST_SNAPSHOT=$(find "$OWNER_HOME/.odoo-snapshots/$SERVICE_NAME/archives" "$OWNER_HOME" /tmp -maxdepth 2 -name "snapshot-${SERVICE_NAME}*.tar.zst" -printf '%T@ %p\n' 2>/dev/null | sort -k1 -nr | head -n1 | cut -d' ' -f2- || true)
+    if [ -n "$LATEST_SNAPSHOT" ] && [ -f "$LATEST_SNAPSHOT" ]; then
+      SNAPSHOT_FILE_PATH="$LATEST_SNAPSHOT"
     else
-      SNAPSHOT_FILE_PATH="/tmp/$DEFAULT_TAR_FILE_NAME"
+      SNAPSHOT_FILE_PATH="$OWNER_HOME/$DEFAULT_TAR_FILE_NAME"
     fi
   fi
 fi
@@ -396,7 +420,7 @@ function restoreFromSnapshotViaBackupData() {
   isZstdInstalled
   isSnapshotFileExist
 
-  log_info "Extracting backupdata bundle from $SNAPSHOT_FILE_PATH to /tmp/backupdata-$SERVICE_NAME.zip..."
+  log_info "Extracting backupdata bundle from $SNAPSHOT_FILE_PATH..."
   rm -rf "$TEMP_DIR" && mkdir -p "$TEMP_DIR"
 
   if ! tar -xaf "$SNAPSHOT_FILE_PATH" -C "$TEMP_DIR" --wildcards "*backupdata*.zip" 2>/dev/null; then
@@ -415,12 +439,13 @@ function restoreFromSnapshotViaBackupData() {
     exit 1
   fi
 
-  cp -f "$extracted_zip" "/tmp/backupdata-$SERVICE_NAME.zip"
-  chown "$REPOSITORY_OWNER": "/tmp/backupdata-$SERVICE_NAME.zip" 2>/dev/null || true
-  chmod 644 "/tmp/backupdata-$SERVICE_NAME.zip" 2>/dev/null || true
-  log_success "Backup bundle extracted and placed at /tmp/backupdata-$SERVICE_NAME.zip"
+  EXTRACTED_BACKUPDATA_ZIP="$ODOO_TMP_DIR/backupdata-$SERVICE_NAME.zip"
+  cp -f "$extracted_zip" "$EXTRACTED_BACKUPDATA_ZIP"
+  chown "$REPOSITORY_OWNER": "$EXTRACTED_BACKUPDATA_ZIP" 2>/dev/null || true
+  chmod 644 "$EXTRACTED_BACKUPDATA_ZIP" 2>/dev/null || true
+  log_success "Backup bundle extracted and placed at $EXTRACTED_BACKUPDATA_ZIP"
 
-  local restore_args=("/tmp/backupdata-$SERVICE_NAME.zip")
+  local restore_args=("$EXTRACTED_BACKUPDATA_ZIP")
   if [ -n "$TARGET_DB_NAME" ]; then
     restore_args+=("-n" "$TARGET_DB_NAME")
   fi

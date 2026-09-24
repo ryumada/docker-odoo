@@ -97,6 +97,9 @@ cleanup_temp_files() {
     if [ -n "$TEMP_BACKUP_FILE" ] && [ -f "$TEMP_BACKUP_FILE" ]; then
         rm -f "$TEMP_BACKUP_FILE"
     fi
+    local owner_home
+    owner_home=$(eval echo "~$REPOSITORY_OWNER")
+    [ -n "$owner_home" ] && rm -f "$owner_home/backupdata-$SERVICE_NAME.zip" 2>/dev/null || true
     rm -f "/tmp/backupdata-$SERVICE_NAME.zip" 2>/dev/null || true
     # Delete temp stderr log
     if [ -n "${STDERR_LOG:-}" ] && [ -f "$STDERR_LOG" ]; then
@@ -232,7 +235,13 @@ function main() {
       exit 1
   fi
 
-  TEMP_BACKUP_FILE="/tmp/cloner_backup-$SERVICE_NAME.zip"
+  OWNER_HOME=$(eval echo "~$REPOSITORY_OWNER")
+  ODOO_TMP_DIR="$OWNER_HOME/.odoo-tmp/$SERVICE_NAME"
+  mkdir -p "$ODOO_TMP_DIR" 2>/dev/null || true
+  chmod 700 "$OWNER_HOME/.odoo-tmp" "$ODOO_TMP_DIR" 2>/dev/null || true
+  chown -R "$REPOSITORY_OWNER": "$OWNER_HOME/.odoo-tmp" 2>/dev/null || true
+
+  TEMP_BACKUP_FILE="$ODOO_TMP_DIR/cloner_backup-$SERVICE_NAME.zip"
   ENV_FILE="$PATH_TO_ODOO/.env"
 
   # Source environment details
@@ -306,24 +315,33 @@ function main() {
       exit 1
     fi
 
-    if [ ! -s "/tmp/backupdata-$SERVICE_NAME.zip" ]; then
-      log_error "Backup failed: /tmp/backupdata-$SERVICE_NAME.zip is missing or empty."
+    local local_backup_zip="$OWNER_HOME/backupdata-$SERVICE_NAME.zip"
+    if [ ! -s "$local_backup_zip" ] && [ -s "/tmp/backupdata-$SERVICE_NAME.zip" ]; then
+      local_backup_zip="/tmp/backupdata-$SERVICE_NAME.zip"
+    fi
+
+    if [ ! -s "$local_backup_zip" ]; then
+      log_error "Backup failed: $local_backup_zip is missing or empty."
       exit 1
     fi
-    log_success "Backup archive ready at /tmp/backupdata-$SERVICE_NAME.zip"
+    log_success "Backup archive ready at $local_backup_zip"
 
-    log_info "Step 2/3: Transferring backup archive to Remote VPS as /tmp/backupdata-$DEST_SERVICE_NAME.zip..."
-    rsync -e "$rsync_ssh" -avz "/tmp/backupdata-$SERVICE_NAME.zip" "$CLONER_SSH_USER@$CLONER_SSH_HOST:/tmp/backupdata-$DEST_SERVICE_NAME.zip"
+    local remote_home
+    remote_home=$(ssh "${ssh_opts[@]}" "$CLONER_SSH_USER@$CLONER_SSH_HOST" 'echo "$HOME"' 2>/dev/null | tr -d '\r\n')
+    local remote_target_zip="${remote_home:-/tmp}/backupdata-$DEST_SERVICE_NAME.zip"
+
+    log_info "Step 2/3: Transferring backup archive to Remote VPS as $remote_target_zip..."
+    rsync -e "$rsync_ssh" -avz "$local_backup_zip" "$CLONER_SSH_USER@$CLONER_SSH_HOST:$remote_target_zip"
     log_success "Transfer completed."
 
     log_info "Step 3/3: Restoring database on Remote VPS for service '$DEST_SERVICE_NAME'..."
     ssh "${ssh_opts[@]}" "$CLONER_SSH_USER@$CLONER_SSH_HOST" "
       if command -v restore_backupdata-$DEST_SERVICE_NAME &>/dev/null; then
-        sudo restore_backupdata-$DEST_SERVICE_NAME /tmp/backupdata-$DEST_SERVICE_NAME.zip --name '$ODOO_DB_NAME_ENV'
+        sudo restore_backupdata-$DEST_SERVICE_NAME '$remote_target_zip' --name '$ODOO_DB_NAME_ENV'
       elif [ -f '$CLONER_SSH_DEST_PATH/scripts/restore_backupdata-$DEST_SERVICE_NAME.sh' ]; then
-        sudo '$CLONER_SSH_DEST_PATH/scripts/restore_backupdata-$DEST_SERVICE_NAME.sh' /tmp/backupdata-$DEST_SERVICE_NAME.zip --name '$ODOO_DB_NAME_ENV'
+        sudo '$CLONER_SSH_DEST_PATH/scripts/restore_backupdata-$DEST_SERVICE_NAME.sh' '$remote_target_zip' --name '$ODOO_DB_NAME_ENV'
       elif [ -f '$CLONER_SSH_DEST_PATH/scripts/restore_backupdata.sh' ]; then
-        sudo '$CLONER_SSH_DEST_PATH/scripts/restore_backupdata.sh' /tmp/backupdata-$DEST_SERVICE_NAME.zip --name '$ODOO_DB_NAME_ENV'
+        sudo '$CLONER_SSH_DEST_PATH/scripts/restore_backupdata.sh' '$remote_target_zip' --name '$ODOO_DB_NAME_ENV'
       else
         echo '❌ restore_backupdata script not found on remote VPS at $CLONER_SSH_DEST_PATH' >&2
         exit 1
@@ -331,8 +349,8 @@ function main() {
     "
 
     # Remote and local cleanup
-    ssh "${ssh_opts[@]}" "$CLONER_SSH_USER@$CLONER_SSH_HOST" "rm -f /tmp/backupdata-$DEST_SERVICE_NAME.zip" 2>/dev/null || true
-    rm -f "/tmp/backupdata-$SERVICE_NAME.zip" 2>/dev/null || true
+    ssh "${ssh_opts[@]}" "$CLONER_SSH_USER@$CLONER_SSH_HOST" "rm -f '$remote_target_zip'" 2>/dev/null || true
+    rm -f "$local_backup_zip" "/tmp/backupdata-$SERVICE_NAME.zip" 2>/dev/null || true
 
     log_success "Finished cloning database '$ODOO_DB_NAME_ENV' to remote VPS ($CLONER_SSH_HOST) for service '$DEST_SERVICE_NAME'!"
     return 0

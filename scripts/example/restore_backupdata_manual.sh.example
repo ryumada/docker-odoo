@@ -24,12 +24,12 @@ Options:
 
 Arguments:
   BACKUP_OR_SNAPSHOT_FILE        Path to backupdata (.zip) or snapshot (.tar.zst) archive
-                                 (default: /tmp/backupdata-$SERVICE_NAME.zip)
+                                 (default: ~/backupdata-$SERVICE_NAME.zip)
 
 Examples:
   ./scripts/restore_backupdata_manual-$SERVICE_NAME.sh -n my_new_db
-  ./scripts/restore_backupdata_manual-$SERVICE_NAME.sh /tmp/snapshot-$SERVICE_NAME.tar.zst --name test_db
-  ./scripts/restore_backupdata_manual-$SERVICE_NAME.sh /tmp/backupdata-$SERVICE_NAME.zip
+  ./scripts/restore_backupdata_manual-$SERVICE_NAME.sh ~/snapshot-$SERVICE_NAME.tar.zst --name test_db
+  ./scripts/restore_backupdata_manual-$SERVICE_NAME.sh ~/backupdata-$SERVICE_NAME.zip
 EOF
 }
 
@@ -124,6 +124,9 @@ cleanup_temp_files() {
     if [ -n "${TEMP_EXTRACT_DIR:-}" ] && [ -d "$TEMP_EXTRACT_DIR" ]; then
         rm -rf "$TEMP_EXTRACT_DIR"
     fi
+    if [ -n "${EXTRACTED_ZIP_PATH:-}" ] && [ -f "$EXTRACTED_ZIP_PATH" ]; then
+        rm -f "$EXTRACTED_ZIP_PATH"
+    fi
     if [ -n "$SAFETY_BACKUP_DIR" ] && [ -d "$SAFETY_BACKUP_DIR" ]; then
         rm -rf "$SAFETY_BACKUP_DIR"
     fi
@@ -171,15 +174,25 @@ function resolve_backup_file() {
   local input_file="$1"
 
   if [ -z "$input_file" ] && [ ! -f "$BACKUPDATA_FILE_PATH" ]; then
-    local default_snapshot="/tmp/snapshot-$SERVICE_NAME.tar.zst"
-    if [ -f "$default_snapshot" ]; then
-      input_file="$default_snapshot"
-    else
-      # Find latest snapshot matching prefix in /tmp
-      local latest_tmp_snapshot
-      latest_tmp_snapshot=$(find /tmp -maxdepth 1 -name "snapshot-${SERVICE_NAME}*.tar.zst" -printf '%T@ %p\n' 2>/dev/null | sort -k1 -nr | head -n1 | cut -d' ' -f2- || true)
-      if [ -n "$latest_tmp_snapshot" ] && [ -f "$latest_tmp_snapshot" ]; then
-        input_file="$latest_tmp_snapshot"
+    local candidates=(
+      "$OWNER_HOME/snapshot-$SERVICE_NAME.tar.zst"
+      "$OWNER_HOME/backupdata-$SERVICE_NAME.zip"
+      "/tmp/snapshot-$SERVICE_NAME.tar.zst"
+      "/tmp/backupdata-$SERVICE_NAME.zip"
+    )
+    for c in "${candidates[@]}"; do
+      if [ -f "$c" ]; then
+        input_file="$c"
+        break
+      fi
+    done
+
+    if [ -z "$input_file" ]; then
+      # Find latest snapshot in archives, home, or /tmp
+      local latest_snapshot
+      latest_snapshot=$(find "$OWNER_HOME/.odoo-snapshots/$SERVICE_NAME/archives" "$OWNER_HOME" /tmp -maxdepth 2 -name "snapshot-${SERVICE_NAME}*.tar.zst" -printf '%T@ %p\n' 2>/dev/null | sort -k1 -nr | head -n1 | cut -d' ' -f2- || true)
+      if [ -n "$latest_snapshot" ] && [ -f "$latest_snapshot" ]; then
+        input_file="$latest_snapshot"
       fi
     fi
   fi
@@ -207,15 +220,16 @@ function resolve_backup_file() {
     fi
 
     log_info "Detected snapshot archive '$BACKUPDATA_FILE_PATH'. Extracting bundled backupdata zip..."
-    TEMP_EXTRACT_DIR=$(mktemp -d "/tmp/snapshot_extract_XXXXXX")
+    TEMP_EXTRACT_DIR=$(mktemp -d -p "$ODOO_TMP_DIR" "snapshot_extract_XXXXXX" 2>/dev/null || mktemp -d "/tmp/snapshot_extract_XXXXXX")
     if ! tar -xaf "$BACKUPDATA_FILE_PATH" -C "$TEMP_EXTRACT_DIR" --wildcards "*backupdata*.zip" 2>/dev/null; then
       tar -xaf "$BACKUPDATA_FILE_PATH" -C "$TEMP_EXTRACT_DIR"
     fi
     local extracted_zip
     extracted_zip=$(find "$TEMP_EXTRACT_DIR" -name "backupdata-$SERVICE_NAME.zip" -o -name "backupdata-*.zip" -o -name "backupdata.zip" 2>/dev/null | head -n 1)
     if [ -n "$extracted_zip" ] && [ -f "$extracted_zip" ]; then
-      cp -f "$extracted_zip" "/tmp/backupdata-$SERVICE_NAME.zip"
-      BACKUPDATA_FILE_PATH="/tmp/backupdata-$SERVICE_NAME.zip"
+      EXTRACTED_ZIP_PATH="$ODOO_TMP_DIR/backupdata-$SERVICE_NAME.zip"
+      cp -f "$extracted_zip" "$EXTRACTED_ZIP_PATH"
+      BACKUPDATA_FILE_PATH="$EXTRACTED_ZIP_PATH"
       log_success "Extracted backup data bundle to $BACKUPDATA_FILE_PATH"
     else
       log_error "Could not find bundled backupdata zip inside snapshot $BACKUPDATA_FILE_PATH"
@@ -293,7 +307,7 @@ function determineRestoredDBName() {
 function isBackupDataExists() {
   local backupdata_file_path="$1"
   if [ ! -f "$backupdata_file_path" ]; then
-    log_error "Backup data file '$backupdata_file_path' does not exist. Please place your backupdata file or snapshot file in /tmp directory."
+    log_error "Backup data file '$backupdata_file_path' does not exist. Please place your backupdata file or snapshot file in $OWNER_HOME/ or /tmp directory."
     exit 1
   fi
 }
@@ -458,12 +472,21 @@ function main() {
     fi
   fi
 
+  OWNER_HOME=$(eval echo "~$REPOSITORY_OWNER")
+  ODOO_TMP_DIR="$OWNER_HOME/.odoo-tmp/$SERVICE_NAME"
+  mkdir -p "$ODOO_TMP_DIR" 2>/dev/null || true
+  chmod 700 "$OWNER_HOME/.odoo-tmp" "$ODOO_TMP_DIR" 2>/dev/null || true
+  chown -R "$REPOSITORY_OWNER": "$OWNER_HOME/.odoo-tmp" 2>/dev/null || true
+
   BACKUPDATA_FILE_NAME="backupdata-$SERVICE_NAME.zip"
-  BACKUPDATA_FILE_PATH="/tmp/$BACKUPDATA_FILE_NAME"
-  TEMP_DIR="/tmp/backupdata-$SERVICE_NAME"
+  BACKUPDATA_FILE_PATH="$OWNER_HOME/$BACKUPDATA_FILE_NAME"
+  TEMP_DIR="$ODOO_TMP_DIR/restore_backupdata_$$"
   RESTORED_DB_NAME=""
   TARGET_DB_NAME=""
   CUSTOM_INPUT_FILE=""
+  TEMP_EXTRACT_DIR=""
+  EXTRACTED_ZIP_PATH=""
+  SAFETY_BACKUP_DIR=""
 
   # Parse CLI arguments
   while [[ $# -gt 0 ]]; do
@@ -514,9 +537,14 @@ function main() {
     if run_psql -c '\l' | grep -wq "$RESTORED_DB_NAME"; then
       log_warn "Database $RESTORED_DB_NAME already exists. Initiating safety backup..."
 
+      local safety_backup_dir="$OWNER_HOME/.odoo-snapshots/$SERVICE_NAME/safety_backups"
+      mkdir -p "$safety_backup_dir" 2>/dev/null || true
+      chmod 700 "$safety_backup_dir" 2>/dev/null || true
+      chown -R "$REPOSITORY_OWNER": "$safety_backup_dir" 2>/dev/null || true
+
       SAFETY_BACKUP_NAME="backupdata-$SERVICE_NAME-safety-backup-$(date +"%Y%m%d-%H%M%S").zip"
-      SAFETY_BACKUP_DIR="/tmp/safety_backup_tmp_$(date +"%Y%m%d-%H%M%S")"
-      SAFETY_ZIP_PATH="/tmp/$SAFETY_BACKUP_NAME"
+      SAFETY_BACKUP_DIR="$ODOO_TMP_DIR/safety_backup_staging_$$"
+      SAFETY_ZIP_PATH="$safety_backup_dir/$SAFETY_BACKUP_NAME"
       EXISTING_FILESTORE="/var/lib/odoo/$SERVICE_NAME/filestore/$RESTORED_DB_NAME"
 
       mkdir -p "$SAFETY_BACKUP_DIR"

@@ -127,24 +127,28 @@ function moveSnapshotFileToTempDir() {
   local tar_file_path=$1
   local tar_file_name=$2
 
-  local temp_dir
-  temp_dir="$tar_file_path-$(date +"%Y%m%d-%H%M%S")"
-  if ! OUTPUT_mkdir=$(mkdir "$temp_dir" 2>&1); then
-    log_error "Can't create the temporary directory: $OUTPUT_mkdir"
+  local snapshot_archive_dir="$OWNER_HOME/.odoo-snapshots/$SERVICE_NAME/archives"
+  mkdir -p "$snapshot_archive_dir" 2>/dev/null || true
+  chmod 700 "$OWNER_HOME/.odoo-snapshots" "$snapshot_archive_dir" 2>/dev/null || true
+
+  local dest_dir
+  dest_dir="$snapshot_archive_dir/$tar_file_name-$(date +"%Y%m%d-%H%M%S")"
+  if ! OUTPUT_mkdir=$(mkdir -p "$dest_dir" 2>&1); then
+    log_error "Can't create the archive directory: $OUTPUT_mkdir"
     exit 1
-  else
-    log_success "Create the temporary directory"
   fi
 
-  log_info "Moving the snapshot file to the temporary directory."
-  mv "$tar_file_path" "$temp_dir/"
+  log_info "Moving the snapshot file to $dest_dir/..."
+  mv "$tar_file_path" "$dest_dir/$tar_file_name"
 
-  log_info "change the permission and owner of the temporary directory"
-  chmod 755 "$temp_dir"
-  chmod 644 "$temp_dir/$tar_file_name"
-  chown -R "$REPOSITORY_OWNER": "$temp_dir"
+  chmod 755 "$dest_dir" 2>/dev/null || true
+  chmod 644 "$dest_dir/$tar_file_name" 2>/dev/null || true
+  chown -R "$REPOSITORY_OWNER": "$dest_dir" 2>/dev/null || true
 
-  log_success "The snapshot File Created Successfully named $tar_file_name. File Backed up at $temp_dir/$tar_file_name"
+  # Also place/link at $OWNER_HOME for immediate convenient access
+  ln -sf "$dest_dir/$tar_file_name" "$OWNER_HOME/$tar_file_name" 2>/dev/null || cp -f "$dest_dir/$tar_file_name" "$OWNER_HOME/$tar_file_name" 2>/dev/null || true
+
+  log_success "The snapshot File Created Successfully named $tar_file_name. File Backed up at $dest_dir/$tar_file_name"
 }
 
 function get_gdrive_access_token_from_sa() {
@@ -717,7 +721,7 @@ function run_remote_snapshot() {
   fi
 
   local git_hashes_file
-  git_hashes_file=$(mktemp --tmpdir "git_hashes_XXXXXX.txt")
+  git_hashes_file=$(mktemp -p "$ODOO_TMP_DIR" "git_hashes_XXXXXX.txt" 2>/dev/null || mktemp --tmpdir "git_hashes_XXXXXX.txt")
   chmod 644 "$git_hashes_file"
   writeGitHash "$PATH_TO_ODOO/git" "$git_hashes_file"
   writeGitHash "$PATH_TO_ODOO/odoo-base" "$git_hashes_file"
@@ -877,11 +881,18 @@ function main() {
   fi
   echo "$$" > "$LOCK_FILE"
 
+  ODOO_TMP_DIR="$OWNER_HOME/.odoo-tmp/$SERVICE_NAME"
+  mkdir -p "$ODOO_TMP_DIR"
+  chmod 700 "$OWNER_HOME/.odoo-tmp" "$ODOO_TMP_DIR" 2>/dev/null || true
+  chown -R "$REPOSITORY_OWNER": "$OWNER_HOME/.odoo-tmp" 2>/dev/null || true
+
   ZIP_FILE_NAME="backupdata-$SERVICE_NAME.zip"
-  ZIP_STAGING_DIR="/tmp/backupdata_staging_$SERVICE_NAME"
-  BACKUPDATA_ZIP_PATH="/tmp/$ZIP_FILE_NAME"
+  ZIP_STAGING_DIR="$ODOO_TMP_DIR/backupdata_staging_$$"
+  BACKUPDATA_ZIP_PATH="$ODOO_TMP_DIR/$ZIP_FILE_NAME"
   SNAPSHOT_CACHE_DIR="$OWNER_HOME/.odoo-snapshots/$SERVICE_NAME/cache"
   SNAPSHOT_CACHE_ZIP="$SNAPSHOT_CACHE_DIR/backupdata-$SERVICE_NAME.zip"
+  TAR_FILE_NAME="snapshot-$SERVICE_NAME.tar.zst"
+  TAR_FILE_PATH="$ODOO_TMP_DIR/$TAR_FILE_NAME"
   GIT_HASHES_FILE=""
 
   cleanup_temp_files() {
@@ -1061,7 +1072,7 @@ EOF
   files_dirs_to_tar+=("$BACKUPDATA_ZIP_PATH")
 
   # Generate Git Hashes to a temporary file
-  GIT_HASHES_FILE=$(mktemp --tmpdir "git_hashes_XXXXXX.txt")
+  GIT_HASHES_FILE=$(mktemp -p "$ODOO_TMP_DIR" "git_hashes_XXXXXX.txt" 2>/dev/null || mktemp --tmpdir "git_hashes_XXXXXX.txt")
   chmod 644 "$GIT_HASHES_FILE"
 
   writeGitHash "$PATH_TO_ODOO/git" "$GIT_HASHES_FILE"
@@ -1086,9 +1097,6 @@ EOF
         fi
     done
   fi
-
-  TAR_FILE_NAME=snapshot-$SERVICE_NAME.tar.zst
-  TAR_FILE_PATH=/tmp/$TAR_FILE_NAME
 
   areYouReallySure "$TAR_FILE_PATH" "$ASK_TO_REPLACE_EXISTING_SNAPSHOT"
 

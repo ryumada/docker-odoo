@@ -81,6 +81,13 @@ exec 2> >(tee -a "$STDERR_LOG" >&3)
 trap 'error_handler $? $LINENO "$BASH_COMMAND"' ERR
 
 cleanup_temp_files() {
+    local owner_home
+    owner_home=$(eval echo "~$REPOSITORY_OWNER")
+    local odoo_tmp="$owner_home/.odoo-tmp/$SERVICE_NAME"
+    if [ -d "$odoo_tmp" ]; then
+        rm -f "$odoo_tmp"/*.sql "$odoo_tmp"/*.zip 2>/dev/null || true
+    fi
+    [ -n "$owner_home" ] && rm -f "$owner_home/backupdata-$SERVICE_NAME.zip" 2>/dev/null || true
     rm -f "/tmp/$ODOO_DB_NAME_ENV.sql" "/tmp/$STG_DB_NAME.sql" "/tmp/dump.sql" "/tmp/db_dump_only_$ODOO_DB_NAME_ENV.zip" "/tmp/backupdata-$SERVICE_NAME.zip" 2>/dev/null || true
     if [ -n "${STDERR_LOG:-}" ] && [ -f "$STDERR_LOG" ]; then
         rm -f "$STDERR_LOG"
@@ -371,7 +378,13 @@ function run_automated_pull_mode() {
     ODOO_FILESTORE_PATH_PRD="/var/lib/odoo/$SERVICE_NAME_PRD/filestore/$PRD_DB_NAME"
     ODOO_FILESTORE_PATH_ENV="/var/lib/odoo/$SERVICE_NAME/filestore/$STG_DB_NAME"
 
-    PSQL_ENV_FILE="$PRD_ENV_FILE" run_pg_dump --no-owner -d "$PRD_DB_NAME" > "/tmp/$STG_DB_NAME.sql"
+    OWNER_HOME=$(eval echo "~$REPOSITORY_OWNER")
+    ODOO_TMP_DIR="$OWNER_HOME/.odoo-tmp/$SERVICE_NAME"
+    mkdir -p "$ODOO_TMP_DIR" 2>/dev/null || true
+    chmod 700 "$OWNER_HOME/.odoo-tmp" "$ODOO_TMP_DIR" 2>/dev/null || true
+    chown -R "$REPOSITORY_OWNER": "$OWNER_HOME/.odoo-tmp" 2>/dev/null || true
+
+    PSQL_ENV_FILE="$PRD_ENV_FILE" run_pg_dump --no-owner -d "$PRD_DB_NAME" > "$ODOO_TMP_DIR/$STG_DB_NAME.sql"
     export PSQL_ENV_FILE="$STG_ENV_FILE"
 
     log_stage "[2/3] Restoring Filestore and Database to $STG_DB_NAME..."
@@ -394,7 +407,7 @@ function run_automated_pull_mode() {
     run_psql -d postgres -c "CREATE DATABASE \"$STG_DB_NAME\" OWNER \"$DB_USER\"" >/dev/null
 
     log_info "Restoring SQL dump..."
-    run_psql -d "$STG_DB_NAME" < "/tmp/$STG_DB_NAME.sql" >/dev/null
+    run_psql -d "$STG_DB_NAME" < "$ODOO_TMP_DIR/$STG_DB_NAME.sql" >/dev/null
 
     NEUTRALIZE_DB=$(grep "^NEUTRALIZE_DATABASE=" "$PRD_ENV_FILE" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' | tr '[:upper:]' '[:lower:]' || true)
     [ -z "$NEUTRALIZE_DB" ] && NEUTRALIZE_DB="true"
@@ -513,24 +526,33 @@ function run_interactive_push_mode() {
             exit 1
         fi
 
-        if [ ! -s "/tmp/backupdata-$SERVICE_NAME.zip" ]; then
-            log_error "Backup failed: /tmp/backupdata-$SERVICE_NAME.zip is missing or empty."
+        local local_backup_zip="$OWNER_HOME/backupdata-$SERVICE_NAME.zip"
+        if [ ! -s "$local_backup_zip" ] && [ -s "/tmp/backupdata-$SERVICE_NAME.zip" ]; then
+            local_backup_zip="/tmp/backupdata-$SERVICE_NAME.zip"
+        fi
+
+        if [ ! -s "$local_backup_zip" ]; then
+            log_error "Backup failed: $local_backup_zip is missing or empty."
             exit 1
         fi
-        log_success "Backup archive ready at /tmp/backupdata-$SERVICE_NAME.zip"
+        log_success "Backup archive ready at $local_backup_zip"
 
-        log_info "Step 2/3: Transferring backup archive to Remote VPS as /tmp/backupdata-$DEST_SERVICE_NAME.zip..."
-        rsync -e "$rsync_ssh" -avz "/tmp/backupdata-$SERVICE_NAME.zip" "$CLONER_SSH_USER@$CLONER_SSH_HOST:/tmp/backupdata-$DEST_SERVICE_NAME.zip"
+        local remote_home
+        remote_home=$(ssh "${ssh_opts[@]}" "$CLONER_SSH_USER@$CLONER_SSH_HOST" 'echo "$HOME"' 2>/dev/null | tr -d '\r\n')
+        local remote_target_zip="${remote_home:-/tmp}/backupdata-$DEST_SERVICE_NAME.zip"
+
+        log_info "Step 2/3: Transferring backup archive to Remote VPS as $remote_target_zip..."
+        rsync -e "$rsync_ssh" -avz "$local_backup_zip" "$CLONER_SSH_USER@$CLONER_SSH_HOST:$remote_target_zip"
         log_success "Transfer completed."
 
         log_info "Step 3/3: Restoring database on Remote VPS for service '$DEST_SERVICE_NAME'..."
         ssh "${ssh_opts[@]}" "$CLONER_SSH_USER@$CLONER_SSH_HOST" "
             if command -v restore_backupdata-$DEST_SERVICE_NAME &>/dev/null; then
-                sudo restore_backupdata-$DEST_SERVICE_NAME /tmp/backupdata-$DEST_SERVICE_NAME.zip --name '$ODOO_DB_NAME_ENV'
+                sudo restore_backupdata-$DEST_SERVICE_NAME '$remote_target_zip' --name '$ODOO_DB_NAME_ENV'
             elif [ -f '$CLONER_SSH_DEST_PATH/scripts/restore_backupdata-$DEST_SERVICE_NAME.sh' ]; then
-                sudo '$CLONER_SSH_DEST_PATH/scripts/restore_backupdata-$DEST_SERVICE_NAME.sh' /tmp/backupdata-$DEST_SERVICE_NAME.zip --name '$ODOO_DB_NAME_ENV'
+                sudo '$CLONER_SSH_DEST_PATH/scripts/restore_backupdata-$DEST_SERVICE_NAME.sh' '$remote_target_zip' --name '$ODOO_DB_NAME_ENV'
             elif [ -f '$CLONER_SSH_DEST_PATH/scripts/restore_backupdata.sh' ]; then
-                sudo '$CLONER_SSH_DEST_PATH/scripts/restore_backupdata.sh' /tmp/backupdata-$DEST_SERVICE_NAME.zip --name '$ODOO_DB_NAME_ENV'
+                sudo '$CLONER_SSH_DEST_PATH/scripts/restore_backupdata.sh' '$remote_target_zip' --name '$ODOO_DB_NAME_ENV'
             else
                 echo '❌ restore_backupdata script not found on remote VPS at $CLONER_SSH_DEST_PATH' >&2
                 exit 1
@@ -538,8 +560,8 @@ function run_interactive_push_mode() {
         "
 
         # Remote and local cleanup
-        ssh "${ssh_opts[@]}" "$CLONER_SSH_USER@$CLONER_SSH_HOST" "rm -f /tmp/backupdata-$DEST_SERVICE_NAME.zip" 2>/dev/null || true
-        rm -f "/tmp/backupdata-$SERVICE_NAME.zip" 2>/dev/null || true
+        ssh "${ssh_opts[@]}" "$CLONER_SSH_USER@$CLONER_SSH_HOST" "rm -f '$remote_target_zip'" 2>/dev/null || true
+        rm -f "$local_backup_zip" "/tmp/backupdata-$SERVICE_NAME.zip" 2>/dev/null || true
 
         log_success "Finished cloning database '$ODOO_DB_NAME_ENV' to remote VPS ($CLONER_SSH_HOST) for service '$DEST_SERVICE_NAME'!"
         return 0
@@ -579,8 +601,15 @@ function run_interactive_push_mode() {
     cd "$PATH_TO_ODOO" || { log_error "Can't change directory to $PATH_TO_ODOO"; exit 1; }
 
     log_info "Start cloning database from $ODOO_DATABASE_NAME_PRD to $ODOO_DB_NAME_ENV"
+    OWNER_HOME=$(eval echo "~$REPOSITORY_OWNER")
+    ODOO_TMP_DIR="$OWNER_HOME/.odoo-tmp/$SERVICE_NAME"
+    mkdir -p "$ODOO_TMP_DIR" 2>/dev/null || true
+    chmod 700 "$OWNER_HOME/.odoo-tmp" "$ODOO_TMP_DIR" 2>/dev/null || true
+    chown -R "$REPOSITORY_OWNER": "$OWNER_HOME/.odoo-tmp" 2>/dev/null || true
+
+    log_info "Start cloning database from $ODOO_DATABASE_NAME_PRD to $ODOO_DB_NAME_ENV"
     log_info "Dump $ODOO_DATABASE_NAME_PRD"
-    run_pg_dump --no-owner -d "$ODOO_DATABASE_NAME_PRD" > "/tmp/$ODOO_DB_NAME_ENV.sql"
+    run_pg_dump --no-owner -d "$ODOO_DATABASE_NAME_PRD" > "$ODOO_TMP_DIR/$ODOO_DB_NAME_ENV.sql"
 
     export PSQL_ENV_FILE="$PATH_TO_ODOO_ENV/.env"
 
@@ -633,7 +662,7 @@ function run_interactive_push_mode() {
         printf "\r\n"
 
         log_info "Restoring database from SQL dump via psql..."
-        run_psql -d "$ODOO_DB_NAME_ENV" < "/tmp/$ODOO_DB_NAME_ENV.sql" >/dev/null 2>&3
+        run_psql -d "$ODOO_DB_NAME_ENV" < "$ODOO_TMP_DIR/$ODOO_DB_NAME_ENV.sql" >/dev/null 2>&3
         printf "\r\n"
 
         log_success "Database restored successfully via psql."
@@ -679,10 +708,10 @@ function run_interactive_push_mode() {
         docker compose -f "$PATH_TO_ODOO_ENV/docker-compose.yml" up -d > /dev/null 2>&1 || true
 
         log_info "Preparing db_dump_only.zip archive containing dump.sql for destination endpoint import..."
-        rm -f "/tmp/dump.sql" "/tmp/db_dump_only_$ODOO_DB_NAME_ENV.zip"
-        mv "/tmp/$ODOO_DB_NAME_ENV.sql" "/tmp/dump.sql"
-        (cd /tmp && zip -q "db_dump_only_$ODOO_DB_NAME_ENV.zip" dump.sql)
-        rm -f "/tmp/dump.sql"
+        rm -f "$ODOO_TMP_DIR/dump.sql" "$ODOO_TMP_DIR/db_dump_only_$ODOO_DB_NAME_ENV.zip"
+        mv "$ODOO_TMP_DIR/$ODOO_DB_NAME_ENV.sql" "$ODOO_TMP_DIR/dump.sql"
+        (cd "$ODOO_TMP_DIR" && zip -q "db_dump_only_$ODOO_DB_NAME_ENV.zip" dump.sql)
+        rm -f "$ODOO_TMP_DIR/dump.sql"
 
         ODOO_VERSION=$(grep "^ODOO_VERSION=" "$PATH_TO_ODOO_ENV/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
         ODOO_VERSION_NUM=${ODOO_VERSION%%.*}
@@ -700,7 +729,7 @@ function run_interactive_push_mode() {
           response=$(curl -s -X POST \
             -F "master_pwd=$DEST_ADMIN_PASSWD" \
             -F "name=$ODOO_DB_NAME_ENV" \
-            -F "backup_file=@/tmp/db_dump_only_$ODOO_DB_NAME_ENV.zip" \
+            -F "backup_file=@$ODOO_TMP_DIR/db_dump_only_$ODOO_DB_NAME_ENV.zip" \
             -F "copy=true" \
             -F "neutralize_database=$NEUTRALIZE_DB" \
             "http://localhost:$DEST_PORT/web/database/restore")
@@ -708,7 +737,7 @@ function run_interactive_push_mode() {
           response=$(curl -s -X POST \
             -F "master_pwd=$DEST_ADMIN_PASSWD" \
             -F "name=$ODOO_DB_NAME_ENV" \
-            -F "backup_file=@/tmp/db_dump_only_$ODOO_DB_NAME_ENV.zip" \
+            -F "backup_file=@$ODOO_TMP_DIR/db_dump_only_$ODOO_DB_NAME_ENV.zip" \
             -F "copy=true" \
             "http://localhost:$DEST_PORT/web/database/restore")
         fi

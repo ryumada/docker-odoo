@@ -111,7 +111,7 @@ Before you run the restore snapshot script, you need to prepare [snapshot utilit
 ./scripts/restore-snapshot.sh --data-only
 
 # Fast data-only restore with specific file and skip confirmation
-./scripts/restore-snapshot.sh --data-only /tmp/snapshot-docker-odoo.tar.zst -y
+./scripts/restore-snapshot.sh --data-only ~/snapshot-docker-odoo.tar.zst -y
 ```
 
 </details>
@@ -161,7 +161,7 @@ Downloads an Odoo snapshot archive directly from Google Drive by File ID, sharin
 ./scripts/download-snapshot.sh
 ```
 
-By default, `download-snapshot.sh` saves the file to `/tmp/<filename>` and creates `/tmp/snapshot-<service>.tar.zst`, allowing immediate restoration with `./scripts/restore-snapshot.sh`.
+By default, `download-snapshot.sh` saves the file to `~/<filename>` and creates `~/snapshot-<service>.tar.zst`, allowing immediate restoration with `./scripts/restore-snapshot.sh`.
 
 </details>
 
@@ -179,7 +179,7 @@ Uploads a local Odoo snapshot archive to Google Drive using Google Service Accou
 ./scripts/upload-snapshot.sh
 
 # Upload a specific snapshot file
-./scripts/upload-snapshot.sh /tmp/snapshot-docker-odoo-20260826.tar.zst
+./scripts/upload-snapshot.sh ~/snapshot-docker-odoo-20260826.tar.zst
 
 # Upload with overridden Google Drive folder ID
 ./scripts/upload-snapshot.sh --folder-id "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OIvE2up0Y"
@@ -192,7 +192,7 @@ Uploads a local Odoo snapshot archive to Google Drive using Google Service Accou
 
 </summary>
 
-Uploads all temporary Odoo snapshot files and directories (created in `/tmp` when scheduled snapshot uploads fail due to key issues or connection errors) to the configured backup storage (Google Drive, Google Cloud Storage) based on `.env`. Once uploaded successfully, the local temporary files are automatically cleaned up.
+Uploads all temporary Odoo snapshot files and directories (stored in `~/.odoo-snapshots/.../archives` or `~/.odoo-tmp` when scheduled snapshot uploads fail due to key issues or connection errors) to the configured backup storage (Google Drive, Google Cloud Storage) based on `.env`. Once uploaded successfully, the local temporary files are automatically cleaned up.
 
 ```bash
 # Upload all temporary snapshots for current service
@@ -201,7 +201,7 @@ Uploads all temporary Odoo snapshot files and directories (created in `/tmp` whe
 # Dry-run preview without uploading or deleting
 ./scripts/upload-temp-snapshots.sh --dry-run
 
-# Upload temporary snapshots for all services in /tmp
+# Upload temporary snapshots for all services
 ./scripts/upload-temp-snapshots.sh --all
 
 # Upload temporary snapshots for a specific service name

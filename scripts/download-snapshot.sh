@@ -56,19 +56,19 @@ Arguments:
                        If omitted, an interactive snapshot picker will be displayed.
 
 Options:
-  -o, --output <PATH>  Destination file path or directory (default: /tmp/<filename>)
+  -o, --output <PATH>  Destination file path or directory (default: ~/<filename>)
   --sa-key <PATH>      Override Google Drive Service Account JSON key file
   --token <TOKEN>      Override Google Drive OAuth2 Access Token
   --folder-id <ID>     Override Google Drive Folder ID
   --service <NAME>     Service name to filter when using 'latest' (default: $SERVICE_NAME)
-  --no-link            Do not create /tmp/snapshot-<service>.tar.zst symlink
+  --no-link            Do not create ~/snapshot-<service>.tar.zst symlink
   -h, --help           Show this help message
 
 Examples:
   ./scripts/download-snapshot.sh latest
   ./scripts/download-snapshot.sh 1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OIvE2up0Y
   ./scripts/download-snapshot.sh "https://drive.google.com/file/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OIvE2up0Y/view"
-  ./scripts/download-snapshot.sh snapshot-myproject-20260826-101500.tar.zst -o /tmp/
+  ./scripts/download-snapshot.sh snapshot-myproject-20260826-101500.tar.zst -o ~/
 EOF
 }
 
@@ -467,9 +467,10 @@ fi
 log_info "Target File: $REMOTE_FILE_NAME ($HUMAN_SIZE)"
 
 # --- Determine Destination Path ---
+OWNER_HOME=$(eval echo "~$REPOSITORY_OWNER")
 DEST_FILE=""
 if [ -z "$OUTPUT_PATH" ]; then
-  DEST_FILE="/tmp/$REMOTE_FILE_NAME"
+  DEST_FILE="$OWNER_HOME/$REMOTE_FILE_NAME"
 elif [ -d "$OUTPUT_PATH" ]; then
   DEST_FILE="${OUTPUT_PATH%/}/$REMOTE_FILE_NAME"
 else
@@ -509,7 +510,7 @@ chmod 644 "$DEST_FILE" 2>/dev/null || true
 chown "$REPOSITORY_OWNER": "$DEST_FILE" 2>/dev/null || true
 
 # --- Create default restore symlink if requested ---
-STANDARD_RESTORE_PATH="/tmp/snapshot-${SERVICE_NAME}.tar.zst"
+STANDARD_RESTORE_PATH="$OWNER_HOME/snapshot-${SERVICE_NAME}.tar.zst"
 if [ "$LINK_AS_DEFAULT" = true ] && [ "$DEST_FILE" != "$STANDARD_RESTORE_PATH" ]; then
   ln -sf "$DEST_FILE" "$STANDARD_RESTORE_PATH" 2>/dev/null || cp -f "$DEST_FILE" "$STANDARD_RESTORE_PATH"
   chown "$REPOSITORY_OWNER": "$STANDARD_RESTORE_PATH" 2>/dev/null || true

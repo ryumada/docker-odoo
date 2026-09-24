@@ -107,8 +107,14 @@ function checkOdooEndpoint() {
 ODOO_DATABASE_NAME_PRD=$(grep "^DB_NAME=" "$PATH_TO_ODOO/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
 ADMIN_PASSWD=$(grep "^ADMIN_PASSWD=" "$PATH_TO_ODOO/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
 PORT=$(grep "^PORT=" "$PATH_TO_ODOO/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
+OWNER_HOME=$(eval echo "~$REPOSITORY_OWNER")
+ODOO_TMP_DIR="$OWNER_HOME/.odoo-tmp/$SERVICE_NAME"
+mkdir -p "$ODOO_TMP_DIR" 2>/dev/null || true
+chmod 700 "$OWNER_HOME/.odoo-tmp" "$ODOO_TMP_DIR" 2>/dev/null || true
+chown -R "$REPOSITORY_OWNER": "$OWNER_HOME/.odoo-tmp" 2>/dev/null || true
+
 ZIP_FILE_NAME=backupdata-$SERVICE_NAME.zip
-BACKUP_FILE_PATH="/tmp/$ZIP_FILE_NAME"
+BACKUP_FILE_PATH="$OWNER_HOME/$ZIP_FILE_NAME"
 
 if ! command -v curl &> /dev/null; then
     log_error "curl command could not be found. Please install curl first."
@@ -216,13 +222,17 @@ if [ -s "$BACKUP_FILE_PATH" ]; then
             rsync_ssh+=" -i $SNAPSHOT_REMOTE_KEY"
         fi
 
+        local remote_home
+        remote_home=$(ssh "${ssh_opts[@]}" "$SNAPSHOT_REMOTE_USER@$SNAPSHOT_REMOTE_HOST" 'echo "$HOME"' 2>/dev/null | tr -d '\r\n')
+        local remote_target_zip="${remote_home:-/tmp}/$ZIP_FILE_NAME"
+
         log_info "Transferring backup file to Secondary VPS ($SNAPSHOT_REMOTE_USER@$SNAPSHOT_REMOTE_HOST)..."
-        if ! rsync -e "$rsync_ssh" -avz "$BACKUP_FILE_PATH" "$SNAPSHOT_REMOTE_USER@$SNAPSHOT_REMOTE_HOST:/tmp/$ZIP_FILE_NAME"; then
+        if ! rsync -e "$rsync_ssh" -avz "$BACKUP_FILE_PATH" "$SNAPSHOT_REMOTE_USER@$SNAPSHOT_REMOTE_HOST:$remote_target_zip"; then
             log_error "Failed to transfer backup file to Secondary VPS."
             exit 1
         fi
-        ssh "${ssh_opts[@]}" "$SNAPSHOT_REMOTE_USER@$SNAPSHOT_REMOTE_HOST" "chmod 644 '/tmp/$ZIP_FILE_NAME'" 2>/dev/null || true
-        log_success "Backup file successfully saved to /tmp/$ZIP_FILE_NAME on Secondary VPS."
+        ssh "${ssh_opts[@]}" "$SNAPSHOT_REMOTE_USER@$SNAPSHOT_REMOTE_HOST" "chmod 644 '$remote_target_zip'" 2>/dev/null || true
+        log_success "Backup file successfully saved to $remote_target_zip on Secondary VPS."
     fi
 else
     log_error "Backup failed. The output file is empty. Check Odoo logs for details. Is the master password correct?"

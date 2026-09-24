@@ -368,18 +368,18 @@ function run_remote_backupdata() {
 
   remote_exec "mv '$remote_staging/tmp/dump.sql' '$remote_staging/tmp/zip_staging/dump.sql'"
 
-  local remote_target_zip="/tmp/backupdata-$SERVICE_NAME.zip"
+  local remote_target_zip="$remote_home/backupdata-$SERVICE_NAME.zip"
 
   if remote_exec "[ -f '$remote_cache_zip' ]"; then
-    log_info "Seeding /tmp/backupdata-$SERVICE_NAME.zip from persistent cache on Secondary VPS..."
-    remote_exec "cp -f '$remote_cache_zip' '$remote_target_zip'"
+    log_info "Seeding $remote_target_zip from persistent cache on Secondary VPS..."
+    remote_exec "ln -f '$remote_cache_zip' '$remote_target_zip' 2>/dev/null || cp -f '$remote_cache_zip' '$remote_target_zip'"
     log_info "Updating backup bundle incrementally on Secondary VPS..."
     remote_exec "cd '$remote_staging/tmp/zip_staging' && { zip -u -q '$remote_target_zip' ${remote_files_to_update[*]} || [ \$? -eq 12 ]; }"
     if remote_exec "[ -d '$remote_mirror' ] && [ -n \"\$(ls -A '$remote_mirror' 2>/dev/null)\" ]"; then
       remote_exec "ln -sfn '$remote_mirror' '$remote_staging/tmp/zip_staging/filestore' && cd '$remote_staging/tmp/zip_staging' && { zip -u -0 -r -q '$remote_target_zip' filestore || [ \$? -eq 12 ]; }"
     fi
   else
-    log_info "Creating initial backup bundle in /tmp on Secondary VPS..."
+    log_info "Creating initial backup bundle on Secondary VPS..."
     remote_exec "cd '$remote_staging/tmp/zip_staging' && zip -q '$remote_target_zip' ${remote_files_to_update[*]}"
     if remote_exec "[ -d '$remote_mirror' ] && [ -n \"\$(ls -A '$remote_mirror' 2>/dev/null)\" ]"; then
       remote_exec "ln -sfn '$remote_mirror' '$remote_staging/tmp/zip_staging/filestore' && cd '$remote_staging/tmp/zip_staging' && zip -0 -r -q '$remote_target_zip' filestore"
@@ -387,12 +387,18 @@ function run_remote_backupdata() {
   fi
   remote_exec "chmod 644 '$remote_target_zip' && rm -rf '$remote_staging/tmp/zip_staging'"
 
-  log_success "Backup data for $SERVICE_NAME is completed on Secondary VPS at /tmp/backupdata-$SERVICE_NAME.zip"
+  log_success "Backup data for $SERVICE_NAME is completed on Secondary VPS at $remote_target_zip"
 }
 
 ODOO_DATABASE_NAME_PRD=$(grep "^DB_NAME=" "$PATH_TO_ODOO/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
+OWNER_HOME=$(eval echo "~$REPOSITORY_OWNER")
+ODOO_TMP_DIR="$OWNER_HOME/.odoo-tmp/$SERVICE_NAME"
+mkdir -p "$ODOO_TMP_DIR" 2>/dev/null || true
+chmod 700 "$OWNER_HOME/.odoo-tmp" "$ODOO_TMP_DIR" 2>/dev/null || true
+chown -R "$REPOSITORY_OWNER": "$OWNER_HOME/.odoo-tmp" 2>/dev/null || true
+
 ZIP_FILE_NAME=backupdata-$SERVICE_NAME.zip
-BACKUP_FILE_PATH="/tmp/$ZIP_FILE_NAME"
+BACKUP_FILE_PATH="$OWNER_HOME/$ZIP_FILE_NAME"
 
 # Check for zip utility
 if ! command -v zip &> /dev/null; then
@@ -445,39 +451,42 @@ fi
 log_info "Change Directory to $PATH_TO_ODOO"
 cd "$PATH_TO_ODOO"
 
+TEMP_DIR="$ODOO_TMP_DIR/backupdata_staging_$$"
+cleanup_staging() {
+  rm -rf "$TEMP_DIR" 2>/dev/null || true
+}
+trap cleanup_staging EXIT
+
 log_info "Create temporary directory"
-mkdir -p "/tmp/backupdata-$SERVICE_NAME" || log_warn "/tmp/backupdata-$SERVICE_NAME may already exist."
+mkdir -p "$TEMP_DIR"
 
 log_info "Backup database $ODOO_DATABASE_NAME_PRD"
-run_pg_dump --no-owner "$ODOO_DATABASE_NAME_PRD" > "/tmp/dump.sql"
+run_pg_dump --no-owner "$ODOO_DATABASE_NAME_PRD" > "$TEMP_DIR/dump.sql"
 
-mv /tmp/dump.sql "/tmp/backupdata-$SERVICE_NAME/dump.sql"
-
-generate_manifest "$ODOO_DATABASE_NAME_PRD" "/tmp/backupdata-$SERVICE_NAME/manifest.json"
+generate_manifest "$ODOO_DATABASE_NAME_PRD" "$TEMP_DIR/manifest.json"
 
 log_info "Symlink filestore directory to temporary directory"
 if [ -d "$ODOO_FILESTORE_PATH" ]; then
-  ln -s "$ODOO_FILESTORE_PATH" "/tmp/backupdata-$SERVICE_NAME/filestore"
+  ln -s "$ODOO_FILESTORE_PATH" "$TEMP_DIR/filestore"
 else
   log_warn "Filestore not found at $ODOO_FILESTORE_PATH. Skipping filestore."
 fi
 
 if [ -f "git/git_hashes.txt" ]; then
   log_info "Copy git_hashes.txt to temporary directory"
-  cp -r git/git_hashes.txt "/tmp/backupdata-$SERVICE_NAME/git_hashes.txt"
+  cp -r git/git_hashes.txt "$TEMP_DIR/git_hashes.txt"
 fi
 
 if [ -f "odoo-base/git_hashes.txt" ]; then
   log_info "Copy odoo-base/git_hashes.txt to temporary directory"
-  cp -r odoo-base/git_hashes.txt "/tmp/backupdata-$SERVICE_NAME/odoo-base_git_hashes.txt"
+  cp -r odoo-base/git_hashes.txt "$TEMP_DIR/odoo-base_git_hashes.txt"
 fi
 
-OWNER_HOME=$(eval echo "~$REPOSITORY_OWNER")
 CACHE_DIR="$OWNER_HOME/.odoo-snapshots/$SERVICE_NAME/cache"
 CACHE_ZIP="$CACHE_DIR/backupdata-$SERVICE_NAME.zip"
 
-log_info "Change Directory to /tmp/backupdata-$SERVICE_NAME"
-cd "/tmp/backupdata-$SERVICE_NAME"
+log_info "Change Directory to $TEMP_DIR"
+cd "$TEMP_DIR"
 
 mkdir -p "$CACHE_DIR"
 chmod 700 "$OWNER_HOME/.odoo-snapshots" "$CACHE_DIR" 2>/dev/null || true
@@ -487,15 +496,15 @@ FILES_TO_UPDATE=("dump.sql" "manifest.json")
 [ -f "odoo-base_git_hashes.txt" ] && FILES_TO_UPDATE+=("odoo-base_git_hashes.txt")
 
 if [ -f "$CACHE_ZIP" ]; then
-  log_info "Copying cached backup bundle from snapshot cache to $BACKUP_FILE_PATH..."
-  cp -f "$CACHE_ZIP" "$BACKUP_FILE_PATH"
-  log_info "Updating $ZIP_FILE_NAME in /tmp incrementally..."
+  log_info "Linking cached backup bundle from snapshot cache to $BACKUP_FILE_PATH..."
+  ln -f "$CACHE_ZIP" "$BACKUP_FILE_PATH" 2>/dev/null || cp -f "$CACHE_ZIP" "$BACKUP_FILE_PATH"
+  log_info "Updating $ZIP_FILE_NAME incrementally..."
   zip -u -q "$BACKUP_FILE_PATH" "${FILES_TO_UPDATE[@]}" || [ $? -eq 12 ]
   if [ -d "filestore" ]; then
     zip -u -0 -r -q "$BACKUP_FILE_PATH" filestore || [ $? -eq 12 ]
   fi
 else
-  log_info "Creating $ZIP_FILE_NAME in /tmp..."
+  log_info "Creating $ZIP_FILE_NAME..."
   zip -q "$BACKUP_FILE_PATH" "${FILES_TO_UPDATE[@]}"
   if [ -d "filestore" ]; then
     zip -0 -r -q "$BACKUP_FILE_PATH" filestore

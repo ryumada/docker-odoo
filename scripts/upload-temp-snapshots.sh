@@ -45,7 +45,8 @@ MAX_BACKUPS=$(grep "^GDRIVE_MAX_BACKUPS=" "$ENV_FILE" 2>/dev/null | cut -d '=' -
 # Strip gs:// prefix from GCS_BUCKET_NAME if present
 GCS_BUCKET_NAME="${GCS_BUCKET_NAME#gs://}"
 
-TARGET_DIR="/tmp"
+OWNER_HOME=$(eval echo "~$REPOSITORY_OWNER")
+TARGET_DIR=""
 CUSTOM_SERVICE_NAME=""
 PROCESS_ALL=false
 DRY_RUN=false
@@ -62,7 +63,7 @@ After successful upload, the temporary files/directories are cleaned up unless -
 Options:
   -s, --service <NAME>     Filter temporary snapshots for a specific service name (default: $SERVICE_NAME)
   -a, --all                Upload temporary snapshots for all services found
-  -d, --dir <PATH>         Directory containing temporary snapshots (default: /tmp)
+  -d, --dir <PATH>         Directory containing temporary snapshots (default: search archives, home, /tmp)
   -k, --keep-local         Do not remove local temporary files after successful upload
   --dry-run                Simulate upload and cleanup without making any changes
   --gcs-bucket <BUCKET>    Override Google Cloud Storage bucket name
@@ -528,7 +529,17 @@ upload_to_gdrive_file() {
 }
 
 # --- Scan and Collect Temporary Snapshots ---
-log_info "Scanning '$TARGET_DIR' for temporary Odoo snapshot archives..."
+SCAN_DIRS=()
+if [ -n "$TARGET_DIR" ]; then
+  SCAN_DIRS+=("$TARGET_DIR")
+else
+  [ -d "$OWNER_HOME/.odoo-snapshots/$ACTIVE_SERVICE/archives" ] && SCAN_DIRS+=("$OWNER_HOME/.odoo-snapshots/$ACTIVE_SERVICE/archives")
+  [ -d "$OWNER_HOME/.odoo-tmp" ] && SCAN_DIRS+=("$OWNER_HOME/.odoo-tmp")
+  [ -d "$OWNER_HOME" ] && SCAN_DIRS+=("$OWNER_HOME")
+  [ -d "/tmp" ] && SCAN_DIRS+=("/tmp")
+fi
+
+log_info "Scanning [${SCAN_DIRS[*]}] for temporary Odoo snapshot archives..."
 
 # We will collect list of candidate items:
 # Format per item: <ITEM_TYPE>|<CONTAINER_PATH>|<FILE_TO_UPLOAD>|<SERVICE>|<TIMESTAMP>|<REMOTE_NAME>
@@ -569,7 +580,7 @@ while IFS= read -r dir_path; do
     remote_name="snapshot-${extracted_srv}-${extracted_ts}.tar.zst"
     ITEMS+=("dir|${dir_path}|${archive_file}|${extracted_srv}|${extracted_ts}|${remote_name}")
   fi
-done < <(find "$TARGET_DIR" -maxdepth 1 -mindepth 1 -type d -name "snapshot-*.tar.zst-*" 2>/dev/null | sort)
+done < <(find "${SCAN_DIRS[@]}" -maxdepth 2 -mindepth 1 -type d -name "snapshot-*.tar.zst-*" 2>/dev/null | sort -u)
 
 # 2. Look for standalone temporary snapshot files in TARGET_DIR:
 # e.g., snapshot-fluidco-16-20260918-062918.tar.zst or snapshot-fluidco-16.tar.zst
@@ -608,7 +619,7 @@ while IFS= read -r file_path; do
   fi
 
   ITEMS+=("file|${file_path}|${file_path}|${extracted_srv}|${extracted_ts}|${remote_name}")
-done < <(find "$TARGET_DIR" -maxdepth 1 -type f -name "snapshot-*.tar.zst" 2>/dev/null | sort)
+done < <(find "${SCAN_DIRS[@]}" -maxdepth 2 -type f -name "snapshot-*.tar.zst" 2>/dev/null | sort -u)
 
 TOTAL_ITEMS=${#ITEMS[@]}
 
