@@ -268,8 +268,13 @@ function main() {
     fi
   fi
 
+  local link_name="snapshot-$SERVICE_NAME"
+  local script_filename="$link_name.sh"
+  local target_path="$PATH_TO_ODOO/scripts/$script_filename"
+  local source_path="./scripts/example/snapshot.sh.example"
+
   log_info "Copying the latest script from the example script"
-  if OUTPUT_RSYNC_COMMAND=$(rsync -acz ./scripts/example/snapshot.sh.example "./scripts/snapshot-$SERVICE_NAME" 2>&1); then
+  if OUTPUT_RSYNC_COMMAND=$(rsync -acz "$source_path" "$target_path" 2>&1); then
     log_success "Copied the latest script from the example script."
   else
     log_error "Failed to copy the latest script from the example script ➡️ $OUTPUT_RSYNC_COMMAND"
@@ -277,13 +282,17 @@ function main() {
   fi
 
   log_info "Changing the permission of the script"
-  chmod 755 "./scripts/snapshot-$SERVICE_NAME"
+  chmod 755 "$target_path"
+
+  if [ -f "$PATH_TO_ODOO/scripts/$link_name" ]; then
+    rm -f "$PATH_TO_ODOO/scripts/$link_name"
+  fi
 
   log_info "Create a softlink to /usr/local/sbin"
-  if OUTPUT_LN_COMMAND=$(ln -sf "$PATH_TO_ODOO/scripts/snapshot-$SERVICE_NAME" /usr/local/sbin/snapshot-"$SERVICE_NAME" 2>&1); then
-    log_success "Created a symbolic link to /usr/local/sbin/snapshot-$SERVICE_NAME"
+  if OUTPUT_LN_COMMAND=$(ln -sf "$target_path" /usr/local/sbin/"$link_name" 2>&1); then
+    log_success "Created a symbolic link to /usr/local/sbin/$link_name"
   else
-    log_warn "Failed to create a symbolic link to /usr/local/sbin/snapshot-$SERVICE_NAME ➡️ $OUTPUT_LN_COMMAND"
+    log_warn "Failed to create a symbolic link to /usr/local/sbin/$link_name ➡️ $OUTPUT_LN_COMMAND"
   fi
 
   if [ -f "$PATH_TO_ODOO/scripts/list-snapshot.sh" ]; then

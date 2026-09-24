@@ -178,7 +178,7 @@ fi
 
 if [ -z "$SNAPSHOT_FILE_PATH" ] || [ ! -f "$SNAPSHOT_FILE_PATH" ]; then
   log_error "Snapshot file '${SNAPSHOT_FILE_PATH:-<none>}' not found."
-  log_info "Please specify a valid snapshot file with -f <PATH> or create one using ./scripts/snapshot-$SERVICE_NAME"
+  log_info "Please specify a valid snapshot file with -f <PATH> or create one using ./scripts/snapshot-$SERVICE_NAME.sh"
   exit 1
 fi
 

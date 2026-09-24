@@ -27,9 +27,9 @@ Arguments:
                                  (default: /tmp/backupdata-$SERVICE_NAME.zip)
 
 Examples:
-  ./scripts/restore_backupdata_manual-$SERVICE_NAME -n my_new_db
-  ./scripts/restore_backupdata_manual-$SERVICE_NAME /tmp/snapshot-$SERVICE_NAME.tar.zst --name test_db
-  ./scripts/restore_backupdata_manual-$SERVICE_NAME /tmp/backupdata-$SERVICE_NAME.zip
+  ./scripts/restore_backupdata_manual-$SERVICE_NAME.sh -n my_new_db
+  ./scripts/restore_backupdata_manual-$SERVICE_NAME.sh /tmp/snapshot-$SERVICE_NAME.tar.zst --name test_db
+  ./scripts/restore_backupdata_manual-$SERVICE_NAME.sh /tmp/backupdata-$SERVICE_NAME.zip
 EOF
 }
 

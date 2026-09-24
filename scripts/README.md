@@ -24,24 +24,24 @@ See the example file to create the data backup utility (`./scripts/example/backu
   1. Copy the example file. This will export the service name from your cloned respository dirname.
       ```bash
       export SERVICE_NAME=$(basename "$PWD")
-      cp ./scripts/example/backupdata.sh.example ./scripts/backupdata-$SERVICE_NAME
+      cp ./scripts/example/backupdata.sh.example ./scripts/backupdata-$SERVICE_NAME.sh
       ```
 
   2. Edit your example file with your favorite text-editor (`vim` or `nano`, etc)
       ```bash
-      vi ./scripts/backupdata-$SERVICE_NAME
+      vi ./scripts/backupdata-$SERVICE_NAME.sh
       ```
 
   3. You need to find (`ctrl + f`) the `enter` word to see which value should be changed
 
   4. Save the file and change the permission.
       ```bash
-      sudo chmod 755 ./scripts/backupdata-$SERVICE_NAME
+      sudo chmod 755 ./scripts/backupdata-$SERVICE_NAME.sh
       ```
 
   5. Create a soft-link to system-wide bin
       ```bash
-      sudo ln -s $PWD/scripts/backupdata-$SERVICE_NAME /usr/local/sbin/backupdata-$SERVICE_NAME
+      sudo ln -s $PWD/scripts/backupdata-$SERVICE_NAME.sh /usr/local/sbin/backupdata-$SERVICE_NAME
       ```
 
   6. Done, you can try to run the command.
@@ -65,24 +65,24 @@ See the example file to create the database cloner utility (`./scripts/example/d
   1. Copy the example file. This will export the service name from your cloned respository dirname.
       ```bash
       export SERVICE_NAME=$(basename "$PWD")
-      cp ./scripts/example/databasecloner.sh.example ./scripts/databasecloner-$SERVICE_NAME
+      cp ./scripts/example/databasecloner.sh.example ./scripts/databasecloner-$SERVICE_NAME.sh
       ```
 
   2. Edit your example file with your favorite text-editor (`vim` or `nano`, etc)
       ```bash
-      vi ./scripts/databasecloner-$SERVICE_NAME
+      vi ./scripts/databasecloner-$SERVICE_NAME.sh
       ```
 
   3. You need to find (`ctrl + f`) the `enter` word to see which value should be changed
 
   4. Save the file and change the permission.
       ```bash
-      sudo chmod 755 ./scripts/databasecloner-$SERVICE_NAME
+      sudo chmod 755 ./scripts/databasecloner-$SERVICE_NAME.sh
       ```
 
   5. Create a soft-link to system-wide bin
       ```bash
-      sudo ln -s $PWD/scripts/databasecloner-$SERVICE_NAME /usr/local/sbin/databasecloner-$SERVICE_NAME
+      sudo ln -s $PWD/scripts/databasecloner-$SERVICE_NAME.sh /usr/local/sbin/databasecloner-$SERVICE_NAME
       ```
 
   6. Done, you can try to run the command.
@@ -266,24 +266,24 @@ Generates an ed25519 SSH key pair named `snapshot-$THIS_VPS_HOSTNAME-$TARGET_VPS
   1. Copy the example file. This will export the service name from your cloned repository dirname.
       ```bash
       export SERVICE_NAME=$(basename "$PWD")
-      cp ./scripts/example/snapshot.sh.example ./scripts/snapshot-$SERVICE_NAME
+      cp ./scripts/example/snapshot.sh.example ./scripts/snapshot-$SERVICE_NAME.sh
       ```
 
   2. Edit your example file with your favorite text-editor (`vim` or `nano`, etc)
       ```bash
-      vi ./scripts/snapshot-$SERVICE_NAME
+      vi ./scripts/snapshot-$SERVICE_NAME.sh
       ```
 
   3. You need to find (`ctrl + f`) the `enter` word to see which value should be changed
 
   4. Save the file and change the permission.
       ```bash
-      sudo chmod 755 ./scripts/snapshot-$SERVICE_NAME
+      sudo chmod 755 ./scripts/snapshot-$SERVICE_NAME.sh
       ```
 
   5. Create a soft-link to system-wide bin
       ```bash
-      sudo ln -s $PWD/scripts/snapshot-$SERVICE_NAME /usr/local/sbin/snapshot-$SERVICE_NAME
+      sudo ln -s $PWD/scripts/snapshot-$SERVICE_NAME.sh /usr/local/sbin/snapshot-$SERVICE_NAME
       ```
 
   6. Add a new crontab to run your script (You can skip this step and continue to step 7 if you don't want to use cron for automatic snapshot).

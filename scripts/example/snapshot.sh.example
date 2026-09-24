@@ -2,7 +2,7 @@
 set -e
 # Category: Utility
 # Description: Creates a full Odoo snapshot (database dump + filestore + configs) locally or via secondary VPS over SSH.
-# Usage: ./scripts/snapshot-SERVICE_NAME [auto]
+# Usage: ./scripts/snapshot-SERVICE_NAME.sh [auto]
 # Dependencies: sudo, git, zstd, tar, docker, pg_dump, gcloud, rsync, ssh, curl, dd, flock, zip
 
 CURRENT_DIR=$(dirname "$(readlink -f "$0")")
@@ -730,8 +730,13 @@ function run_remote_snapshot() {
   [ -f "$PATH_TO_ODOO/conf/odoo.conf" ] && files_to_sync+=("$PATH_TO_ODOO/conf/odoo.conf")
   [ -f "$PATH_TO_ODOO/.env" ] && files_to_sync+=("$PATH_TO_ODOO/.env")
   [ -f "$PATH_TO_ODOO/requirements.txt" ] && files_to_sync+=("$PATH_TO_ODOO/requirements.txt")
+  [ -f "$PATH_TO_ODOO/scripts/backupdata-$SERVICE_NAME.sh" ] && files_to_sync+=("$PATH_TO_ODOO/scripts/backupdata-$SERVICE_NAME.sh")
   [ -f "$PATH_TO_ODOO/scripts/backupdata-$SERVICE_NAME" ] && files_to_sync+=("$PATH_TO_ODOO/scripts/backupdata-$SERVICE_NAME")
+  [ -f "$PATH_TO_ODOO/scripts/databasecloner-$SERVICE_NAME.sh" ] && files_to_sync+=("$PATH_TO_ODOO/scripts/databasecloner-$SERVICE_NAME.sh")
   [ -f "$PATH_TO_ODOO/scripts/databasecloner-$SERVICE_NAME" ] && files_to_sync+=("$PATH_TO_ODOO/scripts/databasecloner-$SERVICE_NAME")
+  [ -f "$PATH_TO_ODOO/scripts/deploy_release_candidate-$SERVICE_NAME.sh" ] && files_to_sync+=("$PATH_TO_ODOO/scripts/deploy_release_candidate-$SERVICE_NAME.sh")
+  [ -f "$PATH_TO_ODOO/scripts/restore_backupdata-$SERVICE_NAME.sh" ] && files_to_sync+=("$PATH_TO_ODOO/scripts/restore_backupdata-$SERVICE_NAME.sh")
+  [ -f "$PATH_TO_ODOO/scripts/snapshot-$SERVICE_NAME.sh" ] && files_to_sync+=("$PATH_TO_ODOO/scripts/snapshot-$SERVICE_NAME.sh")
   [ -f "$PATH_TO_ODOO/scripts/snapshot-$SERVICE_NAME" ] && files_to_sync+=("$PATH_TO_ODOO/scripts/snapshot-$SERVICE_NAME")
 
   if [ -n "$SNAPSHOT_CUSTOM_DIRS" ]; then
@@ -1093,15 +1098,29 @@ EOF
   files_dirs_to_tar+=("$PATH_TO_ODOO/.env")
   files_dirs_to_tar+=("$PATH_TO_ODOO/requirements.txt")
 
-  if [ -f "$PATH_TO_ODOO/scripts/backupdata-$SERVICE_NAME" ]; then
+  if [ -f "$PATH_TO_ODOO/scripts/backupdata-$SERVICE_NAME.sh" ]; then
+    files_dirs_to_tar+=("$PATH_TO_ODOO/scripts/backupdata-$SERVICE_NAME.sh")
+  elif [ -f "$PATH_TO_ODOO/scripts/backupdata-$SERVICE_NAME" ]; then
     files_dirs_to_tar+=("$PATH_TO_ODOO/scripts/backupdata-$SERVICE_NAME")
   fi
 
-  if [ -f "$PATH_TO_ODOO/scripts/databasecloner-$SERVICE_NAME" ]; then
+  if [ -f "$PATH_TO_ODOO/scripts/databasecloner-$SERVICE_NAME.sh" ]; then
+    files_dirs_to_tar+=("$PATH_TO_ODOO/scripts/databasecloner-$SERVICE_NAME.sh")
+  elif [ -f "$PATH_TO_ODOO/scripts/databasecloner-$SERVICE_NAME" ]; then
     files_dirs_to_tar+=("$PATH_TO_ODOO/scripts/databasecloner-$SERVICE_NAME")
   fi
 
-  if [ -f "$PATH_TO_ODOO/scripts/snapshot-$SERVICE_NAME" ]; then
+  if [ -f "$PATH_TO_ODOO/scripts/deploy_release_candidate-$SERVICE_NAME.sh" ]; then
+    files_dirs_to_tar+=("$PATH_TO_ODOO/scripts/deploy_release_candidate-$SERVICE_NAME.sh")
+  fi
+
+  if [ -f "$PATH_TO_ODOO/scripts/restore_backupdata-$SERVICE_NAME.sh" ]; then
+    files_dirs_to_tar+=("$PATH_TO_ODOO/scripts/restore_backupdata-$SERVICE_NAME.sh")
+  fi
+
+  if [ -f "$PATH_TO_ODOO/scripts/snapshot-$SERVICE_NAME.sh" ]; then
+    files_dirs_to_tar+=("$PATH_TO_ODOO/scripts/snapshot-$SERVICE_NAME.sh")
+  elif [ -f "$PATH_TO_ODOO/scripts/snapshot-$SERVICE_NAME" ]; then
     files_dirs_to_tar+=("$PATH_TO_ODOO/scripts/snapshot-$SERVICE_NAME")
   fi
 

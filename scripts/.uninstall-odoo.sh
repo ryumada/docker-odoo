@@ -121,9 +121,12 @@ function main() {
       die "Failed to elevate to root. Please run with sudo." # This will only run if exec fails
   fi
 
-  BACKUPDATA_SCRIPT_FILE="$PATH_TO_ODOO/scripts/backupdata-$SERVICE_NAME"
-  DATABASECLONER_SCRIPT_FILE="$PATH_TO_ODOO/scripts/databasecloner-$SERVICE_NAME"
-  SNAPSHOT_SCRIPT_FILE="$PATH_TO_ODOO/scripts/snapshot-$SERVICE_NAME"
+  BACKUPDATA_SCRIPT_FILE="$PATH_TO_ODOO/scripts/backupdata-$SERVICE_NAME.sh"
+  [ ! -f "$BACKUPDATA_SCRIPT_FILE" ] && BACKUPDATA_SCRIPT_FILE="$PATH_TO_ODOO/scripts/backupdata-$SERVICE_NAME"
+  DATABASECLONER_SCRIPT_FILE="$PATH_TO_ODOO/scripts/databasecloner-$SERVICE_NAME.sh"
+  [ ! -f "$DATABASECLONER_SCRIPT_FILE" ] && DATABASECLONER_SCRIPT_FILE="$PATH_TO_ODOO/scripts/databasecloner-$SERVICE_NAME"
+  SNAPSHOT_SCRIPT_FILE="$PATH_TO_ODOO/scripts/snapshot-$SERVICE_NAME.sh"
+  [ ! -f "$SNAPSHOT_SCRIPT_FILE" ] && SNAPSHOT_SCRIPT_FILE="$PATH_TO_ODOO/scripts/snapshot-$SERVICE_NAME"
   DOCKER_RESTARTOR_SCRIPT_FILE="/usr/local/sbin/restart_$SERVICE_NAME"
   ODOO_LOG_ROTATOR_FILE="/etc/logrotate.d/$SERVICE_NAME"
 
@@ -188,7 +191,7 @@ function main() {
         log_info "To complete uninstallation safely:"
         for dep in "${MISSING_BACKUPS[@]}"; do
           log_info "  1. Switch environment: sudo ./scripts/switch_env.sh $dep"
-          log_info "  2. Run backup: sudo ./scripts/backupdata-$SERVICE_NAME (or ./scripts/snapshot-$SERVICE_NAME)"
+          log_info "  2. Run backup: sudo ./scripts/backupdata-$SERVICE_NAME.sh (or ./scripts/snapshot-$SERVICE_NAME.sh)"
           log_info "  3. Ensure the backup file is placed in /tmp/"
         done
         log_warn "Alternatively, pass --bypass-snapshot to force uninstallation without backups."
@@ -252,9 +255,9 @@ function main() {
   rm -rf /var/log/odoo/${SERVICE_NAME} /var/log/odoo/${SERVICE_NAME}-* 2>/dev/null || true
 
   log_info "Removing backup/clone/snapshot scripts and soft-links..."
-  rm -f -- "$BACKUPDATA_SCRIPT_FILE" "/usr/local/sbin/backupdata-$SERVICE_NAME" 2>/dev/null || true
-  rm -f -- "$DATABASECLONER_SCRIPT_FILE" "/usr/local/sbin/databasecloner-$SERVICE_NAME" 2>/dev/null || true
-  rm -f -- "$SNAPSHOT_SCRIPT_FILE" "/usr/local/sbin/snapshot-$SERVICE_NAME" 2>/dev/null || true
+  rm -f -- "$BACKUPDATA_SCRIPT_FILE" "$PATH_TO_ODOO/scripts/backupdata-$SERVICE_NAME" "/usr/local/sbin/backupdata-$SERVICE_NAME" 2>/dev/null || true
+  rm -f -- "$DATABASECLONER_SCRIPT_FILE" "$PATH_TO_ODOO/scripts/databasecloner-$SERVICE_NAME" "/usr/local/sbin/databasecloner-$SERVICE_NAME" 2>/dev/null || true
+  rm -f -- "$SNAPSHOT_SCRIPT_FILE" "$PATH_TO_ODOO/scripts/snapshot-$SERVICE_NAME" "/usr/local/sbin/snapshot-$SERVICE_NAME" 2>/dev/null || true
 
   log_info "Removing service scripts, cron jobs, and logrotate files..."
   systemctl stop "code-server.service" 2>/dev/null || true

@@ -62,7 +62,7 @@ function main() {
   local CRON_FILE="/etc/cron.d/snapshot-$SERVICE_NAME"
   local LOGROTATE_FILE="/etc/logrotate.d/snapshot-$SERVICE_NAME"
   local SOFTLINK_FILE="/usr/local/sbin/snapshot-$SERVICE_NAME"
-  local SCRIPT_FILE="$PATH_TO_ODOO/scripts/snapshot-$SERVICE_NAME"
+  local SCRIPT_FILE="$PATH_TO_ODOO/scripts/snapshot-$SERVICE_NAME.sh"
 
   if [ -f "$CRON_FILE" ]; then
     log_info "Removing cron job: $CRON_FILE"
@@ -86,6 +86,10 @@ function main() {
   if [ -f "$SCRIPT_FILE" ]; then
     log_info "Removing snapshot script file: $SCRIPT_FILE"
     rm -f -- "$SCRIPT_FILE"
+  fi
+
+  if [ -f "$PATH_TO_ODOO/scripts/snapshot-$SERVICE_NAME" ]; then
+    rm -f -- "$PATH_TO_ODOO/scripts/snapshot-$SERVICE_NAME"
   fi
 
   rm -f -- "/var/run/snapshot-$SERVICE_NAME.lock"

@@ -425,9 +425,15 @@ function restoreFromSnapshotViaBackupData() {
     restore_args+=("-n" "$TARGET_DB_NAME")
   fi
 
-  if [ -f "$PATH_TO_ODOO/scripts/restore_backupdata-$SERVICE_NAME" ]; then
+  if [ -f "$PATH_TO_ODOO/scripts/restore_backupdata-$SERVICE_NAME.sh" ]; then
+    log_info "Executing $PATH_TO_ODOO/scripts/restore_backupdata-$SERVICE_NAME.sh ${restore_args[*]}..."
+    "$PATH_TO_ODOO/scripts/restore_backupdata-$SERVICE_NAME.sh" "${restore_args[@]}"
+  elif [ -f "$PATH_TO_ODOO/scripts/restore_backupdata-$SERVICE_NAME" ]; then
     log_info "Executing $PATH_TO_ODOO/scripts/restore_backupdata-$SERVICE_NAME ${restore_args[*]}..."
     "$PATH_TO_ODOO/scripts/restore_backupdata-$SERVICE_NAME" "${restore_args[@]}"
+  elif [ -f "$PATH_TO_ODOO/scripts/restore_backupdata_manual-$SERVICE_NAME.sh" ]; then
+    log_info "Executing $PATH_TO_ODOO/scripts/restore_backupdata_manual-$SERVICE_NAME.sh ${restore_args[*]}..."
+    "$PATH_TO_ODOO/scripts/restore_backupdata_manual-$SERVICE_NAME.sh" "${restore_args[@]}"
   elif [ -f "$PATH_TO_ODOO/scripts/restore_backupdata_manual-$SERVICE_NAME" ]; then
     log_info "Executing $PATH_TO_ODOO/scripts/restore_backupdata_manual-$SERVICE_NAME ${restore_args[*]}..."
     "$PATH_TO_ODOO/scripts/restore_backupdata_manual-$SERVICE_NAME" "${restore_args[@]}"
@@ -511,12 +517,17 @@ function restoreSnapshotFull() {
 
   # Restore utility scripts
   log_info "Restoring utility scripts..."
-  for script in "backupdata-$SERVICE_NAME" "databasecloner-$SERVICE_NAME" "snapshot-$SERVICE_NAME"; do
-    if [ -f "$src_root/scripts/$script" ]; then
-        cp -f "$src_root/scripts/$script" "$PATH_TO_ODOO/scripts/$script"
-        chown "$REPOSITORY_OWNER": "$PATH_TO_ODOO/scripts/$script"
-        chmod 755 "$PATH_TO_ODOO/scripts/$script"
-        ln -sf "$PATH_TO_ODOO/scripts/$script" "/usr/local/sbin/$script"
+  for script in "backupdata-$SERVICE_NAME" "databasecloner-$SERVICE_NAME" "deploy_release_candidate-$SERVICE_NAME" "restore_backupdata-$SERVICE_NAME" "snapshot-$SERVICE_NAME"; do
+    if [ -f "$src_root/scripts/$script.sh" ]; then
+        cp -f "$src_root/scripts/$script.sh" "$PATH_TO_ODOO/scripts/$script.sh"
+        chown "$REPOSITORY_OWNER": "$PATH_TO_ODOO/scripts/$script.sh"
+        chmod 755 "$PATH_TO_ODOO/scripts/$script.sh"
+        ln -sf "$PATH_TO_ODOO/scripts/$script.sh" "/usr/local/sbin/$script"
+    elif [ -f "$src_root/scripts/$script" ]; then
+        cp -f "$src_root/scripts/$script" "$PATH_TO_ODOO/scripts/$script.sh"
+        chown "$REPOSITORY_OWNER": "$PATH_TO_ODOO/scripts/$script.sh"
+        chmod 755 "$PATH_TO_ODOO/scripts/$script.sh"
+        ln -sf "$PATH_TO_ODOO/scripts/$script.sh" "/usr/local/sbin/$script"
     fi
   done
 
