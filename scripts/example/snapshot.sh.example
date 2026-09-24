@@ -781,8 +781,8 @@ MANIFEST_EOF"
   fi
   remote_exec "rm -rf '$remote_staging/tmp/zip_staging'"
 
-  log_info "Copying cached backup bundle to staging on Secondary VPS..."
-  remote_exec "cp -f '$remote_cache_zip' '$remote_staging/tmp/backupdata-$SERVICE_NAME.zip'"
+  log_info "Linking cached backup bundle to staging on Secondary VPS..."
+  remote_exec "ln -f '$remote_cache_zip' '$remote_staging/tmp/backupdata-$SERVICE_NAME.zip' 2>/dev/null || cp -f '$remote_cache_zip' '$remote_staging/tmp/backupdata-$SERVICE_NAME.zip'"
 
   log_info "Packaging snapshot-$SERVICE_NAME.tar.zst on Secondary VPS (compression level: $compression_level)..."
   remote_exec "cd '$remote_staging' && tar -cf '$remote_staging/snapshot-$SERVICE_NAME.tar.zst' -I 'zstd -vT0 -$compression_level --ultra' *"
@@ -1050,8 +1050,8 @@ EOF
   # Clean up staging directory after zipping
   rm -rf "$ZIP_STAGING_DIR"
 
-  log_info "Copying cached backup bundle to staging..."
-  cp -f "$SNAPSHOT_CACHE_ZIP" "$BACKUPDATA_ZIP_PATH"
+  log_info "Linking cached backup bundle to staging..."
+  ln -f "$SNAPSHOT_CACHE_ZIP" "$BACKUPDATA_ZIP_PATH" 2>/dev/null || cp -f "$SNAPSHOT_CACHE_ZIP" "$BACKUPDATA_ZIP_PATH"
 
   ## This variable below to define the new variable (DON'T EDIT)
   # Use array for files
