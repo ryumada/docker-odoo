@@ -239,7 +239,7 @@ function main() {
   ODOO_TMP_DIR="$OWNER_HOME/.odoo-tmp/$SERVICE_NAME"
   mkdir -p "$ODOO_TMP_DIR" 2>/dev/null || true
   chmod 700 "$OWNER_HOME/.odoo-tmp" "$ODOO_TMP_DIR" 2>/dev/null || true
-  chown -R "$REPOSITORY_OWNER": "$OWNER_HOME/.odoo-tmp" 2>/dev/null || true
+  chown -R "$REPOSITORY_OWNER":"$REPOSITORY_OWNER" "$OWNER_HOME/.odoo-tmp" 2>/dev/null || true
 
   TEMP_BACKUP_FILE="$ODOO_TMP_DIR/cloner_backup-$SERVICE_NAME.zip"
   ENV_FILE="$PATH_TO_ODOO/.env"

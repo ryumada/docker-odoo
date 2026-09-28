@@ -395,7 +395,7 @@ OWNER_HOME=$(eval echo "~$REPOSITORY_OWNER")
 ODOO_TMP_DIR="$OWNER_HOME/.odoo-tmp/$SERVICE_NAME"
 mkdir -p "$ODOO_TMP_DIR" 2>/dev/null || true
 chmod 700 "$OWNER_HOME/.odoo-tmp" "$ODOO_TMP_DIR" 2>/dev/null || true
-chown -R "$REPOSITORY_OWNER": "$OWNER_HOME/.odoo-tmp" 2>/dev/null || true
+chown -R "$REPOSITORY_OWNER":"$REPOSITORY_OWNER" "$OWNER_HOME/.odoo-tmp" 2>/dev/null || true
 
 ZIP_FILE_NAME=backupdata-$SERVICE_NAME.zip
 BACKUP_FILE_PATH="$OWNER_HOME/$ZIP_FILE_NAME"
@@ -511,9 +511,9 @@ else
   fi
 fi
 
-chown -R "$REPOSITORY_OWNER:" "$OWNER_HOME/.odoo-snapshots" 2>/dev/null || true
+chown -R "$REPOSITORY_OWNER":"$REPOSITORY_OWNER" "$OWNER_HOME/.odoo-snapshots" 2>/dev/null || true
 chmod 644 "$CACHE_ZIP" 2>/dev/null || true
-chown "$REPOSITORY_OWNER:" "$BACKUP_FILE_PATH" 2>/dev/null || chown "${SUDO_USER:-$USER}:${SUDO_USER:-$USER}" "$BACKUP_FILE_PATH" 2>/dev/null || true
+chown "$REPOSITORY_OWNER":"$REPOSITORY_OWNER" "$BACKUP_FILE_PATH" 2>/dev/null || chown "${SUDO_USER:-$USER}:${SUDO_USER:-$USER}" "$BACKUP_FILE_PATH" 2>/dev/null || true
 
 log_success "Backup data for $SERVICE_NAME is completed. The backup file is located at $BACKUP_FILE_PATH."
 exit 0

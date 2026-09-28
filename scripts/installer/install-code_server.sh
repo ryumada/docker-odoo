@@ -172,7 +172,7 @@ done
 
 if [ -n "\$TOKEN_URL" ]; then
   echo "\$TOKEN_URL" > "\$TOKEN_FILE"
-  chown "\${REPO_OWNER}:" "\$TOKEN_FILE" 2>/dev/null || true
+  chown "\${REPO_OWNER}":"\${REPO_OWNER}" "\$TOKEN_FILE" 2>/dev/null || true
   chmod 600 "\$TOKEN_FILE" 2>/dev/null || true
   echo "[\$(date +"%Y-%m-%d %H:%M:%S")] ✅ VSCode Server restarted successfully."
   echo "[\$(date +"%Y-%m-%d %H:%M:%S")] 🔑 Token URL: \$TOKEN_URL"

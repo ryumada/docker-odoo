@@ -65,11 +65,11 @@ RUN groupadd -g 8069 odoo; \
     useradd -r -u 8069 -g 8069 -m -s /bin/bash odoo
 
 RUN mkdir -p /var/log/odoo; \
-    chown odoo: /var/log/odoo; \
+    chown odoo:odoo /var/log/odoo; \
     mkdir -p /opt/odoo; \
-    chown odoo: /opt/odoo; \
+    chown odoo:odoo /opt/odoo; \
     mkdir /var/lib/odoo; \
-    chown odoo: /var/lib/odoo
+    chown odoo:odoo /var/lib/odoo
 
 # Install python dependencies first to leverage cache
 COPY --chown=odoo:odoo ./requirements.txt /opt/odoo/requirements.txt

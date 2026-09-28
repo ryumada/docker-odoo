@@ -102,7 +102,7 @@ OWNER_HOME=$(eval echo "~$REPOSITORY_OWNER")
 ODOO_TMP_DIR="$OWNER_HOME/.odoo-tmp/$SERVICE_NAME"
 mkdir -p "$ODOO_TMP_DIR" 2>/dev/null || true
 chmod 700 "$OWNER_HOME/.odoo-tmp" "$ODOO_TMP_DIR" 2>/dev/null || true
-chown -R "$REPOSITORY_OWNER": "$OWNER_HOME/.odoo-tmp" 2>/dev/null || true
+chown -R "$REPOSITORY_OWNER":"$REPOSITORY_OWNER" "$OWNER_HOME/.odoo-tmp" 2>/dev/null || true
 
 SNAPSHOT_FILE_PATH=""
 DATA_ONLY=false
@@ -256,7 +256,7 @@ function restoreDBCredentials() {
   if [ -d "$secrets_tar_dir" ]; then
     mkdir -p "$PATH_TO_ODOO/.secrets"
     cp -rf "$secrets_tar_dir/." "$PATH_TO_ODOO/.secrets/" || { log_error "Can't restore .secrets directory"; }
-    chown -R "$REPOSITORY_OWNER": "$PATH_TO_ODOO/.secrets"
+    chown -R "$REPOSITORY_OWNER":"$REPOSITORY_OWNER" "$PATH_TO_ODOO/.secrets"
     chmod 700 "$PATH_TO_ODOO/.secrets"
     chmod 600 "$PATH_TO_ODOO/.secrets"/*
   else
@@ -345,7 +345,7 @@ function restoreOdooData() {
         else
           mv "$zip_stage/filestore" "$target_filestore"
         fi
-        chown -R odoo: "/var/lib/odoo/$SERVICE_NAME" 2>/dev/null || true
+        chown -R odoo:odoo "/var/lib/odoo/$SERVICE_NAME" 2>/dev/null || true
       fi
 
       if [ -f "$zip_stage/dump.sql" ]; then
@@ -401,7 +401,7 @@ function restoreOdooData() {
   if [ -n "$discovered_db" ] && [ -d "$filestore_base_in_tar/$discovered_db" ]; then
     mv "$filestore_base_in_tar/$discovered_db" "$target_filestore" || { log_error "Can't restore filestore"; }
   fi
-  chown -R odoo: "/var/lib/odoo/$SERVICE_NAME"
+  chown -R odoo:odoo "/var/lib/odoo/$SERVICE_NAME"
 
   log_info "Restore database $ODOO_DATABASE_NAME_PRD from $(basename "$sql_dump_file")"
   run_psql -c "DROP DATABASE IF EXISTS \"$ODOO_DATABASE_NAME_PRD\"" --quiet -t -P pager=off 2> /dev/null > /dev/null || log_error "Can't drop database"
@@ -441,7 +441,7 @@ function restoreFromSnapshotViaBackupData() {
 
   EXTRACTED_BACKUPDATA_ZIP="$ODOO_TMP_DIR/backupdata-$SERVICE_NAME.zip"
   cp -f "$extracted_zip" "$EXTRACTED_BACKUPDATA_ZIP"
-  chown "$REPOSITORY_OWNER": "$EXTRACTED_BACKUPDATA_ZIP" 2>/dev/null || true
+  chown "$REPOSITORY_OWNER":"$REPOSITORY_OWNER" "$EXTRACTED_BACKUPDATA_ZIP" 2>/dev/null || true
   chmod 644 "$EXTRACTED_BACKUPDATA_ZIP" 2>/dev/null || true
   log_success "Backup bundle extracted and placed at $EXTRACTED_BACKUPDATA_ZIP"
 
@@ -533,7 +533,7 @@ function restoreSnapshotFull() {
   [ -f "$src_root/.env" ] && cp -f "$src_root/.env" "$PATH_TO_ODOO/.env"
   [ -f "$src_root/requirements.txt" ] && cp -f "$src_root/requirements.txt" "$PATH_TO_ODOO/requirements.txt"
 
-  chown -R "$REPOSITORY_OWNER": "$PATH_TO_ODOO/conf/odoo.conf" "$PATH_TO_ODOO/.env" "$PATH_TO_ODOO/requirements.txt" 2>/dev/null
+  chown -R "$REPOSITORY_OWNER":"$REPOSITORY_OWNER" "$PATH_TO_ODOO/conf/odoo.conf" "$PATH_TO_ODOO/.env" "$PATH_TO_ODOO/requirements.txt" 2>/dev/null
 
   restoreDBCredentials
 
@@ -545,12 +545,12 @@ function restoreSnapshotFull() {
   for script in "backupdata-$SERVICE_NAME" "databasecloner-$SERVICE_NAME" "deploy_release_candidate-$SERVICE_NAME" "restore_backupdata-$SERVICE_NAME" "snapshot-$SERVICE_NAME"; do
     if [ -f "$src_root/scripts/$script.sh" ]; then
         cp -f "$src_root/scripts/$script.sh" "$PATH_TO_ODOO/scripts/$script.sh"
-        chown "$REPOSITORY_OWNER": "$PATH_TO_ODOO/scripts/$script.sh"
+        chown "$REPOSITORY_OWNER":"$REPOSITORY_OWNER" "$PATH_TO_ODOO/scripts/$script.sh"
         chmod 755 "$PATH_TO_ODOO/scripts/$script.sh"
         ln -sf "$PATH_TO_ODOO/scripts/$script.sh" "/usr/local/sbin/$script"
     elif [ -f "$src_root/scripts/$script" ]; then
         cp -f "$src_root/scripts/$script" "$PATH_TO_ODOO/scripts/$script.sh"
-        chown "$REPOSITORY_OWNER": "$PATH_TO_ODOO/scripts/$script.sh"
+        chown "$REPOSITORY_OWNER":"$REPOSITORY_OWNER" "$PATH_TO_ODOO/scripts/$script.sh"
         chmod 755 "$PATH_TO_ODOO/scripts/$script.sh"
         ln -sf "$PATH_TO_ODOO/scripts/$script.sh" "/usr/local/sbin/$script"
     fi

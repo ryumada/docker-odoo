@@ -382,7 +382,7 @@ function run_automated_pull_mode() {
     ODOO_TMP_DIR="$OWNER_HOME/.odoo-tmp/$SERVICE_NAME"
     mkdir -p "$ODOO_TMP_DIR" 2>/dev/null || true
     chmod 700 "$OWNER_HOME/.odoo-tmp" "$ODOO_TMP_DIR" 2>/dev/null || true
-    chown -R "$REPOSITORY_OWNER": "$OWNER_HOME/.odoo-tmp" 2>/dev/null || true
+    chown -R "$REPOSITORY_OWNER":"$REPOSITORY_OWNER" "$OWNER_HOME/.odoo-tmp" 2>/dev/null || true
 
     PSQL_ENV_FILE="$PRD_ENV_FILE" run_pg_dump --no-owner -d "$PRD_DB_NAME" > "$ODOO_TMP_DIR/$STG_DB_NAME.sql"
     export PSQL_ENV_FILE="$STG_ENV_FILE"
@@ -394,7 +394,7 @@ function run_automated_pull_mode() {
     fi
     mkdir -p "$ODOO_FILESTORE_PATH_ENV"
     rsync -a "$ODOO_FILESTORE_PATH_PRD/" "$ODOO_FILESTORE_PATH_ENV"
-    chown -R odoo: "$ODOO_FILESTORE_PATH_ENV"
+    chown -R odoo:odoo "$ODOO_FILESTORE_PATH_ENV"
 
     DB_USER=$(grep "^ACTIVE_DB_USER=" "$STG_ENV_FILE" 2>/dev/null | cut -d '=' -f2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//')
     [ -z "$DB_USER" ] && DB_USER=$(cat "$(dirname "$STG_ENV_FILE")/.secrets/db_user" 2>/dev/null || echo "odoo")
@@ -605,7 +605,7 @@ function run_interactive_push_mode() {
     ODOO_TMP_DIR="$OWNER_HOME/.odoo-tmp/$SERVICE_NAME"
     mkdir -p "$ODOO_TMP_DIR" 2>/dev/null || true
     chmod 700 "$OWNER_HOME/.odoo-tmp" "$ODOO_TMP_DIR" 2>/dev/null || true
-    chown -R "$REPOSITORY_OWNER": "$OWNER_HOME/.odoo-tmp" 2>/dev/null || true
+    chown -R "$REPOSITORY_OWNER":"$REPOSITORY_OWNER" "$OWNER_HOME/.odoo-tmp" 2>/dev/null || true
 
     log_info "Start cloning database from $ODOO_DATABASE_NAME_PRD to $ODOO_DB_NAME_ENV"
     log_info "Dump $ODOO_DATABASE_NAME_PRD"
@@ -623,7 +623,7 @@ function run_interactive_push_mode() {
     rsync -a "$ODOO_FILESTORE_PATH_PRD/" "$ODOO_FILESTORE_PATH_ENV"
 
     log_info "Change owner of $ODOO_FILESTORE_PATH_ENV to odoo"
-    chown -R odoo: "$ODOO_FILESTORE_PATH_ENV"
+    chown -R odoo:odoo "$ODOO_FILESTORE_PATH_ENV"
 
     if [ "$ODOO_DB_NAME_ENV" == "$ODOO_DATABASE_NAME_PRD-$ODOO_DEPLOYMENT_ENVIRONMENT" ]; then
         log_info "Stop the $ODOO_DEPLOYMENT_ENVIRONMENT environment"

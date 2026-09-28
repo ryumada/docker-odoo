@@ -118,7 +118,7 @@ generate_ssh_key_pair() {
   if [ ! -d "$ssh_dir" ]; then
     mkdir -p "$ssh_dir"
     chmod 700 "$ssh_dir"
-    chown "$repo_owner": "$ssh_dir" 2>/dev/null || true
+    chown "$repo_owner":"$repo_owner" "$ssh_dir" 2>/dev/null || true
   fi
 
   if [ -f "$key_path" ]; then
@@ -135,7 +135,7 @@ generate_ssh_key_pair() {
     ssh-keygen -q -t ed25519 -N "" -f "$key_path" -C "${key_name}@${this_vps_hostname}"
     chmod 600 "$key_path"
     chmod 644 "$pub_key_path"
-    chown "$repo_owner": "$key_path" "$pub_key_path" 2>/dev/null || true
+    chown "$repo_owner":"$repo_owner" "$key_path" "$pub_key_path" 2>/dev/null || true
     _ssh_log_success "Generated new ed25519 SSH key pair: $key_path"
   fi
 

@@ -721,7 +721,7 @@ main() {
             fi
             mkdir -p "$ODOO_FILESTORE_PATH_ENV"
             rsync -a "$ODOO_FILESTORE_PATH_PRD/" "$ODOO_FILESTORE_PATH_ENV"
-            chown -R odoo: "$ODOO_FILESTORE_PATH_ENV"
+            chown -R odoo:odoo "$ODOO_FILESTORE_PATH_ENV"
 
             log_warn "Drop old database $STG_DB_NAME"
             run_psql -d postgres -c "DROP DATABASE IF EXISTS \"$STG_DB_NAME\" WITH (FORCE)" >/dev/null 2>&1 || log_warn "Error dropping DB, proceeding..."

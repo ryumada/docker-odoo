@@ -507,13 +507,13 @@ log_success "Download complete! ($DOWNLOADED_BYTES bytes)"
 
 # Set permissions
 chmod 644 "$DEST_FILE" 2>/dev/null || true
-chown "$REPOSITORY_OWNER": "$DEST_FILE" 2>/dev/null || true
+chown "$REPOSITORY_OWNER":"$REPOSITORY_OWNER" "$DEST_FILE" 2>/dev/null || true
 
 # --- Create default restore symlink if requested ---
 STANDARD_RESTORE_PATH="$OWNER_HOME/snapshot-${SERVICE_NAME}.tar.zst"
 if [ "$LINK_AS_DEFAULT" = true ] && [ "$DEST_FILE" != "$STANDARD_RESTORE_PATH" ]; then
   ln -sf "$DEST_FILE" "$STANDARD_RESTORE_PATH" 2>/dev/null || cp -f "$DEST_FILE" "$STANDARD_RESTORE_PATH"
-  chown "$REPOSITORY_OWNER": "$STANDARD_RESTORE_PATH" 2>/dev/null || true
+  chown "$REPOSITORY_OWNER":"$REPOSITORY_OWNER" "$STANDARD_RESTORE_PATH" 2>/dev/null || true
   log_info "Created restore link at: $STANDARD_RESTORE_PATH"
 fi
 

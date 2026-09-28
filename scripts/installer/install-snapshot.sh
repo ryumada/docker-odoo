@@ -101,7 +101,7 @@ EOF
   log_info "Move the cron file to /etc/cron.d"
   sudo mv "$HOME/snapshot-$SERVICE_NAME" "$cron_target"
   log_info "Change the ownership of the snapshot file"
-  sudo chown root: "$cron_target"
+  sudo chown root:root "$cron_target"
   log_info "Change the permission of the snapshot file"
   sudo chmod 644 "$cron_target"
   log_info "Restart the cron service"
@@ -191,10 +191,10 @@ function main() {
     if [ ! -f "$SNAPSHOT_REMOTE_KEY" ]; then
       log_info "Generating dedicated SSH key pair at $SNAPSHOT_REMOTE_KEY..."
       mkdir -p "$(dirname "$SNAPSHOT_REMOTE_KEY")"
-      chown "$REPOSITORY_OWNER": "$(dirname "$SNAPSHOT_REMOTE_KEY")"
+      chown "$REPOSITORY_OWNER":"$REPOSITORY_OWNER" "$(dirname "$SNAPSHOT_REMOTE_KEY")"
       chmod 700 "$(dirname "$SNAPSHOT_REMOTE_KEY")"
       ssh-keygen -t ed25519 -N "" -f "$SNAPSHOT_REMOTE_KEY" -C "snapshot-${THIS_VPS_HOSTNAME}-${CLEAN_TARGET_HOSTNAME}@${THIS_VPS_HOSTNAME}"
-      chown "$REPOSITORY_OWNER": "$SNAPSHOT_REMOTE_KEY" "${SNAPSHOT_REMOTE_KEY}.pub"
+      chown "$REPOSITORY_OWNER":"$REPOSITORY_OWNER" "$SNAPSHOT_REMOTE_KEY" "${SNAPSHOT_REMOTE_KEY}.pub"
       chmod 600 "$SNAPSHOT_REMOTE_KEY"
       chmod 644 "${SNAPSHOT_REMOTE_KEY}.pub"
       log_success "Generated SSH key pair: $SNAPSHOT_REMOTE_KEY"
@@ -385,7 +385,7 @@ function main() {
 EOF
 
   log_info "Change the ownership of the logrotate file"
-  sudo chown root: "$HOME/snapshot-$SERVICE_NAME"
+  sudo chown root:root "$HOME/snapshot-$SERVICE_NAME"
   log_info "Change the permission of the logrotate file"
   sudo chmod 644 "$HOME/snapshot-$SERVICE_NAME"
   log_info "Move the logrotate file to /etc/logrotate.d"

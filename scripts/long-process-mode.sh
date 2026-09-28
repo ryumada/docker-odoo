@@ -94,7 +94,7 @@ enable_long_process_mode() {
     echo "LIMIT_REQUEST=$(get_env_param LIMIT_REQUEST)"
     echo "TRANSIENT_AGE_LIMIT=$(get_env_param TRANSIENT_AGE_LIMIT)"
   } > "$BAK_ENV_FILE"
-  chown "$REPOSITORY_OWNER:" "$BAK_ENV_FILE"
+  chown "$REPOSITORY_OWNER":"$REPOSITORY_OWNER" "$BAK_ENV_FILE"
 
   # 2. Update .env with 48-hour mode limits
   log_info "Setting 48-hour performance limits in .env..."

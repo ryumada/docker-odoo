@@ -71,7 +71,7 @@ function main() {
 
     log_info "Existing .env found. Creating persistent backup: ${BACKUP_NAME}"
     cp .env "$BACKUP_NAME"
-    chown "$REPOSITORY_OWNER": "$BACKUP_NAME"
+    chown "$REPOSITORY_OWNER":"$REPOSITORY_OWNER" "$BACKUP_NAME"
 
     # Rotate backups: Keep only the MAX_BACKUPS most recent ones
     BACKUP_COUNT=$(ls -1 .env.backup_* 2>/dev/null | wc -l)
@@ -119,7 +119,7 @@ function main() {
   fi
 
   log_info "Update .env file with current user and group."
-  chown "$REPOSITORY_OWNER": .env
+  chown "$REPOSITORY_OWNER":"$REPOSITORY_OWNER" .env
 
   log_success "Update finished"
 }

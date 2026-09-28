@@ -143,7 +143,7 @@ function moveSnapshotFileToTempDir() {
 
   chmod 755 "$dest_dir" 2>/dev/null || true
   chmod 644 "$dest_dir/$tar_file_name" 2>/dev/null || true
-  chown -R "$REPOSITORY_OWNER": "$dest_dir" 2>/dev/null || true
+  chown -R "$REPOSITORY_OWNER":"$REPOSITORY_OWNER" "$dest_dir" 2>/dev/null || true
 
   # Also place/link at $OWNER_HOME for immediate convenient access
   ln -sf "$dest_dir/$tar_file_name" "$OWNER_HOME/$tar_file_name" 2>/dev/null || cp -f "$dest_dir/$tar_file_name" "$OWNER_HOME/$tar_file_name" 2>/dev/null || true
@@ -884,7 +884,7 @@ function main() {
   ODOO_TMP_DIR="$OWNER_HOME/.odoo-tmp/$SERVICE_NAME"
   mkdir -p "$ODOO_TMP_DIR"
   chmod 700 "$OWNER_HOME/.odoo-tmp" "$ODOO_TMP_DIR" 2>/dev/null || true
-  chown -R "$REPOSITORY_OWNER": "$OWNER_HOME/.odoo-tmp" 2>/dev/null || true
+  chown -R "$REPOSITORY_OWNER":"$REPOSITORY_OWNER" "$OWNER_HOME/.odoo-tmp" 2>/dev/null || true
 
   ZIP_FILE_NAME="backupdata-$SERVICE_NAME.zip"
   ZIP_STAGING_DIR="$ODOO_TMP_DIR/backupdata_staging_$$"
@@ -1055,7 +1055,7 @@ EOF
   fi
 
   # Maintain correct ownership and permissions on cache
-  chown -R "$REPOSITORY_OWNER": "$OWNER_HOME/.odoo-snapshots" 2>/dev/null || true
+  chown -R "$REPOSITORY_OWNER":"$REPOSITORY_OWNER" "$OWNER_HOME/.odoo-snapshots" 2>/dev/null || true
   chmod 644 "$SNAPSHOT_CACHE_ZIP" 2>/dev/null || true
 
   # Clean up staging directory after zipping
@@ -1140,7 +1140,7 @@ EOF
   fi
 
   log_info "Changing the ownership of the snapshot file..."
-  chown "$REPOSITORY_OWNER": "$TAR_FILE_PATH"
+  chown "$REPOSITORY_OWNER":"$REPOSITORY_OWNER" "$TAR_FILE_PATH"
 
   local remote_upload_attempted=false
   local remote_upload_success=false

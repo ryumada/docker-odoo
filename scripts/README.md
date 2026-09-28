@@ -298,7 +298,7 @@ Generates an ed25519 SSH key pair named `snapshot-$THIS_VPS_HOSTNAME-$TARGET_VPS
       EOF
 
       sudo mv ~/snapshot-$SERVICE_NAME /etc/cron.d/snapshot-$SERVICE_NAME
-      sudo chown root: /etc/cron.d/snapshot-$SERVICE_NAME
+      sudo chown root:root /etc/cron.d/snapshot-$SERVICE_NAME
       sudo chmod 644 /etc/cron.d/snapshot-$SERVICE_NAME
       sudo systemctl restart cron
       ```
@@ -330,7 +330,7 @@ Generates an ed25519 SSH key pair named `snapshot-$THIS_VPS_HOSTNAME-$TARGET_VPS
 
       EOF
 
-      sudo chown root: ~/snapshot-$SERVICE_NAME
+      sudo chown root:root ~/snapshot-$SERVICE_NAME
       sudo chmod 644 ~/snapshot-$SERVICE_NAME
       sudo mv ~/snapshot-$SERVICE_NAME /etc/logrotate.d/snapshot-$SERVICE_NAME
       ```
@@ -387,11 +387,11 @@ Generates an ed25519 SSH key pair named `snapshot-$THIS_VPS_HOSTNAME-$TARGET_VPS
         ```bash
         sudo mkdir /opt/.keys
 
-        sudo chown $USER: /opt/.keys
+        sudo chown $USER:$USER /opt/.keys
         # denied access for other user
         sudo chmod 750 /opt/.keys
 
-        sudo chown $USER: /opt/.keys/gcloud_service_account.json
+        sudo chown $USER:$USER /opt/.keys/gcloud_service_account.json
         sudo chmod 440 /opt/.keys/gcloud_service_account.json
         ```
 

@@ -476,7 +476,7 @@ function main() {
   ODOO_TMP_DIR="$OWNER_HOME/.odoo-tmp/$SERVICE_NAME"
   mkdir -p "$ODOO_TMP_DIR" 2>/dev/null || true
   chmod 700 "$OWNER_HOME/.odoo-tmp" "$ODOO_TMP_DIR" 2>/dev/null || true
-  chown -R "$REPOSITORY_OWNER": "$OWNER_HOME/.odoo-tmp" 2>/dev/null || true
+  chown -R "$REPOSITORY_OWNER":"$REPOSITORY_OWNER" "$OWNER_HOME/.odoo-tmp" 2>/dev/null || true
 
   BACKUPDATA_FILE_NAME="backupdata-$SERVICE_NAME.zip"
   BACKUPDATA_FILE_PATH="$OWNER_HOME/$BACKUPDATA_FILE_NAME"
@@ -540,7 +540,7 @@ function main() {
       local safety_backup_dir="$OWNER_HOME/.odoo-snapshots/$SERVICE_NAME/safety_backups"
       mkdir -p "$safety_backup_dir" 2>/dev/null || true
       chmod 700 "$safety_backup_dir" 2>/dev/null || true
-      chown -R "$REPOSITORY_OWNER": "$safety_backup_dir" 2>/dev/null || true
+      chown -R "$REPOSITORY_OWNER":"$REPOSITORY_OWNER" "$safety_backup_dir" 2>/dev/null || true
 
       SAFETY_BACKUP_NAME="backupdata-$SERVICE_NAME-safety-backup-$(date +"%Y%m%d-%H%M%S").zip"
       SAFETY_BACKUP_DIR="$ODOO_TMP_DIR/safety_backup_staging_$$"
@@ -609,7 +609,7 @@ function main() {
   fi
 
   log_info "Changing the ownership of $FILESTORE_PATH to odoo user"
-  chown -R odoo: "$FILESTORE_PATH"
+  chown -R odoo:odoo "$FILESTORE_PATH"
 
   NEUTRALIZE_DB=$(grep "^NEUTRALIZE_DATABASE=" "$PATH_TO_ODOO/.env" 2>/dev/null | cut -d "=" -f 2 | sed 's/^[[:space:]]*//g' | sed 's/[[:space:]]*$//g' || true)
   if [ -z "$NEUTRALIZE_DB" ]; then

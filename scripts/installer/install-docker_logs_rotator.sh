@@ -87,7 +87,7 @@ function installLogrotator() {
 
 EOF
 
-    sudo chown root: "$temp_logrotate_file"
+    sudo chown root:root "$temp_logrotate_file"
     sudo chmod 644 "$temp_logrotate_file"
     sudo mv "$temp_logrotate_file" "/etc/logrotate.d/docker_$container_id"
 

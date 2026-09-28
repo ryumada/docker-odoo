@@ -132,17 +132,17 @@ function createDataDir() {
 
   if [ ! -d "$ODOO_DATADIR" ]; then
     sudo mkdir "$ODOO_DATADIR"
-    sudo chown $ODOO_LINUX_USER: $ODOO_DATADIR
+    sudo chown "$ODOO_LINUX_USER":"$ODOO_LINUX_USER" $ODOO_DATADIR
   fi
 
   if [ ! -d "$ODOO_DATADIR_SERVICE" ]; then
     sudo mkdir "$ODOO_DATADIR_SERVICE"
-    sudo chown $ODOO_LINUX_USER: "$ODOO_DATADIR_SERVICE"
+    sudo chown "$ODOO_LINUX_USER":"$ODOO_LINUX_USER" "$ODOO_DATADIR_SERVICE"
   fi
 
   if [ ! -d "$ODOO_DATADIR_SERVICE/filestore" ]; then
     sudo mkdir "$ODOO_DATADIR_SERVICE/filestore"
-    sudo chown $ODOO_LINUX_USER: "$ODOO_DATADIR_SERVICE/filestore"
+    sudo chown "$ODOO_LINUX_USER":"$ODOO_LINUX_USER" "$ODOO_DATADIR_SERVICE/filestore"
   fi
 
   writeDatadirVariableOnEnvFile
@@ -160,12 +160,12 @@ function createLogDir() {
 
   if [ ! -d "$ODOO_LOG_DIR" ]; then
     sudo mkdir $ODOO_LOG_DIR
-    sudo chown $ODOO_LINUX_USER: $ODOO_LOG_DIR
+    sudo chown "$ODOO_LINUX_USER":"$ODOO_LINUX_USER" $ODOO_LOG_DIR
   fi
 
   if [ ! -d "$ODOO_LOG_DIR_SERVICE" ]; then
     sudo mkdir "$ODOO_LOG_DIR_SERVICE"
-    sudo chown $ODOO_LINUX_USER: "$ODOO_LOG_DIR_SERVICE"
+    sudo chown "$ODOO_LINUX_USER":"$ODOO_LINUX_USER" "$ODOO_LOG_DIR_SERVICE"
   fi
 
   if [ ! -d "$ODOO_LOG_DIR/_utilities" ]; then
@@ -313,14 +313,14 @@ EOF
   # Remove the bypass command check as it conflicts with script arguments
   sed -i '/# Check for bypass commands/,/esac/d' "$odoo_utility_file"
 
-  chown "$REPOSITORY_OWNER": "$odoo_utility_file"
+  chown "$REPOSITORY_OWNER":"$REPOSITORY_OWNER" "$odoo_utility_file"
 }
 
 function generateDockerComposeAndDockerfile() {
   log_info "Create docker-compose.yml file..."
 
   cp "$PATH_TO_ODOO/docker-compose.yml.example" "$PATH_TO_ODOO/docker-compose.yml"
-  chown "$REPOSITORY_OWNER": "$PATH_TO_ODOO/docker-compose.yml"
+  chown "$REPOSITORY_OWNER":"$REPOSITORY_OWNER" "$PATH_TO_ODOO/docker-compose.yml"
 
   # Configure Docker Network Mode
   DOCKER_NETWORK_MODE=$(grep "^DOCKER_NETWORK_MODE=" "$REPOSITORY_DIRPATH/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
@@ -445,7 +445,7 @@ function generateDockerFile() {
 
   log_info "Create $PATH_TO_ODOO/dockerfile..."
   cp "$PATH_TO_ODOO/dockerfile.example" "$PATH_TO_ODOO/dockerfile"
-  chown "$REPOSITORY_OWNER": "$PATH_TO_ODOO/dockerfile"
+  chown "$REPOSITORY_OWNER":"$REPOSITORY_OWNER" "$PATH_TO_ODOO/dockerfile"
 
   log_info "Setting up $PATH_TO_ODOO/dockerfile with mount strategy..."
 
@@ -636,7 +636,7 @@ $log_filename {
 }
 EOF
 
-  sudo chown root: ~/"$active_svc"
+  sudo chown root:root ~/"$active_svc"
   sudo chmod 644 ~/"$active_svc"
 
   sudo mv ~/"$active_svc" "/etc/logrotate.d/$active_svc"
@@ -909,7 +909,7 @@ function setPermissionFileToReadOnlyAndOnlyTo() {
 
   if [ -e "$file" ]; then
     sudo chmod 400 "$file"
-    sudo chown -R "$owner": "$file"
+    sudo chown -R "$owner":"$owner" "$file"
   else
     log_warn "File '$file' does not exist. Skipping permission setup."
   fi
@@ -937,7 +937,7 @@ devops ALL=(root) NOPASSWD: \\
 EOF
 
   sudo chmod 440 "$temp_file"
-  sudo chown root: "$temp_file"
+  sudo chown root:root "$temp_file"
   sudo mv "$temp_file" /etc/sudoers.d/00-devops_permissions
   rm -rf "$temp_dir"
 }
