@@ -381,15 +381,14 @@ function run_remote_backupdata() {
     remote_exec "cd '$remote_staging/tmp/zip_staging' && { '$remote_zip_cmd' u -tzip -mmt=on '$remote_target_zip' ${remote_files_to_update[*]} >/dev/null || [ \$? -le 1 ]; }"
     if remote_exec "[ -d '$remote_mirror' ] && [ -n \"\$(ls -A '$remote_mirror' 2>/dev/null)\" ]"; then
       remote_exec "cp -al '$remote_mirror' '$remote_staging/tmp/zip_staging/filestore' 2>/dev/null || cp -r '$remote_mirror' '$remote_staging/tmp/zip_staging/filestore'"
-      remote_exec "cd '$remote_staging/tmp/zip_staging' && { '$remote_zip_cmd' u -tzip -mx=0 '$remote_target_zip' filestore >/dev/null || [ \$? -le 1 ]; }"
+      remote_exec "cd '$remote_staging/tmp/zip_staging' && { '$remote_zip_cmd' u -tzip -mmt=on '$remote_target_zip' filestore >/dev/null || [ \$? -le 1 ]; }"
     fi
   else
     log_info "Creating initial backup bundle on Secondary VPS..."
-    remote_exec "cd '$remote_staging/tmp/zip_staging' && '$remote_zip_cmd' a -tzip -mmt=on '$remote_target_zip' ${remote_files_to_update[*]} >/dev/null"
     if remote_exec "[ -d '$remote_mirror' ] && [ -n \"\$(ls -A '$remote_mirror' 2>/dev/null)\" ]"; then
       remote_exec "cp -al '$remote_mirror' '$remote_staging/tmp/zip_staging/filestore' 2>/dev/null || cp -r '$remote_mirror' '$remote_staging/tmp/zip_staging/filestore'"
-      remote_exec "cd '$remote_staging/tmp/zip_staging' && '$remote_zip_cmd' a -tzip -mx=0 '$remote_target_zip' filestore >/dev/null"
     fi
+    remote_exec "cd '$remote_staging/tmp/zip_staging' && '$remote_zip_cmd' a -tzip -mmt=on '$remote_target_zip' ${remote_files_to_update[*]} \$( [ -d '$remote_staging/tmp/zip_staging/filestore' ] && echo 'filestore' ) >/dev/null"
   fi
   remote_exec "chmod 644 '$remote_target_zip' && rm -rf '$remote_staging/tmp/zip_staging'"
 
@@ -510,14 +509,13 @@ if [ -f "$CACHE_ZIP" ]; then
   log_info "Updating $ZIP_FILE_NAME incrementally..."
   "$zip_cmd" u -tzip -mmt=on "$BACKUP_FILE_PATH" "${FILES_TO_UPDATE[@]}" >/dev/null || [ $? -le 1 ]
   if [ -d "filestore" ]; then
-    "$zip_cmd" u -tzip -mx=0 "$BACKUP_FILE_PATH" filestore >/dev/null || [ $? -le 1 ]
+    "$zip_cmd" u -tzip -mmt=on "$BACKUP_FILE_PATH" filestore >/dev/null || [ $? -le 1 ]
   fi
 else
   log_info "Creating $ZIP_FILE_NAME..."
-  "$zip_cmd" a -tzip -mmt=on "$BACKUP_FILE_PATH" "${FILES_TO_UPDATE[@]}" >/dev/null
-  if [ -d "filestore" ]; then
-    "$zip_cmd" a -tzip -mx=0 "$BACKUP_FILE_PATH" filestore >/dev/null
-  fi
+  files_to_add=("${FILES_TO_UPDATE[@]}")
+  [ -d "filestore" ] && files_to_add+=("filestore")
+  "$zip_cmd" a -tzip -mmt=on "$BACKUP_FILE_PATH" "${files_to_add[@]}" >/dev/null
 fi
 
 chown -R "$REPOSITORY_OWNER":"$REPOSITORY_OWNER" "$OWNER_HOME/.odoo-snapshots" 2>/dev/null || true
