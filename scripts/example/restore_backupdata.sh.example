@@ -264,7 +264,7 @@ function determineRestoredDBName() {
         read -rp "Do you want to use a date suffix for the restored database name? [Y/n]: " use_date_input
         case "$use_date_input" in
           Y|y)
-            date_suffix="-$(date +"%Y%m%d_%H%M")"
+            date_suffix="-$(date +"%Y%m%d_%H%M%S")"
             break
             ;;
           N|n)
@@ -278,7 +278,7 @@ function determineRestoredDBName() {
       done
       ;;
     *)
-      date_suffix="-$(date +"%Y%m%d_%H%M")"
+      date_suffix="-$(date +"%Y%m%d_%H%M%S")"
       ;;
   esac
 

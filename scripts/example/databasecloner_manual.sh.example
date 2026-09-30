@@ -174,14 +174,14 @@ function promptClonedDBName() {
         read -rp "Do you want to use a date suffix for the new database name? [Y/n]: " USE_DATE_SUFFIX_INPUT
 
         case "$USE_DATE_SUFFIX_INPUT" in
-          Y|y) ODOO_DB_NAME_ENV="$DB_PREFIX-$ODOO_DEPLOYMENT_ENVIRONMENT-$(date +"%Y%m%d_%H%M")"; break ;;
+          Y|y) ODOO_DB_NAME_ENV="$DB_PREFIX-$ODOO_DEPLOYMENT_ENVIRONMENT-$(date +"%Y%m%d_%H%M%S")"; break ;;
           N|n) ODOO_DB_NAME_ENV="$DB_PREFIX-$ODOO_DEPLOYMENT_ENVIRONMENT"; break ;;
           *) log_error "Invalid option" ;;
         esac
       done
       ;;
     *)
-      ODOO_DB_NAME_ENV="$DB_PREFIX-$ODOO_DEPLOYMENT_ENVIRONMENT-$(date +"%Y%m%d_%H%M")"
+      ODOO_DB_NAME_ENV="$DB_PREFIX-$ODOO_DEPLOYMENT_ENVIRONMENT-$(date +"%Y%m%d_%H%M%S")"
       ;;
   esac
 
