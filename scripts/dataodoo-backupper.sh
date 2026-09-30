@@ -299,11 +299,23 @@ function main() {
       local zip_cmd="7z"
       command -v 7z &>/dev/null || zip_cmd="7za"
 
-      log_info "Compressing backup file into $BACKUP_FILE_PATH with $zip_cmd (multi-threaded)..."
-      if ! (cd "$db_temp_dir" && "$zip_cmd" a -tzip -mmt=on "$BACKUP_FILE_PATH" . >/dev/null); then
+      local meta_files=("dump.sql" "manifest.json")
+      [ -f "$db_temp_dir/git_hashes.txt" ] && meta_files+=("git_hashes.txt")
+
+      log_info "Compressing database dump and metadata into $BACKUP_FILE_PATH with $zip_cmd (multi-threaded)..."
+      if ! (cd "$db_temp_dir" && "$zip_cmd" a -tzip -mmt=on "$BACKUP_FILE_PATH" "${meta_files[@]}" >/dev/null); then
         log_error "Failed to create backup ZIP archive."
         rm -rf "$db_temp_dir"
         exit 1
+      fi
+
+      if [ -d "$db_temp_dir/filestore" ]; then
+        log_info "Packaging filestore (store-only mode for maximum speed)..."
+        if ! (cd "$db_temp_dir" && "$zip_cmd" a -tzip -mx=0 "$BACKUP_FILE_PATH" filestore >/dev/null); then
+          log_error "Failed to package filestore into backup ZIP archive."
+          rm -rf "$db_temp_dir"
+          exit 1
+        fi
       fi
 
       rm -rf "$db_temp_dir"

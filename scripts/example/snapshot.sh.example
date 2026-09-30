@@ -800,13 +800,14 @@ MANIFEST_EOF"
     remote_exec "cd '$remote_staging/tmp/zip_staging' && ('$remote_zip_cmd' u -tzip -mmt=on '$remote_cache_zip' dump.sql manifest.json >/dev/null || true)"
     if remote_exec "[ -d '$remote_mirror' ] && [ -n \"\$(ls -A '$remote_mirror' 2>/dev/null)\" ]"; then
       remote_exec "cp -al '$remote_mirror' '$remote_staging/tmp/zip_staging/filestore' 2>/dev/null || cp -r '$remote_mirror' '$remote_staging/tmp/zip_staging/filestore'"
-      remote_exec "cd '$remote_staging/tmp/zip_staging' && ('$remote_zip_cmd' u -tzip -mmt=on '$remote_cache_zip' filestore >/dev/null || true)"
+      remote_exec "cd '$remote_staging/tmp/zip_staging' && ('$remote_zip_cmd' u -tzip -mx=0 '$remote_cache_zip' filestore >/dev/null || true)"
     fi
   else
+    remote_exec "cd '$remote_staging/tmp/zip_staging' && '$remote_zip_cmd' a -tzip -mmt=on '$remote_cache_zip' dump.sql manifest.json >/dev/null"
     if remote_exec "[ -d '$remote_mirror' ] && [ -n \"\$(ls -A '$remote_mirror' 2>/dev/null)\" ]"; then
       remote_exec "cp -al '$remote_mirror' '$remote_staging/tmp/zip_staging/filestore' 2>/dev/null || cp -r '$remote_mirror' '$remote_staging/tmp/zip_staging/filestore'"
+      remote_exec "cd '$remote_staging/tmp/zip_staging' && '$remote_zip_cmd' a -tzip -mx=0 '$remote_cache_zip' filestore >/dev/null"
     fi
-    remote_exec "cd '$remote_staging/tmp/zip_staging' && if [ -d filestore ]; then '$remote_zip_cmd' a -tzip -mmt=on '$remote_cache_zip' dump.sql manifest.json filestore >/dev/null; else '$remote_zip_cmd' a -tzip -mmt=on '$remote_cache_zip' dump.sql manifest.json >/dev/null; fi"
   fi
   remote_exec "rm -rf '$remote_staging/tmp/zip_staging'"
 
@@ -1076,13 +1077,14 @@ EOF
     log_info "Updating cached $ZIP_FILE_NAME incrementally..."
     (cd "$ZIP_STAGING_DIR" && { "$zip_cmd" u -tzip -mmt=on "$SNAPSHOT_CACHE_ZIP" dump.sql manifest.json >/dev/null || [ $? -le 1 ]; })
     if [ -d "$ZIP_STAGING_DIR/filestore" ]; then
-      (cd "$ZIP_STAGING_DIR" && { "$zip_cmd" u -tzip -mmt=on "$SNAPSHOT_CACHE_ZIP" filestore >/dev/null || [ $? -le 1 ]; })
+      (cd "$ZIP_STAGING_DIR" && { "$zip_cmd" u -tzip -mx=0 "$SNAPSHOT_CACHE_ZIP" filestore >/dev/null || [ $? -le 1 ]; })
     fi
   else
     log_info "Creating initial cached $ZIP_FILE_NAME..."
-    local snap_files=("dump.sql" "manifest.json")
-    [ -d "$ZIP_STAGING_DIR/filestore" ] && snap_files+=("filestore")
-    (cd "$ZIP_STAGING_DIR" && "$zip_cmd" a -tzip -mmt=on "$SNAPSHOT_CACHE_ZIP" "${snap_files[@]}" >/dev/null)
+    (cd "$ZIP_STAGING_DIR" && "$zip_cmd" a -tzip -mmt=on "$SNAPSHOT_CACHE_ZIP" dump.sql manifest.json >/dev/null)
+    if [ -d "$ZIP_STAGING_DIR/filestore" ]; then
+      (cd "$ZIP_STAGING_DIR" && "$zip_cmd" a -tzip -mx=0 "$SNAPSHOT_CACHE_ZIP" filestore >/dev/null)
+    fi
   fi
 
   # Maintain correct ownership and permissions on cache
