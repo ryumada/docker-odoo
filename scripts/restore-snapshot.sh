@@ -3,7 +3,7 @@ set -e
 # Category: Utility
 # Description: Restores an Odoo snapshot (full, data-only, or via restore_backupdata) from a tar archive.
 # Usage: ./scripts/restore-snapshot.sh [--data-only | --restore-backupdata] [SNAPSHOT_FILE] [-y]
-# Dependencies: tar, zstd, docker, sudo, psql, unzip
+# Dependencies: tar, zstd, docker, sudo, psql, 7z
 
 # Detect Repository Owner to run non-root commands as that user
 CURRENT_DIR=$(dirname "$(readlink -f "$0")")
@@ -252,6 +252,11 @@ function restoreDBCredentials() {
   log_info "Restore .secrets directory"
   # Try the project-relative path inside tar
   local secrets_tar_dir="$TEMP_DIR/$TAR_PROJECT_ROOT/.secrets"
+  # Try the project-relative path inside tar, falling back to legacy TAR_PROJECT_ROOT
+  local secrets_tar_dir="$TEMP_DIR/.secrets"
+  if [ -d "$TEMP_DIR/$TAR_PROJECT_ROOT/.secrets" ]; then
+    secrets_tar_dir="$TEMP_DIR/$TAR_PROJECT_ROOT/.secrets"
+  fi
 
   if [ -d "$secrets_tar_dir" ]; then
     mkdir -p "$PATH_TO_ODOO/.secrets"
@@ -315,7 +320,16 @@ function restoreOdooData() {
       log_info "Restoring database and filestore directly from backup zip bundle..."
       local zip_stage="$TEMP_DIR/zip_stage"
       mkdir -p "$zip_stage"
-      if ! unzip -q -o "$extracted_zip" -d "$zip_stage"; then
+      local unpack_ok=false
+      if command -v 7z &>/dev/null; then
+        7z x -y -o"$zip_stage" "$extracted_zip" >/dev/null && unpack_ok=true
+      elif command -v 7za &>/dev/null; then
+        7za x -y -o"$zip_stage" "$extracted_zip" >/dev/null && unpack_ok=true
+      elif command -v unzip &>/dev/null; then
+        unzip -q -o "$extracted_zip" -d "$zip_stage" && unpack_ok=true
+      fi
+
+      if [ "$unpack_ok" = false ]; then
         log_error "Failed to unpack $extracted_zip"
         return 1
       fi
@@ -501,6 +515,7 @@ function restoreSnapshotDataOnly() {
   # Git hashes display
   local hash_file
   hash_file=$(find "$TEMP_DIR" -name "git_hashes_*.txt" -print 2>/dev/null | head -n 1)
+  hash_file=$(find "$TEMP_DIR" -name "git_hashes*.txt" -print 2>/dev/null | head -n 1)
   if [ -n "$hash_file" ]; then
     echo -e "\n==========================================================================="
     log_info "Git Version Information from Snapshot:"
@@ -527,6 +542,11 @@ function restoreSnapshotFull() {
 
   # Path aliases for readability
   local src_root="$TEMP_DIR/$TAR_PROJECT_ROOT"
+  # Path aliases for readability (support direct extraction or legacy root path)
+  local src_root="$TEMP_DIR"
+  if [ -d "$TEMP_DIR/$TAR_PROJECT_ROOT" ]; then
+    src_root="$TEMP_DIR/$TAR_PROJECT_ROOT"
+  fi
 
   log_info "Restoring configuration and environment..."
   [ -f "$src_root/conf/odoo.conf" ] && cp -f "$src_root/conf/odoo.conf" "$PATH_TO_ODOO/conf/odoo.conf"
@@ -563,6 +583,7 @@ function restoreSnapshotFull() {
   # Git hashes display
   local hash_file
   hash_file=$(find "$TEMP_DIR" -name "git_hashes_*.txt" -print 2>/dev/null | head -n 1)
+  hash_file=$(find "$TEMP_DIR" -name "git_hashes*.txt" -print 2>/dev/null | head -n 1)
   if [ -n "$hash_file" ]; then
     echo -e "\n==========================================================================="
     log_info "Git Version Information from Snapshot:"

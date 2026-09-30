@@ -326,14 +326,14 @@ function main() {
     fi
   fi
 
-  if zip --version > /dev/null 2>&1; then
-    log_success "zip is already installed"
+  if command -v 7z >/dev/null 2>&1 || command -v 7za >/dev/null 2>&1; then
+    log_success "7z is already installed"
   else
-    log_info "Install zip"
-    if sudo apt install zip -y; then
-      log_success "zip is installed"
+    log_info "Install 7zip / p7zip-full"
+    if sudo apt install 7zip -y 2>/dev/null || sudo apt install p7zip-full -y; then
+      log_success "7z is installed"
     else
-      log_error "Failed to install zip"
+      log_error "Failed to install 7z"
       exit 1
     fi
   fi

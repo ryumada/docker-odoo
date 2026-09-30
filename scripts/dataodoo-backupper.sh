@@ -3,7 +3,7 @@ set -e
 # Category: Utility
 # Description: Backs up Odoo databases to a temporary directory.
 # Usage: ./scripts/dataodoo-backupper.sh
-# Dependencies: curl, git, sudo
+# Dependencies: curl, git, sudo, 7z
 
 # Detect Repository Owner to run non-root commands as that user
 CURRENT_DIR=$(dirname "$(readlink -f "$0")")
@@ -160,10 +160,10 @@ EOF
 }
 
 function isZipInstalled() {
-  if ! command -v zip &>/dev/null; then
-    log_error "zip command could not be found. Please install zip first."
-    echo "For Ubuntu: sudo apt install zip"
-    echo "For CentOS: sudo yum install zip"
+  if ! command -v 7z &>/dev/null && ! command -v 7za &>/dev/null; then
+    log_error "7z command could not be found. Please install 7zip / p7zip-full first."
+    echo "For Ubuntu: sudo apt install 7zip || sudo apt install p7zip-full"
+    echo "For CentOS: sudo yum install p7zip p7zip-plugins"
     exit 1
   fi
 }
@@ -281,9 +281,9 @@ function main() {
 
       generate_manifest "$DB" "$db_temp_dir/manifest.json"
 
-      log_info "Symlinking filestore..."
+      log_info "Hardlinking filestore..."
       if [ -d "$odoo_filestore_path" ]; then
-        ln -s "$odoo_filestore_path" "$db_temp_dir/filestore"
+        cp -al "$odoo_filestore_path" "$db_temp_dir/filestore" 2>/dev/null || cp -r "$odoo_filestore_path" "$db_temp_dir/filestore"
       else
         log_warn "Filestore not found at $odoo_filestore_path. Skipping filestore."
       fi
@@ -296,11 +296,26 @@ function main() {
         cp "$PATH_TO_ODOO/odoo-base/git_hashes.txt" "$db_temp_dir/git_hashes.txt"
       fi
 
-      log_info "Zipping backup file into $BACKUP_FILE_PATH..."
-      if ! (cd "$db_temp_dir" && zip -r -q "$BACKUP_FILE_PATH" .); then
+      local zip_cmd="7z"
+      command -v 7z &>/dev/null || zip_cmd="7za"
+
+      local meta_files=("dump.sql" "manifest.json")
+      [ -f "$db_temp_dir/git_hashes.txt" ] && meta_files+=("git_hashes.txt")
+
+      log_info "Compressing database dump and metadata into $BACKUP_FILE_PATH with $zip_cmd (multi-threaded)..."
+      if ! (cd "$db_temp_dir" && "$zip_cmd" a -tzip -mmt=on "$BACKUP_FILE_PATH" "${meta_files[@]}" >/dev/null); then
         log_error "Failed to create backup ZIP archive."
         rm -rf "$db_temp_dir"
         exit 1
+      fi
+
+      if [ -d "$db_temp_dir/filestore" ]; then
+        log_info "Packaging filestore (store-only mode for maximum speed)..."
+        if ! (cd "$db_temp_dir" && "$zip_cmd" a -tzip -mx=0 "$BACKUP_FILE_PATH" filestore >/dev/null); then
+          log_error "Failed to package filestore into backup ZIP archive."
+          rm -rf "$db_temp_dir"
+          exit 1
+        fi
       fi
 
       rm -rf "$db_temp_dir"

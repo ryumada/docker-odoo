@@ -3,7 +3,7 @@ set -e
 # Category: Utility
 # Description: Backs up Odoo data manually (PostgreSQL dump + filestore).
 # Usage: ./scripts/backupdata_manual.sh
-# Dependencies: zip, pg_dump, sudo, git, ssh, rsync
+# Dependencies: 7z, pg_dump, sudo, git, ssh, rsync
 
 # Detect Repository Owner to run non-root commands as that user
 CURRENT_DIR=$(dirname "$(readlink -f "$0")")
@@ -308,10 +308,14 @@ function run_remote_backupdata() {
   fi
   log_success "SSH connection established with Secondary VPS."
 
-  if ! remote_exec "command -v zip >/dev/null 2>&1"; then
-    log_error "Secondary VPS is missing zip. Please install zip on Secondary VPS."
+  if ! remote_exec "command -v 7z >/dev/null 2>&1 || command -v 7za >/dev/null 2>&1"; then
+    log_error "Secondary VPS is missing 7z. Please install 7zip or p7zip-full on Secondary VPS."
     exit 1
   fi
+
+  local remote_zip_cmd
+  remote_zip_cmd=$(remote_exec "command -v 7z 2>/dev/null || command -v 7za 2>/dev/null" | tr -d '\r\n')
+  [ -z "$remote_zip_cmd" ] && remote_zip_cmd="7z"
 
   local remote_home
   remote_home=$(remote_exec 'echo "$HOME"' 2>/dev/null | tr -d '\r\n')
@@ -374,15 +378,17 @@ function run_remote_backupdata() {
     log_info "Seeding $remote_target_zip from persistent cache on Secondary VPS..."
     remote_exec "ln -f '$remote_cache_zip' '$remote_target_zip' 2>/dev/null || cp -f '$remote_cache_zip' '$remote_target_zip'"
     log_info "Updating backup bundle incrementally on Secondary VPS..."
-    remote_exec "cd '$remote_staging/tmp/zip_staging' && { zip -u -q '$remote_target_zip' ${remote_files_to_update[*]} || [ \$? -eq 12 ]; }"
+    remote_exec "cd '$remote_staging/tmp/zip_staging' && { '$remote_zip_cmd' u -tzip -mmt=on '$remote_target_zip' ${remote_files_to_update[*]} >/dev/null || [ \$? -le 1 ]; }"
     if remote_exec "[ -d '$remote_mirror' ] && [ -n \"\$(ls -A '$remote_mirror' 2>/dev/null)\" ]"; then
-      remote_exec "ln -sfn '$remote_mirror' '$remote_staging/tmp/zip_staging/filestore' && cd '$remote_staging/tmp/zip_staging' && { zip -u -0 -r -q '$remote_target_zip' filestore || [ \$? -eq 12 ]; }"
+      remote_exec "cp -al '$remote_mirror' '$remote_staging/tmp/zip_staging/filestore' 2>/dev/null || cp -r '$remote_mirror' '$remote_staging/tmp/zip_staging/filestore'"
+      remote_exec "cd '$remote_staging/tmp/zip_staging' && { '$remote_zip_cmd' u -tzip -mx=0 '$remote_target_zip' filestore >/dev/null || [ \$? -le 1 ]; }"
     fi
   else
     log_info "Creating initial backup bundle on Secondary VPS..."
-    remote_exec "cd '$remote_staging/tmp/zip_staging' && zip -q '$remote_target_zip' ${remote_files_to_update[*]}"
+    remote_exec "cd '$remote_staging/tmp/zip_staging' && '$remote_zip_cmd' a -tzip -mmt=on '$remote_target_zip' ${remote_files_to_update[*]} >/dev/null"
     if remote_exec "[ -d '$remote_mirror' ] && [ -n \"\$(ls -A '$remote_mirror' 2>/dev/null)\" ]"; then
-      remote_exec "ln -sfn '$remote_mirror' '$remote_staging/tmp/zip_staging/filestore' && cd '$remote_staging/tmp/zip_staging' && zip -0 -r -q '$remote_target_zip' filestore"
+      remote_exec "cp -al '$remote_mirror' '$remote_staging/tmp/zip_staging/filestore' 2>/dev/null || cp -r '$remote_mirror' '$remote_staging/tmp/zip_staging/filestore'"
+      remote_exec "cd '$remote_staging/tmp/zip_staging' && '$remote_zip_cmd' a -tzip -mx=0 '$remote_target_zip' filestore >/dev/null"
     fi
   fi
   remote_exec "chmod 644 '$remote_target_zip' && rm -rf '$remote_staging/tmp/zip_staging'"
@@ -400,11 +406,11 @@ chown -R "$REPOSITORY_OWNER":"$REPOSITORY_OWNER" "$OWNER_HOME/.odoo-tmp" 2>/dev/
 ZIP_FILE_NAME=backupdata-$SERVICE_NAME.zip
 BACKUP_FILE_PATH="$OWNER_HOME/$ZIP_FILE_NAME"
 
-# Check for zip utility
-if ! command -v zip &> /dev/null; then
-  log_error "zip command could not be found. Please install zip first."
-  echo "For Ubuntu: sudo apt install zip"
-  echo "For CentOS: sudo yum install zip"
+# Check for 7z utility
+if ! command -v 7z &> /dev/null && ! command -v 7za &> /dev/null; then
+  log_error "7z command could not be found. Please install 7zip / p7zip-full first."
+  echo "For Ubuntu: sudo apt install 7zip || sudo apt install p7zip-full"
+  echo "For CentOS: sudo yum install p7zip p7zip-plugins"
   exit 1
 fi
 
@@ -465,9 +471,9 @@ run_pg_dump --no-owner "$ODOO_DATABASE_NAME_PRD" > "$TEMP_DIR/dump.sql"
 
 generate_manifest "$ODOO_DATABASE_NAME_PRD" "$TEMP_DIR/manifest.json"
 
-log_info "Symlink filestore directory to temporary directory"
+log_info "Hardlink filestore directory to temporary directory"
 if [ -d "$ODOO_FILESTORE_PATH" ]; then
-  ln -s "$ODOO_FILESTORE_PATH" "$TEMP_DIR/filestore"
+  cp -al "$ODOO_FILESTORE_PATH" "$TEMP_DIR/filestore" 2>/dev/null || cp -r "$ODOO_FILESTORE_PATH" "$TEMP_DIR/filestore"
 else
   log_warn "Filestore not found at $ODOO_FILESTORE_PATH. Skipping filestore."
 fi
@@ -495,19 +501,22 @@ FILES_TO_UPDATE=("dump.sql" "manifest.json")
 [ -f "git_hashes.txt" ] && FILES_TO_UPDATE+=("git_hashes.txt")
 [ -f "odoo-base_git_hashes.txt" ] && FILES_TO_UPDATE+=("odoo-base_git_hashes.txt")
 
+zip_cmd="7z"
+command -v 7z &>/dev/null || zip_cmd="7za"
+
 if [ -f "$CACHE_ZIP" ]; then
   log_info "Linking cached backup bundle from snapshot cache to $BACKUP_FILE_PATH..."
   ln -f "$CACHE_ZIP" "$BACKUP_FILE_PATH" 2>/dev/null || cp -f "$CACHE_ZIP" "$BACKUP_FILE_PATH"
   log_info "Updating $ZIP_FILE_NAME incrementally..."
-  zip -u -q "$BACKUP_FILE_PATH" "${FILES_TO_UPDATE[@]}" || [ $? -eq 12 ]
+  "$zip_cmd" u -tzip -mmt=on "$BACKUP_FILE_PATH" "${FILES_TO_UPDATE[@]}" >/dev/null || [ $? -le 1 ]
   if [ -d "filestore" ]; then
-    zip -u -0 -r -q "$BACKUP_FILE_PATH" filestore || [ $? -eq 12 ]
+    "$zip_cmd" u -tzip -mx=0 "$BACKUP_FILE_PATH" filestore >/dev/null || [ $? -le 1 ]
   fi
 else
   log_info "Creating $ZIP_FILE_NAME..."
-  zip -q "$BACKUP_FILE_PATH" "${FILES_TO_UPDATE[@]}"
+  "$zip_cmd" a -tzip -mmt=on "$BACKUP_FILE_PATH" "${FILES_TO_UPDATE[@]}" >/dev/null
   if [ -d "filestore" ]; then
-    zip -0 -r -q "$BACKUP_FILE_PATH" filestore
+    "$zip_cmd" a -tzip -mx=0 "$BACKUP_FILE_PATH" filestore >/dev/null
   fi
 fi
 
