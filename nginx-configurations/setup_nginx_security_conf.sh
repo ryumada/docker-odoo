@@ -92,8 +92,8 @@ client_max_body_size            500M;
 keepalive_timeout               3600s;
 tcp_nodelay                     on;
 
-# disable display nginx server version
-server_tokens off;
+# disable display nginx server version (Default already added on Nginx 1.28.3 Ubuntu)
+# server_tokens off;
 
 # OCSP Stapling - improve SSL handshake performance and reduce server load
 #ssl_stapling on;

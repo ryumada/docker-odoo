@@ -4,17 +4,19 @@
 # Usage: Symlink to sites-enabled.
 # Maintainer: ryumada
 
-# PLEASE Enter the right Allowed Domain inside the map function
-map $http_origin $cors_origin_header {
-        # Default is empty (i.e., blocked)
-        default "";
-
-        # Allowed Domain to access (Please add this line matching your domain)
-        # example if the domain service.app.vulnersight.com, then the regex will be like this
-        # "~^https:\/\/service\.app\.vulnersight\.com$" $http_origin;
+# Validate Origin header: auto-allows same-origin and optional external whitelisted domains
+map "$http_origin##$host" $bad_origin {
+        default 1;
 
         # Allow requests without an Origin header (e.g., same-site, curl, postman)
-        "" "";
+        "~^##" 0;
+
+        # Auto-allow Same-Origin (Origin matches current request host)
+        "~^https?://(?<o_host>[^/:]+)(?::\d+)?##\k<o_host>$" 0;
+
+        # Allowed external domains to access (add additional domains as needed)
+        # example if the domain is service.app.vulnersight.com:
+        # "~^https:\/\/service\.app\.vulnersight\.com##" 0;
 }
 
 server {
@@ -48,21 +50,8 @@ server {
                 return 403;
         }
 
-        # SETUP: Please enter the right domain at map function. It will be called
-        set $check_origin "0";
-
-        # if Origin header exist
-        if ($http_origin ~* .) {
-                set $check_origin "1";
-        }
-
-        # cors_origin_header empty if the user does not send origin header or send false Origin
-        if ($cors_origin_header = "") {
-                set $check_origin "${check_origin}1";
-        }
-
-        # Stop and Forbid if there is Origin header AND not in whitelist (1) => $check_origin = "11"
-        if ($check_origin = "11") {
+        # Stop and forbid if Origin header exists and is not allowed (untrusted cross-origin)
+        if ($bad_origin) {
                 return 403;
         }
 
