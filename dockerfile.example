@@ -36,10 +36,8 @@ RUN if [ -n "$WKHTMLTOPDF_DIRECT_DOWNLOAD_URL" ] && { [ "$WKHTMLTOPDF_DIRECT_DOW
         echo "No direct download URL provided for wkhtmltopdf. Skipping installation." >&2; \
     fi
 
-RUN apt install -y cabextract; \
-    curl -O http://ftp.cn.debian.org/debian/pool/contrib/m/msttcorefonts/ttf-mscorefonts-installer_3.8.1_all.deb; \
-    dpkg -i ./ttf-mscorefonts-installer_3.8.1_all.deb; \
-    rm ./ttf-mscorefonts-installer_3.8.1_all.deb
+COPY fonts/ /usr/share/fonts/truetype/
+RUN fc-cache -f -v
 
 RUN if [ "$INSTALL_LIBREOFFICE" = "Y" ]; then \
         apt --no-install-recommends -y install libreoffice; \
