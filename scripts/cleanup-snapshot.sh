@@ -444,7 +444,6 @@ FAILED_COUNT=0
 while IFS=$'\t' read -r fid fname; do
   [ -z "$fid" ] && continue
 
-  local del_token
   del_token=$(resolve_access_token "$ACCESS_TOKEN")
   [ -n "$del_token" ] && ACCESS_TOKEN="$del_token"
 
