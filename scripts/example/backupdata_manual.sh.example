@@ -3,7 +3,7 @@ set -e
 # Category: Utility
 # Description: Backs up Odoo data manually (PostgreSQL dump + filestore).
 # Usage: ./scripts/backupdata_manual.sh
-# Dependencies: 7z, pg_dump, sudo, git, ssh, rsync
+# Dependencies: 7z, pg_dump, sudo, git, ssh, rsync, ionice
 
 # Detect Repository Owner to run non-root commands as that user
 CURRENT_DIR=$(dirname "$(readlink -f "$0")")
@@ -380,14 +380,14 @@ function run_remote_backupdata() {
     log_info "Updating backup bundle incrementally on Secondary VPS..."
     remote_exec "cd '$remote_staging/tmp/zip_staging' && { '$remote_zip_cmd' u -tzip -mmt=on '$remote_target_zip' ${remote_files_to_update[*]} >/dev/null || [ \$? -le 1 ]; }"
     if remote_exec "[ -d '$remote_mirror' ] && [ -n \"\$(ls -A '$remote_mirror' 2>/dev/null)\" ]"; then
-      remote_exec "cp -al '$remote_mirror' '$remote_staging/tmp/zip_staging/filestore' 2>/dev/null || cp -r '$remote_mirror' '$remote_staging/tmp/zip_staging/filestore'"
+      remote_exec "ln -s '$remote_mirror' '$remote_staging/tmp/zip_staging/filestore' 2>/dev/null || cp -al '$remote_mirror' '$remote_staging/tmp/zip_staging/filestore' 2>/dev/null || cp -r '$remote_mirror' '$remote_staging/tmp/zip_staging/filestore'"
       remote_exec "cd '$remote_staging/tmp/zip_staging' && { '$remote_zip_cmd' u -tzip -mx=0 '$remote_target_zip' filestore >/dev/null || [ \$? -le 1 ]; }"
     fi
   else
     log_info "Creating initial backup bundle on Secondary VPS..."
     remote_exec "cd '$remote_staging/tmp/zip_staging' && '$remote_zip_cmd' a -tzip -mmt=on '$remote_target_zip' ${remote_files_to_update[*]} >/dev/null"
     if remote_exec "[ -d '$remote_mirror' ] && [ -n \"\$(ls -A '$remote_mirror' 2>/dev/null)\" ]"; then
-      remote_exec "cp -al '$remote_mirror' '$remote_staging/tmp/zip_staging/filestore' 2>/dev/null || cp -r '$remote_mirror' '$remote_staging/tmp/zip_staging/filestore'"
+      remote_exec "ln -s '$remote_mirror' '$remote_staging/tmp/zip_staging/filestore' 2>/dev/null || cp -al '$remote_mirror' '$remote_staging/tmp/zip_staging/filestore' 2>/dev/null || cp -r '$remote_mirror' '$remote_staging/tmp/zip_staging/filestore'"
       remote_exec "cd '$remote_staging/tmp/zip_staging' && '$remote_zip_cmd' a -tzip -mx=0 '$remote_target_zip' filestore >/dev/null"
     fi
   fi
@@ -422,6 +422,12 @@ if [ "$(id -u)" -ne 0 ]; then
     log_error "Failed to elevate to root. Please run with sudo." # This will only run if exec fails
     exit 1
 fi
+
+# Lower I/O and CPU scheduling priority to avoid starving Odoo and PostgreSQL
+if command -v ionice >/dev/null 2>&1; then
+  ionice -c2 -n7 -p $$ 2>/dev/null || true
+fi
+renice -n 19 -p $$ >/dev/null 2>&1 || true
 
 if [ -z "$ODOO_DATABASE_NAME_PRD" ]; then
   read -rp "Enter the database name: " ODOO_DATABASE_NAME_PRD
@@ -471,9 +477,9 @@ run_pg_dump --no-owner "$ODOO_DATABASE_NAME_PRD" > "$TEMP_DIR/dump.sql"
 
 generate_manifest "$ODOO_DATABASE_NAME_PRD" "$TEMP_DIR/manifest.json"
 
-log_info "Hardlink filestore directory to temporary directory"
+log_info "Linking filestore directory to temporary directory"
 if [ -d "$ODOO_FILESTORE_PATH" ]; then
-  cp -al "$ODOO_FILESTORE_PATH" "$TEMP_DIR/filestore" 2>/dev/null || cp -r "$ODOO_FILESTORE_PATH" "$TEMP_DIR/filestore"
+  ln -s "$ODOO_FILESTORE_PATH" "$TEMP_DIR/filestore" 2>/dev/null || cp -al "$ODOO_FILESTORE_PATH" "$TEMP_DIR/filestore" 2>/dev/null || cp -r "$ODOO_FILESTORE_PATH" "$TEMP_DIR/filestore"
 else
   log_warn "Filestore not found at $ODOO_FILESTORE_PATH. Skipping filestore."
 fi

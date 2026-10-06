@@ -3,7 +3,7 @@ set -e
 # Category: Installer
 # Description: Upgrades and installs the snapshot utility from the example script.
 # Usage: ./scripts/installer/install-snapshot.sh
-# Dependencies: rsync, git, sudo, cron, ssh, curl
+# Dependencies: rsync, git, sudo, cron, ssh, curl, ionice
 
 # Detect Repository Owner to run non-root commands as that user
 CURRENT_DIR=$(dirname "$(readlink -f "$0")")
@@ -92,8 +92,8 @@ EOF
 
   for SNAPSHOT_TIME in $(echo "$SNAPSHOT_TIME_LIST" | tr "," "\n"); do
     cat << EOF >> "$HOME/snapshot-$SERVICE_NAME"
-# Run the snapshot script at $SNAPSHOT_TIME
-27 $SNAPSHOT_TIME * * * root "/usr/local/sbin/snapshot-$SERVICE_NAME"
+# Run the snapshot script at $SNAPSHOT_TIME with low I/O and CPU scheduling priority
+27 $SNAPSHOT_TIME * * * root ionice -c2 -n7 nice -n 19 "/usr/local/sbin/snapshot-$SERVICE_NAME"
 
 EOF
   done

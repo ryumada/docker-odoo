@@ -3,7 +3,7 @@ set -e
 # Category: Utility
 # Description: Creates a full Odoo snapshot (database dump + filestore + configs) locally or via secondary VPS over SSH.
 # Usage: ./scripts/snapshot-SERVICE_NAME.sh [auto]
-# Dependencies: sudo, git, zstd, tar, docker, pg_dump, gcloud, rsync, ssh, curl, dd, flock, 7z
+# Dependencies: sudo, git, zstd, tar, docker, pg_dump, gcloud, rsync, ssh, curl, dd, flock, 7z, ionice
 
 CURRENT_DIR=$(dirname "$(readlink -f "$0")")
 CURRENT_DIR_USER=$(stat -c '%U' "$CURRENT_DIR")
@@ -644,6 +644,9 @@ function run_remote_snapshot() {
   fi
   log_success "SSH connection established with Secondary VPS."
 
+  # Lower I/O and CPU scheduling priority on Secondary VPS
+  remote_exec "if command -v ionice >/dev/null 2>&1; then ionice -c2 -n7 -p \$\$ 2>/dev/null || true; fi; renice -n 19 -p \$\$ >/dev/null 2>&1 || true"
+
   # Check required tools on Secondary VPS
   if ! remote_exec "command -v zstd >/dev/null 2>&1 && (command -v 7z >/dev/null 2>&1 || command -v 7za >/dev/null 2>&1) && command -v tar >/dev/null 2>&1"; then
     log_error "Secondary VPS is missing required tools (zstd, 7z, or tar). Please install them on Secondary VPS."
@@ -796,18 +799,11 @@ MANIFEST_EOF"
 
   local remote_cache_zip="$remote_cache/backupdata-$SERVICE_NAME.zip"
   log_info "Updating cached backupdata-$SERVICE_NAME.zip on Secondary VPS..."
+  remote_exec "if [ -d '$remote_mirror' ] && [ -n \"\$(ls -A '$remote_mirror' 2>/dev/null)\" ]; then ln -s '$remote_mirror' '$remote_staging/tmp/zip_staging/filestore' 2>/dev/null || cp -al '$remote_mirror' '$remote_staging/tmp/zip_staging/filestore' 2>/dev/null || cp -r '$remote_mirror' '$remote_staging/tmp/zip_staging/filestore'; fi"
   if remote_exec "[ -f '$remote_cache_zip' ]"; then
-    remote_exec "cd '$remote_staging/tmp/zip_staging' && ('$remote_zip_cmd' u -tzip -mmt=on '$remote_cache_zip' dump.sql manifest.json >/dev/null || true)"
-    if remote_exec "[ -d '$remote_mirror' ] && [ -n \"\$(ls -A '$remote_mirror' 2>/dev/null)\" ]"; then
-      remote_exec "cp -al '$remote_mirror' '$remote_staging/tmp/zip_staging/filestore' 2>/dev/null || cp -r '$remote_mirror' '$remote_staging/tmp/zip_staging/filestore'"
-      remote_exec "cd '$remote_staging/tmp/zip_staging' && ('$remote_zip_cmd' u -tzip -mx=0 '$remote_cache_zip' filestore >/dev/null || true)"
-    fi
+    remote_exec "cd '$remote_staging/tmp/zip_staging' && { '$remote_zip_cmd' u -tzip -mx=0 '$remote_cache_zip' dump.sql manifest.json \$( [ -e filestore ] && echo filestore ) >/dev/null || [ \$? -le 1 ]; }"
   else
-    remote_exec "cd '$remote_staging/tmp/zip_staging' && '$remote_zip_cmd' a -tzip -mmt=on '$remote_cache_zip' dump.sql manifest.json >/dev/null"
-    if remote_exec "[ -d '$remote_mirror' ] && [ -n \"\$(ls -A '$remote_mirror' 2>/dev/null)\" ]"; then
-      remote_exec "cp -al '$remote_mirror' '$remote_staging/tmp/zip_staging/filestore' 2>/dev/null || cp -r '$remote_mirror' '$remote_staging/tmp/zip_staging/filestore'"
-      remote_exec "cd '$remote_staging/tmp/zip_staging' && '$remote_zip_cmd' a -tzip -mx=0 '$remote_cache_zip' filestore >/dev/null"
-    fi
+    remote_exec "cd '$remote_staging/tmp/zip_staging' && '$remote_zip_cmd' a -tzip -mx=0 '$remote_cache_zip' dump.sql manifest.json \$( [ -e filestore ] && echo filestore ) >/dev/null"
   fi
   remote_exec "rm -rf '$remote_staging/tmp/zip_staging'"
 
@@ -817,7 +813,6 @@ MANIFEST_EOF"
   remote_exec "rm -rf '$remote_staging/tmp'"
 
   log_info "Packaging snapshot-$SERVICE_NAME.tar.zst on Secondary VPS (compression level: $compression_level)..."
-  remote_exec "cd '$remote_staging' && tar -cf '$remote_staging/snapshot-$SERVICE_NAME.tar.zst' -I 'zstd -vT0 -$compression_level --ultra' *"
   remote_exec "cd '$remote_staging' && shopt -s dotglob nullglob && tar -cf '$remote_staging/snapshot-$SERVICE_NAME.tar.zst' -I 'zstd -vT0 -$compression_level --ultra' --exclude='*.tar.zst' *"
 
   local remote_upload_attempted=false
@@ -910,6 +905,12 @@ function main() {
     exit 0
   fi
   echo "$$" > "$LOCK_FILE"
+
+  # Lower I/O and CPU scheduling priority to avoid starving Odoo and PostgreSQL
+  if command -v ionice >/dev/null 2>&1; then
+    ionice -c2 -n7 -p $$ 2>/dev/null || true
+  fi
+  renice -n 19 -p $$ >/dev/null 2>&1 || true
 
   ODOO_TMP_DIR="$OWNER_HOME/.odoo-tmp/$SERVICE_NAME"
   mkdir -p "$ODOO_TMP_DIR"
@@ -1064,8 +1065,8 @@ EOF
 
   ODOO_FILESTORE_PATH="/var/lib/odoo/$SERVICE_NAME/filestore/$ODOO_DATABASE_NAME_PRD"
   if [ -d "$ODOO_FILESTORE_PATH" ]; then
-    log_info "Hardlinking filestore to staging..."
-    cp -al "$ODOO_FILESTORE_PATH" "$ZIP_STAGING_DIR/filestore" 2>/dev/null || cp -r "$ODOO_FILESTORE_PATH" "$ZIP_STAGING_DIR/filestore"
+    log_info "Linking filestore to staging..."
+    ln -s "$ODOO_FILESTORE_PATH" "$ZIP_STAGING_DIR/filestore" 2>/dev/null || cp -al "$ODOO_FILESTORE_PATH" "$ZIP_STAGING_DIR/filestore" 2>/dev/null || cp -r "$ODOO_FILESTORE_PATH" "$ZIP_STAGING_DIR/filestore"
   else
     log_warn "Filestore path not found: $ODOO_FILESTORE_PATH"
   fi
@@ -1073,18 +1074,15 @@ EOF
   local zip_cmd="7z"
   command -v 7z &>/dev/null || zip_cmd="7za"
 
+  local zip_items=("dump.sql" "manifest.json")
+  [ -e "$ZIP_STAGING_DIR/filestore" ] && zip_items+=("filestore")
+
   if [ -f "$SNAPSHOT_CACHE_ZIP" ]; then
-    log_info "Updating cached $ZIP_FILE_NAME incrementally..."
-    (cd "$ZIP_STAGING_DIR" && { "$zip_cmd" u -tzip -mmt=on "$SNAPSHOT_CACHE_ZIP" dump.sql manifest.json >/dev/null || [ $? -le 1 ]; })
-    if [ -d "$ZIP_STAGING_DIR/filestore" ]; then
-      (cd "$ZIP_STAGING_DIR" && { "$zip_cmd" u -tzip -mx=0 "$SNAPSHOT_CACHE_ZIP" filestore >/dev/null || [ $? -le 1 ]; })
-    fi
+    log_info "Updating cached $ZIP_FILE_NAME incrementally (single pass)..."
+    (cd "$ZIP_STAGING_DIR" && { "$zip_cmd" u -tzip -mx=0 "$SNAPSHOT_CACHE_ZIP" "${zip_items[@]}" >/dev/null || [ $? -le 1 ]; })
   else
     log_info "Creating initial cached $ZIP_FILE_NAME..."
-    (cd "$ZIP_STAGING_DIR" && "$zip_cmd" a -tzip -mmt=on "$SNAPSHOT_CACHE_ZIP" dump.sql manifest.json >/dev/null)
-    if [ -d "$ZIP_STAGING_DIR/filestore" ]; then
-      (cd "$ZIP_STAGING_DIR" && "$zip_cmd" a -tzip -mx=0 "$SNAPSHOT_CACHE_ZIP" filestore >/dev/null)
-    fi
+    (cd "$ZIP_STAGING_DIR" && "$zip_cmd" a -tzip -mx=0 "$SNAPSHOT_CACHE_ZIP" "${zip_items[@]}" >/dev/null)
   fi
 
   # Maintain correct ownership and permissions on cache
