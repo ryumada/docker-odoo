@@ -388,12 +388,19 @@ function run_automated_pull_mode() {
     export PSQL_ENV_FILE="$STG_ENV_FILE"
 
     log_stage "[2/3] Restoring Filestore and Database to $STG_DB_NAME..."
-    if [ -d "$ODOO_FILESTORE_PATH_ENV" ]; then
-        log_warn "Removing old filestore: $ODOO_FILESTORE_PATH_ENV"
-        rm -rf "$ODOO_FILESTORE_PATH_ENV"
+    local prev_stg_db
+    prev_stg_db=$(grep "^DB_NAME=" "$STG_ENV_FILE" 2>/dev/null | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
+    if [ -n "$prev_stg_db" ] && [ "$prev_stg_db" != "$STG_DB_NAME" ]; then
+        local old_pull_filestore="/var/lib/odoo/$SERVICE_NAME/filestore/$prev_stg_db"
+        if [ -d "$old_pull_filestore" ] && [ ! -d "$ODOO_FILESTORE_PATH_ENV" ]; then
+            log_info "Moving previous filestore for incremental rsync: $old_pull_filestore -> $ODOO_FILESTORE_PATH_ENV"
+            mv "$old_pull_filestore" "$ODOO_FILESTORE_PATH_ENV"
+        elif [ -d "$old_pull_filestore" ]; then
+            rm -rf "$old_pull_filestore"
+        fi
     fi
     mkdir -p "$ODOO_FILESTORE_PATH_ENV"
-    rsync -a "$ODOO_FILESTORE_PATH_PRD/" "$ODOO_FILESTORE_PATH_ENV"
+    rsync -a --delete "$ODOO_FILESTORE_PATH_PRD/" "$ODOO_FILESTORE_PATH_ENV"
     chown -R odoo:odoo "$ODOO_FILESTORE_PATH_ENV"
 
     DB_USER=$(grep "^ACTIVE_DB_USER=" "$STG_ENV_FILE" 2>/dev/null | cut -d '=' -f2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//')
@@ -418,18 +425,22 @@ function run_automated_pull_mode() {
 
     trigger_registry_reload "$STG_DB_NAME" "$STG_PATH_TO_ODOO"
 
-    if grep -q "^DB_NAME=" "$STG_ENV_FILE"; then
-        sed -i "s/^DB_NAME=.*/DB_NAME=$STG_DB_NAME/" "$STG_ENV_FILE"
-    else
-        echo "DB_NAME=$STG_DB_NAME" >> "$STG_ENV_FILE"
+    stg_db_name_from_env=$(grep "^DB_NAME=" "$STG_ENV_FILE" 2>/dev/null | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
+    if [ -n "$stg_db_name_from_env" ] || [ -n "$TARGET_DB" ]; then
+        if grep -q "^DB_NAME=" "$STG_ENV_FILE"; then
+            sed -i "s/^DB_NAME=.*/DB_NAME=$STG_DB_NAME/" "$STG_ENV_FILE"
+        else
+            echo "DB_NAME=$STG_DB_NAME" >> "$STG_ENV_FILE"
+        fi
+        log_success "Replaced DB_NAME in $STG_ENV_FILE with '$STG_DB_NAME'."
     fi
 
     log_stage "[3/3] Restarting Odoo Container..."
     cd "$STG_PATH_TO_ODOO"
     if [ "$JSON_MODE" = "true" ]; then
-        docker compose restart odoo >&2 || true
+        docker compose up -d >&2 || docker compose restart odoo >&2 || true
     else
-        docker compose restart odoo || true
+        docker compose up -d || docker compose restart odoo || true
     fi
 
     MODULE_UPDATE_ERROR=false
@@ -464,6 +475,8 @@ function run_automated_pull_mode() {
 }
 
 function run_interactive_push_mode() {
+    local TARGET_DB_NAME="${1:-}"
+
     ODOO_DATABASE_NAME_PRD=$(grep "^DB_NAME=" "$PATH_TO_ODOO/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
     if [ -z "$ODOO_DATABASE_NAME_PRD" ]; then
         read -rp "Enter the database name: " ODOO_DATABASE_NAME_PRD
@@ -487,11 +500,6 @@ function run_interactive_push_mode() {
 
         local DEST_SERVICE_NAME
         DEST_SERVICE_NAME=$(basename "$CLONER_SSH_DEST_PATH")
-        local ODOO_DB_NAME_ENV
-        ODOO_DB_NAME_ENV=$(promptClonedDBName "$PATH_TO_ODOO/.env" "$USE_DATE_SUFFIX" "$DEST_SERVICE_NAME")
-
-        log_info "🚀 Remote SSH Cloner Mode: Cloning to $CLONER_SSH_USER@$CLONER_SSH_HOST:$CLONER_SSH_DEST_PATH"
-        log_info "   Target Database: $ODOO_DB_NAME_ENV"
 
         local owner_home
         owner_home=$(eval echo "~$REPOSITORY_OWNER")
@@ -511,6 +519,22 @@ function run_interactive_push_mode() {
             exit 1
         fi
         log_success "SSH connection established."
+
+        local dest_db_name_from_env
+        dest_db_name_from_env=$(ssh "${ssh_opts[@]}" "$CLONER_SSH_USER@$CLONER_SSH_HOST" "grep '^DB_NAME=' '$CLONER_SSH_DEST_PATH/.env' 2>/dev/null | cut -d '=' -f 2 | tr -d '\"' | tr -d \"'\" | tr -d ' ' || true" 2>/dev/null || true)
+
+        local ODOO_DB_NAME_ENV
+        if [ -n "$TARGET_DB_NAME" ]; then
+            ODOO_DB_NAME_ENV="$TARGET_DB_NAME"
+        elif [ -n "$dest_db_name_from_env" ]; then
+            ODOO_DB_NAME_ENV="$dest_db_name_from_env"
+            log_info "Using existing DB_NAME from remote destination environment: $ODOO_DB_NAME_ENV"
+        else
+            ODOO_DB_NAME_ENV=$(promptClonedDBName "$PATH_TO_ODOO/.env" "$USE_DATE_SUFFIX" "$DEST_SERVICE_NAME")
+        fi
+
+        log_info "🚀 Remote SSH Cloner Mode: Cloning to $CLONER_SSH_USER@$CLONER_SSH_HOST:$CLONER_SSH_DEST_PATH"
+        log_info "   Target Database: $ODOO_DB_NAME_ENV"
 
         log_info "Step 1/3: Creating backup of '$ODOO_DATABASE_NAME_PRD' on local VPS..."
         if command -v "backupdata-$SERVICE_NAME" &>/dev/null; then
@@ -557,6 +581,17 @@ function run_interactive_push_mode() {
                 echo '❌ restore_backupdata script not found on remote VPS at $CLONER_SSH_DEST_PATH' >&2
                 exit 1
             fi
+
+            if [ -f '$CLONER_SSH_DEST_PATH/.env' ]; then
+                dest_db_name=\$(grep '^DB_NAME=' '$CLONER_SSH_DEST_PATH/.env' 2>/dev/null | cut -d '=' -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
+                if [ -n \"\$dest_db_name\" ] && [ \"\$dest_db_name\" != '$ODOO_DB_NAME_ENV' ]; then
+                    echo \"Destination environment has different DB_NAME set ('\$dest_db_name'). Replacing with '$ODOO_DB_NAME_ENV'...\"
+                    sudo sed -i \"s/^DB_NAME=.*/DB_NAME=$ODOO_DB_NAME_ENV/\" '$CLONER_SSH_DEST_PATH/.env'
+                    sudo docker compose -f '$CLONER_SSH_DEST_PATH/docker-compose.yml' up -d >/dev/null 2>&1 || true
+                elif [ -z \"\$dest_db_name\" ]; then
+                    sudo sed -i \"s/^DB_NAME=.*/DB_NAME=$ODOO_DB_NAME_ENV/\" '$CLONER_SSH_DEST_PATH/.env'
+                fi
+            fi
         "
 
         # Remote and local cleanup
@@ -592,7 +627,18 @@ function run_interactive_push_mode() {
         fi
     fi
 
-    ODOO_DB_NAME_ENV=$(promptClonedDBName "$PATH_TO_ODOO/.env" "$USE_DATE_SUFFIX" "$SERVICE_NAME-$ODOO_DEPLOYMENT_ENVIRONMENT")
+    local dest_db_name_from_env
+    dest_db_name_from_env=$(grep "^DB_NAME=" "$PATH_TO_ODOO_ENV/.env" 2>/dev/null | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g;s/[[:space:]\n]*$//g;s/^["'\'']//;s/["'\'']$//' || true)
+
+    local ODOO_DB_NAME_ENV
+    if [ -n "$TARGET_DB_NAME" ]; then
+        ODOO_DB_NAME_ENV="$TARGET_DB_NAME"
+    elif [ -n "$dest_db_name_from_env" ]; then
+        ODOO_DB_NAME_ENV="$dest_db_name_from_env"
+        log_info "Using existing DB_NAME from destination environment: $ODOO_DB_NAME_ENV"
+    else
+        ODOO_DB_NAME_ENV=$(promptClonedDBName "$PATH_TO_ODOO/.env" "$USE_DATE_SUFFIX" "$SERVICE_NAME-$ODOO_DEPLOYMENT_ENVIRONMENT")
+    fi
 
     ODOO_FILESTORE_PATH_PRD="/var/lib/odoo/$SERVICE_NAME/filestore/$ODOO_DATABASE_NAME_PRD"
     ODOO_FILESTORE_PATH_ENV="/var/lib/odoo/$SERVICE_NAME-$ODOO_DEPLOYMENT_ENVIRONMENT/filestore/$ODOO_DB_NAME_ENV"
@@ -613,24 +659,30 @@ function run_interactive_push_mode() {
 
     export PSQL_ENV_FILE="$PATH_TO_ODOO_ENV/.env"
 
-    if [ -d "$ODOO_FILESTORE_PATH_ENV" ]; then
-        log_warn "Remove the old filestore of $ODOO_DB_NAME_ENV"
-        rm -rf "$ODOO_FILESTORE_PATH_ENV"
+    if [ -n "$dest_db_name_from_env" ] && [ "$dest_db_name_from_env" != "$ODOO_DB_NAME_ENV" ]; then
+        log_warn "Dropping previous database '$dest_db_name_from_env'..."
+        run_psql -d postgres -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '$dest_db_name_from_env' AND pid <> pg_backend_pid();" > /dev/null 2>&1 || true
+        run_psql -d postgres -c "DROP DATABASE IF EXISTS \"$dest_db_name_from_env\"" > /dev/null 2>&1 || true
+
+        local old_filestore="/var/lib/odoo/$SERVICE_NAME-$ODOO_DEPLOYMENT_ENVIRONMENT/filestore/$dest_db_name_from_env"
+        if [ -d "$old_filestore" ] && [ ! -d "$ODOO_FILESTORE_PATH_ENV" ]; then
+            log_info "Moving previous filestore for incremental rsync: $old_filestore -> $ODOO_FILESTORE_PATH_ENV"
+            mv "$old_filestore" "$ODOO_FILESTORE_PATH_ENV"
+        elif [ -d "$old_filestore" ]; then
+            rm -rf "$old_filestore"
+        fi
     fi
 
-    log_info "Copy the filestore to the $ODOO_DEPLOYMENT_ENVIRONMENT environment"
-    mkdir "$ODOO_FILESTORE_PATH_ENV" > /dev/null 2>&1 || { log_warn "Error creating $ODOO_FILESTORE_PATH_ENV. Maybe the directory exists."; }
-    rsync -a "$ODOO_FILESTORE_PATH_PRD/" "$ODOO_FILESTORE_PATH_ENV"
+    log_info "Syncing filestore incrementally to $ODOO_DEPLOYMENT_ENVIRONMENT environment..."
+    mkdir -p "$ODOO_FILESTORE_PATH_ENV"
+    rsync -a --delete "$ODOO_FILESTORE_PATH_PRD/" "$ODOO_FILESTORE_PATH_ENV"
 
     log_info "Change owner of $ODOO_FILESTORE_PATH_ENV to odoo"
     chown -R odoo:odoo "$ODOO_FILESTORE_PATH_ENV"
 
-    if [ "$ODOO_DB_NAME_ENV" == "$ODOO_DATABASE_NAME_PRD-$ODOO_DEPLOYMENT_ENVIRONMENT" ]; then
+    if [ "$BACKUP_RESTORE_METHOD" = "manual" ]; then
         log_info "Stop the $ODOO_DEPLOYMENT_ENVIRONMENT environment"
         docker compose -f "$PATH_TO_ODOO_ENV/docker-compose.yml" stop > /dev/null 2>&1 || { log_error "Error stopping $ODOO_DEPLOYMENT_ENVIRONMENT"; exit 1; }
-
-        log_warn "Drop the old database $ODOO_DB_NAME_ENV"
-        run_psql -d postgres -c "DROP DATABASE IF EXISTS \"$ODOO_DB_NAME_ENV\" WITH (FORCE)" >/dev/null
     fi
 
     NEUTRALIZE_DB=$(grep "^NEUTRALIZE_DATABASE=" "$PATH_TO_ODOO_ENV/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
@@ -707,6 +759,12 @@ function run_interactive_push_mode() {
         log_info "Ensuring destination environment is running to receive endpoint restore command..."
         docker compose -f "$PATH_TO_ODOO_ENV/docker-compose.yml" up -d > /dev/null 2>&1 || true
 
+        log_info "Dropping old database '$ODOO_DB_NAME_ENV' if it exists..."
+        curl -s -X POST \
+            -d "master_pwd=$DEST_ADMIN_PASSWD" \
+            -d "name=$ODOO_DB_NAME_ENV" \
+            "http://localhost:$DEST_PORT/web/database/drop" >/dev/null 2>&1 || true
+
         log_info "Preparing db_dump_only.zip archive containing dump.sql for destination endpoint import..."
         rm -f "$ODOO_TMP_DIR/dump.sql" "$ODOO_TMP_DIR/db_dump_only_$ODOO_DB_NAME_ENV.zip"
         mv "$ODOO_TMP_DIR/$ODOO_DB_NAME_ENV.sql" "$ODOO_TMP_DIR/dump.sql"
@@ -760,10 +818,17 @@ function run_interactive_push_mode() {
         fi
     fi
 
+    # Update DB_NAME in destination environment only if an explicit different target name was supplied
+    if [ -n "$dest_db_name_from_env" ] && [ "$dest_db_name_from_env" != "$ODOO_DB_NAME_ENV" ]; then
+        log_info "Destination environment has different DB_NAME set ('$dest_db_name_from_env'). Replacing with '$ODOO_DB_NAME_ENV'..."
+        sed -i "s/^DB_NAME=.*/DB_NAME=$ODOO_DB_NAME_ENV/" "$PATH_TO_ODOO_ENV/.env"
+        log_success "Replaced DB_NAME in $PATH_TO_ODOO_ENV/.env with '$ODOO_DB_NAME_ENV'."
+    fi
+
     trigger_registry_reload "$ODOO_DB_NAME_ENV" "$PATH_TO_ODOO_ENV"
 
     log_info "Restart the $ODOO_DEPLOYMENT_ENVIRONMENT environment"
-    docker compose -f "$PATH_TO_ODOO_ENV/docker-compose.yml" restart > /dev/null 2>&1 || { log_error "Error restarting $ODOO_DEPLOYMENT_ENVIRONMENT"; exit 1; }
+    docker compose -f "$PATH_TO_ODOO_ENV/docker-compose.yml" up -d > /dev/null 2>&1 || docker compose -f "$PATH_TO_ODOO_ENV/docker-compose.yml" restart > /dev/null 2>&1 || { log_error "Error restarting $ODOO_DEPLOYMENT_ENVIRONMENT"; exit 1; }
 
     log_success "Finish cloning database $ODOO_DB_NAME_ENV from $ODOO_DATABASE_NAME_PRD"
 }
@@ -806,10 +871,10 @@ main() {
         exit 1
     fi
 
-    if [ "$#" -gt 0 ] || [ "$JSON_MODE" = "true" ]; then
+    if [ "$SERVICE_NAME" != "${SERVICE_NAME%-*}" ] && ([ "$#" -gt 0 ] || [ "$JSON_MODE" = "true" ]); then
         run_automated_pull_mode "$@"
     else
-        run_interactive_push_mode
+        run_interactive_push_mode "$@"
     fi
 }
 
