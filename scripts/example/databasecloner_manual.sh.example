@@ -423,10 +423,8 @@ function run_automated_pull_mode() {
         sanitize_database "$STG_DB_NAME"
     fi
 
-    trigger_registry_reload "$STG_DB_NAME" "$STG_PATH_TO_ODOO"
-
     stg_db_name_from_env=$(grep "^DB_NAME=" "$STG_ENV_FILE" 2>/dev/null | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
-    if [ -n "$stg_db_name_from_env" ] || [ -n "$TARGET_DB" ]; then
+    if [ -n "$stg_db_name_from_env" ] && [ "$stg_db_name_from_env" != "$STG_DB_NAME" ]; then
         if grep -q "^DB_NAME=" "$STG_ENV_FILE"; then
             sed -i "s/^DB_NAME=.*/DB_NAME=$STG_DB_NAME/" "$STG_ENV_FILE"
         else
@@ -442,6 +440,8 @@ function run_automated_pull_mode() {
     else
         docker compose up -d || docker compose restart odoo || true
     fi
+
+    trigger_registry_reload "$STG_DB_NAME" "$STG_PATH_TO_ODOO" 2>/dev/null || true
 
     MODULE_UPDATE_ERROR=false
     if [ -n "$MODULES_TO_UPDATE" ]; then
@@ -825,10 +825,10 @@ function run_interactive_push_mode() {
         log_success "Replaced DB_NAME in $PATH_TO_ODOO_ENV/.env with '$ODOO_DB_NAME_ENV'."
     fi
 
-    trigger_registry_reload "$ODOO_DB_NAME_ENV" "$PATH_TO_ODOO_ENV"
-
     log_info "Restart the $ODOO_DEPLOYMENT_ENVIRONMENT environment"
     docker compose -f "$PATH_TO_ODOO_ENV/docker-compose.yml" up -d > /dev/null 2>&1 || docker compose -f "$PATH_TO_ODOO_ENV/docker-compose.yml" restart > /dev/null 2>&1 || { log_error "Error restarting $ODOO_DEPLOYMENT_ENVIRONMENT"; exit 1; }
+
+    trigger_registry_reload "$ODOO_DB_NAME_ENV" "$PATH_TO_ODOO_ENV" 2>/dev/null || true
 
     log_success "Finish cloning database $ODOO_DB_NAME_ENV from $ODOO_DATABASE_NAME_PRD"
 }
