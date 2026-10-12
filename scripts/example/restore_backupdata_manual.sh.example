@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-set -e
+set -eE
 # Category: Utility
 # Description: Restores Odoo data using rsync and native SQL dump with optional database renaming.
 # Usage: ./scripts/restore_backupdata_manual.sh [BACKUP_FILE] [-n DB_NAME]
@@ -313,6 +313,12 @@ function isBackupDataExists() {
 }
 
 function isPg_restoreInstalled() {
+  local env_file="${PSQL_ENV_FILE:-$PATH_TO_ODOO/.env}"
+  local db_host
+  db_host=$(grep "^DB_HOST=" "$env_file" 2>/dev/null | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
+  if [ -n "$db_host" ] && [ "$db_host" != "localhost" ]; then
+    return 0
+  fi
   if ! command -v pg_restore &>/dev/null; then
     log_error "pg_restore is not installed. Please install postgresql-client"
     log_info "Ubuntu: sudo apt install postgresql-client"
@@ -387,6 +393,26 @@ function run_pg_dump() {
     docker run -i --rm --network="$net" -e PGPASSWORD="$db_pass" postgres pg_dump -h "$db_host" -p "$db_port" -U "$db_user" "$@"
   else
     sudo -u postgres pg_dump "$@"
+  fi
+}
+
+function run_pg_restore() {
+  local env_file="${PSQL_ENV_FILE:-$PATH_TO_ODOO/.env}"
+  local db_host
+  db_host=$(grep "^DB_HOST=" "$env_file" 2>/dev/null | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
+  if [ -n "$db_host" ] && [ "$db_host" != "localhost" ]; then
+    local db_port db_user db_pass docker_net net
+    db_port=$(grep "^DB_PORT=" "$env_file" 2>/dev/null | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
+    db_user=$(grep "^ACTIVE_DB_USER=" "$env_file" 2>/dev/null | cut -d '=' -f2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//')
+    [ -z "$db_user" ] && db_user=$(cat "$(dirname "$env_file")/.secrets/db_user" 2>/dev/null || true)
+    db_pass=$(cat "$(dirname "$env_file")/.secrets/db_password" 2>/dev/null || true)
+    docker_net=$(grep "^DOCKER_NETWORK_MODE=" "$env_file" 2>/dev/null | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
+    [ -z "$db_port" ] && db_port="5432"
+    [ -z "$docker_net" ] && docker_net="host"
+    local net=$(echo "$docker_net" | cut -d "," -f 1)
+    docker run -i --rm --network="$net" -e PGPASSWORD="$db_pass" postgres pg_restore -h "$db_host" -p "$db_port" -U "$db_user" "$@"
+  else
+    sudo -u postgres pg_restore "$@"
   fi
 }
 
@@ -641,10 +667,25 @@ function main() {
       log_info "Creating new database $RESTORED_DB_NAME with owner $DB_USER"
       run_psql -d postgres -c "CREATE DATABASE \"$RESTORED_DB_NAME\" OWNER \"$DB_USER\"" >/dev/null
 
-      log_info "Restoring database from SQL dump via psql..."
-      run_psql -d "$RESTORED_DB_NAME" < "$TEMP_DIR/dump.sql" >/dev/null
+      if [ ! -f "$TEMP_DIR/dump.sql" ]; then
+        log_error "dump.sql not found in extracted backup. Aborting."
+        exit 1
+      fi
 
-      log_success "Database restored successfully via psql."
+      if head -c 5 "$TEMP_DIR/dump.sql" 2>/dev/null | grep -q "PGDMP"; then
+        log_info "Detected PostgreSQL custom-format dump. Restoring via pg_restore..."
+        local restore_status=0
+        run_pg_restore --no-owner -d "$RESTORED_DB_NAME" < "$TEMP_DIR/dump.sql" >/dev/null 2>&3 || restore_status=$?
+        if [ "$restore_status" -gt 1 ]; then
+          log_error "pg_restore failed with exit code $restore_status."
+          exit "$restore_status"
+        fi
+      else
+        log_info "Restoring database from SQL dump via psql..."
+        run_psql -d "$RESTORED_DB_NAME" < "$TEMP_DIR/dump.sql" >/dev/null 2>&3
+      fi
+
+      log_success "Database restored successfully."
 
       log_info "Altering database object ownership..."
       local POSTGRES_USER_DEV="$DB_USER"

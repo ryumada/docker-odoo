@@ -299,6 +299,25 @@ function run_psql() {
   fi
 }
 
+function run_pg_restore() {
+  local env_file="${PSQL_ENV_FILE:-$PATH_TO_ODOO/.env}"
+  local db_host
+  db_host=$(grep "^DB_HOST=" "$env_file" 2>/dev/null | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
+  if [ -n "$db_host" ] && [ "$db_host" != "localhost" ]; then
+    local db_port db_user db_pass docker_net net
+    db_port=$(grep "^DB_PORT=" "$env_file" 2>/dev/null | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
+    db_user=$(cat "$(dirname "$env_file")/.secrets/db_user" 2>/dev/null || true)
+    db_pass=$(cat "$(dirname "$env_file")/.secrets/db_password" 2>/dev/null || true)
+    docker_net=$(grep "^DOCKER_NETWORK_MODE=" "$env_file" 2>/dev/null | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
+    [ -z "$db_port" ] && db_port="5432"
+    [ -z "$docker_net" ] && docker_net="host"
+    local net=$(echo "$docker_net" | cut -d "," -f 1)
+    docker run -i --rm --network="$net" -e PGPASSWORD="$db_pass" postgres pg_restore -h "$db_host" -p "$db_port" -U "$db_user" "$@"
+  else
+    sudo -u postgres pg_restore "$@"
+  fi
+}
+
 function restoreOdooData() {
   # Locate extracted backupdata zip file inside tar structure
   local extracted_zip
@@ -367,9 +386,20 @@ function restoreOdooData() {
         run_psql -c "DROP DATABASE IF EXISTS \"$ODOO_DATABASE_NAME_PRD\"" --quiet -t -P pager=off 2> /dev/null > /dev/null || log_error "Can't drop database"
         run_psql -c "CREATE DATABASE \"$ODOO_DATABASE_NAME_PRD\" OWNER \"$ODOO_DATABASE_USER\"" --quiet -t -P pager=off 2> /dev/null > /dev/null || log_error "Can't create database"
 
-        sed -i "1i SET ROLE \"$ODOO_DATABASE_USER\";" "$zip_stage/dump.sql"
-        run_psql -d "$ODOO_DATABASE_NAME_PRD" --quiet -t -P pager=off < "$zip_stage/dump.sql" 2> /dev/null > /dev/null || log_error "Can't restore database"
-        log_success "Database $ODOO_DATABASE_NAME_PRD restored successfully."
+        if head -c 5 "$zip_stage/dump.sql" 2>/dev/null | grep -q "PGDMP"; then
+          log_info "Detected PostgreSQL custom-format dump. Restoring via pg_restore..."
+          local restore_status=0
+          run_pg_restore --no-owner -d "$ODOO_DATABASE_NAME_PRD" < "$zip_stage/dump.sql" 2> /dev/null > /dev/null || restore_status=$?
+          if [ "$restore_status" -gt 1 ]; then
+            log_error "Can't restore database via pg_restore (exit code: $restore_status)"
+          else
+            log_success "Database $ODOO_DATABASE_NAME_PRD restored successfully."
+          fi
+        else
+          sed -i "1i SET ROLE \"$ODOO_DATABASE_USER\";" "$zip_stage/dump.sql"
+          run_psql -d "$ODOO_DATABASE_NAME_PRD" --quiet -t -P pager=off < "$zip_stage/dump.sql" 2> /dev/null > /dev/null || log_error "Can't restore database"
+          log_success "Database $ODOO_DATABASE_NAME_PRD restored successfully."
+        fi
       fi
       return 0
     fi
