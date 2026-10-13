@@ -1,6 +1,6 @@
 ---
 title: Auto ICM Recall Rule
-trigger: always_on
+trigger: model_decision
 category: Safety
 description: Queries ICM context at session start.
 context: Session Lifecycle Management

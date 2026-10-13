@@ -55,6 +55,89 @@ trap 'error_handler $? $LINENO "$BASH_COMMAND"' ERR
 DOCKER_COMPOSE_FILE="docker-compose.yml"
 GIT_PATH="./odoo-base"
 
+function get_ignored_repositories() {
+  local ignored="${IGNORED_GIT_REPOSITORIES:-${IGNORED_REPOSITORIES:-}}"
+  if [ -z "$ignored" ]; then
+    local env_path="$ENV_FILE"
+    if [ ! -f "$env_path" ]; then
+      env_path="$PATH_TO_ODOO/$ENV_FILE"
+    fi
+    if [ ! -f "$env_path" ]; then
+      env_path="$PATH_TO_ODOO/.env"
+    fi
+    if [ -f "$env_path" ]; then
+      ignored=$(grep -E "^(IGNORED_GIT_REPOSITORIES|IGNORED_REPOSITORIES)=" "$env_path" 2>/dev/null | tail -n 1 | cut -d '=' -f2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//' || true)
+    fi
+  fi
+  echo "$ignored"
+}
+
+function is_repo_ignored() {
+  local dir="$1"
+  local ignored_repos
+  ignored_repos=$(get_ignored_repositories)
+
+  if [ -z "$ignored_repos" ]; then
+    return 1
+  fi
+
+  local repo_name
+  repo_name=$(basename "$dir")
+
+  local real_dir
+  real_dir=$(readlink -f "$dir" 2>/dev/null || realpath "$dir" 2>/dev/null || echo "$dir")
+
+  local old_ifs="$IFS"
+  local sep_regex='[,;]'
+  if [[ "$ignored_repos" =~ $sep_regex ]]; then
+    IFS=',;'
+  elif [[ "$ignored_repos" =~ [[:space:]] ]] && [ ! -d "$ignored_repos" ]; then
+    IFS=$' \t\n'
+  else
+    IFS=$'\n'
+  fi
+
+  for item in $ignored_repos; do
+    item=$(echo "$item" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//')
+    item="${item%/}"
+    [ -z "$item" ] && continue
+
+    local item_base
+    item_base=$(basename "$item")
+
+    # Match by repo directory name
+    if [ "$item" = "$repo_name" ] || [ "$item_base" = "$repo_name" ]; then
+      IFS="$old_ifs"
+      return 0
+    fi
+
+    # Match by absolute canonical path
+    local real_item=""
+    if [ -e "$item" ]; then
+      real_item=$(readlink -f "$item" 2>/dev/null || realpath "$item" 2>/dev/null || true)
+    elif [ -e "$PATH_TO_ODOO/$item" ]; then
+      real_item=$(readlink -f "$PATH_TO_ODOO/$item" 2>/dev/null || realpath "$PATH_TO_ODOO/$item" 2>/dev/null || true)
+    fi
+
+    if [ -n "$real_item" ] && [ "$real_item" = "$real_dir" ]; then
+      IFS="$old_ifs"
+      return 0
+    fi
+
+    # Match by relative path comparison
+    local rel_dir="${dir#./}"
+    rel_dir="${rel_dir%/}"
+    local rel_item="${item#./}"
+    if [ "$rel_item" = "$rel_dir" ]; then
+      IFS="$old_ifs"
+      return 0
+    fi
+  done
+  IFS="$old_ifs"
+
+  return 1
+}
+
 function isDirectoryGitRepository() {
   dir=$1
 
@@ -75,13 +158,16 @@ function getSubDirectories() {
   echo "$subdirs"
 }
 
-
-
 function process_repo() {
     local subdir=$1
     local repo_name
     repo_name=$(basename "$subdir")
     local repo_updated=1 # false
+
+    if is_repo_ignored "$subdir"; then
+        log_info "Skipping $repo_name: Repository is configured as ignored in .env."
+        return 1
+    fi
 
     if isDirectoryGitRepository "$subdir"; then
         local current_branch
