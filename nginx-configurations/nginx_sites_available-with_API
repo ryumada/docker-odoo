@@ -12,6 +12,7 @@ map $http_origin $cors_origin_header {
         # Allowed Domain to access (Please add this line matching your domain)
         # example if the domain service.app.vulnersight.com, then the regex will be like this
         # "~^https:\/\/service\.app\.vulnersight\.com$" $http_origin;
+        # "~^http:\/\/localhost(:[0-9]+)?$" $http_origin;
 
         # Allow requests without an Origin header (e.g., same-site, curl, postman)
         "" "";
@@ -93,6 +94,33 @@ server {
                 proxy_buffers 16 64k;
                 proxy_buffer_size 128k;
                 proxy_busy_buffers_size 256k;
+
+                # NOTE FOR OPERATOR:
+                # Ensure the frontend domain (e.g., https://app.vulnersight.com or http://localhost:20001)
+                # is whitelisted in 'map $http_origin $cors_origin_header' at the top of this file,
+                # otherwise cross-origin requests will be rejected with 403 Forbidden.
+
+                # Strip headers coming from Odoo backend to prevent duplicates
+                proxy_hide_header 'Access-Control-Allow-Origin';
+                proxy_hide_header 'Access-Control-Allow-Credentials';
+
+                # Preflight response (must declare headers inside the if block because return drops parent headers)
+                if ($request_method = 'OPTIONS') {
+                        add_header 'Access-Control-Allow-Origin' '$http_origin' always;
+                        add_header 'Access-Control-Allow-Credentials' 'true' always;
+                        add_header 'Access-Control-Allow-Methods' 'GET, POST, PUT, PATCH, DELETE, OPTIONS' always;
+                        add_header 'Access-Control-Allow-Headers' 'Authorization, Content-Type, Accept, Origin, X-Requested-With' always;
+                        add_header 'Access-Control-Max-Age' 1728000;
+                        add_header 'Content-Type' 'text/plain; charset=utf-8';
+                        add_header 'Content-Length' 0;
+                        return 204;
+                }
+
+                # Add Nginx single CORS headers for standard responses
+                add_header 'Access-Control-Allow-Origin' '$http_origin' always;
+                add_header 'Access-Control-Allow-Credentials' 'true' always;
+                add_header 'Access-Control-Allow-Methods' 'GET, POST, PUT, PATCH, DELETE, OPTIONS' always;
+                add_header 'Access-Control-Allow-Headers' 'Authorization, Content-Type, Accept, Origin, X-Requested-With' always;
 
                 proxy_pass http://$DOMAIN;
         }
