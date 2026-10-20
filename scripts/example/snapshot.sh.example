@@ -706,7 +706,7 @@ function run_remote_snapshot() {
   local remote_archives="$remote_base/archives"
 
   log_info "Preparing directory structure on Secondary VPS under $remote_base/..."
-  remote_exec "mkdir -p '$remote_mirror' '$remote_cache' '$remote_staging/tmp' '$remote_archives' && chmod 700 '$remote_home/.odoo-snapshots'"
+  remote_exec "mkdir -p '$remote_mirror' '$remote_cache' '$remote_staging/tmp' '$remote_archives' && chmod 700 '$remote_home/.odoo-snapshots' && if [ -L '$remote_mirror/filestore' ]; then rm -f '$remote_mirror/filestore'; fi"
 
   local odoo_filestore_path="/var/lib/odoo/$SERVICE_NAME/filestore/$ODOO_DATABASE_NAME_PRD"
   if [ -d "$odoo_filestore_path" ]; then
@@ -783,7 +783,7 @@ function run_remote_snapshot() {
   remote_sync -azR "${files_to_sync[@]}" "$user@$host:$remote_staging/"
 
   log_info "Preparing manifest.json on Secondary VPS..."
-  remote_exec "mkdir -p '$remote_staging/tmp/zip_staging' && cat <<'MANIFEST_EOF' > '$remote_staging/tmp/zip_staging/manifest.json'
+  remote_exec "rm -rf '$remote_staging/tmp/zip_staging' && mkdir -p '$remote_staging/tmp/zip_staging' && cat <<'MANIFEST_EOF' > '$remote_staging/tmp/zip_staging/manifest.json'
 {
     \"odoo_dump\": \"1\",
     \"db_name\": \"$ODOO_DATABASE_NAME_PRD\",
@@ -799,7 +799,8 @@ MANIFEST_EOF"
 
   local remote_cache_zip="$remote_cache/backupdata-$SERVICE_NAME.zip"
   log_info "Updating cached backupdata-$SERVICE_NAME.zip on Secondary VPS..."
-  remote_exec "if [ -d '$remote_mirror' ] && [ -n \"\$(ls -A '$remote_mirror' 2>/dev/null)\" ]; then ln -s '$remote_mirror' '$remote_staging/tmp/zip_staging/filestore' 2>/dev/null || cp -al '$remote_mirror' '$remote_staging/tmp/zip_staging/filestore' 2>/dev/null || cp -r '$remote_mirror' '$remote_staging/tmp/zip_staging/filestore'; fi"
+  remote_exec "if [ -L '$remote_mirror/filestore' ]; then rm -f '$remote_mirror/filestore'; fi; rm -rf '$remote_staging/tmp/zip_staging/filestore'"
+  remote_exec "if [ -d '$remote_mirror' ] && [ -n \"\$(ls -A '$remote_mirror' 2>/dev/null)\" ]; then ln -sfn '$remote_mirror' '$remote_staging/tmp/zip_staging/filestore' 2>/dev/null || cp -al '$remote_mirror' '$remote_staging/tmp/zip_staging/filestore' 2>/dev/null || cp -r '$remote_mirror' '$remote_staging/tmp/zip_staging/filestore'; fi"
   if remote_exec "[ -f '$remote_cache_zip' ]"; then
     remote_exec "cd '$remote_staging/tmp/zip_staging' && { '$remote_zip_cmd' u -tzip -mx=0 '$remote_cache_zip' dump.sql manifest.json \$( [ -e filestore ] && echo filestore ) >/dev/null || [ \$? -le 1 ]; }"
   else
@@ -1066,7 +1067,9 @@ EOF
   ODOO_FILESTORE_PATH="/var/lib/odoo/$SERVICE_NAME/filestore/$ODOO_DATABASE_NAME_PRD"
   if [ -d "$ODOO_FILESTORE_PATH" ]; then
     log_info "Linking filestore to staging..."
-    ln -s "$ODOO_FILESTORE_PATH" "$ZIP_STAGING_DIR/filestore" 2>/dev/null || cp -al "$ODOO_FILESTORE_PATH" "$ZIP_STAGING_DIR/filestore" 2>/dev/null || cp -r "$ODOO_FILESTORE_PATH" "$ZIP_STAGING_DIR/filestore"
+    [ -L "$ODOO_FILESTORE_PATH/filestore" ] && rm -f "$ODOO_FILESTORE_PATH/filestore"
+    rm -rf "$ZIP_STAGING_DIR/filestore"
+    ln -sfn "$ODOO_FILESTORE_PATH" "$ZIP_STAGING_DIR/filestore" 2>/dev/null || cp -al "$ODOO_FILESTORE_PATH" "$ZIP_STAGING_DIR/filestore" 2>/dev/null || cp -r "$ODOO_FILESTORE_PATH" "$ZIP_STAGING_DIR/filestore"
   else
     log_warn "Filestore path not found: $ODOO_FILESTORE_PATH"
   fi
