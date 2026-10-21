@@ -54,21 +54,28 @@ trap 'error_handler $? $LINENO "$BASH_COMMAND"' ERR
 
 DOCKER_ODOO_APP_NAME=$SERVICE_NAME
 
-function create_sudoers_file() {
+function append_sudoers_rule() {
   local user="$1"
   local script_type="$2"
   local SCRIPT_NAME="$3"
+  local output_file="$4"
 
   if ! id "$user" &>/dev/null; then
-    log_warn "User '$user' does not exist on this system. Skipping sudoers creation."
+    log_warn "User '$user' does not exist on this system. Skipping sudoers rule for '$user'."
     return 0
   fi
 
   local script_path
   if [ "$script_type" == "scripts" ]; then
     script_path="$PATH_TO_ODOO/scripts/$SCRIPT_NAME.sh"
+    if [ ! -f "$script_path" ] && [ -f "$PATH_TO_ODOO/scripts/$SCRIPT_NAME" ]; then
+      script_path="$PATH_TO_ODOO/scripts/$SCRIPT_NAME"
+    fi
   else
     script_path="$PATH_TO_ODOO/$SCRIPT_NAME.sh"
+    if [ ! -f "$script_path" ] && [ -f "$PATH_TO_ODOO/$SCRIPT_NAME" ]; then
+      script_path="$PATH_TO_ODOO/$SCRIPT_NAME"
+    fi
   fi
 
   if [ ! -f "$script_path" ]; then
@@ -76,32 +83,11 @@ function create_sudoers_file() {
     return 0
   fi
 
-  local sudoers_file_name="01-${user}_as_root-${DOCKER_ODOO_APP_NAME//./_}-${SCRIPT_NAME//./_}"
-  local target_path="/etc/sudoers.d/$sudoers_file_name"
   local rule_content="$user ALL=(root) NOPASSWD: $script_path"
-  local temp_file
-  temp_file=$(mktemp)
-
-  log_info "Creating sudoers file for '$user' user at $target_path to be able to run $script_path..."
-
-  echo "$rule_content" > "$temp_file"
-  chmod 0440 "$temp_file"
-
-  # Use a here-document to create the sudoers file content
-  if ! visudo -c -f "$temp_file"; then
-    log_error "Generated sudoers content for user '$user' is invalid. Aborting."
-    rm -f "$temp_file"
-    return 1
+  if ! grep -qF "$rule_content" "$output_file"; then
+    echo "$rule_content" >> "$output_file"
+    log_info "Added sudoers rule for '$user': $script_path"
   fi
-
-  if ! mv "$temp_file" "$target_path"; then
-    log_error "Failed to move validated sudoers file to $target_path. Aborting."
-    rm -f "$temp_file"
-    return 1
-  fi
-
-  rm -f "$temp_file"
-  log_success "Sudoers file for '$user' created successfully at $target_path."
 }
 
 function main() {
@@ -117,38 +103,75 @@ function main() {
 
   log_info "Detected Odoo App Name: $DOCKER_ODOO_APP_NAME"
 
-  # Create sudoers file for the 'devops' user
-  create_sudoers_file "devops" "scripts" "change_database"
-  create_sudoers_file "devops" "scripts" "git_addons_updater"
-  create_sudoers_file "devops" "scripts" "git_odoo-base_updater"
-  create_sudoers_file "devops" "scripts" "list-databases"
-  create_sudoers_file "devops" "scripts" "deploy_release_candidate-$SERVICE_NAME"
-  create_sudoers_file "devops" "scripts" "restore_backupdata-$SERVICE_NAME"
+  local sudoers_file_name="01-${DOCKER_ODOO_APP_NAME//./_}"
+  local target_path="/etc/sudoers.d/$sudoers_file_name"
+  local temp_file
+  temp_file=$(mktemp)
 
-  # Create sudoers file for the 'odoo' user
-  create_sudoers_file "odoo" "scripts" "change_database"
-  create_sudoers_file "odoo" "scripts" "git_addons_updater"
-  create_sudoers_file "odoo" "scripts" "git_odoo-base_updater"
-  create_sudoers_file "odoo" "scripts" "list-databases"
-  create_sudoers_file "odoo" "scripts" "deploy_release_candidate-$SERVICE_NAME"
-  create_sudoers_file "odoo" "scripts" "restore_backupdata-$SERVICE_NAME"
+  cat <<EOF > "$temp_file"
+# Consolidated sudoers configuration for service: $SERVICE_NAME
+# Generated automatically by install_sudoers.sh
 
-  # Create sudoers file for the user who ran the script, if they are not 'devops' or 'root'
+EOF
+
+  # Create sudoers rules for the 'devops' user
+  append_sudoers_rule "devops" "scripts" "change_database" "$temp_file"
+  append_sudoers_rule "devops" "scripts" "git_addons_updater" "$temp_file"
+  append_sudoers_rule "devops" "scripts" "git_odoo-base_updater" "$temp_file"
+  append_sudoers_rule "devops" "scripts" "list-databases" "$temp_file"
+  append_sudoers_rule "devops" "scripts" "deploy_release_candidate-$SERVICE_NAME" "$temp_file"
+  append_sudoers_rule "devops" "scripts" "restore_backupdata-$SERVICE_NAME" "$temp_file"
+
+  # Create sudoers rules for the 'odoo' user
+  append_sudoers_rule "odoo" "scripts" "change_database" "$temp_file"
+  append_sudoers_rule "odoo" "scripts" "git_addons_updater" "$temp_file"
+  append_sudoers_rule "odoo" "scripts" "git_odoo-base_updater" "$temp_file"
+  append_sudoers_rule "odoo" "scripts" "list-databases" "$temp_file"
+  append_sudoers_rule "odoo" "scripts" "deploy_release_candidate-$SERVICE_NAME" "$temp_file"
+  append_sudoers_rule "odoo" "scripts" "restore_backupdata-$SERVICE_NAME" "$temp_file"
+
+  # Create sudoers rules for the user who ran the script, if they are not 'devops' or 'root'
   local logged_in_user
   logged_in_user="${SUDO_USER:-${REPOSITORY_OWNER:-$(id -un)}}"
   if [ "$logged_in_user" != "root" ] && [ "$logged_in_user" != "devops" ]; then
-    create_sudoers_file "$logged_in_user" "scripts" "change_database"
-    create_sudoers_file "$logged_in_user" "scripts" "git_addons_updater"
-    create_sudoers_file "$logged_in_user" "scripts" "git_odoo-base_updater"
-    create_sudoers_file "$logged_in_user" "scripts" "list-databases"
-    create_sudoers_file "$logged_in_user" "scripts" "backupdata-$SERVICE_NAME"
-    create_sudoers_file "$logged_in_user" "scripts" "databasecloner-$SERVICE_NAME"
-    create_sudoers_file "$logged_in_user" "scripts" "deploy_release_candidate-$SERVICE_NAME"
-    create_sudoers_file "$logged_in_user" "scripts" "restore_backupdata-$SERVICE_NAME"
-    create_sudoers_file "$logged_in_user" "scripts" "snapshot-$SERVICE_NAME"
-    create_sudoers_file "$logged_in_user" "root" "setup"
+    append_sudoers_rule "$logged_in_user" "scripts" "change_database" "$temp_file"
+    append_sudoers_rule "$logged_in_user" "scripts" "git_addons_updater" "$temp_file"
+    append_sudoers_rule "$logged_in_user" "scripts" "git_odoo-base_updater" "$temp_file"
+    append_sudoers_rule "$logged_in_user" "scripts" "list-databases" "$temp_file"
+    append_sudoers_rule "$logged_in_user" "scripts" "backupdata-$SERVICE_NAME" "$temp_file"
+    append_sudoers_rule "$logged_in_user" "scripts" "databasecloner-$SERVICE_NAME" "$temp_file"
+    append_sudoers_rule "$logged_in_user" "scripts" "deploy_release_candidate-$SERVICE_NAME" "$temp_file"
+    append_sudoers_rule "$logged_in_user" "scripts" "restore_backupdata-$SERVICE_NAME" "$temp_file"
+    append_sudoers_rule "$logged_in_user" "scripts" "snapshot-$SERVICE_NAME" "$temp_file"
+    append_sudoers_rule "$logged_in_user" "root" "setup" "$temp_file"
   fi
 
+  chmod 0440 "$temp_file"
+  chown root:root "$temp_file" 2>/dev/null || true
+
+  if ! visudo -c -f "$temp_file"; then
+    log_error "Generated sudoers content for $SERVICE_NAME is invalid. Aborting."
+    rm -f "$temp_file"
+    return 1
+  fi
+
+  # Clean up legacy per-action sudoers files for this service to resolve sudoers limit
+  for old_sudoers in /etc/sudoers.d/01-*_as_root-${DOCKER_ODOO_APP_NAME//./_}-* /etc/sudoers.d/01-*-${DOCKER_ODOO_APP_NAME//./_}-*; do
+    if [ -f "$old_sudoers" ]; then
+      log_info "Removing legacy sudoers file: $old_sudoers"
+      rm -f "$old_sudoers"
+    fi
+  done
+
+  log_info "Installing consolidated sudoers file at $target_path..."
+  if ! mv "$temp_file" "$target_path"; then
+    log_error "Failed to move validated sudoers file to $target_path. Aborting."
+    rm -f "$temp_file"
+    return 1
+  fi
+
+  rm -f "$temp_file" 2>/dev/null || true
+  log_success "Consolidated sudoers file for $SERVICE_NAME created successfully at $target_path."
   log_success "Finished updating sudoers configurations."
 }
 

@@ -1405,7 +1405,6 @@ function main() {
     "$REPOSITORY_DIRPATH/scripts/installer/install-backupdata.sh"
     "$REPOSITORY_DIRPATH/scripts/installer/install-deploy_release_candidate.sh"
     "$REPOSITORY_DIRPATH/scripts/installer/install-restore_backupdata.sh"
-    "$REPOSITORY_DIRPATH/scripts/installer/install_sudoers.sh"
 
     ENABLE_DATABASE_CLONER=$(grep "^ENABLE_DATABASE_CLONER=" "$REPOSITORY_DIRPATH/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
     if [ -n "$ENABLE_DATABASE_CLONER" ]; then
@@ -1439,6 +1438,8 @@ function main() {
       "$REPOSITORY_DIRPATH/scripts/installer/uninstall-snapshot.sh"
       log_warn "snapshot utility is not installed. Please fill ENABLE_SNAPSHOT and DB_NAME variables in your .env file, then re-run this install script to install snapshot utility."
     fi
+
+    "$REPOSITORY_DIRPATH/scripts/installer/install_sudoers.sh"
 
     ENABLE_VSCODE_SERVER=$(grep "^ENABLE_VSCODE_SERVER=" "$REPOSITORY_DIRPATH/.env" 2>/dev/null | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
     if [[ "$ENABLE_VSCODE_SERVER" =~ ^([yY][eE][sS]|[yY]|1|true|TRUE)$ ]]; then

@@ -59,7 +59,7 @@ FILEPATHS_TO_REMOVE=(
 )
 
 # Dynamically include all sudoers files created for this deployment
-for sudoers_f in /etc/sudoers.d/01-*_${SERVICE_NAME//./_}-*; do
+for sudoers_f in "/etc/sudoers.d/01-${SERVICE_NAME//./_}" /etc/sudoers.d/01-*_${SERVICE_NAME//./_}-* /etc/sudoers.d/01-*-${SERVICE_NAME//./_}-*; do
   if [ -f "$sudoers_f" ]; then
     FILEPATHS_TO_REMOVE+=("$sudoers_f")
   fi
