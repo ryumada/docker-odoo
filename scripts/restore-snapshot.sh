@@ -26,6 +26,9 @@ Options:
       --backupdata               (with DB prefixing / web endpoint / manual runner).
   -n, --name, --dbname <NAME>    Rename/specify target database name
   -f, --file <PATH>              Path to snapshot .tar.zst file
+  --no-clone, --skip-clone       Skip automated git repository cloning
+  --no-setup                     Skip running setup.sh during full restore
+  --no-start                     Skip starting docker compose stack after restore
   -y, --yes, --force             Skip confirmation prompt
   -h, --help                     Show this help message
 
@@ -108,6 +111,9 @@ SNAPSHOT_FILE_PATH=""
 DATA_ONLY=false
 RESTORE_VIA_BACKUPDATA=false
 AUTO_CONFIRM=false
+AUTO_CLONE_GIT=true
+RUN_SETUP=true
+START_SERVICES=true
 TARGET_DB_NAME=""
 TEMP_DIR="$ODOO_TMP_DIR/restore_snapshot_$$"
 
@@ -150,6 +156,18 @@ while [[ $# -gt 0 ]]; do
       ;;
     -y|--yes|--force)
       AUTO_CONFIRM=true
+      shift
+      ;;
+    --no-clone|--skip-clone)
+      AUTO_CLONE_GIT=false
+      shift
+      ;;
+    --no-setup)
+      RUN_SETUP=false
+      shift
+      ;;
+    --no-start)
+      START_SERVICES=false
       shift
       ;;
     -h|--help)
@@ -271,6 +289,39 @@ function restoreDBCredentials() {
     chmod 600 "$PATH_TO_ODOO/.secrets"/*
   else
     log_warn "Secrets directory not found in snapshot at $secrets_tar_dir"
+  fi
+}
+
+function ensure_postgres_role_configured() {
+  local db_user
+  db_user=$(cat "$PATH_TO_ODOO/.secrets/db_user" 2>/dev/null || grep "^ACTIVE_DB_USER=" "$PATH_TO_ODOO/.env" 2>/dev/null | cut -d '=' -f2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//' || echo "odoo")
+  [ -z "$db_user" ] && db_user="odoo"
+
+  local db_pass
+  db_pass=$(cat "$PATH_TO_ODOO/.secrets/db_password" 2>/dev/null || true)
+
+  local env_file="${PSQL_ENV_FILE:-$PATH_TO_ODOO/.env}"
+  local db_host
+  db_host=$(grep "^DB_HOST=" "$env_file" 2>/dev/null | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' | sed 's/^["'\'']//;s/["'\'']$//' || true)
+
+  if [ -z "$db_host" ] || [ "$db_host" = "localhost" ]; then
+    systemctl start postgresql 2>/dev/null || true
+
+    if command -v psql &>/dev/null; then
+      if ! sudo -u postgres psql -tAc "SELECT 1 FROM pg_roles WHERE rolname='$db_user'" 2>/dev/null | grep -q 1; then
+        log_info "Creating PostgreSQL role '$db_user'..."
+        if [ -n "$db_pass" ]; then
+          sudo -u postgres psql -c "CREATE ROLE \"$db_user\" LOGIN CREATEDB PASSWORD '$db_pass';" >/dev/null 2>&1
+        else
+          sudo -u postgres psql -c "CREATE ROLE \"$db_user\" LOGIN CREATEDB;" >/dev/null 2>&1
+        fi
+      else
+        if [ -n "$db_pass" ]; then
+          log_info "Updating PostgreSQL role '$db_user' password to match snapshot secret..."
+          sudo -u postgres psql -c "ALTER ROLE \"$db_user\" WITH LOGIN CREATEDB PASSWORD '$db_pass';" >/dev/null 2>&1
+        fi
+      fi
+    fi
   fi
 }
 
@@ -479,6 +530,186 @@ function restoreOdooData() {
   run_psql -d "$ODOO_DATABASE_NAME_PRD" --quiet -t -P pager=off < "$sql_dump_file" 2> /dev/null > /dev/null || log_error "Can't restore database"
 }
 
+function check_git_ssh_access() {
+  local remote_url="$1"
+
+  # HTTPS URLs don't need SSH checks
+  if [[ "$remote_url" =~ ^https?:// ]]; then
+    return 0
+  fi
+
+  local ssh_host
+  if [[ "$remote_url" =~ @([^:/]+) ]]; then
+    ssh_host="${BASH_REMATCH[1]}"
+  else
+    ssh_host="github.com"
+  fi
+
+  # Run non-interactive probe with 5s timeout as REPOSITORY_OWNER
+  local probe_output
+  probe_output=$(sudo -u "$REPOSITORY_OWNER" ssh -T -o BatchMode=yes \
+    -o StrictHostKeyChecking=accept-new \
+    -o ConnectTimeout=5 "git@$ssh_host" 2>&1 || true)
+
+  if echo "$probe_output" | grep -qiE "successfully authenticated|welcome to gitlab|logged in as|authenticated via"; then
+    return 0
+  elif echo "$probe_output" | grep -qi "permission denied (publickey)"; then
+    return 1
+  else
+    if compgen -G "$OWNER_HOME/.ssh/id_*" >/dev/null; then
+      return 0
+    fi
+    return 1
+  fi
+}
+
+function display_git_metadata_summary() {
+  local json_file
+  json_file=$(find "$TEMP_DIR" -name "git_hashes*.json" -print 2>/dev/null | head -n 1)
+
+  if [ -n "$json_file" ] && [ -f "$json_file" ]; then
+    echo -e "\n==========================================================================="
+    log_info "Git & Addon Version Information from Snapshot:"
+    python3 -c '
+import json, sys
+try:
+    with open(sys.argv[1]) as f:
+        d = json.load(f)
+    repos = d.get("git_repositories", [])
+    bundled = d.get("bundled_directories", [])
+    if repos:
+        print("Git Repositories:")
+        for r in repos:
+            commit_short = r.get("commit", "")[:8] if r.get("commit") else "N/A"
+            print(f"  • {r.get(\"name\")} ({r.get(\"relative_path\")}) branch={r.get(\"branch\")} commit={commit_short} remote={r.get(\"remote\")}")
+    if bundled:
+        print("Bundled Non-Git Directories:")
+        for b in bundled:
+            print(f"  • {b.get(\"name\")} ({b.get(\"relative_path\")}) [bundled directly in snapshot]")
+except Exception:
+    pass
+' "$json_file" 2>/dev/null || true
+    echo "==========================================================================="
+  else
+    local hash_file
+    hash_file=$(find "$TEMP_DIR" -name "git_hashes*.txt" -print 2>/dev/null | head -n 1)
+    if [ -n "$hash_file" ]; then
+      echo -e "\n==========================================================================="
+      log_info "Git Version Information from Snapshot:"
+      cat "$hash_file"
+      echo "==========================================================================="
+    fi
+  fi
+}
+
+function restore_git_repositories() {
+  [ "$AUTO_CLONE_GIT" = false ] && return 0
+
+  local json_file
+  json_file=$(find "$TEMP_DIR" -name "git_hashes*.json" -print 2>/dev/null | head -n 1)
+
+  if [ -z "$json_file" ] || [ ! -f "$json_file" ]; then
+    return 0
+  fi
+
+  local repos_data
+  repos_data=$(python3 -c '
+import json, sys
+try:
+    with open(sys.argv[1]) as f:
+        data = json.load(f)
+    for r in data.get("git_repositories", []):
+        name = r.get("name", "")
+        rel_path = r.get("relative_path", "")
+        remote = r.get("remote", "")
+        branch = r.get("branch", "HEAD")
+        commit = r.get("commit", "HEAD")
+        if name and rel_path and remote and remote != "N/A":
+            print(f"{name}\t{rel_path}\t{remote}\t{branch}\t{commit}")
+except Exception:
+    pass
+' "$json_file" 2>/dev/null || true)
+
+  if [ -z "$repos_data" ]; then
+    return 0
+  fi
+
+  # Check SSH access for SSH remotes
+  local ssh_needed=false
+  local ssh_hosts=()
+  while IFS=$'\t' read -r name rel_path remote branch commit; do
+    if [[ "$remote" =~ ^git@ ]] || [[ "$remote" =~ ^ssh:// ]]; then
+      ssh_needed=true
+      if [[ "$remote" =~ @([^:/]+) ]]; then
+        local host="${BASH_REMATCH[1]}"
+        [[ " ${ssh_hosts[*]} " =~ " ${host} " ]] || ssh_hosts+=("$host")
+      fi
+    fi
+  done <<< "$repos_data"
+
+  local ssh_ready=true
+  if [ "$ssh_needed" = true ]; then
+    for host in "${ssh_hosts[@]}"; do
+      log_info "Verifying Git SSH access to $host for user $REPOSITORY_OWNER..."
+      if ! check_git_ssh_access "git@$host"; then
+        ssh_ready=false
+        log_warn "Git SSH authentication failed or key not configured for $REPOSITORY_OWNER on $host."
+      else
+        log_success "Git SSH access to $host verified for $REPOSITORY_OWNER."
+      fi
+    done
+  fi
+
+  if [ "$ssh_ready" = false ]; then
+    echo -e "\n==========================================================================="
+    log_warn "⚠️  GIT SSH SETUP REQUIRED TO CLONE PRIVATE REPOSITORIES ⚠️"
+    echo -e "Git SSH keys are not authorized on the remote host(s)."
+    echo -e "User: $REPOSITORY_OWNER | SSH Directory: $OWNER_HOME/.ssh"
+    if [ -f "$OWNER_HOME/.ssh/id_ed25519.pub" ]; then
+      echo -e "Existing public key ($OWNER_HOME/.ssh/id_ed25519.pub):"
+      cat "$OWNER_HOME/.ssh/id_ed25519.pub"
+    elif [ -f "$OWNER_HOME/.ssh/id_rsa.pub" ]; then
+      echo -e "Existing public key ($OWNER_HOME/.ssh/id_rsa.pub):"
+      cat "$OWNER_HOME/.ssh/id_rsa.pub"
+    else
+      echo -e "No public key found. Generate one with:"
+      echo -e "  sudo -u $REPOSITORY_OWNER ssh-keygen -t ed25519 -C '$REPOSITORY_OWNER@$(hostname)'"
+    fi
+    echo -e "\nAfter authorizing the SSH key, clone these repositories manually:"
+    while IFS=$'\t' read -r name rel_path remote branch commit; do
+      echo -e "  git clone -b $branch $remote $PATH_TO_ODOO/$rel_path && git -C $PATH_TO_ODOO/$rel_path checkout $commit"
+    done <<< "$repos_data"
+    echo "===========================================================================\n"
+    return 0
+  fi
+
+  log_info "Synchronizing git repositories..."
+  while IFS=$'\t' read -r name rel_path remote branch commit; do
+    local target_dir="$PATH_TO_ODOO/$rel_path"
+    mkdir -p "$(dirname "$target_dir")"
+    chown "$REPOSITORY_OWNER":"$REPOSITORY_OWNER" "$(dirname "$target_dir")" 2>/dev/null || true
+
+    if [ -d "$target_dir/.git" ]; then
+      log_info "Repository '$name' already exists at $rel_path. Updating commit..."
+      sudo -u "$REPOSITORY_OWNER" git -C "$target_dir" checkout -q "$commit" 2>/dev/null || {
+        sudo -u "$REPOSITORY_OWNER" git -C "$target_dir" fetch -q origin 2>/dev/null || true
+        sudo -u "$REPOSITORY_OWNER" git -C "$target_dir" checkout -q "$commit" 2>/dev/null || log_warn "Could not checkout commit $commit on $name"
+      }
+    else
+      log_info "Cloning $name ($branch) from $remote into $rel_path..."
+      if sudo -u "$REPOSITORY_OWNER" git clone --branch "$branch" "$remote" "$target_dir" 2>/dev/null; then
+        if [ "$commit" != "HEAD" ] && [ -n "$commit" ]; then
+          sudo -u "$REPOSITORY_OWNER" git -C "$target_dir" checkout -q "$commit" 2>/dev/null || true
+        fi
+        log_success "Repository $name restored at commit $(sudo -u "$REPOSITORY_OWNER" git -C "$target_dir" rev-parse --short HEAD 2>/dev/null || echo "$commit")"
+      else
+        log_error "Failed to clone $name from $remote"
+      fi
+    fi
+    chown -R "$REPOSITORY_OWNER":"$REPOSITORY_OWNER" "$target_dir" 2>/dev/null || true
+  done <<< "$repos_data"
+}
+
 function restoreFromSnapshotViaBackupData() {
   log_info "Starting snapshot restoration via restore_backupdata for $SERVICE_NAME"
 
@@ -564,15 +795,28 @@ function restoreSnapshotDataOnly() {
   # Reload registry dynamically without downtime
   trigger_registry_reload "$ODOO_DATABASE_NAME_PRD" "$PATH_TO_ODOO" 2>/dev/null || true
 
-  # Git hashes display
-  local hash_file
-  hash_file=$(find "$TEMP_DIR" -name "git_hashes*.txt" -print 2>/dev/null | head -n 1)
-  if [ -n "$hash_file" ]; then
-    echo -e "\n==========================================================================="
-    log_info "Git Version Information from Snapshot:"
-    cat "$hash_file"
-    echo "==========================================================================="
+  local src_root="$TEMP_DIR"
+  if [ -d "$TEMP_DIR/$TAR_PROJECT_ROOT" ]; then
+    src_root="$TEMP_DIR/$TAR_PROJECT_ROOT"
   fi
+
+  # Restore bundled non-git directories if present in snapshot
+  if [ -d "$src_root/git" ]; then
+    log_info "Restoring bundled non-git directories in git/..."
+    mkdir -p "$PATH_TO_ODOO/git"
+    cp -rn "$src_root/git/." "$PATH_TO_ODOO/git/" 2>/dev/null || true
+    chown -R "$REPOSITORY_OWNER":"$REPOSITORY_OWNER" "$PATH_TO_ODOO/git" 2>/dev/null || true
+  fi
+  if [ -d "$src_root/odoo-base" ]; then
+    log_info "Restoring bundled non-git directories in odoo-base/..."
+    mkdir -p "$PATH_TO_ODOO/odoo-base"
+    cp -rn "$src_root/odoo-base/." "$PATH_TO_ODOO/odoo-base/" 2>/dev/null || true
+    chown -R "$REPOSITORY_OWNER":"$REPOSITORY_OWNER" "$PATH_TO_ODOO/odoo-base" 2>/dev/null || true
+  fi
+
+  # Git metadata display & repository synchronization
+  display_git_metadata_summary
+  restore_git_repositories
 
   log_success "Data-only restoration completed successfully in fast mode."
 }
@@ -625,21 +869,61 @@ function restoreSnapshotFull() {
     fi
   done
 
+  # Restore bundled non-git directories if present in snapshot
+  if [ -d "$src_root/git" ]; then
+    log_info "Restoring bundled non-git directories in git/..."
+    mkdir -p "$PATH_TO_ODOO/git"
+    cp -rn "$src_root/git/." "$PATH_TO_ODOO/git/" 2>/dev/null || true
+    chown -R "$REPOSITORY_OWNER":"$REPOSITORY_OWNER" "$PATH_TO_ODOO/git" 2>/dev/null || true
+  fi
+  if [ -d "$src_root/odoo-base" ]; then
+    log_info "Restoring bundled non-git directories in odoo-base/..."
+    mkdir -p "$PATH_TO_ODOO/odoo-base"
+    cp -rn "$src_root/odoo-base/." "$PATH_TO_ODOO/odoo-base/" 2>/dev/null || true
+    chown -R "$REPOSITORY_OWNER":"$REPOSITORY_OWNER" "$PATH_TO_ODOO/odoo-base" 2>/dev/null || true
+  fi
+
+  # Git metadata display & repository synchronization
+  display_git_metadata_summary
+  restore_git_repositories
+
+  # Run setup.sh in auto mode if enabled (provisions OS user 'odoo', datadirs, permissions, builds/pulls image)
+  if [ "$RUN_SETUP" = true ] && [ -x "$PATH_TO_ODOO/setup.sh" ]; then
+    log_info "Running setup.sh in auto mode to configure environment and build/pull image..."
+    if ! "$PATH_TO_ODOO/setup.sh" auto; then
+      log_warn "setup.sh completed with warnings. Continuing restoration..."
+    fi
+  fi
+
+  # Ensure PostgreSQL role and password match .secrets/ (crucial for fresh VPS)
+  ensure_postgres_role_configured
+
+  # Restore database and filestore
   restoreOdooData
 
-  trigger_registry_reload "$ODOO_DATABASE_NAME_PRD" "$PATH_TO_ODOO" 2>/dev/null || true
+  # Start Docker compose services and reload registry
+  if [ "$START_SERVICES" = true ]; then
+    log_info "Starting Docker compose services..."
+    if (cd "$PATH_TO_ODOO" && docker compose up -d); then
+      log_success "Docker compose services started successfully."
+      log_info "Waiting for Odoo container to become ready..."
+      local count=0
+      while [ $count -lt 30 ]; do
+        if docker compose -f "$PATH_TO_ODOO/docker-compose.yml" ps --status running -q odoo 2>/dev/null | grep -q .; then
+          break
+        fi
+        sleep 2
+        ((count++))
+      done
+      sleep 3
 
-  # Git hashes display
-  local hash_file
-  hash_file=$(find "$TEMP_DIR" -name "git_hashes*.txt" -print 2>/dev/null | head -n 1)
-  if [ -n "$hash_file" ]; then
-    echo -e "\n==========================================================================="
-    log_info "Git Version Information from Snapshot:"
-    cat "$hash_file"
-    echo "==========================================================================="
+      trigger_registry_reload "$ODOO_DATABASE_NAME_PRD" "$PATH_TO_ODOO" 2>/dev/null || true
+    else
+      log_error "Failed to start docker compose services."
+    fi
   fi
-  log_success "Restoration complete."
-  log_warn "Run 'sudo ./setup.sh' to rebuild or pull the Odoo image as needed."
+
+  log_success "Restoration complete for $SERVICE_NAME."
 }
 
 function main() {

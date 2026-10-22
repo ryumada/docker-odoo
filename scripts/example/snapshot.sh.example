@@ -514,6 +514,112 @@ function upload_to_gdrive() {
 }
 
 
+function collectGitMetadataAndNonGitDirs() {
+  local json_file=$1
+  local txt_file=$2
+
+  python3 -c '
+import os, sys, json, subprocess
+
+path_to_odoo = sys.argv[1]
+repo_owner = sys.argv[2]
+json_file = sys.argv[3]
+txt_file = sys.argv[4]
+
+git_repos = []
+bundled_dirs = []
+txt_lines = []
+
+def run_git(cmd, cwd):
+    try:
+        res = subprocess.run(["sudo", "-u", repo_owner, "git", "-C", cwd] + cmd,
+                             stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=True)
+        return res.stdout.strip()
+    except Exception:
+        return ""
+
+def is_git_repo(path):
+    if not os.path.isdir(path):
+        return False
+    git_dir = os.path.join(path, ".git")
+    if os.path.exists(git_dir):
+        out = run_git(["rev-parse", "--is-inside-work-tree"], path)
+        return out == "true"
+    return False
+
+search_roots = [
+    ("git", os.path.join(path_to_odoo, "git")),
+    ("odoo-base", os.path.join(path_to_odoo, "odoo-base"))
+]
+
+for category, root in search_roots:
+    if not os.path.isdir(root):
+        continue
+    if is_git_repo(root):
+        rel_path = os.path.relpath(root, path_to_odoo)
+        remote = run_git(["config", "--get", "remote.origin.url"], root) or "N/A"
+        branch = run_git(["branch", "--show-current"], root) or "HEAD"
+        commit = run_git(["rev-parse", "HEAD"], root) or "N/A"
+        git_repos.append({
+            "name": os.path.basename(root),
+            "category": category,
+            "relative_path": rel_path,
+            "remote": remote,
+            "branch": branch,
+            "commit": commit
+        })
+        txt_lines.append(f"  Git Directory: {rel_path}\n  Git Remote: {remote}\n  Git Branch: {branch}\n  Git Hashes: {commit}\n")
+        continue
+
+    try:
+        entries = sorted(os.listdir(root))
+    except Exception:
+        entries = []
+
+    for entry in entries:
+        full_path = os.path.join(root, entry)
+        if not os.path.isdir(full_path):
+            continue
+        rel_path = os.path.relpath(full_path, path_to_odoo)
+        if is_git_repo(full_path):
+            remote = run_git(["config", "--get", "remote.origin.url"], full_path) or "N/A"
+            branch = run_git(["branch", "--show-current"], full_path) or "HEAD"
+            commit = run_git(["rev-parse", "HEAD"], full_path) or "N/A"
+            git_repos.append({
+                "name": entry,
+                "category": category,
+                "relative_path": rel_path,
+                "remote": remote,
+                "branch": branch,
+                "commit": commit
+            })
+            txt_lines.append(f"  Git Directory: {rel_path}\n  Git Remote: {remote}\n  Git Branch: {branch}\n  Git Hashes: {commit}\n")
+        else:
+            bundled_dirs.append({
+                "name": entry,
+                "category": category,
+                "relative_path": rel_path,
+                "included_in_snapshot": True
+            })
+            txt_lines.append(f"  Non-Git Directory (Bundled directly into snapshot): {rel_path}\n")
+
+data = {
+    "service_name": os.path.basename(path_to_odoo),
+    "git_repositories": git_repos,
+    "bundled_directories": bundled_dirs
+}
+
+with open(json_file, "w") as f:
+    json.dump(data, f, indent=2)
+
+with open(txt_file, "w") as f:
+    f.write("\n".join(txt_lines) + "\n")
+
+for b in bundled_dirs:
+    print(b["relative_path"])
+' "$PATH_TO_ODOO" "$REPOSITORY_OWNER" "$json_file" "$txt_file"
+}
+
 function writeGitHash() {
   local search_dir=$1
   local output_file=$2
@@ -533,7 +639,7 @@ function writeGitHash() {
     if isDirectoryGitRepository "$dir"; then
       getGitHash "$dir" "$output_file"
     else
-      log_warn "$dir is not a git repository. You need to backup this directory by adding it to your snapshot utilities."
+      log_warn "$dir is not a git repository."
     fi
   done
 }
@@ -735,14 +841,31 @@ function run_remote_snapshot() {
   local git_hashes_file
   git_hashes_file=$(mktemp -p "$ODOO_TMP_DIR" "git_hashes_XXXXXX.txt" 2>/dev/null || mktemp --tmpdir "git_hashes_XXXXXX.txt")
   chmod 644 "$git_hashes_file"
-  writeGitHash "$PATH_TO_ODOO/git" "$git_hashes_file"
-  writeGitHash "$PATH_TO_ODOO/odoo-base" "$git_hashes_file"
+
+  local git_hashes_json
+  git_hashes_json=$(mktemp -p "$ODOO_TMP_DIR" "git_hashes_XXXXXX.json" 2>/dev/null || mktemp --tmpdir "git_hashes_XXXXXX.json")
+  chmod 644 "$git_hashes_json"
+
+  local nongit_dirs=()
+  while IFS= read -r rel_dir; do
+    [ -n "$rel_dir" ] && nongit_dirs+=("$rel_dir")
+  done < <(collectGitMetadataAndNonGitDirs "$git_hashes_json" "$git_hashes_file")
+
   remote_sync -az "$git_hashes_file" "$user@$host:$remote_staging/tmp/git_hashes.txt"
   remote_sync -az "$git_hashes_file" "$user@$host:$remote_staging/$(basename "$git_hashes_file")"
-  rm -f "$git_hashes_file"
+  remote_sync -az "$git_hashes_json" "$user@$host:$remote_staging/tmp/git_hashes.json"
+  remote_sync -az "$git_hashes_json" "$user@$host:$remote_staging/$(basename "$git_hashes_json")"
+  rm -f "$git_hashes_file" "$git_hashes_json"
 
   log_info "Syncing configuration files to Secondary VPS staging..."
   local files_to_sync=()
+  for rel_dir in "${nongit_dirs[@]}"; do
+    if [ -d "$PATH_TO_ODOO/$rel_dir" ]; then
+      log_info "Syncing non-git directory to Secondary VPS: $rel_dir"
+      files_to_sync+=("$PATH_TO_ODOO/$rel_dir")
+      files_to_sync+=("$PATH_TO_ODOO/./$rel_dir")
+    fi
+  done
   [ -d "$PATH_TO_ODOO/.secrets" ] && files_to_sync+=("$PATH_TO_ODOO/.secrets")
   [ -f "$PATH_TO_ODOO/conf/odoo.conf" ] && files_to_sync+=("$PATH_TO_ODOO/conf/odoo.conf")
   [ -f "$PATH_TO_ODOO/.env" ] && files_to_sync+=("$PATH_TO_ODOO/.env")
@@ -942,6 +1065,7 @@ function main() {
   TAR_FILE_NAME="snapshot-$SERVICE_NAME.tar.zst"
   TAR_FILE_PATH="$ODOO_TMP_DIR/$TAR_FILE_NAME"
   GIT_HASHES_FILE=""
+  GIT_HASHES_JSON_FILE=""
 
   cleanup_temp_files() {
       local exit_code=$?
@@ -956,6 +1080,9 @@ function main() {
       fi
       if [[ -n "$GIT_HASHES_FILE" && -f "$GIT_HASHES_FILE" ]]; then
           rm -f "$GIT_HASHES_FILE"
+      fi
+      if [[ -n "$GIT_HASHES_JSON_FILE" && -f "$GIT_HASHES_JSON_FILE" ]]; then
+          rm -f "$GIT_HASHES_JSON_FILE"
       fi
       if [ $exit_code -ne 0 ]; then
           if [[ -n "$TAR_FILE_PATH" && -f "$TAR_FILE_PATH" ]]; then
@@ -1151,14 +1278,27 @@ EOF
   # Include bundled backup data ZIP
   files_dirs_to_tar+=("$BACKUPDATA_ZIP_PATH")
 
-  # Generate Git Hashes to a temporary file
+  # Generate Git Hashes (JSON and TXT) and collect non-git directories to bundle
   GIT_HASHES_FILE=$(mktemp -p "$ODOO_TMP_DIR" "git_hashes_XXXXXX.txt" 2>/dev/null || mktemp --tmpdir "git_hashes_XXXXXX.txt")
   chmod 644 "$GIT_HASHES_FILE"
 
-  writeGitHash "$PATH_TO_ODOO/git" "$GIT_HASHES_FILE"
-  writeGitHash "$PATH_TO_ODOO/odoo-base" "$GIT_HASHES_FILE"
+  GIT_HASHES_JSON_FILE=$(mktemp -p "$ODOO_TMP_DIR" "git_hashes_XXXXXX.json" 2>/dev/null || mktemp --tmpdir "git_hashes_XXXXXX.json")
+  chmod 644 "$GIT_HASHES_JSON_FILE"
+
+  local nongit_dirs=()
+  while IFS= read -r rel_dir; do
+    [ -n "$rel_dir" ] && nongit_dirs+=("$rel_dir")
+  done < <(collectGitMetadataAndNonGitDirs "$GIT_HASHES_JSON_FILE" "$GIT_HASHES_FILE")
+
+  for rel_dir in "${nongit_dirs[@]}"; do
+    if [ -d "$PATH_TO_ODOO/$rel_dir" ]; then
+      log_info "Adding non-git directory directly to snapshot archive: $rel_dir"
+      files_dirs_to_tar+=("$PATH_TO_ODOO/$rel_dir")
+    fi
+  done
 
   files_dirs_to_tar+=("$GIT_HASHES_FILE")
+  files_dirs_to_tar+=("$GIT_HASHES_JSON_FILE")
   areYouReallySure "$TAR_FILE_PATH" "$ASK_TO_REPLACE_EXISTING_SNAPSHOT"
 
   # Collect files located in $ODOO_TMP_DIR (stored directly without full directory path)
@@ -1171,6 +1311,13 @@ EOF
       tmp_files_to_tar+=("$(basename "$GIT_HASHES_FILE")")
     else
       custom_tar_args+=("-C" "$(dirname "$GIT_HASHES_FILE")" "$(basename "$GIT_HASHES_FILE")")
+    fi
+  fi
+  if [ -f "$GIT_HASHES_JSON_FILE" ]; then
+    if [ "$(dirname "$GIT_HASHES_JSON_FILE")" = "$ODOO_TMP_DIR" ]; then
+      tmp_files_to_tar+=("$(basename "$GIT_HASHES_JSON_FILE")")
+    else
+      custom_tar_args+=("-C" "$(dirname "$GIT_HASHES_JSON_FILE")" "$(basename "$GIT_HASHES_JSON_FILE")")
     fi
   fi
 
