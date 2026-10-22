@@ -722,6 +722,11 @@ function run_remote_snapshot() {
     exit 1
   fi
 
+  if ! remote_exec "[ -s '$remote_staging/tmp/dump.sql' ] && tail -n 25 '$remote_staging/tmp/dump.sql' | grep -q 'PostgreSQL database dump complete'"; then
+    log_error "Database dump on Secondary VPS is invalid or empty."
+    exit 1
+  fi
+
   if [ -d "$odoo_filestore_path" ]; then
     log_info "Syncing filestore catch-up changes to Secondary VPS..."
     remote_sync -az "$odoo_filestore_path/" "$user@$host:$remote_mirror/"
@@ -808,6 +813,12 @@ MANIFEST_EOF"
   fi
   remote_exec "rm -rf '$remote_staging/tmp/zip_staging'"
 
+  if ! remote_exec "[ -s '$remote_cache_zip' ] && '$remote_zip_cmd' t '$remote_cache_zip' >/dev/null 2>&1 && '$remote_zip_cmd' l '$remote_cache_zip' | grep -E '[1-9][0-9]*.*dump\.sql$' >/dev/null"; then
+    log_error "Backup bundle on Secondary VPS is missing valid dump.sql. Purging remote cache..."
+    remote_exec "rm -f '$remote_cache_zip'"
+    exit 1
+  fi
+
   log_info "Linking cached backup bundle to staging on Secondary VPS..."
   remote_exec "ln -f '$remote_cache_zip' '$remote_staging/tmp/backupdata-$SERVICE_NAME.zip' 2>/dev/null || cp -f '$remote_cache_zip' '$remote_staging/tmp/backupdata-$SERVICE_NAME.zip'"
   remote_exec "ln -f '$remote_cache_zip' '$remote_staging/backupdata-$SERVICE_NAME.zip' 2>/dev/null || cp -f '$remote_cache_zip' '$remote_staging/backupdata-$SERVICE_NAME.zip'"
@@ -815,6 +826,11 @@ MANIFEST_EOF"
 
   log_info "Packaging snapshot-$SERVICE_NAME.tar.zst on Secondary VPS (compression level: $compression_level)..."
   remote_exec "cd '$remote_staging' && shopt -s dotglob nullglob && tar -cf '$remote_staging/snapshot-$SERVICE_NAME.tar.zst' -I 'zstd -vT0 -$compression_level --ultra' --exclude='*.tar.zst' *"
+
+  if ! remote_exec "[ -s '$remote_staging/snapshot-$SERVICE_NAME.tar.zst' ] && tar -tf '$remote_staging/snapshot-$SERVICE_NAME.tar.zst' -I zstd >/dev/null 2>&1"; then
+    log_error "Snapshot packaging on Secondary VPS failed or produced a corrupt archive."
+    exit 1
+  fi
 
   local remote_upload_attempted=false
   local remote_upload_success=false
@@ -1052,6 +1068,15 @@ function main() {
     exit 1
   fi
 
+  if [ ! -s "$ZIP_STAGING_DIR/dump.sql" ]; then
+    log_error "dump.sql is missing or 0 bytes."
+    exit 1
+  fi
+  if ! tail -n 25 "$ZIP_STAGING_DIR/dump.sql" | grep -q "PostgreSQL database dump complete"; then
+    log_error "dump.sql appears incomplete (missing 'PostgreSQL database dump complete' marker)."
+    exit 1
+  fi
+
   log_info "Generating manifest.json for backup bundle (Odoo version: $MANIFEST_VERSION)..."
   cat <<EOF > "$ZIP_STAGING_DIR/manifest.json"
 {
@@ -1091,6 +1116,27 @@ EOF
   # Maintain correct ownership and permissions on cache
   chown -R "$REPOSITORY_OWNER":"$REPOSITORY_OWNER" "$OWNER_HOME/.odoo-snapshots" 2>/dev/null || true
   chmod 644 "$SNAPSHOT_CACHE_ZIP" 2>/dev/null || true
+
+  log_info "Validating backup bundle contents..."
+  if [ ! -s "$SNAPSHOT_CACHE_ZIP" ] || ! "$zip_cmd" t "$SNAPSHOT_CACHE_ZIP" >/dev/null 2>&1; then
+    log_error "Backup bundle is empty or corrupted: $SNAPSHOT_CACHE_ZIP. Purging cache..."
+    rm -f "$SNAPSHOT_CACHE_ZIP"
+    exit 1
+  fi
+
+  if ! "$zip_cmd" l "$SNAPSHOT_CACHE_ZIP" | grep -E "[1-9][0-9]*.*dump\.sql$" >/dev/null; then
+    log_error "Backup bundle missing valid non-empty dump.sql. Purging cache..."
+    rm -f "$SNAPSHOT_CACHE_ZIP"
+    exit 1
+  fi
+
+  if [ -d "$ODOO_FILESTORE_PATH" ] && [ -n "$(ls -A "$ODOO_FILESTORE_PATH" 2>/dev/null)" ]; then
+    if ! "$zip_cmd" l "$SNAPSHOT_CACHE_ZIP" | grep -q "filestore"; then
+      log_error "Backup bundle missing filestore. Purging cache..."
+      rm -f "$SNAPSHOT_CACHE_ZIP"
+      exit 1
+    fi
+  fi
 
   # Clean up staging directory after zipping
   rm -rf "$ZIP_STAGING_DIR"
@@ -1187,14 +1233,12 @@ EOF
   fi
 
   areYouReallySure "$TAR_FILE_PATH" "$ASK_TO_REPLACE_EXISTING_SNAPSHOT"
-  log_info "Backing up the database and its datadir..."
-  local tar_cmd=(tar -cf "$TAR_FILE_PATH" -I "zstd -vT0 -$SNAPSHOT_COMPRESSION_LEVEL --ultra")
 
-  # Use absolute paths for consistency
-  files_dirs_to_tar+=("$PATH_TO_ODOO/.secrets")
-  files_dirs_to_tar+=("$PATH_TO_ODOO/conf/odoo.conf")
-  files_dirs_to_tar+=("$PATH_TO_ODOO/.env")
-  files_dirs_to_tar+=("$PATH_TO_ODOO/requirements.txt")
+  # Use absolute paths for consistency (only add existing paths)
+  [ -d "$PATH_TO_ODOO/.secrets" ] && files_dirs_to_tar+=("$PATH_TO_ODOO/.secrets")
+  [ -f "$PATH_TO_ODOO/conf/odoo.conf" ] && files_dirs_to_tar+=("$PATH_TO_ODOO/conf/odoo.conf")
+  [ -f "$PATH_TO_ODOO/.env" ] && files_dirs_to_tar+=("$PATH_TO_ODOO/.env")
+  [ -f "$PATH_TO_ODOO/requirements.txt" ] && files_dirs_to_tar+=("$PATH_TO_ODOO/requirements.txt")
 
   if [ -f "$PATH_TO_ODOO/scripts/backupdata-$SERVICE_NAME.sh" ]; then
     files_dirs_to_tar+=("$PATH_TO_ODOO/scripts/backupdata-$SERVICE_NAME.sh")
@@ -1232,6 +1276,25 @@ EOF
     log_error "tar failed to backup the database and its datadir."
     exit 1
   fi
+
+  log_info "Verifying snapshot archive integrity..."
+  if [ ! -s "$TAR_FILE_PATH" ] || ! tar -tf "$TAR_FILE_PATH" -I zstd >/dev/null 2>&1; then
+    log_error "Final snapshot file $TAR_FILE_PATH is 0 bytes or corrupted."
+    rm -f "$TAR_FILE_PATH"
+    exit 1
+  fi
+
+  local tar_contents
+  tar_contents=$(tar -tf "$TAR_FILE_PATH" -I zstd)
+  for item in "${files_dirs_to_tar[@]}"; do
+    local normalized_item="${item#/}"
+    if ! echo "$tar_contents" | grep -q "$normalized_item"; then
+      log_error "Snapshot validation failed: missing $item in $TAR_FILE_PATH"
+      rm -f "$TAR_FILE_PATH"
+      exit 1
+    fi
+  done
+  log_success "Snapshot archive verified successfully."
 
   log_info "Changing the ownership of the snapshot file..."
   chown "$REPOSITORY_OWNER":"$REPOSITORY_OWNER" "$TAR_FILE_PATH"

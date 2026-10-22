@@ -237,6 +237,10 @@ function isSnapshotFileExist() {
     log_info "  ./scripts/download-snapshot.sh latest"
     exit 1
   fi
+  if [ ! -s "$SNAPSHOT_FILE_PATH" ]; then
+    log_error "Snapshot file '$SNAPSHOT_FILE_PATH' is 0 bytes (empty file)."
+    exit 1
+  fi
 }
 
 function isZstdInstalled() {
@@ -250,12 +254,13 @@ function isZstdInstalled() {
 
 function restoreDBCredentials() {
   log_info "Restore .secrets directory"
-  # Try the project-relative path inside tar
-  local secrets_tar_dir="$TEMP_DIR/$TAR_PROJECT_ROOT/.secrets"
-  # Try the project-relative path inside tar, falling back to legacy TAR_PROJECT_ROOT
   local secrets_tar_dir="$TEMP_DIR/.secrets"
   if [ -d "$TEMP_DIR/$TAR_PROJECT_ROOT/.secrets" ]; then
     secrets_tar_dir="$TEMP_DIR/$TAR_PROJECT_ROOT/.secrets"
+  elif [ ! -d "$secrets_tar_dir" ]; then
+    local discovered_secrets
+    discovered_secrets=$(find "$TEMP_DIR" -maxdepth 5 -type d -name ".secrets" 2>/dev/null | head -n 1)
+    [ -n "$discovered_secrets" ] && secrets_tar_dir="$discovered_secrets"
   fi
 
   if [ -d "$secrets_tar_dir" ]; then
@@ -327,82 +332,99 @@ function restoreOdooData() {
     log_info "Found bundled backup data: $extracted_zip"
     cp -f "$extracted_zip" "/tmp/backupdata-$SERVICE_NAME.zip"
 
-    if [ "$DATA_ONLY" = false ] && [ "$RESTORE_VIA_BACKUPDATA" = false ] && [ -f "$PATH_TO_ODOO/scripts/restore_backupdata-$SERVICE_NAME" ]; then
-      log_info "Running restore_backupdata script..."
-      "$PATH_TO_ODOO/scripts/restore_backupdata-$SERVICE_NAME"
-      return 0
-    elif [ "$DATA_ONLY" = false ] && [ "$RESTORE_VIA_BACKUPDATA" = false ] && [ -f "$PATH_TO_ODOO/scripts/restore_backupdata_manual-$SERVICE_NAME" ]; then
-      log_info "Running restore_backupdata_manual script..."
-      "$PATH_TO_ODOO/scripts/restore_backupdata_manual-$SERVICE_NAME"
-      return 0
-    else
-      log_info "Restoring database and filestore directly from backup zip bundle..."
-      local zip_stage="$TEMP_DIR/zip_stage"
-      mkdir -p "$zip_stage"
-      local unpack_ok=false
-      if command -v 7z &>/dev/null; then
-        7z x -y -o"$zip_stage" "$extracted_zip" >/dev/null && unpack_ok=true
-      elif command -v 7za &>/dev/null; then
-        7za x -y -o"$zip_stage" "$extracted_zip" >/dev/null && unpack_ok=true
-      elif command -v unzip &>/dev/null; then
-        unzip -q -o "$extracted_zip" -d "$zip_stage" && unpack_ok=true
+    if [ "$DATA_ONLY" = false ] && [ "$RESTORE_VIA_BACKUPDATA" = false ]; then
+      if [ -f "$PATH_TO_ODOO/scripts/restore_backupdata-$SERVICE_NAME.sh" ]; then
+        log_info "Running restore_backupdata script..."
+        "$PATH_TO_ODOO/scripts/restore_backupdata-$SERVICE_NAME.sh"
+        return 0
+      elif [ -f "$PATH_TO_ODOO/scripts/restore_backupdata-$SERVICE_NAME" ]; then
+        log_info "Running restore_backupdata script..."
+        "$PATH_TO_ODOO/scripts/restore_backupdata-$SERVICE_NAME"
+        return 0
+      elif [ -f "$PATH_TO_ODOO/scripts/restore_backupdata_manual-$SERVICE_NAME.sh" ]; then
+        log_info "Running restore_backupdata_manual script..."
+        "$PATH_TO_ODOO/scripts/restore_backupdata_manual-$SERVICE_NAME.sh"
+        return 0
+      elif [ -f "$PATH_TO_ODOO/scripts/restore_backupdata_manual-$SERVICE_NAME" ]; then
+        log_info "Running restore_backupdata_manual script..."
+        "$PATH_TO_ODOO/scripts/restore_backupdata_manual-$SERVICE_NAME"
+        return 0
       fi
+    fi
 
-      if [ "$unpack_ok" = false ]; then
-        log_error "Failed to unpack $extracted_zip"
+    log_info "Restoring database and filestore directly from backup zip bundle..."
+    local zip_stage="$TEMP_DIR/zip_stage"
+    mkdir -p "$zip_stage"
+    local unpack_ok=false
+    if command -v 7z &>/dev/null; then
+      7z x -y -o"$zip_stage" "$extracted_zip" >/dev/null && unpack_ok=true
+    elif command -v 7za &>/dev/null; then
+      7za x -y -o"$zip_stage" "$extracted_zip" >/dev/null && unpack_ok=true
+    elif command -v unzip &>/dev/null; then
+      unzip -q -o "$extracted_zip" -d "$zip_stage" && unpack_ok=true
+    fi
+
+    if [ "$unpack_ok" = false ]; then
+      log_error "Failed to unpack $extracted_zip"
+      return 1
+    fi
+
+    local target_db
+    if [ -n "$TARGET_DB_NAME" ]; then
+      target_db="$TARGET_DB_NAME"
+    else
+      target_db=$(grep "^DB_NAME=" "$PATH_TO_ODOO/.env" 2>/dev/null | cut -d '=' -f2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//' || true)
+      if [ -z "$target_db" ] && [ -f "$zip_stage/manifest.json" ]; then
+        target_db=$(grep -o '"db_name": *"[^"]*"' "$zip_stage/manifest.json" | cut -d'"' -f4 || true)
+      fi
+      [ -z "$target_db" ] && target_db="$SERVICE_NAME"
+    fi
+
+    ODOO_DATABASE_NAME_PRD="$target_db"
+    ODOO_DATABASE_USER=$(cat "$PATH_TO_ODOO/.secrets/db_user" 2>/dev/null || grep "^ACTIVE_DB_USER=" "$PATH_TO_ODOO/.env" 2>/dev/null | cut -d '=' -f2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//' || echo "odoo")
+    [ -z "$ODOO_DATABASE_USER" ] && ODOO_DATABASE_USER="odoo"
+
+    if [ -d "$zip_stage/filestore" ]; then
+      log_info "Restoring filestore to /var/lib/odoo/$SERVICE_NAME/filestore/$ODOO_DATABASE_NAME_PRD..."
+      local target_filestore="/var/lib/odoo/$SERVICE_NAME/filestore/$ODOO_DATABASE_NAME_PRD"
+      rm -rf "$target_filestore"
+      mkdir -p "$(dirname "$target_filestore")"
+      if [ -d "$zip_stage/filestore/$ODOO_DATABASE_NAME_PRD" ]; then
+        mv "$zip_stage/filestore/$ODOO_DATABASE_NAME_PRD" "$target_filestore"
+      else
+        mv "$zip_stage/filestore" "$target_filestore"
+      fi
+      chown -R odoo:odoo "/var/lib/odoo/$SERVICE_NAME" 2>/dev/null || true
+    fi
+
+    if [ ! -s "$zip_stage/dump.sql" ]; then
+      log_error "dump.sql is missing or 0 bytes inside backup bundle ($extracted_zip)."
+      return 1
+    fi
+
+    log_info "Restoring database $ODOO_DATABASE_NAME_PRD from dump.sql..."
+    run_psql -c "DROP DATABASE IF EXISTS \"$ODOO_DATABASE_NAME_PRD\"" --quiet -t -P pager=off 2> /dev/null > /dev/null || log_error "Can't drop database"
+    run_psql -c "CREATE DATABASE \"$ODOO_DATABASE_NAME_PRD\" OWNER \"$ODOO_DATABASE_USER\"" --quiet -t -P pager=off 2> /dev/null > /dev/null || log_error "Can't create database"
+
+    if head -c 5 "$zip_stage/dump.sql" 2>/dev/null | grep -q "PGDMP"; then
+      log_info "Detected PostgreSQL custom-format dump. Restoring via pg_restore..."
+      local restore_status=0
+      run_pg_restore --no-owner -d "$ODOO_DATABASE_NAME_PRD" < "$zip_stage/dump.sql" 2> /dev/null > /dev/null || restore_status=$?
+      if [ "$restore_status" -gt 1 ]; then
+        log_error "Can't restore database via pg_restore (exit code: $restore_status)"
+        return 1
+      else
+        log_success "Database $ODOO_DATABASE_NAME_PRD restored successfully."
+      fi
+    else
+      sed -i "1i SET ROLE \"$ODOO_DATABASE_USER\";" "$zip_stage/dump.sql"
+      if ! run_psql -d "$ODOO_DATABASE_NAME_PRD" --quiet -t -P pager=off < "$zip_stage/dump.sql" 2> /dev/null > /dev/null; then
+        log_error "Can't restore database from dump.sql"
         return 1
       fi
-
-      local target_db
-      if [ -n "$TARGET_DB_NAME" ]; then
-        target_db="$TARGET_DB_NAME"
-      else
-        target_db=$(grep "^DB_NAME=" "$PATH_TO_ODOO/.env" 2>/dev/null | cut -d '=' -f2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//' || true)
-        if [ -z "$target_db" ] && [ -f "$zip_stage/manifest.json" ]; then
-          target_db=$(grep -o '"db_name": *"[^"]*"' "$zip_stage/manifest.json" | cut -d'"' -f4 || true)
-        fi
-        [ -z "$target_db" ] && target_db="$SERVICE_NAME"
-      fi
-
-      ODOO_DATABASE_NAME_PRD="$target_db"
-      ODOO_DATABASE_USER=$(cat "$PATH_TO_ODOO/.secrets/db_user" 2>/dev/null || grep "^ACTIVE_DB_USER=" "$PATH_TO_ODOO/.env" 2>/dev/null | cut -d '=' -f2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//' || echo "odoo")
-      [ -z "$ODOO_DATABASE_USER" ] && ODOO_DATABASE_USER="odoo"
-
-      if [ -d "$zip_stage/filestore" ]; then
-        log_info "Restoring filestore to /var/lib/odoo/$SERVICE_NAME/filestore/$ODOO_DATABASE_NAME_PRD..."
-        local target_filestore="/var/lib/odoo/$SERVICE_NAME/filestore/$ODOO_DATABASE_NAME_PRD"
-        rm -rf "$target_filestore"
-        mkdir -p "$(dirname "$target_filestore")"
-        if [ -d "$zip_stage/filestore/$ODOO_DATABASE_NAME_PRD" ]; then
-          mv "$zip_stage/filestore/$ODOO_DATABASE_NAME_PRD" "$target_filestore"
-        else
-          mv "$zip_stage/filestore" "$target_filestore"
-        fi
-        chown -R odoo:odoo "/var/lib/odoo/$SERVICE_NAME" 2>/dev/null || true
-      fi
-
-      if [ -f "$zip_stage/dump.sql" ]; then
-        log_info "Restoring database $ODOO_DATABASE_NAME_PRD from dump.sql..."
-        run_psql -c "DROP DATABASE IF EXISTS \"$ODOO_DATABASE_NAME_PRD\"" --quiet -t -P pager=off 2> /dev/null > /dev/null || log_error "Can't drop database"
-        run_psql -c "CREATE DATABASE \"$ODOO_DATABASE_NAME_PRD\" OWNER \"$ODOO_DATABASE_USER\"" --quiet -t -P pager=off 2> /dev/null > /dev/null || log_error "Can't create database"
-
-        if head -c 5 "$zip_stage/dump.sql" 2>/dev/null | grep -q "PGDMP"; then
-          log_info "Detected PostgreSQL custom-format dump. Restoring via pg_restore..."
-          local restore_status=0
-          run_pg_restore --no-owner -d "$ODOO_DATABASE_NAME_PRD" < "$zip_stage/dump.sql" 2> /dev/null > /dev/null || restore_status=$?
-          if [ "$restore_status" -gt 1 ]; then
-            log_error "Can't restore database via pg_restore (exit code: $restore_status)"
-          else
-            log_success "Database $ODOO_DATABASE_NAME_PRD restored successfully."
-          fi
-        else
-          sed -i "1i SET ROLE \"$ODOO_DATABASE_USER\";" "$zip_stage/dump.sql"
-          run_psql -d "$ODOO_DATABASE_NAME_PRD" --quiet -t -P pager=off < "$zip_stage/dump.sql" 2> /dev/null > /dev/null || log_error "Can't restore database"
-          log_success "Database $ODOO_DATABASE_NAME_PRD restored successfully."
-        fi
-      fi
-      return 0
+      log_success "Database $ODOO_DATABASE_NAME_PRD restored successfully."
     fi
+    return 0
   fi
 
   # Discover database name from filestore path structure inside tar
@@ -544,7 +566,6 @@ function restoreSnapshotDataOnly() {
 
   # Git hashes display
   local hash_file
-  hash_file=$(find "$TEMP_DIR" -name "git_hashes_*.txt" -print 2>/dev/null | head -n 1)
   hash_file=$(find "$TEMP_DIR" -name "git_hashes*.txt" -print 2>/dev/null | head -n 1)
   if [ -n "$hash_file" ]; then
     echo -e "\n==========================================================================="
@@ -570,8 +591,6 @@ function restoreSnapshotFull() {
     exit 1
   fi
 
-  # Path aliases for readability
-  local src_root="$TEMP_DIR/$TAR_PROJECT_ROOT"
   # Path aliases for readability (support direct extraction or legacy root path)
   local src_root="$TEMP_DIR"
   if [ -d "$TEMP_DIR/$TAR_PROJECT_ROOT" ]; then
@@ -612,7 +631,6 @@ function restoreSnapshotFull() {
 
   # Git hashes display
   local hash_file
-  hash_file=$(find "$TEMP_DIR" -name "git_hashes_*.txt" -print 2>/dev/null | head -n 1)
   hash_file=$(find "$TEMP_DIR" -name "git_hashes*.txt" -print 2>/dev/null | head -n 1)
   if [ -n "$hash_file" ]; then
     echo -e "\n==========================================================================="
