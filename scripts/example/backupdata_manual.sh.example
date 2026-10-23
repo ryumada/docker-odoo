@@ -382,7 +382,7 @@ function run_remote_backupdata() {
     if remote_exec "[ -d '$remote_mirror' ] && [ -n \"\$(ls -A '$remote_mirror' 2>/dev/null)\" ]"; then
       remote_exec "if [ -L '$remote_mirror/filestore' ]; then rm -f '$remote_mirror/filestore'; fi; rm -rf '$remote_staging/tmp/zip_staging/filestore'"
       remote_exec "ln -sfn '$remote_mirror' '$remote_staging/tmp/zip_staging/filestore' 2>/dev/null || cp -al '$remote_mirror' '$remote_staging/tmp/zip_staging/filestore' 2>/dev/null || cp -r '$remote_mirror' '$remote_staging/tmp/zip_staging/filestore'"
-      remote_exec "cd '$remote_staging/tmp/zip_staging' && { '$remote_zip_cmd' u -tzip -mx=0 '$remote_target_zip' filestore >/dev/null || [ \$? -le 1 ]; }"
+      remote_exec "cd '$remote_staging/tmp/zip_staging' && { '$remote_zip_cmd' u -tzip -mx=0 -uq0 '$remote_target_zip' filestore >/dev/null || [ \$? -le 1 ]; }"
     fi
   else
     log_info "Creating initial backup bundle on Secondary VPS..."
@@ -520,7 +520,7 @@ if [ -f "$CACHE_ZIP" ]; then
   log_info "Updating $ZIP_FILE_NAME incrementally..."
   "$zip_cmd" u -tzip -mmt=on "$BACKUP_FILE_PATH" "${FILES_TO_UPDATE[@]}" >/dev/null || [ $? -le 1 ]
   if [ -d "filestore" ]; then
-    "$zip_cmd" u -tzip -mx=0 "$BACKUP_FILE_PATH" filestore >/dev/null || [ $? -le 1 ]
+    "$zip_cmd" u -tzip -mx=0 -uq0 "$BACKUP_FILE_PATH" filestore >/dev/null || [ $? -le 1 ]
   fi
 else
   log_info "Creating $ZIP_FILE_NAME..."
