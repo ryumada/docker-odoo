@@ -1036,14 +1036,16 @@ function main() {
 
   # Prevent multiple snapshot instances from running simultaneously
   LOCK_FILE="/var/run/snapshot-$SERVICE_NAME.lock"
-  exec 200>"$LOCK_FILE"
+  touch "$LOCK_FILE"
+  exec 200<>"$LOCK_FILE"
   if ! flock -n 200; then
     local running_pid
-    running_pid=$(cat "$LOCK_FILE" 2>/dev/null || echo "unknown")
+    running_pid=$(head -n 1 "$LOCK_FILE" 2>/dev/null | tr -d '[:space:]')
+    [ -z "$running_pid" ] && running_pid="unknown"
     log_warn "Another snapshot instance for $SERVICE_NAME is already running (PID: $running_pid). Exiting."
     exit 0
   fi
-  echo "$$" > "$LOCK_FILE"
+  echo "$$" >&200
 
   # Lower I/O and CPU scheduling priority to avoid starving Odoo and PostgreSQL
   if command -v ionice >/dev/null 2>&1; then
