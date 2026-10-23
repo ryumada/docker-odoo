@@ -927,11 +927,19 @@ MANIFEST_EOF"
   remote_exec "if [ -L '$remote_mirror/filestore' ]; then rm -f '$remote_mirror/filestore'; fi; rm -rf '$remote_staging/tmp/zip_staging/filestore'"
   remote_exec "if [ -d '$remote_mirror' ] && [ -n \"\$(ls -A '$remote_mirror' 2>/dev/null)\" ]; then ln -sfn '$remote_mirror' '$remote_staging/tmp/zip_staging/filestore' 2>/dev/null || cp -al '$remote_mirror' '$remote_staging/tmp/zip_staging/filestore' 2>/dev/null || cp -r '$remote_mirror' '$remote_staging/tmp/zip_staging/filestore'; fi"
   if remote_exec "[ -f '$remote_cache_zip' ]"; then
+    log_info "Compressing database dump and metadata into cached backup bundle on Secondary VPS (multi-threaded)..."
     remote_exec "cd '$remote_staging/tmp/zip_staging' && { '$remote_zip_cmd' u -tzip -mmt=on '$remote_cache_zip' dump.sql manifest.json >/dev/null || [ \$? -le 1 ]; }"
-    remote_exec "if [ -d '$remote_staging/tmp/zip_staging/filestore' ]; then cd '$remote_staging/tmp/zip_staging' && { '$remote_zip_cmd' u -tzip -mx=0 -uq0 '$remote_cache_zip' filestore >/dev/null || [ \$? -le 1 ]; }; fi"
+    if remote_exec "[ -d '$remote_staging/tmp/zip_staging/filestore' ]"; then
+      log_info "Synchronizing filestore into cached backup bundle on Secondary VPS (store-only mode, pruning deleted files)..."
+      remote_exec "cd '$remote_staging/tmp/zip_staging' && { '$remote_zip_cmd' u -tzip -mx=0 -uq0 '$remote_cache_zip' filestore >/dev/null || [ \$? -le 1 ]; }"
+    fi
   else
+    log_info "Compressing database dump and metadata into initial backup bundle on Secondary VPS (multi-threaded)..."
     remote_exec "cd '$remote_staging/tmp/zip_staging' && '$remote_zip_cmd' a -tzip -mmt=on '$remote_cache_zip' dump.sql manifest.json >/dev/null"
-    remote_exec "if [ -d '$remote_staging/tmp/zip_staging/filestore' ]; then cd '$remote_staging/tmp/zip_staging' && '$remote_zip_cmd' a -tzip -mx=0 '$remote_cache_zip' filestore >/dev/null; fi"
+    if remote_exec "[ -d '$remote_staging/tmp/zip_staging/filestore' ]"; then
+      log_info "Adding filestore into initial backup bundle on Secondary VPS (store-only mode)..."
+      remote_exec "cd '$remote_staging/tmp/zip_staging' && '$remote_zip_cmd' a -tzip -mx=0 '$remote_cache_zip' filestore >/dev/null"
+    fi
   fi
   remote_exec "rm -rf '$remote_staging/tmp/zip_staging'"
 
@@ -1233,15 +1241,17 @@ EOF
   local zip_meta_items=("dump.sql" "manifest.json")
 
   if [ -f "$SNAPSHOT_CACHE_ZIP" ]; then
-    log_info "Updating cached $ZIP_FILE_NAME incrementally..."
+    log_info "Compressing database dump and metadata into cached $ZIP_FILE_NAME (multi-threaded)..."
     (cd "$ZIP_STAGING_DIR" && { "$zip_cmd" u -tzip -mmt=on "$SNAPSHOT_CACHE_ZIP" "${zip_meta_items[@]}" >/dev/null || [ $? -le 1 ]; })
     if [ -d "$ZIP_STAGING_DIR/filestore" ]; then
+      log_info "Synchronizing filestore into cached $ZIP_FILE_NAME (store-only mode, pruning deleted files)..."
       (cd "$ZIP_STAGING_DIR" && { "$zip_cmd" u -tzip -mx=0 -uq0 "$SNAPSHOT_CACHE_ZIP" filestore >/dev/null || [ $? -le 1 ]; })
     fi
   else
-    log_info "Creating initial cached $ZIP_FILE_NAME..."
+    log_info "Compressing database dump and metadata into initial $ZIP_FILE_NAME (multi-threaded)..."
     (cd "$ZIP_STAGING_DIR" && "$zip_cmd" a -tzip -mmt=on "$SNAPSHOT_CACHE_ZIP" "${zip_meta_items[@]}" >/dev/null)
     if [ -d "$ZIP_STAGING_DIR/filestore" ]; then
+      log_info "Adding filestore into initial $ZIP_FILE_NAME (store-only mode)..."
       (cd "$ZIP_STAGING_DIR" && "$zip_cmd" a -tzip -mx=0 "$SNAPSHOT_CACHE_ZIP" filestore >/dev/null)
     fi
   fi
