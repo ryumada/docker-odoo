@@ -51,6 +51,11 @@ scripts/*
 !scripts/.uninstall-odoo.sh
 !scripts/update-env-file.sh
 !scripts/update-odoo-config.sh
+!scripts/update-deployment-tool.sh
+!scripts/save-config-file.sh
+!scripts/read-config-file.sh
+!scripts/git-helper.sh
+!scripts/create-deployment-dir.sh
 !scripts/upload-snapshot.sh
 !scripts/upload-temp-snapshots.sh
 !scripts/lib/
