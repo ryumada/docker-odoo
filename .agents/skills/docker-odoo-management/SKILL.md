@@ -42,6 +42,18 @@ docker compose logs --tail=100 odoo | ./scripts/lib/filter_odoo_log.sh -e
 Clone: `./scripts/databasecloner.sh` (sanitizes DB — disables emails/crons).
 Backup: `./scripts/backupdata.sh`. Restore: `./scripts/restore_backupdata.sh`.
 
+### Remote Snapshot Secondary Host Management
+- **Key Generation & Admin Provisioning**:
+  `./scripts/generate-snapshot-ssh-key.sh [-a <admin_user>] [--from <ip>|--no-from]`
+  - Generates ed25519 key at `~/.ssh/snapshot-<src>-<dst>`, updates `SNAPSHOT_REMOTE_KEY` in `.env`.
+  - When `-a <admin_user>` is passed, connects interactively via sudo, creates remote backup user (locked password, non-sudo) if missing, sets 700/600 permissions, and restricts key to incoming IP via `from="<ip>"` by default.
+- **Switching Secondary VPS**:
+  `./scripts/change-snapshot-remote.sh --new-host <HOST> [-a <admin_user>] [--purge]`
+  - Acquires snapshot flock to prevent collisions with cron jobs.
+  - Cleans temporary/mirror directories on the old host while preserving `archives/` by default.
+  - Revokes old SSH key from old server's `authorized_keys`, removes local old keys, and bootstraps new VPS.
+  - Only deletes old `archives/` if `--purge` is explicitly supplied with confirmation.
+
 ### Shell Access
 ```bash
 docker compose exec odoo odoo-shell <database>

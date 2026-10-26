@@ -17,6 +17,11 @@ ENV_FILE=".env"
 UPDATE_SCRIPT="./scripts/update-env-file.sh"
 MAX_BACKUPS=3
 
+# Source shared SSH utilities
+if [ -f "$PATH_TO_ODOO/scripts/lib/ssh_utils.sh" ]; then
+  source "$PATH_TO_ODOO/scripts/lib/ssh_utils.sh"
+fi
+
 # --- Logging Functions & Colors ---
 # Define colors for log messages
 readonly COLOR_RESET="\033[0m"
@@ -208,26 +213,43 @@ function main() {
       ssh_verified=true
     else
       log_warn "Passwordless SSH key not yet verified on Secondary VPS ($SNAPSHOT_REMOTE_HOST)."
-      echo -ne "${COLOR_WARN}Do you want to automatically copy the public SSH key to Secondary VPS ($SNAPSHOT_REMOTE_USER@$SNAPSHOT_REMOTE_HOST)? [y/N]: ${COLOR_RESET}"
-      read -r copy_confirm
-      if [[ "$copy_confirm" =~ ^[Yy]$ ]]; then
-        log_info "Copying public SSH key to Secondary VPS (you may be prompted for password)..."
+      echo -e "${COLOR_WARN}Choose an option to install SSH key on Secondary VPS:${COLOR_RESET}"
+      echo "  [1] Password authentication as '$SNAPSHOT_REMOTE_USER' (via ssh-copy-id)"
+      echo "  [2] Administrator account with sudo (creates user if missing, locks down perms)"
+      echo "  [N] Skip automatic setup (show manual configuration instructions)"
+      echo -ne "${COLOR_CYAN}Select option [1/2/N] (default: 2): ${COLOR_RESET}"
+      read -r auth_choice
+      [ -z "$auth_choice" ] && auth_choice="2"
 
+      if [ "$auth_choice" = "1" ]; then
+        log_info "Copying public SSH key to Secondary VPS as '$SNAPSHOT_REMOTE_USER' (you may be prompted for password)..."
         if command -v ssh-copy-id >/dev/null 2>&1; then
           ssh-copy-id -i "${SNAPSHOT_REMOTE_KEY}.pub" -p "$SNAPSHOT_REMOTE_PORT" -o StrictHostKeyChecking=accept-new "$SNAPSHOT_REMOTE_USER@$SNAPSHOT_REMOTE_HOST" || true
         else
           cat "${SNAPSHOT_REMOTE_KEY}.pub" | ssh -p "$SNAPSHOT_REMOTE_PORT" -o StrictHostKeyChecking=accept-new "$SNAPSHOT_REMOTE_USER@$SNAPSHOT_REMOTE_HOST" "mkdir -p ~/.ssh && chmod 700 ~/.ssh && cat >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys" || true
         fi
-
-        # Re-verify with BatchMode=yes
-        if ssh -i "$SNAPSHOT_REMOTE_KEY" -p "$SNAPSHOT_REMOTE_PORT" -o BatchMode=yes -o StrictHostKeyChecking=accept-new "$SNAPSHOT_REMOTE_USER@$SNAPSHOT_REMOTE_HOST" "true" 2>/dev/null; then
-          log_success "Passwordless SSH key installed and verified on Secondary VPS."
-          ssh_verified=true
+      elif [ "$auth_choice" = "2" ]; then
+        echo -ne "${COLOR_CYAN}Enter remote sudo administrator username: ${COLOR_RESET}"
+        read -r remote_admin_user
+        if [ -n "$remote_admin_user" ]; then
+          if declare -f install_pubkey_via_admin >/dev/null 2>&1; then
+            install_pubkey_via_admin "$SNAPSHOT_REMOTE_HOST" "$SNAPSHOT_REMOTE_PORT" "$remote_admin_user" "$SNAPSHOT_REMOTE_USER" "${SNAPSHOT_REMOTE_KEY}.pub" "auto" || true
+          else
+            log_error "install_pubkey_via_admin function not available."
+          fi
         else
-          log_warn "Automatic key copy did not result in verified passwordless SSH access."
+          log_warn "No administrator user entered. Skipping admin provisioning."
         fi
       else
-        log_info "Skipping automatic SSH key copy to Secondary VPS."
+        log_info "Skipping automatic SSH key provisioning to Secondary VPS."
+      fi
+
+      # Re-verify with BatchMode=yes
+      if ssh -i "$SNAPSHOT_REMOTE_KEY" -p "$SNAPSHOT_REMOTE_PORT" -o BatchMode=yes -o StrictHostKeyChecking=accept-new "$SNAPSHOT_REMOTE_USER@$SNAPSHOT_REMOTE_HOST" "true" 2>/dev/null; then
+        log_success "Passwordless SSH key installed and verified on Secondary VPS."
+        ssh_verified=true
+      else
+        log_warn "Automatic key copy did not result in verified passwordless SSH access."
       fi
     fi
 

@@ -7,4 +7,4 @@ context: Session Lifecycle Management
 tokens: ~6
 ---
 
-Run `icm recall-context "docker-odoo" --limit 5` at session start and integrate recalled context.
+Run `icm recall-context "docker-odoo" --limit 5` outside sandbox (`BypassSandbox: true` since `icm` is installed on host) at session start and integrate recalled context.

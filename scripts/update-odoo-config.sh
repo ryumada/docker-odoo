@@ -110,6 +110,19 @@ if [ -f "$ENV_FILE_PATH" ]; then
     log_warn "ADDONS_PATH not set in .env file. Using default value from odoo.conf.example."
   fi
 
+  # Check if the DEPCON_ENCRYPTION_SECRET variable is set in the .env file
+  if [ -n "$DEPCON_ENCRYPTION_SECRET" ]; then
+    log_info "Injecting depcon_encryption_secret to $ODOO_CONF..."
+    if grep -q "enter_depcon_encryption_secret" "$ODOO_CONF"; then
+      sed -i "s|enter_depcon_encryption_secret|$DEPCON_ENCRYPTION_SECRET|" "$ODOO_CONF"
+    elif grep -q "^depcon_encryption_secret" "$ODOO_CONF"; then
+      sed -i "s|^depcon_encryption_secret = .*|depcon_encryption_secret = $DEPCON_ENCRYPTION_SECRET|" "$ODOO_CONF"
+    else
+      echo "depcon_encryption_secret = $DEPCON_ENCRYPTION_SECRET" >> "$ODOO_CONF"
+    fi
+    log_success "Updated depcon_encryption_secret in $ODOO_CONF."
+  fi
+
   if [ -n "$ODOO_ADDITIONAL_CONF" ]; then
     log_info "Injecting Additional odoo.conf configuration to $ODOO_CONF..."
     CONFIG_DATA=$(echo "$ODOO_ADDITIONAL_CONF" | sed 's/=/ = /g; s/\;/\\n/g')

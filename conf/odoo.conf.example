@@ -21,6 +21,11 @@ addons_path = enter_addons_paths
 # proxy_mode should be true because we will use nginx as reverse proxy for odoo docker deployment
 proxy_mode = True
 
+# Secret passphrase used to encrypt SSH private keys and credentials at rest
+# (Required by sudodevops_deployment_control module)
+# Configurable from the .env file (DEPCON_ENCRYPTION_SECRET)
+depcon_encryption_secret = enter_depcon_encryption_secret
+
 # # # # # # # # # # # # # # # # # # # # # # # # # #
 # THESE VARIABLE HAS BEEN SETUP IN ENV FILE       #
 # # # # # # # # # # # # # # # # # # # # # # # # # #

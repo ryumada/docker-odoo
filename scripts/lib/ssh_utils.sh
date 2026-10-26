@@ -3,7 +3,7 @@ set -e
 # Category: Utility
 # Description: Shared SSH utilities for cross-VPS key generation and management.
 # Usage: source scripts/lib/ssh_utils.sh
-# Dependencies: ssh-keygen, git, sed
+# Dependencies: ssh-keygen, git, sed, base64, ssh
 
 readonly SSH_COLOR_RESET="\033[0m"
 readonly SSH_COLOR_INFO="\033[0;34m"
@@ -183,4 +183,146 @@ ensure_ssh_key_for_remote() {
   fi
 
   generate_ssh_key_pair "$tool_type" "$target_host" "$target_user" "$repo_owner" "false" "$env_var_key" "$env_file"
+}
+
+install_pubkey_via_admin() {
+  local target_host="$1"
+  local target_port="${2:-22}"
+  local admin_user="$3"
+  local target_user="$4"
+  local pub_key_path="$5"
+  local source_ip="$6"
+
+  if [ -z "$target_host" ] || [ -z "$admin_user" ] || [ -z "$target_user" ] || [ -z "$pub_key_path" ]; then
+    _ssh_log_error "install_pubkey_via_admin: target_host, admin_user, target_user, and pub_key_path are required."
+    return 1
+  fi
+
+  if ! [[ "$target_user" =~ ^[a-z_][a-z0-9_-]{0,31}$ ]]; then
+    _ssh_log_error "Invalid target username: '$target_user'. Must match ^[a-z_][a-z0-9_-]{0,31}$"
+    return 1
+  fi
+
+  if ! [[ "$admin_user" =~ ^[a-z_][a-z0-9_-]{0,31}$ ]]; then
+    _ssh_log_error "Invalid admin username: '$admin_user'. Must match ^[a-z_][a-z0-9_-]{0,31}$"
+    return 1
+  fi
+
+  if [ ! -f "$pub_key_path" ]; then
+    _ssh_log_error "Public key file not found: $pub_key_path"
+    return 1
+  fi
+
+  if ! ssh-keygen -l -f "$pub_key_path" >/dev/null 2>&1; then
+    _ssh_log_error "Invalid public key file format: $pub_key_path"
+    return 1
+  fi
+
+  local raw_pub_key
+  raw_pub_key=$(cat "$pub_key_path" | tr -d '\r\n')
+  if [ -z "$raw_pub_key" ]; then
+    _ssh_log_error "Public key is empty."
+    return 1
+  fi
+
+  local b64_pub_key
+  b64_pub_key=$(printf "%s" "$raw_pub_key" | base64 | tr -d '\r\n')
+
+  local ip_mode="auto"
+  if [ "$source_ip" = "none" ] || [ "$source_ip" = "no" ] || [ "$source_ip" = "disabled" ]; then
+    ip_mode="none"
+  elif [ -n "$source_ip" ] && [ "$source_ip" != "auto" ]; then
+    if ! [[ "$source_ip" =~ ^[0-9a-fA-F.:]+$ ]]; then
+      _ssh_log_error "Invalid source IP specified: '$source_ip'"
+      return 1
+    fi
+    ip_mode="$source_ip"
+  fi
+
+  _ssh_log_info "Connecting via admin user '${admin_user}@${target_host}:${target_port}' with sudo to provision '${target_user}'..."
+
+  # Remote bash script executed via sudo bash
+  local remote_cmd
+  remote_cmd=$(cat << 'EOF'
+set -e
+target_user="$1"
+b64_pub="$2"
+ip_param="$3"
+
+pub_key=$(echo "$b64_pub" | base64 -d | tr -d '\r\n')
+if [ -z "$pub_key" ]; then
+  echo "[-] Decoded public key is empty." >&2
+  exit 1
+fi
+
+# Detect caller IP from SSH_CLIENT if ip_param is auto
+effective_ip=""
+if [ "$ip_param" = "auto" ]; then
+  effective_ip=$(echo "${SSH_CLIENT:-}" | awk '{print $1}')
+elif [ "$ip_param" != "none" ] && [ -n "$ip_param" ]; then
+  effective_ip="$ip_param"
+fi
+
+# Ensure target user exists or create them with locked password and no sudo
+if ! id "$target_user" >/dev/null 2>&1; then
+  echo "[+] User '$target_user' does not exist. Creating system account..." >&2
+  sudo useradd -m -s /bin/bash "$target_user"
+  sudo passwd -l "$target_user" >/dev/null 2>&1 || true
+  echo "[+] Created account '$target_user' (password locked, non-sudo)." >&2
+else
+  echo "[i] User '$target_user' exists." >&2
+fi
+
+target_home=$(eval echo "~$target_user")
+if [ -z "$target_home" ] || [ ! -d "$target_home" ]; then
+  target_home=$(getent passwd "$target_user" | cut -d: -f6)
+fi
+
+if [ -z "$target_home" ] || [ ! -d "$target_home" ]; then
+  echo "[-] Could not determine home directory for '$target_user'." >&2
+  exit 1
+fi
+
+ssh_dir="$target_home/.ssh"
+auth_keys="$ssh_dir/authorized_keys"
+
+sudo install -d -m 700 -o "$target_user" -g "$target_user" "$ssh_dir"
+
+# Format key entry with optional restrictions
+key_entry="$pub_key"
+if [ -n "$effective_ip" ]; then
+  key_entry="from=\"${effective_ip}\",no-agent-forwarding,no-X11-forwarding,no-port-forwarding ${pub_key}"
+  echo "[+] Bound SSH key to source IP: ${effective_ip}" >&2
+else
+  echo "[i] IP restriction disabled or unavailable." >&2
+fi
+
+# Check if base key already exists in authorized_keys
+key_payload=$(echo "$pub_key" | awk '{print $2}')
+if [ -f "$auth_keys" ] && sudo grep -qF "$key_payload" "$auth_keys"; then
+  echo "[i] SSH key already authorized in $auth_keys." >&2
+else
+  echo "$key_entry" | sudo tee -a "$auth_keys" >/dev/null
+  echo "[+] Appended SSH key to $auth_keys." >&2
+fi
+
+sudo chmod 600 "$auth_keys"
+sudo chown "$target_user":"$target_user" "$auth_keys"
+
+if command -v logger >/dev/null 2>&1; then
+  logger -t docker-odoo "Snapshot public key installed for $target_user by sudo admin" 2>/dev/null || true
+fi
+
+echo "[SUCCESS] Public key installed for $target_user."
+EOF
+)
+
+  if ssh -t -p "$target_port" -o StrictHostKeyChecking=ask "${admin_user}@${target_host}" \
+    "sudo bash -c $(printf '%q' "$remote_cmd") -- $(printf '%q' "$target_user") $(printf '%q' "$b64_pub_key") $(printf '%q' "$ip_mode")"; then
+    _ssh_log_success "Remote SSH key provisioning completed via admin user."
+    return 0
+  else
+    _ssh_log_error "Failed to provision remote SSH key via admin user."
+    return 1
+  fi
 }
