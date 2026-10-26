@@ -192,6 +192,9 @@ install_pubkey_via_admin() {
   local target_user="$4"
   local pub_key_path="$5"
   local source_ip="$6"
+  local tool_type="${7:-snapshot}"
+  local dest_service_name="$8"
+  local dest_path="$9"
 
   if [ -z "$target_host" ] || [ -z "$admin_user" ] || [ -z "$target_user" ] || [ -z "$pub_key_path" ]; then
     _ssh_log_error "install_pubkey_via_admin: target_host, admin_user, target_user, and pub_key_path are required."
@@ -248,6 +251,9 @@ set -e
 target_user="$1"
 b64_pub="$2"
 ip_param="$3"
+tool_type="$4"
+dest_svc="$5"
+dest_path="$6"
 
 pub_key=$(echo "$b64_pub" | base64 -d | tr -d '\r\n')
 if [ -z "$pub_key" ]; then
@@ -263,12 +269,12 @@ elif [ "$ip_param" != "none" ] && [ -n "$ip_param" ]; then
   effective_ip="$ip_param"
 fi
 
-# Ensure target user exists or create them with locked password and no sudo
+# Ensure target user exists or create them with locked password
 if ! id "$target_user" >/dev/null 2>&1; then
   echo "[+] User '$target_user' does not exist. Creating system account..." >&2
   sudo useradd -m -s /bin/bash "$target_user"
   sudo passwd -l "$target_user" >/dev/null 2>&1 || true
-  echo "[+] Created account '$target_user' (password locked, non-sudo)." >&2
+  echo "[+] Created account '$target_user' (password locked)." >&2
 else
   echo "[i] User '$target_user' exists." >&2
 fi
@@ -309,8 +315,39 @@ fi
 sudo chmod 600 "$auth_keys"
 sudo chown "$target_user":"$target_user" "$auth_keys"
 
+# Optional sudoers configuration for cloner / deploy_rc tools
+if [ "$tool_type" = "cloner" ] && [ -n "$dest_svc" ]; then
+  echo "[+] Configuring targeted passwordless sudoers rules for cloner service '$dest_svc'..." >&2
+  sudoers_file="/etc/sudoers.d/01-cloner-${dest_svc//./_}-${target_user}"
+  tmp_sudoers=$(mktemp)
+
+  cat << SUDO_EOF > "$tmp_sudoers"
+# Dedicated passwordless rules for cross-VPS cloner
+$target_user ALL=(root) NOPASSWD: /usr/local/sbin/restore_backupdata-${dest_svc}
+$target_user ALL=(root) NOPASSWD: /usr/bin/docker compose *
+$target_user ALL=(root) NOPASSWD: /usr/bin/docker compose
+$target_user ALL=(root) NOPASSWD: /usr/bin/sed -i * ${dest_path}/.env
+SUDO_EOF
+
+  if [ -n "$dest_path" ]; then
+    echo "$target_user ALL=(root) NOPASSWD: ${dest_path}/scripts/restore_backupdata-${dest_svc}.sh" >> "$tmp_sudoers"
+    echo "$target_user ALL=(root) NOPASSWD: ${dest_path}/scripts/restore_backupdata.sh" >> "$tmp_sudoers"
+  fi
+
+  chmod 0440 "$tmp_sudoers"
+  chown root:root "$tmp_sudoers"
+
+  if visudo -c -f "$tmp_sudoers" >/dev/null 2>&1; then
+    sudo mv "$tmp_sudoers" "$sudoers_file"
+    echo "[+] Installed validated sudoers rule: $sudoers_file" >&2
+  else
+    echo "[-] Sudoers validation failed for $tmp_sudoers. Skipping." >&2
+    rm -f "$tmp_sudoers"
+  fi
+fi
+
 if command -v logger >/dev/null 2>&1; then
-  logger -t docker-odoo "Snapshot public key installed for $target_user by sudo admin" 2>/dev/null || true
+  logger -t docker-odoo "${tool_type^^} public key installed for $target_user by sudo admin" 2>/dev/null || true
 fi
 
 echo "[SUCCESS] Public key installed for $target_user."
@@ -318,7 +355,7 @@ EOF
 )
 
   if ssh -t -p "$target_port" -o StrictHostKeyChecking=ask "${admin_user}@${target_host}" \
-    "sudo bash -c $(printf '%q' "$remote_cmd") -- $(printf '%q' "$target_user") $(printf '%q' "$b64_pub_key") $(printf '%q' "$ip_mode")"; then
+    "sudo bash -c $(printf '%q' "$remote_cmd") -- $(printf '%q' "$target_user") $(printf '%q' "$b64_pub_key") $(printf '%q' "$ip_mode") $(printf '%q' "$tool_type") $(printf '%q' "${dest_service_name:-}") $(printf '%q' "${dest_path:-}")"; then
     _ssh_log_success "Remote SSH key provisioning completed via admin user."
     return 0
   else

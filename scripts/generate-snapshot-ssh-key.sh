@@ -227,7 +227,18 @@ fi
 if [ -n "$ADMIN_USER" ]; then
   log_info "Attempting remote provisioning onto $TARGET_HOST using admin user '$ADMIN_USER'..."
   PUB_KEY_PATH="${KEY_PATH}.pub"
-  if install_pubkey_via_admin "$TARGET_HOST" "$TARGET_PORT" "$ADMIN_USER" "$TARGET_USER" "$PUB_KEY_PATH" "$SOURCE_IP"; then
+  DEST_SVC_PARAM=""
+  DEST_PATH_PARAM=""
+  if [ "$TOOL_TYPE" = "cloner" ]; then
+    DEST_PATH_PARAM=$(grep "^CLONER_SSH_DEST_PATH=" "$ENV_FILE" 2>/dev/null | cut -d '=' -f2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//' || true)
+    if [ -n "$DEST_PATH_PARAM" ]; then
+      DEST_SVC_PARAM=$(basename "$DEST_PATH_PARAM")
+    else
+      DEST_SVC_PARAM="$SERVICE_NAME"
+    fi
+  fi
+
+  if install_pubkey_via_admin "$TARGET_HOST" "$TARGET_PORT" "$ADMIN_USER" "$TARGET_USER" "$PUB_KEY_PATH" "$SOURCE_IP" "$TOOL_TYPE" "$DEST_SVC_PARAM" "$DEST_PATH_PARAM"; then
     log_info "Testing SSH connectivity to $TARGET_USER@$TARGET_HOST:$TARGET_PORT with newly installed key..."
     if ssh -i "$KEY_PATH" -p "$TARGET_PORT" -o BatchMode=yes -o StrictHostKeyChecking=accept-new "$TARGET_USER@$TARGET_HOST" "true" 2>/dev/null; then
       log_success "Passwordless SSH connectivity verified for $TARGET_USER@$TARGET_HOST."
