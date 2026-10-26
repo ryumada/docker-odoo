@@ -156,6 +156,17 @@ if [ -z "$NEW_HOST" ]; then
   exit 1
 fi
 
+if [ -z "$NEW_PORT" ]; then
+  echo -ne "${COLOR_CYAN}Enter new Secondary VPS SSH Port [${OLD_PORT:-22}]: ${COLOR_RESET}"
+  read -r input_port
+  NEW_PORT="${input_port:-${OLD_PORT:-22}}"
+fi
+
+if [ -z "$ADMIN_USER" ]; then
+  echo -ne "${COLOR_CYAN}Enter remote sudo administrator username (e.g. devopsadmin, ubuntu): ${COLOR_RESET}"
+  read -r ADMIN_USER
+fi
+
 if ! [[ "$SERVICE_NAME" =~ ^[A-Za-z0-9._-]+$ ]]; then
   log_error "Invalid SERVICE_NAME: '$SERVICE_NAME'"
   exit 1

@@ -354,8 +354,15 @@ echo "[SUCCESS] Public key installed for $target_user."
 EOF
 )
 
+  local exec_res=0
   if ssh -t -p "$target_port" -o StrictHostKeyChecking=ask "${admin_user}@${target_host}" \
     "sudo bash -c $(printf '%q' "$remote_cmd") -- $(printf '%q' "$target_user") $(printf '%q' "$b64_pub_key") $(printf '%q' "$ip_mode") $(printf '%q' "$tool_type") $(printf '%q' "${dest_service_name:-}") $(printf '%q' "${dest_path:-}")"; then
+    exec_res=0
+  else
+    exec_res=$?
+  fi
+
+  if [ $exec_res -eq 0 ]; then
     _ssh_log_success "Remote SSH key provisioning completed via admin user."
     return 0
   else
