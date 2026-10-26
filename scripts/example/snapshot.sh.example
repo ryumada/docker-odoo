@@ -706,6 +706,87 @@ except Exception:
   fi
 }
 
+readonly SYSTEM_QUEUE_LOCK="/tmp/odoo-backup-system.queue.lock"
+readonly SYSTEM_QUEUE_ACTIVE="/tmp/odoo-backup-system.queue.active"
+
+ensure_queue_files_exist() {
+  local target_lock="$1"
+  local target_active="$2"
+  if [ ! -f "$target_lock" ]; then
+    (umask 000 && touch "$target_lock") 2>/dev/null || true
+    chmod 666 "$target_lock" 2>/dev/null || true
+  fi
+  if [ ! -f "$target_active" ]; then
+    (umask 000 && touch "$target_active") 2>/dev/null || true
+    chmod 666 "$target_active" 2>/dev/null || true
+  fi
+}
+
+acquire_secondary_vps_queue_token() {
+  local host="$1" user="$2" port="$3" timeout="$4"
+  local poll_interval=15
+  local start_time current_time elapsed
+  start_time=$(date +%s)
+
+  log_info "Acquiring queue token on Secondary VPS ($host)..."
+
+  while true; do
+    local lock_status
+    lock_status=$(remote_exec "
+      lock_file=\"/tmp/odoo-backup-system.queue.lock\"
+      active_file=\"/tmp/odoo-backup-system.queue.active\"
+      if [ ! -f \"\$lock_file\" ]; then (umask 000 && touch \"\$lock_file\") 2>/dev/null || true; chmod 666 \"\$lock_file\" 2>/dev/null || true; fi
+      if [ ! -f \"\$active_file\" ]; then (umask 000 && touch \"\$active_file\") 2>/dev/null || true; chmod 666 \"\$active_file\" 2>/dev/null || true; fi
+
+      exec 9>\"\$lock_file\"
+      if flock -n 9; then
+        now=\$(date +%s)
+        if [ -s \"\$active_file\" ]; then
+          job_ts=\$(cat \"\$active_file\" 2>/dev/null | awk '{print \$1}')
+          job_desc=\$(cat \"\$active_file\" 2>/dev/null | cut -d' ' -f2-)
+          if [ -n \"\$job_ts\" ] && [ \$((now - job_ts)) -gt $timeout ]; then
+            echo \"[WARN] Overriding stale lock from \$job_desc (older than ${timeout}s)\" >&2
+          fi
+        fi
+        echo \"\$now $SERVICE_NAME (remote from $(hostname -s 2>/dev/null || hostname))\" > \"\$active_file\"
+        echo 'ACQUIRED'
+        exit 0
+      else
+        cat \"\$active_file\" 2>/dev/null || echo 'BUSY'
+        exit 1
+      fi
+    " 2>/dev/null || true)
+
+    if [ "$lock_status" = "ACQUIRED" ]; then
+      log_success "Acquired Secondary VPS queue slot for $SERVICE_NAME!"
+      return 0
+    fi
+
+    current_time=$(date +%s)
+    elapsed=$((current_time - start_time))
+    if [ "$elapsed" -ge "$timeout" ]; then
+      log_error "Secondary VPS queue wait timed out after ${timeout}s. Current active job: $lock_status"
+      return 1
+    fi
+
+    log_info "⏳ Secondary VPS busy with: $lock_status. Waiting in queue (${elapsed}s / ${timeout}s)..."
+    sleep "$poll_interval"
+  done
+}
+
+release_secondary_vps_queue_token() {
+  remote_exec "
+    lock_file=\"/tmp/odoo-backup-system.queue.lock\"
+    active_file=\"/tmp/odoo-backup-system.queue.active\"
+    exec 9>\"\$lock_file\"
+    if flock -n 9; then
+      if [ -f \"\$active_file\" ] && grep -q '$SERVICE_NAME' \"\$active_file\"; then
+        rm -f \"\$active_file\"
+      fi
+    fi
+  " 2>/dev/null || true
+}
+
 function run_remote_snapshot() {
   local host="$1"
   local user="$2"
@@ -749,6 +830,10 @@ function run_remote_snapshot() {
     exit 1
   fi
   log_success "SSH connection established with Secondary VPS."
+
+  # Acquire queue slot on Secondary VPS to avoid I/O conflict with other instances
+  local queue_timeout="${SNAPSHOT_QUEUE_TIMEOUT:-14400}"
+  acquire_secondary_vps_queue_token "$host" "$user" "$port" "$queue_timeout"
 
   # Lower I/O and CPU scheduling priority on Secondary VPS
   remote_exec "if command -v ionice >/dev/null 2>&1; then ionice -c2 -n7 -p \$\$ 2>/dev/null || true; fi; renice -n 19 -p \$\$ >/dev/null 2>&1 || true"
@@ -1025,6 +1110,9 @@ REMOTE_EOF
   log_info "Cleaning staging directory on Secondary VPS..."
   remote_exec "rm -rf '$remote_staging'/*"
   remote_exec "find '$remote_staging' -mindepth 1 -delete"
+
+  # Release queue slot on Secondary VPS
+  release_secondary_vps_queue_token
 }
 
 function main() {
@@ -1054,6 +1142,26 @@ function main() {
     exit 0
   fi
   echo "$$" >&200
+
+  # Read queue timeout setting from .env
+  SNAPSHOT_QUEUE_TIMEOUT=$(grep "^SNAPSHOT_QUEUE_TIMEOUT=" "$PATH_TO_ODOO/.env" 2>/dev/null | cut -d '=' -f2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//')
+  [ -z "$SNAPSHOT_QUEUE_TIMEOUT" ] && SNAPSHOT_QUEUE_TIMEOUT="14400"
+
+  # Unified Host-Wide Queue Lock (prevents concurrent backup I/O between instances on the same host)
+  ensure_queue_files_exist "$SYSTEM_QUEUE_LOCK" "$SYSTEM_QUEUE_ACTIVE"
+  exec 201>"$SYSTEM_QUEUE_LOCK"
+
+  if ! flock -n 201; then
+    local active_job
+    active_job=$(cat "$SYSTEM_QUEUE_ACTIVE" 2>/dev/null || echo "another service")
+    log_info "⏳ Host backup queue busy (active: $active_job). Waiting in queue (timeout: ${SNAPSHOT_QUEUE_TIMEOUT}s)..."
+    if ! flock -w "$SNAPSHOT_QUEUE_TIMEOUT" 201; then
+      log_error "Host snapshot queue wait timed out after ${SNAPSHOT_QUEUE_TIMEOUT}s."
+      exit 1
+    fi
+    log_success "Queue slot acquired on host. Proceeding with snapshot..."
+  fi
+  echo "$(date +%s) $SERVICE_NAME (local on $(hostname -s 2>/dev/null || hostname))" > "$SYSTEM_QUEUE_ACTIVE" 2>/dev/null || true
 
   # Lower I/O and CPU scheduling priority to avoid starving Odoo and PostgreSQL
   if command -v ionice >/dev/null 2>&1; then
@@ -1097,6 +1205,9 @@ function main() {
           if [[ -n "$TAR_FILE_PATH" && -f "$TAR_FILE_PATH" ]]; then
               rm -f "$TAR_FILE_PATH"
           fi
+      fi
+      if [ -f "$SYSTEM_QUEUE_ACTIVE" ] && grep -q "$SERVICE_NAME" "$SYSTEM_QUEUE_ACTIVE"; then
+          rm -f "$SYSTEM_QUEUE_ACTIVE" 2>/dev/null || true
       fi
   }
   trap cleanup_temp_files EXIT
