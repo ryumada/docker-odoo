@@ -212,8 +212,25 @@ function resolve_backup_file() {
       cp -f "$extracted_zip" "$EXTRACTED_ZIP_PATH"
       BACKUPDATA_FILE_PATH="$EXTRACTED_ZIP_PATH"
       log_success "Extracted backup data bundle to $BACKUPDATA_FILE_PATH"
+    elif find "$TEMP_EXTRACT_DIR" -maxdepth 4 -name "dump.sql" 2>/dev/null | grep -q .; then
+      log_info "Packaging direct snapshot data into temporary zip bundle for web endpoint..."
+      EXTRACTED_ZIP_PATH="$ODOO_TMP_DIR/backupdata-$SERVICE_NAME.zip"
+      local sql_file filestore_dir manifest_file zip_build_dir
+      sql_file=$(find "$TEMP_EXTRACT_DIR" -maxdepth 4 -name "dump.sql" 2>/dev/null | head -n 1)
+      filestore_dir=$(find "$TEMP_EXTRACT_DIR" -maxdepth 4 -type d -name "filestore" 2>/dev/null | head -n 1)
+      manifest_file=$(find "$TEMP_EXTRACT_DIR" -maxdepth 4 -name "manifest.json" 2>/dev/null | head -n 1)
+      zip_build_dir=$(mktemp -d -p "$ODOO_TMP_DIR" "zip_build_XXXXXX" 2>/dev/null || mktemp -d "/tmp/zip_build_XXXXXX")
+      [ -f "$sql_file" ] && cp -f "$sql_file" "$zip_build_dir/dump.sql"
+      [ -f "$manifest_file" ] && cp -f "$manifest_file" "$zip_build_dir/manifest.json"
+      if [ -n "$filestore_dir" ] && [ -d "$filestore_dir" ]; then
+        cp -al "$filestore_dir" "$zip_build_dir/filestore" 2>/dev/null || cp -r "$filestore_dir" "$zip_build_dir/filestore"
+      fi
+      (cd "$zip_build_dir" && if command -v 7z &>/dev/null; then 7z a -tzip -mx=0 "$EXTRACTED_ZIP_PATH" * >/dev/null; else zip -q -0 -r "$EXTRACTED_ZIP_PATH" *; fi)
+      rm -rf "$zip_build_dir"
+      BACKUPDATA_FILE_PATH="$EXTRACTED_ZIP_PATH"
+      log_success "Extracted and prepared backup data bundle to $BACKUPDATA_FILE_PATH"
     else
-      log_error "Could not find bundled backupdata zip inside snapshot $BACKUPDATA_FILE_PATH"
+      log_error "Could not find bundled backupdata zip or dump.sql inside snapshot $BACKUPDATA_FILE_PATH"
       exit 1
     fi
   fi

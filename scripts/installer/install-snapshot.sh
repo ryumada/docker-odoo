@@ -348,18 +348,6 @@ function main() {
     fi
   fi
 
-  if command -v 7z >/dev/null 2>&1 || command -v 7za >/dev/null 2>&1; then
-    log_success "7z is already installed"
-  else
-    log_info "Install 7zip / p7zip-full"
-    if sudo apt install 7zip -y 2>/dev/null || sudo apt install p7zip-full -y; then
-      log_success "7z is installed"
-    else
-      log_error "Failed to install 7z"
-      exit 1
-    fi
-  fi
-
   if curl --version > /dev/null 2>&1; then
     log_success "curl is already installed"
   else

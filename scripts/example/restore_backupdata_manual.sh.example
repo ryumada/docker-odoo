@@ -219,22 +219,7 @@ function resolve_backup_file() {
       exit 1
     fi
 
-    log_info "Detected snapshot archive '$BACKUPDATA_FILE_PATH'. Extracting bundled backupdata zip..."
-    TEMP_EXTRACT_DIR=$(mktemp -d -p "$ODOO_TMP_DIR" "snapshot_extract_XXXXXX" 2>/dev/null || mktemp -d "/tmp/snapshot_extract_XXXXXX")
-    if ! tar -xaf "$BACKUPDATA_FILE_PATH" -C "$TEMP_EXTRACT_DIR" --wildcards "*backupdata*.zip" 2>/dev/null; then
-      tar -xaf "$BACKUPDATA_FILE_PATH" -C "$TEMP_EXTRACT_DIR"
-    fi
-    local extracted_zip
-    extracted_zip=$(find "$TEMP_EXTRACT_DIR" -name "backupdata-$SERVICE_NAME.zip" -o -name "backupdata-*.zip" -o -name "backupdata.zip" 2>/dev/null | head -n 1)
-    if [ -n "$extracted_zip" ] && [ -f "$extracted_zip" ]; then
-      EXTRACTED_ZIP_PATH="$ODOO_TMP_DIR/backupdata-$SERVICE_NAME.zip"
-      cp -f "$extracted_zip" "$EXTRACTED_ZIP_PATH"
-      BACKUPDATA_FILE_PATH="$EXTRACTED_ZIP_PATH"
-      log_success "Extracted backup data bundle to $BACKUPDATA_FILE_PATH"
-    else
-      log_error "Could not find bundled backupdata zip inside snapshot $BACKUPDATA_FILE_PATH"
-      exit 1
-    fi
+    log_info "Detected snapshot archive '$BACKUPDATA_FILE_PATH'."
   fi
 }
 
@@ -337,6 +322,9 @@ function isRsyncInstalled() {
 }
 
 function isZipAndUnzipInstalled() {
+  if [[ "${BACKUPDATA_FILE_PATH:-}" == *.tar.zst ]]; then
+    return 0
+  fi
   if ! command -v 7z &>/dev/null && ! command -v 7za &>/dev/null && ! command -v unzip &>/dev/null; then
     log_error "7z (or unzip) is not installed. Please install 7zip / p7zip-full"
     log_info "Ubuntu: sudo apt install 7zip || sudo apt install p7zip-full"
@@ -616,12 +604,51 @@ function main() {
   mkdir -p "$TEMP_DIR"
 
   log_info "Extracting the backup archive (this may take a while)..."
-  if command -v 7z &>/dev/null; then
-    7z x -y -o"$TEMP_DIR" "$BACKUPDATA_FILE_PATH" >/dev/null
-  elif command -v 7za &>/dev/null; then
-    7za x -y -o"$TEMP_DIR" "$BACKUPDATA_FILE_PATH" >/dev/null
+  if [[ "$BACKUPDATA_FILE_PATH" == *.tar.zst ]]; then
+    if ! tar -xaf "$BACKUPDATA_FILE_PATH" -C "$TEMP_DIR"; then
+      log_error "Failed to extract tar.zst archive: $BACKUPDATA_FILE_PATH"
+      exit 1
+    fi
+
+    # Support legacy snapshot archives that contain a nested backupdata zip
+    local nested_zip
+    nested_zip=$(find "$TEMP_DIR" -maxdepth 3 -name "backupdata-*.zip" -o -name "backupdata.zip" 2>/dev/null | head -n 1)
+    if [ -n "$nested_zip" ] && [ -f "$nested_zip" ] && [ ! -f "$TEMP_DIR/dump.sql" ]; then
+      log_info "Detected legacy nested backup zip ($nested_zip). Extracting..."
+      if command -v 7z &>/dev/null; then
+        7z x -y -o"$TEMP_DIR" "$nested_zip" >/dev/null
+      elif command -v 7za &>/dev/null; then
+        7za x -y -o"$TEMP_DIR" "$nested_zip" >/dev/null
+      else
+        unzip -qqqq -o -d "$TEMP_DIR" "$nested_zip" >&2
+      fi
+    fi
+
+    # Normalize filestore location if nested
+    if [ ! -d "$TEMP_DIR/filestore" ]; then
+      local found_fs
+      found_fs=$(find "$TEMP_DIR" -maxdepth 4 -type d -name "filestore" 2>/dev/null | head -n 1)
+      if [ -n "$found_fs" ] && [ "$found_fs" != "$TEMP_DIR/filestore" ]; then
+        mv "$found_fs" "$TEMP_DIR/filestore"
+      fi
+    fi
+
+    # Normalize dump.sql location if nested
+    if [ ! -f "$TEMP_DIR/dump.sql" ]; then
+      local found_sql
+      found_sql=$(find "$TEMP_DIR" -maxdepth 4 -name "dump.sql" -o -name "*.sql" 2>/dev/null | head -n 1)
+      if [ -n "$found_sql" ] && [ "$found_sql" != "$TEMP_DIR/dump.sql" ]; then
+        mv "$found_sql" "$TEMP_DIR/dump.sql"
+      fi
+    fi
   else
-    unzip -qqqq -d "$TEMP_DIR" "$BACKUPDATA_FILE_PATH" >&2
+    if command -v 7z &>/dev/null; then
+      7z x -y -o"$TEMP_DIR" "$BACKUPDATA_FILE_PATH" >/dev/null
+    elif command -v 7za &>/dev/null; then
+      7za x -y -o"$TEMP_DIR" "$BACKUPDATA_FILE_PATH" >/dev/null
+    else
+      unzip -qqqq -d "$TEMP_DIR" "$BACKUPDATA_FILE_PATH" >&2
+    fi
   fi
   chmod -R a+rX "$TEMP_DIR"
 
