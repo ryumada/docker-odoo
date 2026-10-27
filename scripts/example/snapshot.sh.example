@@ -1034,10 +1034,18 @@ MANIFEST_EOF"
   log_info "Packaging snapshot-$SERVICE_NAME.tar.zst on Secondary VPS (compression level: $compression_level)..."
   remote_exec "cd '$remote_staging' && shopt -s dotglob nullglob && tar -cf '$remote_staging/snapshot-$SERVICE_NAME.tar.zst' -I 'zstd -vT0 -$compression_level --ultra' --exclude='*.tar.zst' *"
 
-  if ! remote_exec "[ -s '$remote_staging/snapshot-$SERVICE_NAME.tar.zst' ] && tar -tf '$remote_staging/snapshot-$SERVICE_NAME.tar.zst' -I zstd >/dev/null 2>&1"; then
+  log_info "Verifying snapshot archive integrity on Secondary VPS..."
+  local check_cmd="tar -tf '$remote_staging/snapshot-$SERVICE_NAME.tar.zst' -I zstd"
+  if ! remote_exec "[ -s '$remote_staging/snapshot-$SERVICE_NAME.tar.zst' ] && $check_cmd >/dev/null 2>&1"; then
     log_error "Snapshot packaging on Secondary VPS failed or produced a corrupt archive."
     exit 1
   fi
+
+  if ! remote_exec "$check_cmd | grep -q 'dump\.sql' && $check_cmd | grep -q 'manifest\.json'"; then
+    log_error "Snapshot validation on Secondary VPS failed: missing dump.sql or manifest.json in archive."
+    exit 1
+  fi
+  log_success "Snapshot archive verified successfully on Secondary VPS."
 
   # Clean up uncompressed staged data files on Secondary VPS
   remote_exec "rm -rf '$remote_staging/filestore' '$remote_staging/dump.sql' '$remote_staging/manifest.json'"
