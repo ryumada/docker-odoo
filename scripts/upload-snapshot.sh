@@ -316,25 +316,45 @@ function cleanup_gdrive_old_snapshots() {
     query="$query and '$folder' in parents"
   fi
 
-  local response
-  response=$(curl -s -G \
-    -H "Authorization: Bearer $token" \
-    --data-urlencode "q=$query" \
-    --data-urlencode "orderBy=createdTime desc" \
-    --data-urlencode "fields=files(id, name, createdTime)" \
-    --data-urlencode "supportsAllDrives=true" \
-    --data-urlencode "includeItemsFromAllDrives=true" \
-    --data-urlencode "pageSize=100" \
-    "https://www.googleapis.com/drive/v3/files")
+  local file_ids=""
+  local page_token=""
 
-  if echo "$response" | grep -q '"error":'; then
-    log_error "Google Drive API returned an error during retention cleanup:"
-    log_error "$response"
-    return 1
-  fi
+  while :; do
+    token=$(resolve_access_token "$token")
+    local curl_args=(
+      -s -G
+      -H "Authorization: Bearer $token"
+      --data-urlencode "q=$query"
+      --data-urlencode "orderBy=createdTime desc"
+      --data-urlencode "fields=nextPageToken, files(id, name, createdTime)"
+      --data-urlencode "supportsAllDrives=true"
+      --data-urlencode "includeItemsFromAllDrives=true"
+      --data-urlencode "pageSize=1000"
+    )
+    [ -n "$page_token" ] && curl_args+=(--data-urlencode "pageToken=$page_token")
 
-  local file_ids
-  file_ids=$(echo "$response" | grep -o '"id": *"[^"]*"' | cut -d'"' -f4)
+    local response
+    response=$(curl "${curl_args[@]}" "https://www.googleapis.com/drive/v3/files")
+
+    if echo "$response" | grep -q '"error":'; then
+      log_error "Google Drive API returned an error during retention cleanup:"
+      log_error "$response"
+      return 1
+    fi
+
+    local page_ids
+    page_ids=$(echo "$response" | grep -o '"id": *"[^"]*"' | cut -d'"' -f4 || true)
+    if [ -n "$page_ids" ]; then
+      if [ -z "$file_ids" ]; then
+        file_ids="$page_ids"
+      else
+        file_ids=$(printf "%s\n%s" "$file_ids" "$page_ids")
+      fi
+    fi
+
+    page_token=$(python3 -c 'import sys, json; print(json.load(sys.stdin).get("nextPageToken", ""))' 2>/dev/null <<< "$response" || true)
+    [ -z "$page_token" ] && break
+  done
 
   local total_count=0
   if [ -n "$file_ids" ]; then

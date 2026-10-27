@@ -288,21 +288,53 @@ fi
 
 ACCESS_TOKEN=$(resolve_access_token "$ACCESS_TOKEN")
 
-RESPONSE=$(curl -s -G \
-  -H "Authorization: Bearer $ACCESS_TOKEN" \
-  --data-urlencode "q=$QUERY" \
-  --data-urlencode "orderBy=createdTime desc" \
-  --data-urlencode "fields=files(id, name, size, createdTime)" \
-  --data-urlencode "supportsAllDrives=true" \
-  --data-urlencode "includeItemsFromAllDrives=true" \
-  --data-urlencode "pageSize=100" \
-  "https://www.googleapis.com/drive/v3/files")
+ALL_FILES="[]"
+PAGE_TOKEN=""
 
-if echo "$RESPONSE" | grep -q '"error":'; then
-  ERROR_MSG=$(echo "$RESPONSE" | grep -o '"message": *"[^"]*"' | head -n 1 | cut -d'"' -f4 || true)
-  log_error "Google Drive API error: ${ERROR_MSG:-$RESPONSE}"
-  exit 1
-fi
+while :; do
+  ACCESS_TOKEN=$(resolve_access_token "$ACCESS_TOKEN")
+  CURL_ARGS=(
+    -s -G
+    -H "Authorization: Bearer $ACCESS_TOKEN"
+    --data-urlencode "q=$QUERY"
+    --data-urlencode "orderBy=createdTime desc"
+    --data-urlencode "fields=nextPageToken, files(id, name, size, createdTime)"
+    --data-urlencode "supportsAllDrives=true"
+    --data-urlencode "includeItemsFromAllDrives=true"
+    --data-urlencode "pageSize=1000"
+  )
+  if [ -n "$PAGE_TOKEN" ]; then
+    CURL_ARGS+=(--data-urlencode "pageToken=$PAGE_TOKEN")
+  fi
+
+  PAGE_RESP=$(curl "${CURL_ARGS[@]}" "https://www.googleapis.com/drive/v3/files")
+
+  if echo "$PAGE_RESP" | grep -q '"error":'; then
+    ERROR_MSG=$(echo "$PAGE_RESP" | grep -o '"message": *"[^"]*"' | head -n 1 | cut -d'"' -f4 || true)
+    log_error "Google Drive API error: ${ERROR_MSG:-$PAGE_RESP}"
+    exit 1
+  fi
+
+  PARSE_RESULT=$(python3 -c '
+import sys, json
+try:
+    accum = json.loads(sys.argv[1])
+    data = json.load(sys.stdin)
+    accum.extend(data.get("files", []))
+    print(data.get("nextPageToken", ""))
+    print(json.dumps(accum))
+except Exception as e:
+    sys.stderr.write(f"Error parsing page: {e}\n")
+    sys.exit(1)
+' "$ALL_FILES" <<< "$PAGE_RESP")
+
+  PAGE_TOKEN=$(echo "$PARSE_RESULT" | head -n 1)
+  ALL_FILES=$(echo "$PARSE_RESULT" | tail -n +2)
+
+  [ -z "$PAGE_TOKEN" ] && break
+done
+
+RESPONSE="{\"files\": $ALL_FILES}"
 
 # Parse files count and list
 python3 -c '
