@@ -1009,7 +1009,7 @@ function run_remote_snapshot() {
   remote_sync -azR "${files_to_sync[@]}" "$user@$host:$remote_staging/"
 
   log_info "Preparing manifest.json on Secondary VPS..."
-  remote_exec "rm -rf '$remote_staging/tmp/zip_staging' && mkdir -p '$remote_staging/tmp/zip_staging' && cat <<'MANIFEST_EOF' > '$remote_staging/tmp/zip_staging/manifest.json'
+  remote_exec "cat <<'MANIFEST_EOF' > '$remote_staging/manifest.json'
 {
     \"odoo_dump\": \"1\",
     \"db_name\": \"$ODOO_DATABASE_NAME_PRD\",
@@ -1020,14 +1020,13 @@ function run_remote_snapshot() {
 }
 MANIFEST_EOF"
 
-  log_info "Staging database dump, manifest, and filestore on Secondary VPS..."
+  log_info "Staging database dump and filestore on Secondary VPS..."
   remote_exec "if [ -f '$remote_staging/tmp/dump.sql' ]; then mv '$remote_staging/tmp/dump.sql' '$remote_staging/dump.sql'; fi"
-  remote_exec "if [ -f '$remote_staging/tmp/manifest.json' ]; then mv '$remote_staging/tmp/manifest.json' '$remote_staging/manifest.json'; fi"
   remote_exec "if [ -d '$remote_mirror' ] && [ -n \"\$(ls -A '$remote_mirror' 2>/dev/null)\" ]; then rm -rf '$remote_staging/filestore' && (cp -al '$remote_mirror' '$remote_staging/filestore' 2>/dev/null || cp -r '$remote_mirror' '$remote_staging/filestore'); fi"
   remote_exec "rm -rf '$remote_staging/tmp'"
 
-  if ! remote_exec "[ -s '$remote_staging/dump.sql' ]"; then
-    log_error "Database dump on Secondary VPS is missing or empty."
+  if ! remote_exec "[ -s '$remote_staging/dump.sql' ] && [ -s '$remote_staging/manifest.json' ]"; then
+    log_error "Database dump or manifest.json on Secondary VPS is missing or empty."
     exit 1
   fi
 
@@ -1035,14 +1034,18 @@ MANIFEST_EOF"
   remote_exec "cd '$remote_staging' && shopt -s dotglob nullglob && tar -cf '$remote_staging/snapshot-$SERVICE_NAME.tar.zst' -I 'zstd -vT0 -$compression_level --ultra' --exclude='*.tar.zst' *"
 
   log_info "Verifying snapshot archive integrity on Secondary VPS..."
-  local check_cmd="tar -tf '$remote_staging/snapshot-$SERVICE_NAME.tar.zst' -I zstd"
-  if ! remote_exec "[ -s '$remote_staging/snapshot-$SERVICE_NAME.tar.zst' ] && $check_cmd >/dev/null 2>&1"; then
-    log_error "Snapshot packaging on Secondary VPS failed or produced a corrupt archive."
-    exit 1
-  fi
-
-  if ! remote_exec "$check_cmd | grep -q 'dump\.sql' && $check_cmd | grep -q 'manifest\.json'"; then
-    log_error "Snapshot validation on Secondary VPS failed: missing dump.sql or manifest.json in archive."
+  if ! remote_exec "
+    [ -s '$remote_staging/snapshot-$SERVICE_NAME.tar.zst' ] || exit 1
+    tar -tf '$remote_staging/snapshot-$SERVICE_NAME.tar.zst' -I zstd | awk '
+      /dump\.sql$/ { has_dump=1 }
+      /manifest\.json$/ { has_manifest=1 }
+      END {
+        if (!has_dump || !has_manifest) exit 1
+        exit 0
+      }
+    '
+  "; then
+    log_error "Snapshot validation on Secondary VPS failed: missing dump.sql or manifest.json in archive, or archive is corrupted."
     exit 1
   fi
   log_success "Snapshot archive verified successfully on Secondary VPS."
@@ -1411,30 +1414,30 @@ EOF
   rm -rf "$DATA_STAGING_DIR"
 
   log_info "Verifying snapshot archive integrity..."
-  if [ ! -s "$TAR_FILE_PATH" ] || ! tar -tf "$TAR_FILE_PATH" -I zstd >/dev/null 2>&1; then
-    log_error "Final snapshot file $TAR_FILE_PATH is 0 bytes or corrupted."
+  if [ ! -s "$TAR_FILE_PATH" ]; then
+    log_error "Final snapshot file $TAR_FILE_PATH is 0 bytes."
     rm -f "$TAR_FILE_PATH"
     exit 1
   fi
 
-  local tar_contents
-  tar_contents=$(tar -tf "$TAR_FILE_PATH" -I zstd)
-  if ! echo "$tar_contents" | grep -q "dump\.sql"; then
-    log_error "Snapshot validation failed: missing dump.sql in $TAR_FILE_PATH"
-    rm -f "$TAR_FILE_PATH"
-    exit 1
-  fi
-  if ! echo "$tar_contents" | grep -q "manifest\.json"; then
-    log_error "Snapshot validation failed: missing manifest.json in $TAR_FILE_PATH"
-    rm -f "$TAR_FILE_PATH"
-    exit 1
-  fi
+  local need_fs=0
   if [ -d "$ODOO_FILESTORE_PATH" ] && [ -n "$(ls -A "$ODOO_FILESTORE_PATH" 2>/dev/null)" ]; then
-    if ! echo "$tar_contents" | grep -q "filestore"; then
-      log_error "Snapshot validation failed: missing filestore in $TAR_FILE_PATH"
-      rm -f "$TAR_FILE_PATH"
-      exit 1
-    fi
+    need_fs=1
+  fi
+
+  if ! tar -tf "$TAR_FILE_PATH" -I zstd | awk -v need_fs="$need_fs" '
+    /dump\.sql$/ { has_dump=1 }
+    /manifest\.json$/ { has_manifest=1 }
+    /filestore/ { has_fs=1 }
+    END {
+      if (!has_dump || !has_manifest) exit 1
+      if (need_fs && !has_fs) exit 1
+      exit 0
+    }
+  '; then
+    log_error "Snapshot validation failed: missing dump.sql, manifest.json, or filestore in $TAR_FILE_PATH, or archive is corrupted."
+    rm -f "$TAR_FILE_PATH"
+    exit 1
   fi
   log_success "Snapshot archive verified successfully."
 
