@@ -120,6 +120,8 @@ EOF
   append_sudoers_rule "devops" "scripts" "git_odoo-base_updater" "$temp_file"
   append_sudoers_rule "devops" "scripts" "list-databases" "$temp_file"
   append_sudoers_rule "devops" "scripts" "deploy_release_candidate-$SERVICE_NAME" "$temp_file"
+  append_sudoers_rule "devops" "scripts" "dump_database-$SERVICE_NAME" "$temp_file"
+  append_sudoers_rule "devops" "scripts" "export_filestore-$SERVICE_NAME" "$temp_file"
   append_sudoers_rule "devops" "scripts" "restore_backupdata-$SERVICE_NAME" "$temp_file"
 
   # Create sudoers rules for the 'odoo' user
@@ -128,6 +130,8 @@ EOF
   append_sudoers_rule "odoo" "scripts" "git_odoo-base_updater" "$temp_file"
   append_sudoers_rule "odoo" "scripts" "list-databases" "$temp_file"
   append_sudoers_rule "odoo" "scripts" "deploy_release_candidate-$SERVICE_NAME" "$temp_file"
+  append_sudoers_rule "odoo" "scripts" "dump_database-$SERVICE_NAME" "$temp_file"
+  append_sudoers_rule "odoo" "scripts" "export_filestore-$SERVICE_NAME" "$temp_file"
   append_sudoers_rule "odoo" "scripts" "restore_backupdata-$SERVICE_NAME" "$temp_file"
 
   # Create sudoers rules for the user who ran the script, if they are not 'devops' or 'root'

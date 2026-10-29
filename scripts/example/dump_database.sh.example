@@ -52,13 +52,24 @@ run_pg_dump() {
     local db_port db_user db_pass docker_net net
     db_port=$(grep "^DB_PORT=" "$ENV_FILE" 2>/dev/null | cut -d "=" -f 2 | sed 's/^[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//' || true)
     db_user=$(grep "^ACTIVE_DB_USER=" "$ENV_FILE" 2>/dev/null | cut -d '=' -f2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//' || true)
-    [ -z "$db_user" ] && db_user=$(cat "$PATH_TO_ODOO/.secrets/db_user" 2>/dev/null || true)
-    db_pass=$(cat "$PATH_TO_ODOO/.secrets/db_password" 2>/dev/null || true)
+    [ -z "$db_user" ] && db_user=$(cat "$PATH_TO_ODOO/.secrets/db_user" 2>/dev/null | tr -d '[:space:]' || true)
+    db_pass=$(cat "$PATH_TO_ODOO/.secrets/db_password" 2>/dev/null | tr -d '[:space:]' || true)
     docker_net=$(grep "^DOCKER_NETWORK_MODE=" "$ENV_FILE" 2>/dev/null | cut -d "=" -f 2 | sed 's/^[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//' || true)
     [ -z "$db_port" ] && db_port="5432"
     [ -z "$docker_net" ] && docker_net="host"
     net=$(echo "$docker_net" | cut -d "," -f 1)
-    docker run -i --rm --network="$net" -e PGPASSWORD="$db_pass" postgres pg_dump -h "$db_host" -p "$db_port" -U "$db_user" "$@"
+    if [ -n "$db_user" ] && [ -n "$db_pass" ]; then
+      docker run -i --rm --network="$net" -e PGPASSWORD="$db_pass" postgres pg_dump -h "$db_host" -p "$db_port" -U "$db_user" "$@"
+    else
+      docker run -i --rm --network="$net" -v "$PATH_TO_ODOO/.secrets:/secrets:ro" postgres bash -c '
+        db_u="$1"
+        [ -z "$db_u" ] && db_u=$(cat /secrets/db_user 2>/dev/null | tr -d "[:space:]")
+        [ -z "$db_u" ] && db_u="$2"
+        export PGPASSWORD=$(cat /secrets/db_password 2>/dev/null | tr -d "[:space:]")
+        shift 2
+        pg_dump -U "$db_u" "$@"
+      ' _ "$db_user" "$SERVICE_NAME" -h "$db_host" -p "$db_port" "$@"
+    fi
   else
     sudo -u postgres pg_dump "$@"
   fi
