@@ -569,7 +569,7 @@ if [ "$IS_RENEW_DB" == "true" ]; then
         log_success "SSH connection to Production VPS established."
 
         log_info "Step 1/3: Synchronizing Odoo filestore from Remote Production VPS..."
-        remote_prd_db=$(ssh "${prd_ssh_opts[@]}" "$PRD_SSH_USER@$PRD_SSH_HOST" "grep '^DB_NAME=' '$PRD_SSH_PATH/.env' 2>/dev/null | cut -d '=' -f2- | sed 's/[[:space:]]*#.*//;s/^[[:space:]]*//;s/[[:space:]]*$//;s/^[\"'\']//;s/[\"'\']$//' || true" | tr -d '\r\n')
+        remote_prd_db=$(ssh "${prd_ssh_opts[@]}" "$PRD_SSH_USER@$PRD_SSH_HOST" "sed -e 's/#.*//' '$PRD_SSH_PATH/.env' 2>/dev/null | grep '^DB_NAME=' | cut -d '=' -f2- | tr -d '[:space:]\"' | tr -d \"'\" || true" | tr -d '\r\n')
         [ -z "$remote_prd_db" ] && remote_prd_db="$PRD_SERVICE_NAME"
 
         local_filestore_base="/var/lib/odoo/$SERVICE_NAME/filestore"
@@ -631,7 +631,7 @@ if [ "$IS_RENEW_DB" == "true" ]; then
             run_psql -d postgres -c "DROP DATABASE IF EXISTS \"$STG_DB_NAME\"" >/dev/null 2>&1 || true
 
             local local_db_user
-            local_db_user=$(grep "^ACTIVE_DB_USER=" "$STG_ENV_FILE" 2>/dev/null | cut -d '=' -f2- | sed 's/[[:space:]]*#.*//;s/^[[:space:]]*//;s/[[:space:]]*$//;s/^[\"'\']//;s/[\"'\']$//' || true)
+            local_db_user=$(sed -e 's/#.*//' "$STG_ENV_FILE" 2>/dev/null | grep "^ACTIVE_DB_USER=" | cut -d '=' -f2- | tr -d '[:space:]"' | tr -d "'" || true)
             [ -z "$local_db_user" ] && local_db_user=$(cat "$STG_PATH_TO_ODOO/.secrets/db_user" 2>/dev/null || echo "odoo")
             run_psql -d postgres -c "CREATE DATABASE \"$STG_DB_NAME\" OWNER \"$local_db_user\"" >/dev/null 2>&1 || run_psql -d postgres -c "CREATE DATABASE \"$STG_DB_NAME\"" >/dev/null 2>&1
 
@@ -758,7 +758,7 @@ if [ "$IS_RENEW_DB" == "true" ]; then
 
         # check if the zip backup file actually an html file
         if grep -q -i "<html" "$TEMP_BACKUP_FILE"; then
-            ODOO_ERROR_MSG=$(grep -oP '<div class="alert alert-danger">\K.*(?=</div)' "$TEMP_BACKUP_FILE")
+            ODOO_ERROR_MSG=$(grep -a '<div class="alert alert-danger">' "$TEMP_BACKUP_FILE" | sed -n 's/.*<div class="alert alert-danger">\(.*\)<\/div>.*/\1/p' || true)
 
             if [ -z "$ODOO_ERROR_MSG" ]; then
                 ODOO_ERROR_MSG="Unknown error (The response was an HTML page, but the specific error message could not be parsed)."
