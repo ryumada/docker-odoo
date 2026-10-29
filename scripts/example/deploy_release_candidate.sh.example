@@ -643,7 +643,7 @@ if [ "$IS_RENEW_DB" == "true" ]; then
         run_psql -d postgres -c "CREATE DATABASE \"$STG_DB_NAME\" OWNER \"$local_db_user\"" >/dev/null 2>&1 || run_psql -d postgres -c "CREATE DATABASE \"$STG_DB_NAME\"" >/dev/null 2>&1
 
         # Function to run psql targeting the staging database as the active staging DB user
-        local restore_psql() {
+        restore_psql() {
             if cd "$STG_PATH_TO_ODOO" 2>/dev/null && docker compose exec -T odoo which psql >/dev/null 2>&1; then
                 docker compose exec -T odoo psql -h "${DB_HOST:-db}" -p "${DB_PORT:-5432}" -U "$local_db_user" -d "$STG_DB_NAME" "$@"
             else
