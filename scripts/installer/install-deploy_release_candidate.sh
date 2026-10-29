@@ -3,7 +3,7 @@ set -e
 # Category: Installer
 # Description: Installs the deploy_release_candidate utility based on .env configuration.
 # Usage: ./scripts/installer/install-deploy_release_candidate.sh
-# Dependencies: rsync, git, sudo
+# Dependencies: rsync, git, sudo, ssh, ssh-keygen
 
 # Detect Repository Owner to run non-root commands as that user
 CURRENT_DIR=$(dirname "$(readlink -f "$0")")
@@ -17,6 +17,11 @@ ENV_FILE=".env"
 UPDATE_SCRIPT="./scripts/update-env-file.sh"
 MAX_BACKUPS=3
 
+# Source shared SSH utilities
+if [ -f "$PATH_TO_ODOO/scripts/lib/ssh_utils.sh" ]; then
+  source "$PATH_TO_ODOO/scripts/lib/ssh_utils.sh"
+fi
+
 # --- Logging Functions & Colors ---
 # Define colors for log messages
 readonly COLOR_RESET="\033[0m"
@@ -24,6 +29,8 @@ readonly COLOR_INFO="\033[0;34m"
 readonly COLOR_SUCCESS="\033[0;32m"
 readonly COLOR_WARN="\033[1;33m"
 readonly COLOR_ERROR="\033[0;31m"
+readonly COLOR_CYAN="\033[0;36m"
+readonly COLOR_BOLD="\033[1m"
 
 # Function to log messages with a specific color and emoji
 log() {
@@ -128,6 +135,122 @@ function main() {
     fi
 
     install_script "$link_name" "$source_path" "$target_path"
+
+    # Cross-VPS Remote SSH Validation & Key Setup
+    local PRD_SSH_HOST
+    PRD_SSH_HOST=$(grep "^PRD_SSH_HOST=" "$ENV_FILE_PATH" 2>/dev/null | cut -d '=' -f2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//' || true)
+
+    if [ -n "$PRD_SSH_HOST" ]; then
+      log_info "Detected cross-VPS configuration for Deploy Release Candidate (PRD_SSH_HOST=$PRD_SSH_HOST)."
+      local PRD_SSH_USER PRD_SSH_PORT PRD_SSH_KEY PRD_SSH_PATH
+      PRD_SSH_USER=$(grep "^PRD_SSH_USER=" "$ENV_FILE_PATH" 2>/dev/null | cut -d '=' -f2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//' || true)
+      PRD_SSH_PORT=$(grep "^PRD_SSH_PORT=" "$ENV_FILE_PATH" 2>/dev/null | cut -d '=' -f2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//' || true)
+      PRD_SSH_KEY=$(grep "^PRD_SSH_KEY=" "$ENV_FILE_PATH" 2>/dev/null | cut -d '=' -f2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//' || true)
+      PRD_SSH_PATH=$(grep "^PRD_SSH_PATH=" "$ENV_FILE_PATH" 2>/dev/null | cut -d '=' -f2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//' || true)
+
+      [ -z "$PRD_SSH_PORT" ] && PRD_SSH_PORT="22"
+      [ -z "$PRD_SSH_USER" ] && PRD_SSH_USER="$REPOSITORY_OWNER"
+
+      if [ -z "$PRD_SSH_PATH" ]; then
+        log_warn "PRD_SSH_PATH is not defined in .env. Remote deployment requires the absolute path to production docker-odoo root."
+      fi
+
+      local OWNER_HOME
+      OWNER_HOME=$(eval echo "~$REPOSITORY_OWNER")
+      local THIS_VPS_HOSTNAME CLEAN_TARGET_HOSTNAME
+      THIS_VPS_HOSTNAME=$(hostname -s 2>/dev/null || hostname 2>/dev/null || echo "vps-source")
+      CLEAN_TARGET_HOSTNAME=$(echo "$PRD_SSH_HOST" | sed -e 's|^.*://||' -e 's|^.*@||' -e 's|:.*$||' -e 's|/.*$||' -e 's|[^a-zA-Z0-9._-]|_|g')
+
+      if [ -z "$PRD_SSH_KEY" ]; then
+        PRD_SSH_KEY="$OWNER_HOME/.ssh/deploy_rc-${THIS_VPS_HOSTNAME}-${CLEAN_TARGET_HOSTNAME}"
+        log_info "PRD_SSH_KEY is not defined in .env, defaulting to $PRD_SSH_KEY"
+        if grep -q "^PRD_SSH_KEY=" "$ENV_FILE_PATH"; then
+          sed -i "s|^PRD_SSH_KEY=.*|PRD_SSH_KEY=$PRD_SSH_KEY|" "$ENV_FILE_PATH"
+        else
+          echo "PRD_SSH_KEY=$PRD_SSH_KEY" >> "$ENV_FILE_PATH"
+        fi
+      fi
+
+      PRD_SSH_KEY="${PRD_SSH_KEY/#\~/$OWNER_HOME}"
+
+      if [ ! -f "$PRD_SSH_KEY" ]; then
+        log_info "Generating dedicated ed25519 SSH key pair at $PRD_SSH_KEY..."
+        mkdir -p "$(dirname "$PRD_SSH_KEY")"
+        chown "$REPOSITORY_OWNER":"$REPOSITORY_OWNER" "$(dirname "$PRD_SSH_KEY")"
+        chmod 700 "$(dirname "$PRD_SSH_KEY")"
+        ssh-keygen -t ed25519 -N "" -f "$PRD_SSH_KEY" -C "deploy_rc-${THIS_VPS_HOSTNAME}-${CLEAN_TARGET_HOSTNAME}@${THIS_VPS_HOSTNAME}"
+        chown "$REPOSITORY_OWNER":"$REPOSITORY_OWNER" "$PRD_SSH_KEY" "${PRD_SSH_KEY}.pub"
+        chmod 600 "$PRD_SSH_KEY"
+        chmod 644 "${PRD_SSH_KEY}.pub"
+        log_success "Generated SSH key pair: $PRD_SSH_KEY"
+      fi
+
+      local ssh_verified=false
+      log_info "Verifying passwordless SSH key authentication with Production VPS ($PRD_SSH_USER@$PRD_SSH_HOST:$PRD_SSH_PORT)..."
+      if ssh -i "$PRD_SSH_KEY" -p "$PRD_SSH_PORT" -o BatchMode=yes -o StrictHostKeyChecking=accept-new "$PRD_SSH_USER@$PRD_SSH_HOST" "true" 2>/dev/null; then
+        log_success "Passwordless SSH key authentication verified on Production VPS."
+        ssh_verified=true
+      else
+        log_warn "Passwordless SSH key not yet verified on Production VPS ($PRD_SSH_HOST)."
+        echo -e "${COLOR_WARN}Choose an option to install SSH key on Production VPS:${COLOR_RESET}"
+        echo "  [1] Password authentication as '$PRD_SSH_USER' (via ssh-copy-id)"
+        echo "  [2] Administrator account with sudo (installs key, sets up permissions and sudoers)"
+        echo "  [N] Skip automatic setup (show manual configuration instructions)"
+        echo -ne "${COLOR_CYAN}Select option [1/2/N] (default: 2): ${COLOR_RESET}"
+        read -r prd_auth_choice
+        [ -z "$prd_auth_choice" ] && prd_auth_choice="2"
+
+        if [ "$prd_auth_choice" = "1" ]; then
+          log_info "Copying public SSH key to Production VPS as '$PRD_SSH_USER'..."
+          if command -v ssh-copy-id >/dev/null 2>&1; then
+            ssh-copy-id -i "${PRD_SSH_KEY}.pub" -p "$PRD_SSH_PORT" -o StrictHostKeyChecking=accept-new "$PRD_SSH_USER@$PRD_SSH_HOST" || true
+          else
+            cat "${PRD_SSH_KEY}.pub" | ssh -p "$PRD_SSH_PORT" -o StrictHostKeyChecking=accept-new "$PRD_SSH_USER@$PRD_SSH_HOST" "mkdir -p ~/.ssh && chmod 700 ~/.ssh && cat >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys" || true
+          fi
+        elif [ "$prd_auth_choice" = "2" ]; then
+          echo -ne "${COLOR_CYAN}Enter remote sudo administrator username: ${COLOR_RESET}"
+          read -r remote_admin_user
+          if [ -n "$remote_admin_user" ]; then
+            local dest_svc_param=""
+            [ -n "$PRD_SSH_PATH" ] && dest_svc_param=$(basename "$PRD_SSH_PATH")
+            if declare -f install_pubkey_via_admin >/dev/null 2>&1; then
+              install_pubkey_via_admin "$PRD_SSH_HOST" "$PRD_SSH_PORT" "$remote_admin_user" "$PRD_SSH_USER" "${PRD_SSH_KEY}.pub" "auto" "deploy_rc" "$dest_svc_param" "$PRD_SSH_PATH" || true
+            else
+              log_error "install_pubkey_via_admin function not available."
+            fi
+          else
+            log_warn "No administrator user entered. Skipping admin provisioning."
+          fi
+        else
+          log_info "Skipping automatic SSH key provisioning to Production VPS."
+        fi
+
+        # Re-verify with BatchMode=yes
+        if ssh -i "$PRD_SSH_KEY" -p "$PRD_SSH_PORT" -o BatchMode=yes -o StrictHostKeyChecking=accept-new "$PRD_SSH_USER@$PRD_SSH_HOST" "true" 2>/dev/null; then
+          log_success "Passwordless SSH key installed and verified on Production VPS."
+          ssh_verified=true
+        else
+          log_warn "Automatic key copy did not result in verified passwordless SSH access."
+        fi
+      fi
+
+      # Remote environment and sudo verification
+      if [ "$ssh_verified" = true ] && [ -n "$PRD_SSH_PATH" ]; then
+        log_info "Checking production path on Production VPS ($PRD_SSH_PATH)..."
+        local prd_ssh_opts=(-i "$PRD_SSH_KEY" -p "$PRD_SSH_PORT" -o BatchMode=yes -o StrictHostKeyChecking=accept-new)
+
+        if ! ssh "${prd_ssh_opts[@]}" "$PRD_SSH_USER@$PRD_SSH_HOST" "[ -d '$PRD_SSH_PATH' ]" 2>/dev/null; then
+          log_warn "Production directory '$PRD_SSH_PATH' not found on Production VPS."
+        else
+          log_success "Production path '$PRD_SSH_PATH' exists on Production VPS."
+          if ssh "${prd_ssh_opts[@]}" "$PRD_SSH_USER@$PRD_SSH_HOST" "sudo -n true" 2>/dev/null; then
+            log_success "Remote user '$PRD_SSH_USER' has verified sudo execution permissions on Production VPS."
+          else
+            log_warn "Remote user '$PRD_SSH_USER' cannot run 'sudo -n true'. Ensure sudoers permissions are configured on Production VPS."
+          fi
+        fi
+      fi
+    fi
 
     log_success "Deploy Release Candidate utility installed successfully."
     exit 0

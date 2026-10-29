@@ -1434,6 +1434,23 @@ function main() {
           fi
         fi
       fi
+
+      local prd_remote_host prd_remote_user prd_remote_port prd_remote_key
+      prd_remote_host=$(grep "^PRD_SSH_HOST=" "$REPOSITORY_DIRPATH/.env" 2>/dev/null | cut -d "=" -f 2- | sed 's/[[:space:]]*#.*//;s/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//')
+      if [ -n "$prd_remote_host" ]; then
+        prd_remote_user=$(grep "^PRD_SSH_USER=" "$REPOSITORY_DIRPATH/.env" 2>/dev/null | cut -d "=" -f 2- | sed 's/[[:space:]]*#.*//;s/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//')
+        prd_remote_port=$(grep "^PRD_SSH_PORT=" "$REPOSITORY_DIRPATH/.env" 2>/dev/null | cut -d "=" -f 2- | sed 's/[[:space:]]*#.*//;s/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//')
+        prd_remote_key=$(grep "^PRD_SSH_KEY=" "$REPOSITORY_DIRPATH/.env" 2>/dev/null | cut -d "=" -f 2- | sed 's/[[:space:]]*#.*//;s/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//')
+        [ -z "$prd_remote_port" ] && prd_remote_port="22"
+        owner_home=$(eval echo "~$REPOSITORY_OWNER")
+        prd_remote_key="${prd_remote_key/#\~/$owner_home}"
+
+        if [ -n "$prd_remote_key" ] && [ -f "$prd_remote_key" ]; then
+          if ! ssh -i "$prd_remote_key" -p "$prd_remote_port" -o BatchMode=yes -o StrictHostKeyChecking=accept-new "$prd_remote_user@$prd_remote_host" "true" 2>/dev/null; then
+            TODO+=("Production VPS SSH Key not yet verified for $prd_remote_user@$prd_remote_host. Please add '$prd_remote_key.pub' to ~/.ssh/authorized_keys on the Production VPS.")
+          fi
+        fi
+      fi
     else
       "$REPOSITORY_DIRPATH/scripts/installer/uninstall-snapshot.sh"
       log_warn "snapshot utility is not installed. Please fill ENABLE_SNAPSHOT and DB_NAME variables in your .env file, then re-run this install script to install snapshot utility."

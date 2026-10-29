@@ -344,6 +344,32 @@ SUDO_EOF
     echo "[-] Sudoers validation failed for $tmp_sudoers. Skipping." >&2
     rm -f "$tmp_sudoers"
   fi
+elif [ "$tool_type" = "deploy_rc" ] && [ -n "$dest_svc" ]; then
+  echo "[+] Configuring targeted passwordless sudoers rules for deploy_rc service '$dest_svc'..." >&2
+  sudoers_file="/etc/sudoers.d/01-deploy-rc-${dest_svc//./_}-${target_user}"
+  tmp_sudoers=$(mktemp)
+
+  cat << SUDO_EOF > "$tmp_sudoers"
+# Dedicated passwordless rules for cross-VPS deploy_release_candidate
+$target_user ALL=(root) NOPASSWD: /usr/local/sbin/backupdata-${dest_svc}
+SUDO_EOF
+
+  if [ -n "$dest_path" ]; then
+    echo "$target_user ALL=(root) NOPASSWD: ${dest_path}/scripts/backupdata-${dest_svc}.sh" >> "$tmp_sudoers"
+    echo "$target_user ALL=(root) NOPASSWD: ${dest_path}/scripts/backupdata.sh" >> "$tmp_sudoers"
+    echo "$target_user ALL=(root) NOPASSWD: ${dest_path}/scripts/dataodoo-backupper.sh" >> "$tmp_sudoers"
+  fi
+
+  chmod 0440 "$tmp_sudoers"
+  chown root:root "$tmp_sudoers"
+
+  if visudo -c -f "$tmp_sudoers" >/dev/null 2>&1; then
+    sudo mv "$tmp_sudoers" "$sudoers_file"
+    echo "[+] Installed validated sudoers rule: $sudoers_file" >&2
+  else
+    echo "[-] Sudoers validation failed for $tmp_sudoers. Skipping." >&2
+    rm -f "$tmp_sudoers"
+  fi
 fi
 
 if command -v logger >/dev/null 2>&1; then

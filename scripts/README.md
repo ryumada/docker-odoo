@@ -255,6 +255,28 @@ Generates an ed25519 SSH key pair named `snapshot-$THIS_VPS_HOSTNAME-$TARGET_VPS
 </details>
 
 <details>
+<summary>
+
+# Generate Deploy RC SSH Key
+
+</summary>
+
+Generates an ed25519 SSH key pair named `deploy_rc-$THIS_VPS_HOSTNAME-$TARGET_VPS_HOSTNAME` in `~/.ssh`, updates `PRD_SSH_KEY` in `.env`, and outputs the public key for installation on the Remote Production VPS. Supports automatic remote provisioning via remote sudo admin.
+
+```bash
+# Generate key interactively or using .env PRD_SSH_HOST
+./scripts/generate-deploy-rc-ssh-key.sh
+
+# Provision automatically via remote administrator
+./scripts/generate-deploy-rc-ssh-key.sh -a sysadmin
+
+# Specify target VPS host directly
+./scripts/generate-deploy-rc-ssh-key.sh --target-host prd-vps.example.com -a sysadmin
+```
+
+</details>
+
+<details>
   <summary>
 
   # Snapshot Utilities

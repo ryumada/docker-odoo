@@ -44,6 +44,12 @@ log_error() { log "${COLOR_ERROR}" "❌" "$1"; }
 # --- Load Default Configuration from .env ---
 ENV_FILE="$PATH_TO_ODOO/.env"
 TOOL_TYPE="snapshot"
+SCRIPT_NAME=$(basename "$0")
+if [[ "$SCRIPT_NAME" =~ deploy ]]; then
+  TOOL_TYPE="deploy_rc"
+elif [[ "$SCRIPT_NAME" =~ cloner ]]; then
+  TOOL_TYPE="cloner"
+fi
 TARGET_HOST=""
 TARGET_USER=""
 ADMIN_USER=""
@@ -74,7 +80,8 @@ Examples:
   ./scripts/generate-snapshot-ssh-key.sh
   ./scripts/generate-snapshot-ssh-key.sh -a sysadmin
   ./scripts/generate-snapshot-ssh-key.sh --tool cloner --target-host dev-vps.example.com --target-user devops -a sysadmin
-  ./scripts/generate-snapshot-ssh-key.sh --tool deploy_rc --target-host prd-vps.example.com -f
+  ./scripts/generate-snapshot-ssh-key.sh --tool deploy_rc --target-host prd-vps.example.com -a sysadmin
+  ./scripts/generate-deploy-rc-ssh-key.sh -a sysadmin
 EOF
 }
 
@@ -231,6 +238,13 @@ if [ -n "$ADMIN_USER" ]; then
   DEST_PATH_PARAM=""
   if [ "$TOOL_TYPE" = "cloner" ]; then
     DEST_PATH_PARAM=$(grep "^CLONER_SSH_DEST_PATH=" "$ENV_FILE" 2>/dev/null | cut -d '=' -f2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//' || true)
+    if [ -n "$DEST_PATH_PARAM" ]; then
+      DEST_SVC_PARAM=$(basename "$DEST_PATH_PARAM")
+    else
+      DEST_SVC_PARAM="$SERVICE_NAME"
+    fi
+  elif [ "$TOOL_TYPE" = "deploy_rc" ]; then
+    DEST_PATH_PARAM=$(grep "^PRD_SSH_PATH=" "$ENV_FILE" 2>/dev/null | cut -d '=' -f2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//' || true)
     if [ -n "$DEST_PATH_PARAM" ]; then
       DEST_SVC_PARAM=$(basename "$DEST_PATH_PARAM")
     else
