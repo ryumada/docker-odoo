@@ -718,6 +718,15 @@ main() {
             [ -z "$local_db_user" ] && local_db_user=$(cat "$STG_PATH_TO_ODOO/.secrets/db_user" 2>/dev/null || echo "odoo")
             run_psql -d postgres -c "CREATE DATABASE \"$STG_DB_NAME\" OWNER \"$local_db_user\"" >/dev/null 2>&1 || run_psql -d postgres -c "CREATE DATABASE \"$STG_DB_NAME\"" >/dev/null 2>&1
 
+            # Function to run psql targeting the staging database as the active staging DB user
+            local restore_psql() {
+                if cd "$STG_PATH_TO_ODOO" 2>/dev/null && docker compose exec -T odoo which psql >/dev/null 2>&1; then
+                    docker compose exec -T odoo psql -h "${DB_HOST:-db}" -p "${DB_PORT:-5432}" -U "$local_db_user" -d "$STG_DB_NAME" "$@"
+                else
+                    run_psql -U "$local_db_user" -d "$STG_DB_NAME" "$@"
+                fi
+            }
+
             local remote_dump_file=""
             local rsync_ssh_cmd="ssh -i '$PRD_SSH_KEY' -p '$PRD_SSH_PORT' -o BatchMode=yes -o StrictHostKeyChecking=accept-new"
 
@@ -726,10 +735,10 @@ main() {
                 local remote_dump_cmd="if command -v dump_database-$PRD_SERVICE_NAME &>/dev/null; then sudo -n dump_database-$PRD_SERVICE_NAME; elif [ -x '/usr/local/sbin/dump_database-$PRD_SERVICE_NAME' ]; then sudo -n /usr/local/sbin/dump_database-$PRD_SERVICE_NAME; elif [ -f '$PRD_SSH_PATH/scripts/dump_database-$PRD_SERVICE_NAME.sh' ]; then sudo -n '$PRD_SSH_PATH/scripts/dump_database-$PRD_SERVICE_NAME.sh'; else sudo -n '$PRD_SSH_PATH/scripts/dump_database.sh'; fi"
                 local ssh_status=0
                 if [ "$remote_has_zstd" = "true" ] && command -v zstd >/dev/null 2>&1; then
-                    ssh "${prd_ssh_opts[@]}" "$PRD_SSH_USER@$PRD_SSH_HOST" "$remote_dump_cmd" | zstd -d -T0 | run_psql -d "$STG_DB_NAME" >/dev/null
+                    ssh "${prd_ssh_opts[@]}" "$PRD_SSH_USER@$PRD_SSH_HOST" "$remote_dump_cmd" | zstd -d -T0 | restore_psql >/dev/null
                     ssh_status=${PIPESTATUS[0]}
                 else
-                    ssh "${prd_ssh_opts[@]}" "$PRD_SSH_USER@$PRD_SSH_HOST" "$remote_dump_cmd --raw" | run_psql -d "$STG_DB_NAME" >/dev/null
+                    ssh "${prd_ssh_opts[@]}" "$PRD_SSH_USER@$PRD_SSH_HOST" "$remote_dump_cmd --raw" | restore_psql >/dev/null
                     ssh_status=${PIPESTATUS[0]}
                 fi
                 if [ "$ssh_status" -ne 0 ]; then
@@ -750,20 +759,49 @@ main() {
 
                 log_info "Moving database dump from Production VPS to staging environment ($remote_dump_file)..."
                 local local_dump_file="/tmp/$(basename "$remote_dump_file")"
-                if ! rsync -az -e "$rsync_ssh_cmd" "$PRD_SSH_USER@$PRD_SSH_HOST:$remote_dump_file" "$local_dump_file"; then
-                    ssh "${prd_ssh_opts[@]}" "$PRD_SSH_USER@$PRD_SSH_HOST" "rm -f '$remote_dump_file'" 2>/dev/null || true
-                    fail_with_json "Failed to transfer database dump from Production VPS."
+                if [ "$JSON_MODE" = "true" ]; then
+                    if ! rsync -az -e "$rsync_ssh_cmd" "$PRD_SSH_USER@$PRD_SSH_HOST:$remote_dump_file" "$local_dump_file" >&2; then
+                        ssh "${prd_ssh_opts[@]}" "$PRD_SSH_USER@$PRD_SSH_HOST" "rm -f '$remote_dump_file'" 2>/dev/null || true
+                        fail_with_json "Failed to transfer database dump from Production VPS."
+                    fi
+                else
+                    if ! rsync -az -e "$rsync_ssh_cmd" "$PRD_SSH_USER@$PRD_SSH_HOST:$remote_dump_file" "$local_dump_file"; then
+                        ssh "${prd_ssh_opts[@]}" "$PRD_SSH_USER@$PRD_SSH_HOST" "rm -f '$remote_dump_file'" 2>/dev/null || true
+                        fail_with_json "Failed to transfer database dump from Production VPS."
+                    fi
                 fi
                 ssh "${prd_ssh_opts[@]}" "$PRD_SSH_USER@$PRD_SSH_HOST" "rm -f '$remote_dump_file'" 2>/dev/null || true
 
-                log_info "Restoring SQL into '$STG_DB_NAME'..."
+                log_info "Restoring SQL into '$STG_DB_NAME' using user '$local_db_user'..."
                 if [[ "$local_dump_file" == *.zst ]] && command -v zstd >/dev/null 2>&1; then
-                    zstd -d -c "$local_dump_file" | run_psql -d "$STG_DB_NAME" >/dev/null
+                    zstd -d -c "$local_dump_file" | restore_psql >/dev/null
                 else
-                    run_psql -d "$STG_DB_NAME" < "$local_dump_file" >/dev/null
+                    restore_psql < "$local_dump_file" >/dev/null
                 fi
                 rm -f "$local_dump_file"
             fi
+
+            # Ensure all database objects in public schema are owned by local_db_user
+            log_info "Verifying database object ownership for '$local_db_user'..."
+            run_psql -d "$STG_DB_NAME" -c "
+                DO \$\$
+                DECLARE
+                    rec RECORD;
+                BEGIN
+                    FOR rec IN (SELECT tablename FROM pg_tables WHERE schemaname = 'public') LOOP
+                        EXECUTE 'ALTER TABLE ' || quote_ident(rec.tablename) || ' OWNER TO \"$local_db_user\"';
+                    END LOOP;
+                    FOR rec IN (SELECT sequence_name FROM information_schema.sequences WHERE sequence_schema = 'public') LOOP
+                        EXECUTE 'ALTER SEQUENCE ' || quote_ident(rec.sequence_name) || ' OWNER TO \"$local_db_user\"';
+                    END LOOP;
+                    FOR rec IN (SELECT table_name FROM information_schema.views WHERE table_schema = 'public') LOOP
+                        EXECUTE 'ALTER VIEW ' || quote_ident(rec.table_name) || ' OWNER TO \"$local_db_user\"';
+                    END LOOP;
+                    FOR rec IN (SELECT matviewname FROM pg_matviews WHERE schemaname = 'public') LOOP
+                        EXECUTE 'ALTER MATERIALIZED VIEW ' || quote_ident(rec.matviewname) || ' OWNER TO \"$local_db_user\"';
+                    END LOOP;
+                END \$\$;
+            " >/dev/null 2>&1 || true
 
             log_success "Database restore completed."
             trigger_registry_reload "$STG_DB_NAME" "$STG_PATH_TO_ODOO" || log_warn "Registry reload skipped or failed; container restart in step 3 will reload registry."
