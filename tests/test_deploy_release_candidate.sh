@@ -60,11 +60,11 @@ assert_not_contains "$rc_manual_content" "Fallback: Triggering legacy backup on 
 assert_not_contains "$rc_manual_content" "sudo backupdata-\$PRD_SERVICE_NAME" "deploy_release_candidate_manual: No sudo backupdata call"
 assert_not_contains "$rc_manual_content" "restore_backupdata-\$SERVICE_NAME" "deploy_release_candidate_manual: No restore_backupdata call"
 
-# Test 2: Verify direct container pg_dump fallback when dump_database helper is absent
+# Test 2: Verify container pg_dump host fallback when dump_database helper is absent
 echo -e "\n${TEST_COLOR_INFO}Test 2: Verification of container pg_dump fallback when helper absent${TEST_COLOR_RESET}"
-assert_contains "$rc_content" "dump_database helper not found on remote; streaming directly via container pg_dump" "deploy_release_candidate: Has container pg_dump fallback"
+assert_contains "$rc_content" "dump_database helper not found on remote; dumping on production host via container pg_dump" "deploy_release_candidate: Has container pg_dump fallback"
 assert_contains "$rc_content" "remote_dump_b64=" "deploy_release_candidate: Uses safe base64 runner"
-assert_contains "$rc_manual_content" "dump_database helper not found on remote; streaming directly via container pg_dump" "deploy_release_candidate_manual: Has container pg_dump fallback"
+assert_contains "$rc_manual_content" "dump_database helper not found on remote; dumping on production host via container pg_dump" "deploy_release_candidate_manual: Has container pg_dump fallback"
 assert_contains "$rc_manual_content" "remote_dump_b64=" "deploy_release_candidate_manual: Uses safe base64 runner"
 
 # Test 2b: Verify syntax validity of the embedded base64 runner script
@@ -187,15 +187,15 @@ rm -f "$TEST_TEMP_DIR/simulate_has_helper"
   if [ "$remote_has_dump_helper" = "true" ]; then
       remote_dump_cmd="sudo dump_database-$PRD_SERVICE_NAME"
   else
-      log_info "dump_database helper not found on remote; streaming directly via container pg_dump..."
-      remote_dump_cmd="echo 'c2V0IC1lCg==' | base64 -d | bash -s -- '$PRD_SSH_PATH' '$remote_prd_db' 'false'"
+      log_info "dump_database helper not found on remote; dumping on production host via container pg_dump (-U postgres)..."
+      remote_dump_cmd="echo 'c2V0IC1lCg==' | base64 -d | bash -s -- '$PRD_SSH_PATH' '$remote_prd_db' '/tmp/$STG_DB_NAME'"
   fi
 
   ssh "${prd_ssh_opts[@]}" "$PRD_SSH_USER@$PRD_SSH_HOST" "$remote_dump_cmd" >> "$MOCK_LOG" 2>&1 || true
 )
 
 mock_output=$(cat "$MOCK_LOG")
-assert_contains "$mock_output" "dump_database helper not found on remote; streaming directly via container pg_dump" "Behavioral: Triggers container pg_dump stream when helper absent"
+assert_contains "$mock_output" "dump_database helper not found on remote; dumping on production host via container pg_dump" "Behavioral: Triggers container pg_dump host fallback when helper absent"
 assert_contains "$mock_output" "base64 -d | bash -s" "Behavioral: Executes safe base64 runner over SSH"
 assert_not_contains "$mock_output" "FAIL_7Z_CALLED" "Behavioral: 7z is never invoked"
 assert_not_contains "$mock_output" "FAIL_BACKUPDATA_CALLED" "Behavioral: backupdata is never invoked"
@@ -239,13 +239,15 @@ assert_contains "$mock_output_helper" "Streaming remote database dump via dump_d
 assert_contains "$mock_output_helper" "sudo dump_database-afi" "Behavioral: Executes sudo dump_database-afi over SSH"
 assert_not_contains "$mock_output_helper" "FAIL_7Z_CALLED" "Behavioral (helper present): 7z is never invoked"
 
-# Test 4: Registry reload on staging and production network extraction
-echo -e "\n${TEST_COLOR_INFO}Test 4: Registry reload on staging and production network extraction${TEST_COLOR_RESET}"
+# Test 4: Registry reload on staging and host production dump execution
+echo -e "\n${TEST_COLOR_INFO}Test 4: Registry reload on staging and host production dump execution${TEST_COLOR_RESET}"
 decoded_runner=$(echo "$b64_payload" | base64 -d)
-assert_contains "$decoded_runner" "DOCKER_NETWORK_MODE=" "Base64 runner extracts DOCKER_NETWORK_MODE from production .env"
-assert_contains "$decoded_runner" "docker network connect" "Base64 runner connects ephemeral container to network(s)"
+assert_contains "$decoded_runner" "exec -T db pg_dump -U postgres" "Base64 runner uses docker compose exec -T db pg_dump -U postgres"
+assert_contains "$decoded_runner" "pg_dump -U postgres" "Base64 runner dumps as postgres user without password prompt"
 assert_contains "$rc_content" "trigger_registry_reload \"\$STG_DB_NAME\" \"\$STG_PATH_TO_ODOO\"" "deploy_release_candidate triggers registry reload on staging"
 assert_contains "$rc_manual_content" "trigger_registry_reload \"\$STG_DB_NAME\" \"\$STG_PATH_TO_ODOO\"" "deploy_release_candidate_manual triggers registry reload on staging"
+assert_contains "$rc_content" "Moving database dump from Production VPS to staging environment" "deploy_release_candidate moves dump file to staging"
+assert_contains "$rc_manual_content" "Moving database dump from Production VPS to staging environment" "deploy_release_candidate_manual moves dump file to staging"
 
 odoo_utils_content=$(cat scripts/lib/odoo_utils.sh)
 assert_contains "$odoo_utils_content" "docker compose exec -T" "odoo_utils.sh uses non-interactive -T flag"

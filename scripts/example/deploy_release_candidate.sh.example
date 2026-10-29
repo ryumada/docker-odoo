@@ -629,8 +629,8 @@ if [ "$IS_RENEW_DB" == "true" ]; then
 
         remote_has_zstd=$(ssh "${prd_ssh_opts[@]}" "$PRD_SSH_USER@$PRD_SSH_HOST" "command -v zstd >/dev/null 2>&1 && echo true || echo false" | tr -d '\r\n')
 
-        # Base64-encoded fallback runner for direct container pg_dump (safe from quoting/escaping corruption)
-        local remote_dump_b64="IyEvdXNyL2Jpbi9lbnYgYmFzaApzZXQgLWVvIHBpcGVmYWlsCgpwcmRfcGF0aD0iJDEiCnRhcmdldF9kYj0iJDIiCnVzZV96c3RkPSIkMyIKCmVudl9maWxlPSIkcHJkX3BhdGgvLmVudiIKCmRiX2hvc3Q9JChzZWQgLWUgJ3MvIy4qLy8nICIkZW52X2ZpbGUiIDI+L2Rldi9udWxsIHwgZ3JlcCAiXkRCX0hPU1Q9IiB8IGN1dCAtZCAnPScgLWYyLSB8IHRyIC1kICdbOnNwYWNlOl0nIiciJyInIHx8IHRydWUpCmRiX3BvcnQ9JChzZWQgLWUgJ3MvIy4qLy8nICIkZW52X2ZpbGUiIDI+L2Rldi9udWxsIHwgZ3JlcCAiXkRCX1BPUlQ9IiB8IGN1dCAtZCAnPScgLWYyLSB8IHRyIC1kICdbOnNwYWNlOl0nIiciJyInIHx8IHRydWUpClsgLXogIiRkYl9wb3J0IiBdICYmIGRiX3BvcnQ9IjU0MzIiCgpkYl91c2VyPSQoc2VkIC1lICdzLyMuKi8vJyAiJGVudl9maWxlIiAyPi9kZXYvbnVsbCB8IGdyZXAgIl5BQ1RJVkVfREJfVVNFUj0iIHwgY3V0IC1kICc9JyAtZjItIHwgdHIgLWQgJ1s6c3BhY2U6XSciJyInIicgfHwgdHJ1ZSkKWyAteiAiJGRiX3VzZXIiIF0gJiYgZGJfdXNlcj0kKHNlZCAtZSAncy8jLiovLycgIiRlbnZfZmlsZSIgMj4vZGV2L251bGwgfCBncmVwICJeREJfVVNFUj0iIHwgY3V0IC1kICc9JyAtZjItIHwgdHIgLWQgJ1s6c3BhY2U6XSciJyInIicgfHwgdHJ1ZSkKWyAteiAiJGRiX3VzZXIiIF0gJiYgZGJfdXNlcj0kKGNhdCAiJHByZF9wYXRoLy5zZWNyZXRzL2RiX3VzZXIiIDI+L2Rldi9udWxsIHx8IHRydWUpClsgLXogIiRkYl91c2VyIiBdICYmIGRiX3VzZXI9Im9kb28iCgojIFBhc3N3b3JkIHJlc29sdXRpb24KZGJfcGFzcz0kKHNlZCAtZSAncy8jLiovLycgIiRlbnZfZmlsZSIgMj4vZGV2L251bGwgfCBncmVwICJeREJfUEFTU1dPUkQ9IiB8IGN1dCAtZCAnPScgLWYyLSB8IHRyIC1kICdbOnNwYWNlOl0nIiciJyInIHx8IHRydWUpClsgLXogIiRkYl9wYXNzIiBdICYmIGRiX3Bhc3M9JChzZWQgLWUgJ3MvIy4qLy8nICIkZW52X2ZpbGUiIDI+L2Rldi9udWxsIHwgZ3JlcCAiXkFDVElWRV9EQl9QQVNTV09SRD0iIHwgY3V0IC1kICc9JyAtZjItIHwgdHIgLWQgJ1s6c3BhY2U6XSciJyInIicgfHwgdHJ1ZSkKWyAteiAiJGRiX3Bhc3MiIF0gJiYgZGJfcGFzcz0kKGNhdCAiJHByZF9wYXRoLy5zZWNyZXRzL2RiX3Bhc3N3b3JkIiAyPi9kZXYvbnVsbCB8fCB0cnVlKQpbIC16ICIkZGJfcGFzcyIgXSAmJiBkYl9wYXNzPSQoc3VkbyBjYXQgIiRwcmRfcGF0aC8uc2VjcmV0cy9kYl9wYXNzd29yZCIgMj4vZGV2L251bGwgfHwgdHJ1ZSkKWyAteiAiJGRiX3Bhc3MiIF0gJiYgZGJfcGFzcz0kKGRvY2tlciBydW4gLS1ybSAtdiAiJHByZF9wYXRoLy5zZWNyZXRzOi9zZWNyZXRzOnJvIiBwb3N0Z3JlcyBjYXQgL3NlY3JldHMvZGJfcGFzc3dvcmQgMj4vZGV2L251bGwgfHwgdHJ1ZSkKaWYgWyAteiAiJGRiX3Bhc3MiIF07IHRoZW4KICAgIHN2Yz0kKGJhc2VuYW1lICIkcHJkX3BhdGgiKQogICAgZGJfcGFzcz0kKGRvY2tlciBleGVjICIkc3ZjIiBjYXQgL3J1bi9zZWNyZXRzL2RiX3Bhc3N3b3JkIDI+L2Rldi9udWxsIHx8IHRydWUpCiAgICBbIC16ICIkZGJfcGFzcyIgXSAmJiBkYl9wYXNzPSQoZG9ja2VyIGV4ZWMgIiR7c3ZjfS1vZG9vLTEiIGNhdCAvcnVuL3NlY3JldHMvZGJfcGFzc3dvcmQgMj4vZGV2L251bGwgfHwgdHJ1ZSkKZmkKCmRvY2tlcl9uZXQ9JChzZWQgLWUgJ3MvIy4qLy8nICIkZW52X2ZpbGUiIDI+L2Rldi9udWxsIHwgZ3JlcCAiXkRPQ0tFUl9ORVRXT1JLX01PREU9IiB8IGN1dCAtZCAnPScgLWYyLSB8IHRyIC1kICdbOnNwYWNlOl0nIiciJyInIHx8IHRydWUpClsgLXogIiRkb2NrZXJfbmV0IiBdICYmIGRvY2tlcl9uZXQ9Imhvc3QiCgpkdW1wX2NtZCgpIHsKICAgIGlmIFsgLW4gIiRkYl9ob3N0IiBdICYmIFsgIiRkYl9ob3N0IiAhPSAibG9jYWxob3N0IiBdOyB0aGVuCiAgICAgICAgaWYgWyAteiAiJGRiX3Bhc3MiIF07IHRoZW4KICAgICAgICAgICAgZWNobyAi4p2MIEVycm9yOiBEQiBwYXNzd29yZCBjb3VsZCBub3QgYmUgcmVzb2x2ZWQgb24gcHJvZHVjdGlvbiBWUFMuIiA+JjIKICAgICAgICAgICAgZXhpdCAxCiAgICAgICAgZmkKICAgICAgICBpZiBbICIkZG9ja2VyX25ldCIgPSAiaG9zdCIgXTsgdGhlbgogICAgICAgICAgICBkb2NrZXIgcnVuIC0tcm0gLS1uZXR3b3JrPWhvc3QgLWUgUEdQQVNTV09SRD0iJGRiX3Bhc3MiIHBvc3RncmVzIHBnX2R1bXAgLWggIiRkYl9ob3N0IiAtcCAiJGRiX3BvcnQiIC1VICIkZGJfdXNlciIgLS1uby1vd25lciAiJHRhcmdldF9kYiIKICAgICAgICBlbHNlCiAgICAgICAgICAgIElGUz0nLCcgcmVhZCAtcmEgbmV0cyA8PDwgIiRkb2NrZXJfbmV0IgogICAgICAgICAgICBsb2NhbCBjaWQ9InBnZHVtcF8ke1JBTkRPTX1fJCQiCiAgICAgICAgICAgIGRvY2tlciBjcmVhdGUgLS1uYW1lICIkY2lkIiAtLW5ldHdvcms9IiR7bmV0c1swXX0iIC1lIFBHUEFTU1dPUkQ9IiRkYl9wYXNzIiBwb3N0Z3JlcyBwZ19kdW1wIC1oICIkZGJfaG9zdCIgLXAgIiRkYl9wb3J0IiAtVSAiJGRiX3VzZXIiIC0tbm8tb3duZXIgIiR0YXJnZXRfZGIiID4vZGV2L251bGwKICAgICAgICAgICAgZm9yIG4gaW4gIiR7bmV0c1tAXToxfSI7IGRvCiAgICAgICAgICAgICAgICBbIC1uICIkbiIgXSAmJiBkb2NrZXIgbmV0d29yayBjb25uZWN0ICIkbiIgIiRjaWQiIDI+L2Rldi9udWxsIHx8IHRydWUKICAgICAgICAgICAgZG9uZQogICAgICAgICAgICBkb2NrZXIgc3RhcnQgLWEgIiRjaWQiCiAgICAgICAgICAgIGxvY2FsIHJjPSQ/CiAgICAgICAgICAgIGRvY2tlciBybSAiJGNpZCIgPi9kZXYvbnVsbCAyPiYxIHx8IHRydWUKICAgICAgICAgICAgcmV0dXJuICRyYwogICAgICAgIGZpCiAgICBlbHNlCiAgICAgICAgc3VkbyAtdSBwb3N0Z3JlcyBwZ19kdW1wIC0tbm8tb3duZXIgIiR0YXJnZXRfZGIiCiAgICBmaQp9CgppZiBbICIkdXNlX3pzdGQiID0gInRydWUiIF0gJiYgY29tbWFuZCAtdiB6c3RkID4vZGV2L251bGwgMj4mMTsgdGhlbgogICAgZHVtcF9jbWQgfCB6c3RkIC0xIC1UMAplbHNlCiAgICBkdW1wX2NtZApmaQo="
+        # Base64-encoded fallback runner for direct host/container pg_dump via -U postgres
+        local remote_dump_b64="IyEvdXNyL2Jpbi9lbnYgYmFzaApzZXQgLWVvIHBpcGVmYWlsCgpwcmRfcGF0aD0iJDEiCnRhcmdldF9kYj0iJDIiCnRtcF9iYXNlPSIkMyIKCmNkICIkcHJkX3BhdGgiIDI+L2Rldi9udWxsIHx8IHRydWUKCnJ1bl9kYygpIHsKICAgIGlmIGRvY2tlciBjb21wb3NlIHZlcnNpb24gPi9kZXYvbnVsbCAyPiYxOyB0aGVuCiAgICAgICAgZG9ja2VyIGNvbXBvc2UgIiRAIgogICAgZWxpZiBzdWRvIGRvY2tlciBjb21wb3NlIHZlcnNpb24gPi9kZXYvbnVsbCAyPiYxOyB0aGVuCiAgICAgICAgc3VkbyBkb2NrZXIgY29tcG9zZSAiJEAiCiAgICBmaQp9CgpydW5fZG9jaygpIHsKICAgIGlmIGRvY2tlciBwcyA+L2Rldi9udWxsIDI+JjE7IHRoZW4KICAgICAgICBkb2NrZXIgIiRAIgogICAgZWxpZiBzdWRvIGRvY2tlciBwcyA+L2Rldi9udWxsIDI+JjE7IHRoZW4KICAgICAgICBzdWRvIGRvY2tlciAiJEAiCiAgICBmaQp9CgpkdW1wX3RvX3N0cmVhbSgpIHsKICAgIGlmIHJ1bl9kYyBleGVjIC1UIGRiIHBnX2R1bXAgLVUgcG9zdGdyZXMgLS1uby1vd25lciAiJHRhcmdldF9kYiIgMj4vZGV2L251bGw7IHRoZW4KICAgICAgICByZXR1cm4gMAogICAgZmkKICAgIGlmIHJ1bl9kYyBleGVjIC1UIHBvc3RncmVzIHBnX2R1bXAgLVUgcG9zdGdyZXMgLS1uby1vd25lciAiJHRhcmdldF9kYiIgMj4vZGV2L251bGw7IHRoZW4KICAgICAgICByZXR1cm4gMAogICAgZmkKICAgIGlmIHJ1bl9kb2NrIGV4ZWMgLWkgZGIgcGdfZHVtcCAtVSBwb3N0Z3JlcyAtLW5vLW93bmVyICIkdGFyZ2V0X2RiIiAyPi9kZXYvbnVsbDsgdGhlbgogICAgICAgIHJldHVybiAwCiAgICBmaQogICAgbG9jYWwgZGJfaG9zdAogICAgZGJfaG9zdD0kKGdyZXAgJ15EQl9IT1NUPScgIiRwcmRfcGF0aC8uZW52IiAyPi9kZXYvbnVsbCB8IGN1dCAtZCAnPScgLWYyLSB8IHRyIC1kICdbOnNwYWNlOl0iJyB8IHRyIC1kICInIiB8fCB0cnVlKQogICAgaWYgWyAtbiAiJGRiX2hvc3QiIF0gJiYgWyAiJGRiX2hvc3QiICE9ICJsb2NhbGhvc3QiIF0gJiYgcnVuX2RvY2sgZXhlYyAtaSAiJGRiX2hvc3QiIHBnX2R1bXAgLVUgcG9zdGdyZXMgLS1uby1vd25lciAiJHRhcmdldF9kYiIgMj4vZGV2L251bGw7IHRoZW4KICAgICAgICByZXR1cm4gMAogICAgZmkKICAgIGlmIHN1ZG8gLXUgcG9zdGdyZXMgcGdfZHVtcCAtLW5vLW93bmVyICIkdGFyZ2V0X2RiIiAyPi9kZXYvbnVsbDsgdGhlbgogICAgICAgIHJldHVybiAwCiAgICBmaQogICAgZWNobyAi4p2MIEVycm9yOiBGYWlsZWQgdG8gZXhlY3V0ZSBwZ19kdW1wIHZpYSBkb2NrZXIgY29tcG9zZSwgZG9ja2VyIGV4ZWMsIG9yIHN1ZG8gcG9zdGdyZXMuIiA+JjIKICAgIHJldHVybiAxCn0KCm91dF9maWxlPSIiCmlmIGNvbW1hbmQgLXYgenN0ZCA+L2Rldi9udWxsIDI+JjE7IHRoZW4KICAgIG91dF9maWxlPSIke3RtcF9iYXNlfS5zcWwuenN0IgogICAgZHVtcF90b19zdHJlYW0gfCB6c3RkIC0xIC1UMCA+ICIkb3V0X2ZpbGUiCmVsc2UKICAgIG91dF9maWxlPSIke3RtcF9iYXNlfS5zcWwiCiAgICBkdW1wX3RvX3N0cmVhbSA+ICIkb3V0X2ZpbGUiCmZpCgppZiBbIC1zICIkb3V0X2ZpbGUiIF07IHRoZW4KICAgIGVjaG8gIiRvdXRfZmlsZSIKZWxzZQogICAgZWNobyAi4p2MIEVycm9yOiBEdW1wIGZpbGUgaXMgZW1wdHkgb3IgbWlzc2luZy4iID4mMgogICAgcm0gLWYgIiRvdXRfZmlsZSIKICAgIGV4aXQgMQpmaQo="
 
         # Prepare staging database
         log_info "Recreating staging database '$STG_DB_NAME'..."
@@ -642,11 +642,13 @@ if [ "$IS_RENEW_DB" == "true" ]; then
         [ -z "$local_db_user" ] && local_db_user=$(cat "$STG_PATH_TO_ODOO/.secrets/db_user" 2>/dev/null || echo "odoo")
         run_psql -d postgres -c "CREATE DATABASE \"$STG_DB_NAME\" OWNER \"$local_db_user\"" >/dev/null 2>&1 || run_psql -d postgres -c "CREATE DATABASE \"$STG_DB_NAME\"" >/dev/null 2>&1
 
-        log_info "Restoring streamed SQL into '$STG_DB_NAME'..."
-        local ssh_status=0
+        local remote_dump_file=""
+        local rsync_ssh_cmd="ssh -i '$PRD_SSH_KEY' -p '$PRD_SSH_PORT' -o BatchMode=yes -o StrictHostKeyChecking=accept-new"
+
         if [ "$remote_has_dump_helper" = "true" ]; then
             log_info "Streaming remote database dump via dump_database helper..."
             local remote_dump_cmd="if command -v dump_database-$PRD_SERVICE_NAME &>/dev/null; then sudo dump_database-$PRD_SERVICE_NAME; elif [ -f '$PRD_SSH_PATH/scripts/dump_database-$PRD_SERVICE_NAME.sh' ]; then sudo '$PRD_SSH_PATH/scripts/dump_database-$PRD_SERVICE_NAME.sh'; else sudo '$PRD_SSH_PATH/scripts/dump_database.sh'; fi"
+            local ssh_status=0
             if [ "$remote_has_zstd" = "true" ] && command -v zstd >/dev/null 2>&1; then
                 ssh "${prd_ssh_opts[@]}" "$PRD_SSH_USER@$PRD_SSH_HOST" "$remote_dump_cmd" | zstd -d -T0 | run_psql -d "$STG_DB_NAME" >/dev/null
                 ssh_status=${PIPESTATUS[0]}
@@ -654,26 +656,36 @@ if [ "$IS_RENEW_DB" == "true" ]; then
                 ssh "${prd_ssh_opts[@]}" "$PRD_SSH_USER@$PRD_SSH_HOST" "$remote_dump_cmd --raw" | run_psql -d "$STG_DB_NAME" >/dev/null
                 ssh_status=${PIPESTATUS[0]}
             fi
+            if [ "$ssh_status" -ne 0 ]; then
+                fail_with_json "Database streaming restore from remote production failed (SSH exit code: $ssh_status)."
+            fi
         else
-            log_info "dump_database helper not found on remote; streaming directly via container pg_dump..."
-            local stream_zstd="false"
-            if [ "$remote_has_zstd" = "true" ] && command -v zstd >/dev/null 2>&1; then
-                stream_zstd="true"
+            log_info "dump_database helper not found on remote; dumping on production host via container pg_dump (-U postgres)..."
+            local remote_tmp_base="/tmp/${STG_DB_NAME}"
+            local remote_exec_cmd="echo '$remote_dump_b64' | base64 -d | bash -s -- '$PRD_SSH_PATH' '$remote_prd_db' '$remote_tmp_base'"
+            remote_dump_file=$(ssh "${prd_ssh_opts[@]}" "$PRD_SSH_USER@$PRD_SSH_HOST" "$remote_exec_cmd" | tr -d '\r\n')
+            if [ -z "$remote_dump_file" ] || [[ "$remote_dump_file" != /tmp/* ]]; then
+                fail_with_json "Database dump on remote production host failed. Output: $remote_dump_file"
             fi
-            local remote_exec_cmd="echo '$remote_dump_b64' | base64 -d | bash -s -- '$PRD_SSH_PATH' '$remote_prd_db' '$stream_zstd'"
-            if [ "$stream_zstd" = "true" ]; then
-                ssh "${prd_ssh_opts[@]}" "$PRD_SSH_USER@$PRD_SSH_HOST" "$remote_exec_cmd" | zstd -d -T0 | run_psql -d "$STG_DB_NAME" >/dev/null
-                ssh_status=${PIPESTATUS[0]}
+
+            log_info "Moving database dump from Production VPS to staging environment ($remote_dump_file)..."
+            local local_dump_file="/tmp/$(basename "$remote_dump_file")"
+            if ! rsync -az -e "$rsync_ssh_cmd" "$PRD_SSH_USER@$PRD_SSH_HOST:$remote_dump_file" "$local_dump_file"; then
+                ssh "${prd_ssh_opts[@]}" "$PRD_SSH_USER@$PRD_SSH_HOST" "rm -f '$remote_dump_file'" 2>/dev/null || true
+                fail_with_json "Failed to transfer database dump from Production VPS."
+            fi
+            ssh "${prd_ssh_opts[@]}" "$PRD_SSH_USER@$PRD_SSH_HOST" "rm -f '$remote_dump_file'" 2>/dev/null || true
+
+            log_info "Restoring SQL into '$STG_DB_NAME'..."
+            if [[ "$local_dump_file" == *.zst ]] && command -v zstd >/dev/null 2>&1; then
+                zstd -d -c "$local_dump_file" | run_psql -d "$STG_DB_NAME" >/dev/null
             else
-                ssh "${prd_ssh_opts[@]}" "$PRD_SSH_USER@$PRD_SSH_HOST" "$remote_exec_cmd" | run_psql -d "$STG_DB_NAME" >/dev/null
-                ssh_status=${PIPESTATUS[0]}
+                run_psql -d "$STG_DB_NAME" < "$local_dump_file" >/dev/null
             fi
+            rm -f "$local_dump_file"
         fi
 
-        if [ "$ssh_status" -ne 0 ]; then
-            fail_with_json "Database streaming restore from remote production failed (SSH exit code: $ssh_status)."
-        fi
-        log_success "Database stream restore completed."
+        log_success "Database restore completed."
         trigger_registry_reload "$STG_DB_NAME" "$STG_PATH_TO_ODOO" || log_warn "Registry reload skipped or failed; container restart in step 3 will reload registry."
         log_success "Database clone from remote production completed successfully."
     else
