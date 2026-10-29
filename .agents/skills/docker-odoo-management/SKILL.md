@@ -59,6 +59,18 @@ Backup: `./scripts/backupdata.sh`. Restore: `./scripts/restore_backupdata.sh`.
 docker compose exec odoo odoo-shell <database>
 ```
 
+### Remote Database Sync & Containerized PostgreSQL Patterns
+- **Reading Protected Secrets via Container**: `.secrets/` files are `chmod 0400` (owned by `odoo:odoo`). When executing remote tasks via non-root SSH (`devops`), read credentials by mounting `.secrets` into a container:
+  `docker run --rm --network="$net" -v "$path/.secrets:/secrets:ro" postgres bash -c '...'`
+- **Postgres Roles vs OS Users**: Odoo DB users are PostgreSQL roles, not OS system users. Never run `sudo -u "$db_user"` on the host.
+- **SQL Dumps & Object Ownership**:
+  - Always dump with `--no-owner` to avoid hardcoding source usernames in the DDL.
+  - On the target environment, restore via the Odoo container using the target's `.secrets`:
+    `docker compose exec -T -e PGPASSWORD="$pass" odoo psql -h "$db_host" -p "$db_port" -U "$user" -d "$db_name" < file.sql`
+  - Reassign ownership of tables/sequences/views in `public` schema to `$user` to prevent `base_registry_signaling` permission errors during `odoo-registry-reload`.
+- **Bash Syntax Guardrails**: Never prefix function declarations with `local` (`local fn() { ... }` is invalid in bash).
+- **JSON-Clean Outputs**: In CLI scripts with `JSON_MODE=true`, redirect verbose commands (`rsync`, `ssh` logs) to `>&2` to protect JSON stdout.
+
 ## Multi-Deployment Architecture
 
 - **Toggle**: Controlled via `ENABLE_MULTI_DEPLOYMENT=Y` in root `.env`. Default is `N` (single-deployment mode).
