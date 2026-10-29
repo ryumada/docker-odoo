@@ -63,9 +63,19 @@ assert_not_contains "$rc_manual_content" "restore_backupdata-\$SERVICE_NAME" "de
 # Test 2: Verify direct container pg_dump fallback when dump_database helper is absent
 echo -e "\n${TEST_COLOR_INFO}Test 2: Verification of container pg_dump fallback when helper absent${TEST_COLOR_RESET}"
 assert_contains "$rc_content" "dump_database helper not found on remote; streaming directly via container pg_dump" "deploy_release_candidate: Has container pg_dump fallback"
-assert_contains "$rc_content" "docker run -i --rm --network" "deploy_release_candidate: Uses docker pg_dump container"
+assert_contains "$rc_content" "remote_dump_b64=" "deploy_release_candidate: Uses safe base64 runner"
 assert_contains "$rc_manual_content" "dump_database helper not found on remote; streaming directly via container pg_dump" "deploy_release_candidate_manual: Has container pg_dump fallback"
-assert_contains "$rc_manual_content" "docker run -i --rm --network" "deploy_release_candidate_manual: Uses docker pg_dump container"
+assert_contains "$rc_manual_content" "remote_dump_b64=" "deploy_release_candidate_manual: Uses safe base64 runner"
+
+# Test 2b: Verify syntax validity of the embedded base64 runner script
+b64_payload=$(echo "$rc_content" | grep 'remote_dump_b64=' | cut -d '"' -f 2)
+if echo "$b64_payload" | base64 -d | bash -n 2>/dev/null; then
+  echo -e "${TEST_COLOR_SUCCESS}  [PASS] base64 payload has valid bash syntax${TEST_COLOR_RESET}"
+  test_passed=$((test_passed + 1))
+else
+  echo -e "${TEST_COLOR_FAIL}  [FAIL] base64 payload has bash syntax errors${TEST_COLOR_RESET}"
+  test_failed=$((test_failed + 1))
+fi
 
 # Test 3: Simulation of execution branches with mocked environment
 echo -e "\n${TEST_COLOR_INFO}Test 3: Behavioral test with mocked SSH and binary environment${TEST_COLOR_RESET}"
@@ -178,7 +188,7 @@ rm -f "$TEST_TEMP_DIR/simulate_has_helper"
       remote_dump_cmd="sudo dump_database-$PRD_SERVICE_NAME"
   else
       log_info "dump_database helper not found on remote; streaming directly via container pg_dump..."
-      remote_dump_cmd="docker run -i --rm --network=host -e PGPASSWORD=secret postgres pg_dump -h db -U odoo 000-afi"
+      remote_dump_cmd="echo 'c2V0IC1lCg==' | base64 -d | bash -s -- '$PRD_SSH_PATH' '$remote_prd_db' 'false'"
   fi
 
   ssh "${prd_ssh_opts[@]}" "$PRD_SSH_USER@$PRD_SSH_HOST" "$remote_dump_cmd" >> "$MOCK_LOG" 2>&1 || true
@@ -186,7 +196,7 @@ rm -f "$TEST_TEMP_DIR/simulate_has_helper"
 
 mock_output=$(cat "$MOCK_LOG")
 assert_contains "$mock_output" "dump_database helper not found on remote; streaming directly via container pg_dump" "Behavioral: Triggers container pg_dump stream when helper absent"
-assert_contains "$mock_output" "docker run -i --rm" "Behavioral: Emits docker run command over SSH"
+assert_contains "$mock_output" "base64 -d | bash -s" "Behavioral: Executes safe base64 runner over SSH"
 assert_not_contains "$mock_output" "FAIL_7Z_CALLED" "Behavioral: 7z is never invoked"
 assert_not_contains "$mock_output" "FAIL_BACKUPDATA_CALLED" "Behavioral: backupdata is never invoked"
 

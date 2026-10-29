@@ -705,29 +705,8 @@ main() {
             local remote_has_zstd
             remote_has_zstd=$(ssh "${prd_ssh_opts[@]}" "$PRD_SSH_USER@$PRD_SSH_HOST" "command -v zstd >/dev/null 2>&1 && echo true || echo false" | tr -d '\r\n')
 
-            local remote_dump_cmd=""
-            if [ "$remote_has_dump_helper" = "true" ]; then
-                log_info "Streaming remote database dump via dump_database helper..."
-                remote_dump_cmd="if command -v dump_database-$PRD_SERVICE_NAME &>/dev/null; then sudo dump_database-$PRD_SERVICE_NAME; elif [ -f '$PRD_SSH_PATH/scripts/dump_database-$PRD_SERVICE_NAME.sh' ]; then sudo '$PRD_SSH_PATH/scripts/dump_database-$PRD_SERVICE_NAME.sh'; else sudo '$PRD_SSH_PATH/scripts/dump_database.sh'; fi"
-            else
-                log_info "dump_database helper not found on remote; streaming directly via container pg_dump..."
-                remote_dump_cmd="
-                    db_host=\$(sed -e 's/#.*//' '$PRD_SSH_PATH/.env' 2>/dev/null | grep '^DB_HOST=' | cut -d '=' -f2- | tr -d '[:space:]\"\'')
-                    db_port=\$(sed -e 's/#.*//' '$PRD_SSH_PATH/.env' 2>/dev/null | grep '^DB_PORT=' | cut -d '=' -f2- | tr -d '[:space:]\"\'')
-                    db_user=\$(sed -e 's/#.*//' '$PRD_SSH_PATH/.env' 2>/dev/null | grep '^ACTIVE_DB_USER=' | cut -d '=' -f2- | tr -d '[:space:]\"\'')
-                    [ -z \"\$db_user\" ] && db_user=\$(cat '$PRD_SSH_PATH/.secrets/db_user' 2>/dev/null || echo 'odoo')
-                    db_pass=\$(cat '$PRD_SSH_PATH/.secrets/db_password' 2>/dev/null || true)
-                    docker_net=\$(sed -e 's/#.*//' '$PRD_SSH_PATH/.env' 2>/dev/null | grep '^DOCKER_NETWORK_MODE=' | cut -d '=' -f2- | tr -d '[:space:]\"\'')
-                    [ -z \"\$db_port\" ] && db_port='5432'
-                    [ -z \"\$docker_net\" ] && docker_net='host'
-                    net=\$(echo \"\$docker_net\" | cut -d ',' -f 1)
-                    if [ -n \"\$db_host\" ] && [ \"\$db_host\" != 'localhost' ]; then
-                        docker run -i --rm --network=\"\$net\" -e PGPASSWORD=\"\$db_pass\" postgres pg_dump -h \"\$db_host\" -p \"\$db_port\" -U \"\$db_user\" --no-owner '$remote_prd_db'
-                    else
-                        sudo -u postgres pg_dump --no-owner '$remote_prd_db'
-                    fi
-                "
-            fi
+            # Base64-encoded fallback runner for direct container pg_dump (safe from quoting/escaping corruption)
+            local remote_dump_b64="c2V0IC1lCnByZF9wYXRoPSIkMSIKdGFyZ2V0X2RiPSIkMiIKdXNlX3pzdGQ9IiQzIgoKZW52X2ZpbGU9IiRwcmRfcGF0aC8uZW52IgpkYl9ob3N0PSQoc2VkIC1lICJzLyMuKi8vIiAiJGVudl9maWxlIiAyPi9kZXYvbnVsbCB8IGdyZXAgIl5EQl9IT1NUPSIgfCBjdXQgLWQgIj0iIC1mMi0gfCB0ciAtZCAiWzpzcGFjZTpdJ1wiIiB8fCB0cnVlKQpkYl9wb3J0PSQoc2VkIC1lICJzLyMuKi8vIiAiJGVudl9maWxlIiAyPi9kZXYvbnVsbCB8IGdyZXAgIl5EQl9QT1JUPSIgfCBjdXQgLWQgIj0iIC1mMi0gfCB0ciAtZCAiWzpzcGFjZTpdJ1wiIiB8fCB0cnVlKQpkYl91c2VyPSQoc2VkIC1lICJzLyMuKi8vIiAiJGVudl9maWxlIiAyPi9kZXYvbnVsbCB8IGdyZXAgIl5BQ1RJVkVfREJfVVNFUj0iIHwgY3V0IC1kICI9IiAtZjItIHwgdHIgLWQgIls6c3BhY2U6XSdcIiIgfHwgdHJ1ZSkKWyAteiAiJGRiX3VzZXIiIF0gJiYgZGJfdXNlcj0kKGNhdCAiJHByZF9wYXRoLy5zZWNyZXRzL2RiX3VzZXIiIDI+L2Rldi9udWxsIHx8IGVjaG8gIm9kb28iKQpkYl9wYXNzPSQoY2F0ICIkcHJkX3BhdGgvLnNlY3JldHMvZGJfcGFzc3dvcmQiIDI+L2Rldi9udWxsIHx8IHRydWUpCmRvY2tlcl9uZXQ9JChzZWQgLWUgInMvIy4qLy8iICIkZW52X2ZpbGUiIDI+L2Rldi9udWxsIHwgZ3JlcCAiXkRPQ0tFUl9ORVRXT1JLX01PREU9IiB8IGN1dCAtZCAiPSIgLWYyLSB8IHRyIC1kICJbOnNwYWNlOl0nXCIiIHx8IHRydWUpClsgLXogIiRkYl9wb3J0IiBdICYmIGRiX3BvcnQ9IjU0MzIiClsgLXogIiRkb2NrZXJfbmV0IiBdICYmIGRvY2tlcl9uZXQ9Imhvc3QiCm5ldD0kKGVjaG8gIiRkb2NrZXJfbmV0IiB8IGN1dCAtZCAiLCIgLWYgMSkKCmR1bXBfY21kKCkgewogIGlmIFsgLW4gIiRkYl9ob3N0IiBdICYmIFsgIiRkYl9ob3N0IiAhPSAibG9jYWxob3N0IiBdOyB0aGVuCiAgICBkb2NrZXIgcnVuIC0tcm0gLS1uZXR3b3JrPSIkbmV0IiAtZSBQR1BBU1NXT1JEPSIkZGJfcGFzcyIgcG9zdGdyZXMgcGdfZHVtcCAtaCAiJGRiX2hvc3QiIC1wICIkZGJfcG9ydCIgLVUgIiRkYl91c2VyIiAtLW5vLW93bmVyICIkdGFyZ2V0X2RiIgogIGVsc2UKICAgIHN1ZG8gLXUgcG9zdGdyZXMgcGdfZHVtcCAtLW5vLW93bmVyICIkdGFyZ2V0X2RiIgogIGZpCn0KCmlmIFsgIiR1c2VfenN0ZCIgPSAidHJ1ZSIgXSAmJiBjb21tYW5kIC12IHpzdGQgPi9kZXYvbnVsbCAyPiYxOyB0aGVuCiAgZHVtcF9jbWQgfCB6c3RkIC0xIC1UMAplbHNlCiAgZHVtcF9jbWQKZmkK"
 
             # Prepare staging database
             log_info "Recreating staging database '$STG_DB_NAME'..."
@@ -740,18 +719,35 @@ main() {
             run_psql -d postgres -c "CREATE DATABASE \"$STG_DB_NAME\" OWNER \"$local_db_user\"" >/dev/null 2>&1 || run_psql -d postgres -c "CREATE DATABASE \"$STG_DB_NAME\"" >/dev/null 2>&1
 
             log_info "Restoring streamed SQL into '$STG_DB_NAME'..."
+            local ssh_status=0
             if [ "$remote_has_dump_helper" = "true" ]; then
+                log_info "Streaming remote database dump via dump_database helper..."
+                local remote_dump_cmd="if command -v dump_database-$PRD_SERVICE_NAME &>/dev/null; then sudo dump_database-$PRD_SERVICE_NAME; elif [ -f '$PRD_SSH_PATH/scripts/dump_database-$PRD_SERVICE_NAME.sh' ]; then sudo '$PRD_SSH_PATH/scripts/dump_database-$PRD_SERVICE_NAME.sh'; else sudo '$PRD_SSH_PATH/scripts/dump_database.sh'; fi"
                 if [ "$remote_has_zstd" = "true" ] && command -v zstd >/dev/null 2>&1; then
                     ssh "${prd_ssh_opts[@]}" "$PRD_SSH_USER@$PRD_SSH_HOST" "$remote_dump_cmd" | zstd -d -T0 | run_psql -d "$STG_DB_NAME" >/dev/null
+                    ssh_status=${PIPESTATUS[0]}
                 else
                     ssh "${prd_ssh_opts[@]}" "$PRD_SSH_USER@$PRD_SSH_HOST" "$remote_dump_cmd --raw" | run_psql -d "$STG_DB_NAME" >/dev/null
+                    ssh_status=${PIPESTATUS[0]}
                 fi
             else
+                log_info "dump_database helper not found on remote; streaming directly via container pg_dump..."
+                local stream_zstd="false"
                 if [ "$remote_has_zstd" = "true" ] && command -v zstd >/dev/null 2>&1; then
-                    ssh "${prd_ssh_opts[@]}" "$PRD_SSH_USER@$PRD_SSH_HOST" "$remote_dump_cmd | zstd -1 -T0" | zstd -d -T0 | run_psql -d "$STG_DB_NAME" >/dev/null
-                else
-                    ssh "${prd_ssh_opts[@]}" "$PRD_SSH_USER@$PRD_SSH_HOST" "$remote_dump_cmd" | run_psql -d "$STG_DB_NAME" >/dev/null
+                    stream_zstd="true"
                 fi
+                local remote_exec_cmd="echo '$remote_dump_b64' | base64 -d | bash -s -- '$PRD_SSH_PATH' '$remote_prd_db' '$stream_zstd'"
+                if [ "$stream_zstd" = "true" ]; then
+                    ssh "${prd_ssh_opts[@]}" "$PRD_SSH_USER@$PRD_SSH_HOST" "$remote_exec_cmd" | zstd -d -T0 | run_psql -d "$STG_DB_NAME" >/dev/null
+                    ssh_status=${PIPESTATUS[0]}
+                else
+                    ssh "${prd_ssh_opts[@]}" "$PRD_SSH_USER@$PRD_SSH_HOST" "$remote_exec_cmd" | run_psql -d "$STG_DB_NAME" >/dev/null
+                    ssh_status=${PIPESTATUS[0]}
+                fi
+            fi
+
+            if [ "$ssh_status" -ne 0 ]; then
+                fail_with_json "Database streaming restore from remote production failed (SSH exit code: $ssh_status)."
             fi
             log_success "Database stream restore completed."
             trigger_registry_reload "$STG_DB_NAME" "$STG_PATH_TO_ODOO"
