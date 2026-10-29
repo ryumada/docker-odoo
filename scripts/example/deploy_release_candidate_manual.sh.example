@@ -144,13 +144,10 @@ function run_psql() {
     local env_file="${PSQL_ENV_FILE:-$PATH_TO_ODOO/.env}"
     local db_host=$(grep "^DB_HOST=" "$env_file" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
     local has_db=false
-    local has_user=false
     for arg in "$@"; do
         if [[ "$arg" == "-d" || "$arg" == -d* || "$arg" == "--dbname="* || "$arg" == "--dbname" ]]; then
             has_db=true
-        fi
-        if [[ "$arg" == "-U" || "$arg" == -U* || "$arg" == "--username="* || "$arg" == "--username" ]]; then
-            has_user=true
+            break
         fi
     done
     local db_default=()
@@ -159,42 +156,16 @@ function run_psql() {
     fi
     if [ -n "$db_host" ] && [ "$db_host" != "localhost" ]; then
         local db_port=$(grep "^DB_PORT=" "$env_file" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
-        local db_user=""
-        if [ "$has_user" = false ]; then
-            db_user=$(grep "^ACTIVE_DB_USER=" "$env_file" 2>/dev/null | cut -d '=' -f2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//')
-            [ -z "$db_user" ] && db_user=$(cat "$(dirname "$env_file")/.secrets/db_user" 2>/dev/null || true)
-        fi
+        local db_user=$(grep "^ACTIVE_DB_USER=" "$env_file" 2>/dev/null | cut -d '=' -f2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//')
+        [ -z "$db_user" ] && db_user=$(cat "$(dirname "$env_file")/.secrets/db_user" 2>/dev/null || true)
         local db_pass=$(cat "$(dirname "$env_file")/.secrets/db_password" 2>/dev/null || true)
         local docker_net=$(grep "^DOCKER_NETWORK_MODE=" "$env_file" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
         [ -z "$db_port" ] && db_port="5432"
         [ -z "$docker_net" ] && docker_net="host"
         local net=$(echo "$docker_net" | cut -d "," -f 1)
-        local user_arg=()
-        [ -n "$db_user" ] && user_arg=(-U "$db_user")
-        docker run -i --rm --network="$net" -e PGPASSWORD="$db_pass" postgres psql -h "$db_host" -p "$db_port" "${user_arg[@]}" "${db_default[@]}" "$@"
+        docker run -i --rm --network="$net" -e PGPASSWORD="$db_pass" postgres psql -h "$db_host" -p "$db_port" -U "$db_user" "${db_default[@]}" "$@"
     else
-        local user_to_run="postgres"
-        local filtered_args=()
-        local skip_next=false
-        for ((i=1; i<=$#; i++)); do
-            if [ "$skip_next" = true ]; then
-                skip_next=false
-                continue
-            fi
-            local curr="${!i}"
-            if [[ "$curr" == "-U" ]]; then
-                local next_idx=$((i + 1))
-                user_to_run="${!next_idx}"
-                skip_next=true
-            elif [[ "$curr" == -U* ]]; then
-                user_to_run="${curr#-U}"
-            elif [[ "$curr" == "--username="* ]]; then
-                user_to_run="${curr#--username=}"
-            else
-                filtered_args+=("$curr")
-            fi
-        done
-        sudo -u "$user_to_run" psql "${db_default[@]}" "${filtered_args[@]}"
+        sudo -u postgres psql "${db_default[@]}" "$@"
     fi
 }
 
@@ -747,20 +718,22 @@ main() {
             [ -z "$local_db_user" ] && local_db_user=$(cat "$STG_PATH_TO_ODOO/.secrets/db_user" 2>/dev/null || echo "odoo")
             run_psql -d postgres -c "CREATE DATABASE \"$STG_DB_NAME\" OWNER \"$local_db_user\"" >/dev/null 2>&1 || run_psql -d postgres -c "CREATE DATABASE \"$STG_DB_NAME\"" >/dev/null 2>&1
 
-            # Function to run psql targeting the staging database as the active staging DB user
-            restore_psql() {
-                local stg_host
-                stg_host=$(sed -e 's/#.*//' "$STG_ENV_FILE" 2>/dev/null | grep "^DB_HOST=" | cut -d '=' -f2- | tr -d '[:space:]"' | tr -d "'" || true)
-                if [ -n "$stg_host" ] && [ "$stg_host" != "localhost" ]; then
-                    if cd "$STG_PATH_TO_ODOO" 2>/dev/null && docker compose exec -T odoo which psql >/dev/null 2>&1; then
-                        docker compose exec -T odoo psql -h "$stg_host" -p "${DB_PORT:-5432}" -U "$local_db_user" -d "$STG_DB_NAME" "$@"
-                    else
-                        run_psql -U "$local_db_user" -d "$STG_DB_NAME" "$@"
-                    fi
-                else
-                    # Staging uses host PostgreSQL mode
-                    run_psql -U "$local_db_user" -d "$STG_DB_NAME" "$@"
-                fi
+            # Helper to execute psql inside the staging odoo container with .secrets credentials
+            restore_via_odoo_container() {
+                local stg_db_host
+                stg_db_host=$(sed -e 's/#.*//' "$STG_ENV_FILE" 2>/dev/null | grep "^DB_HOST=" | cut -d '=' -f2- | tr -d '[:space:]"' | tr -d "'" || true)
+                local stg_db_port
+                stg_db_port=$(sed -e 's/#.*//' "$STG_ENV_FILE" 2>/dev/null | grep "^DB_PORT=" | cut -d '=' -f2- | tr -d '[:space:]"' | tr -d "'" || true)
+                [ -z "$stg_db_host" ] && stg_db_host="localhost"
+                [ -z "$stg_db_port" ] && stg_db_port="5432"
+
+                local stg_db_pass
+                stg_db_pass=$(cat "$STG_PATH_TO_ODOO/.secrets/db_password" 2>/dev/null | tr -d '[:space:]' || true)
+
+                (
+                    cd "$STG_PATH_TO_ODOO"
+                    docker compose exec -T -e PGPASSWORD="$stg_db_pass" odoo psql -h "$stg_db_host" -p "$stg_db_port" -U "$local_db_user" "$@"
+                )
             }
 
             local remote_dump_file=""
@@ -771,10 +744,10 @@ main() {
                 local remote_dump_cmd="if command -v dump_database-$PRD_SERVICE_NAME &>/dev/null; then sudo -n dump_database-$PRD_SERVICE_NAME; elif [ -x '/usr/local/sbin/dump_database-$PRD_SERVICE_NAME' ]; then sudo -n /usr/local/sbin/dump_database-$PRD_SERVICE_NAME; elif [ -f '$PRD_SSH_PATH/scripts/dump_database-$PRD_SERVICE_NAME.sh' ]; then sudo -n '$PRD_SSH_PATH/scripts/dump_database-$PRD_SERVICE_NAME.sh'; else sudo -n '$PRD_SSH_PATH/scripts/dump_database.sh'; fi"
                 local ssh_status=0
                 if [ "$remote_has_zstd" = "true" ] && command -v zstd >/dev/null 2>&1; then
-                    ssh "${prd_ssh_opts[@]}" "$PRD_SSH_USER@$PRD_SSH_HOST" "$remote_dump_cmd" | zstd -d -T0 | restore_psql >/dev/null
+                    ssh "${prd_ssh_opts[@]}" "$PRD_SSH_USER@$PRD_SSH_HOST" "$remote_dump_cmd" | zstd -d -T0 | restore_via_odoo_container -d "$STG_DB_NAME" >/dev/null
                     ssh_status=${PIPESTATUS[0]}
                 else
-                    ssh "${prd_ssh_opts[@]}" "$PRD_SSH_USER@$PRD_SSH_HOST" "$remote_dump_cmd --raw" | restore_psql >/dev/null
+                    ssh "${prd_ssh_opts[@]}" "$PRD_SSH_USER@$PRD_SSH_HOST" "$remote_dump_cmd --raw" | restore_via_odoo_container -d "$STG_DB_NAME" >/dev/null
                     ssh_status=${PIPESTATUS[0]}
                 fi
                 if [ "$ssh_status" -ne 0 ]; then
@@ -808,17 +781,17 @@ main() {
                 fi
                 ssh "${prd_ssh_opts[@]}" "$PRD_SSH_USER@$PRD_SSH_HOST" "rm -f '$remote_dump_file'" 2>/dev/null || true
 
-                log_info "Restoring SQL into '$STG_DB_NAME' using user '$local_db_user'..."
+                log_info "Restoring SQL into '$STG_DB_NAME' via odoo container..."
                 if [[ "$local_dump_file" == *.zst ]] && command -v zstd >/dev/null 2>&1; then
-                    zstd -d -c "$local_dump_file" | restore_psql >/dev/null
+                    zstd -d -c "$local_dump_file" | restore_via_odoo_container -d "$STG_DB_NAME" >/dev/null
                 else
-                    restore_psql < "$local_dump_file" >/dev/null
+                    restore_via_odoo_container -d "$STG_DB_NAME" < "$local_dump_file" >/dev/null
                 fi
                 rm -f "$local_dump_file"
             fi
 
-            # Ensure all database objects in public schema are owned by local_db_user
-            log_info "Verifying database object ownership for '$local_db_user'..."
+            # Reassign all database objects in public schema to local_db_user (PostgreSQL role)
+            log_info "Reassigning database object ownership to role '$local_db_user'..."
             run_psql -d "$STG_DB_NAME" -c "
                 DO \$\$
                 DECLARE
