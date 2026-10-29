@@ -1,0 +1,60 @@
+#!/usr/bin/env bash
+set -e
+# Category: Utility
+# Description: Exports or streams Odoo filestore with path isolation for secure cross-VPS sync.
+# Usage: ./scripts/export_filestore.sh [DB_NAME] [--tar] [--rsync-server]
+# Dependencies: rsync, tar, zstd, sudo
+
+CURRENT_DIR=$(dirname "$(readlink -f "$0")")
+CURRENT_DIR_USER=$(stat -c '%U' "$CURRENT_DIR")
+PATH_TO_ODOO=$(sudo -u "$CURRENT_DIR_USER" git -C "$(dirname "$(readlink -f "$0")")" rev-parse --show-toplevel)
+SERVICE_NAME=$(basename "$PATH_TO_ODOO")
+ENV_FILE="$PATH_TO_ODOO/.env"
+
+TARGET_DB=""
+MODE="tar"
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --tar)
+      MODE="tar"
+      shift
+      ;;
+    --rsync-server)
+      MODE="rsync_server"
+      shift
+      ;;
+    *)
+      if [ -z "$TARGET_DB" ]; then
+        TARGET_DB="$1"
+      fi
+      shift
+      ;;
+  esac
+done
+
+if [ -z "$TARGET_DB" ]; then
+  TARGET_DB=$(grep "^DB_NAME=" "$ENV_FILE" 2>/dev/null | cut -d '=' -f2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//' || true)
+fi
+
+if [ -z "$TARGET_DB" ]; then
+  echo "❌ Error: DB_NAME not specified and not found in $ENV_FILE" >&2
+  exit 1
+fi
+
+FILESTORE_DIR="/var/lib/odoo/$SERVICE_NAME/filestore/$TARGET_DB"
+
+if [ ! -d "$FILESTORE_DIR" ]; then
+  echo "⚠️ Warning: Filestore directory does not exist at $FILESTORE_DIR" >&2
+  exit 0
+fi
+
+if [ "$MODE" = "rsync_server" ]; then
+  exec rsync --server --sender -vlogDtpre.iLsfxCIvu . "$FILESTORE_DIR/"
+else
+  if command -v zstd >/dev/null 2>&1; then
+    tar -C "$FILESTORE_DIR" -cf - . | zstd -1 -T0
+  else
+    tar -C "$FILESTORE_DIR" -cf - .
+  fi
+fi

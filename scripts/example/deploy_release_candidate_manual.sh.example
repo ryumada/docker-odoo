@@ -645,41 +645,121 @@ main() {
             fi
             log_success "SSH connection to Production VPS established."
 
-            log_info "Step 1/3: Triggering backup on Remote Production VPS for service '$PRD_SERVICE_NAME'..."
-            ssh "${prd_ssh_opts[@]}" "$PRD_SSH_USER@$PRD_SSH_HOST" "
-                if command -v backupdata-$PRD_SERVICE_NAME &>/dev/null; then
-                    sudo backupdata-$PRD_SERVICE_NAME
-                elif [ -f '$PRD_SSH_PATH/scripts/backupdata-$PRD_SERVICE_NAME.sh' ]; then
-                    sudo '$PRD_SSH_PATH/scripts/backupdata-$PRD_SERVICE_NAME.sh'
-                elif [ -f '$PRD_SSH_PATH/scripts/backupdata.sh' ]; then
-                    sudo '$PRD_SSH_PATH/scripts/backupdata.sh'
-                elif [ -f '$PRD_SSH_PATH/scripts/dataodoo-backupper.sh' ]; then
-                    sudo '$PRD_SSH_PATH/scripts/dataodoo-backupper.sh'
+            log_info "Step 1/3: Synchronizing Odoo filestore from Remote Production VPS..."
+            local remote_prd_db
+            remote_prd_db=$(ssh "${prd_ssh_opts[@]}" "$PRD_SSH_USER@$PRD_SSH_HOST" "grep '^DB_NAME=' '$PRD_SSH_PATH/.env' 2>/dev/null | cut -d '=' -f2- | sed 's/[[:space:]]*#.*//;s/^[[:space:]]*//;s/[[:space:]]*$//;s/^[\"'\']//;s/[\"'\']$//' || true" | tr -d '\r\n')
+            [ -z "$remote_prd_db" ] && remote_prd_db="$PRD_SERVICE_NAME"
+
+            local local_filestore_base="/var/lib/odoo/$SERVICE_NAME/filestore"
+            local local_target_filestore="$local_filestore_base/$STG_DB_NAME"
+            sudo mkdir -p "$local_filestore_base"
+
+            # Check existing staging filestore to seed from
+            if [ ! -d "$local_target_filestore" ]; then
+                local existing_seed_filestore
+                existing_seed_filestore=$(find "$local_filestore_base" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | head -n 1 || true)
+                if [ -n "$existing_seed_filestore" ] && [ -d "$existing_seed_filestore" ]; then
+                    log_info "Seeding filestore from existing local directory: $existing_seed_filestore..."
+                    sudo cp -al "$existing_seed_filestore" "$local_target_filestore" 2>/dev/null || sudo cp -r "$existing_seed_filestore" "$local_target_filestore" 2>/dev/null || true
                 else
-                    echo '❌ backupdata script not found on remote production VPS at $PRD_SSH_PATH' >&2
-                    exit 1
+                    sudo mkdir -p "$local_target_filestore"
                 fi
-            "
-
-            log_info "Step 2/3: Downloading backup archive from Remote Production VPS to /tmp/backupdata-$SERVICE_NAME.zip..."
-            rsync -e "$prd_rsync_ssh" -avz "$PRD_SSH_USER@$PRD_SSH_HOST:/tmp/backupdata-$PRD_SERVICE_NAME.zip" "/tmp/backupdata-$SERVICE_NAME.zip"
-            log_success "Download completed."
-
-            # Remote cleanup
-            ssh "${prd_ssh_opts[@]}" "$PRD_SSH_USER@$PRD_SSH_HOST" "rm -f /tmp/backupdata-$PRD_SERVICE_NAME.zip" 2>/dev/null || true
-
-            log_info "Step 3/3: Restoring backup data into Staging database '$STG_DB_NAME'..."
-            if command -v restore_backupdata-$SERVICE_NAME &>/dev/null; then
-                restore_backupdata-$SERVICE_NAME "/tmp/backupdata-$SERVICE_NAME.zip" --name "$STG_DB_NAME"
-            elif [ -f "$STG_PATH_TO_ODOO/scripts/restore_backupdata-$SERVICE_NAME.sh" ]; then
-                "$STG_PATH_TO_ODOO/scripts/restore_backupdata-$SERVICE_NAME.sh" "/tmp/backupdata-$SERVICE_NAME.zip" --name "$STG_DB_NAME"
-            elif [ -f "$STG_PATH_TO_ODOO/scripts/restore_backupdata.sh" ]; then
-                "$STG_PATH_TO_ODOO/scripts/restore_backupdata.sh" "/tmp/backupdata-$SERVICE_NAME.zip" --name "$STG_DB_NAME"
-            else
-                fail_with_json "restore_backupdata utility not found on local staging instance."
             fi
 
-            rm -f "/tmp/backupdata-$SERVICE_NAME.zip" 2>/dev/null || true
+            local remote_has_export_helper
+            remote_has_export_helper=$(ssh "${prd_ssh_opts[@]}" "$PRD_SSH_USER@$PRD_SSH_HOST" "
+                if command -v export_filestore-$PRD_SERVICE_NAME &>/dev/null || [ -f '$PRD_SSH_PATH/scripts/export_filestore-$PRD_SERVICE_NAME.sh' ] || [ -f '$PRD_SSH_PATH/scripts/export_filestore.sh' ]; then
+                    echo 'true'
+                else
+                    echo 'false'
+                fi
+            " | tr -d '\r\n')
+
+            if [ "$remote_has_export_helper" = "true" ]; then
+                log_info "Streaming remote filestore via export_filestore helper..."
+                local remote_export_cmd="if command -v export_filestore-$PRD_SERVICE_NAME &>/dev/null; then sudo export_filestore-$PRD_SERVICE_NAME; elif [ -f '$PRD_SSH_PATH/scripts/export_filestore-$PRD_SERVICE_NAME.sh' ]; then sudo '$PRD_SSH_PATH/scripts/export_filestore-$PRD_SERVICE_NAME.sh'; else sudo '$PRD_SSH_PATH/scripts/export_filestore.sh'; fi"
+                if command -v zstd >/dev/null 2>&1; then
+                    ssh "${prd_ssh_opts[@]}" "$PRD_SSH_USER@$PRD_SSH_HOST" "$remote_export_cmd" | zstd -d -T0 | sudo tar -C "$local_target_filestore" -xf -
+                else
+                    ssh "${prd_ssh_opts[@]}" "$PRD_SSH_USER@$PRD_SSH_HOST" "$remote_export_cmd" | sudo tar -C "$local_target_filestore" -xf -
+                fi
+            else
+                log_info "Syncing filestore via rsync from /var/lib/odoo/$PRD_SERVICE_NAME/filestore/$remote_prd_db/..."
+                rsync -e "$prd_rsync_ssh" -avz --delete "$PRD_SSH_USER@$PRD_SSH_HOST:/var/lib/odoo/$PRD_SERVICE_NAME/filestore/$remote_prd_db/" "$local_target_filestore/" 2>/dev/null || \
+                rsync -e "$prd_rsync_ssh" -avz "$PRD_SSH_USER@$PRD_SSH_HOST:/var/lib/odoo/$PRD_SERVICE_NAME/filestore/$remote_prd_db/" "$local_target_filestore/" 2>/dev/null || \
+                log_warn "Filestore direct rsync skipped or partially transferred."
+            fi
+            sudo chown -R odoo:odoo "$local_target_filestore" 2>/dev/null || true
+            log_success "Filestore synchronization completed."
+
+            log_info "Step 2/3: Checking remote database dump capabilities..."
+            local remote_has_dump_helper
+            remote_has_dump_helper=$(ssh "${prd_ssh_opts[@]}" "$PRD_SSH_USER@$PRD_SSH_HOST" "
+                if command -v dump_database-$PRD_SERVICE_NAME &>/dev/null || [ -f '$PRD_SSH_PATH/scripts/dump_database-$PRD_SERVICE_NAME.sh' ] || [ -f '$PRD_SSH_PATH/scripts/dump_database.sh' ]; then
+                    echo 'true'
+                else
+                    echo 'false'
+                fi
+            " | tr -d '\r\n')
+
+            if [ "$remote_has_dump_helper" = "true" ]; then
+                log_info "Streaming remote database dump via dump_database helper..."
+                local remote_dump_cmd="if command -v dump_database-$PRD_SERVICE_NAME &>/dev/null; then sudo dump_database-$PRD_SERVICE_NAME; elif [ -f '$PRD_SSH_PATH/scripts/dump_database-$PRD_SERVICE_NAME.sh' ]; then sudo '$PRD_SSH_PATH/scripts/dump_database-$PRD_SERVICE_NAME.sh'; else sudo '$PRD_SSH_PATH/scripts/dump_database.sh'; fi"
+
+                # Prepare staging database
+                log_info "Recreating staging database '$STG_DB_NAME'..."
+                run_psql -d postgres -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '$STG_DB_NAME' AND pid <> pg_backend_pid();" >/dev/null 2>&1 || true
+                run_psql -d postgres -c "DROP DATABASE IF EXISTS \"$STG_DB_NAME\"" >/dev/null 2>&1 || true
+
+                local local_db_user
+                local_db_user=$(grep "^ACTIVE_DB_USER=" "$STG_ENV_FILE" 2>/dev/null | cut -d '=' -f2- | sed 's/[[:space:]]*#.*//;s/^[[:space:]]*//;s/[[:space:]]*$//;s/^[\"'\']//;s/[\"'\']$//' || true)
+                [ -z "$local_db_user" ] && local_db_user=$(cat "$STG_PATH_TO_ODOO/.secrets/db_user" 2>/dev/null || echo "odoo")
+                run_psql -d postgres -c "CREATE DATABASE \"$STG_DB_NAME\" OWNER \"$local_db_user\"" >/dev/null 2>&1 || run_psql -d postgres -c "CREATE DATABASE \"$STG_DB_NAME\"" >/dev/null 2>&1
+
+                log_info "Restoring streamed SQL into '$STG_DB_NAME'..."
+                if command -v zstd >/dev/null 2>&1; then
+                    ssh "${prd_ssh_opts[@]}" "$PRD_SSH_USER@$PRD_SSH_HOST" "$remote_dump_cmd" | zstd -d -T0 | run_psql -d "$STG_DB_NAME" >/dev/null 2>&1
+                else
+                    ssh "${prd_ssh_opts[@]}" "$PRD_SSH_USER@$PRD_SSH_HOST" "$remote_dump_cmd" | run_psql -d "$STG_DB_NAME" >/dev/null 2>&1
+                fi
+                log_success "Database stream restore completed."
+            else
+                log_info "Fallback: Triggering legacy backup on Remote Production VPS for service '$PRD_SERVICE_NAME'..."
+                ssh "${prd_ssh_opts[@]}" "$PRD_SSH_USER@$PRD_SSH_HOST" "
+                    if command -v backupdata-$PRD_SERVICE_NAME &>/dev/null; then
+                        sudo backupdata-$PRD_SERVICE_NAME
+                    elif [ -f '$PRD_SSH_PATH/scripts/backupdata-$PRD_SERVICE_NAME.sh' ]; then
+                        sudo '$PRD_SSH_PATH/scripts/backupdata-$PRD_SERVICE_NAME.sh'
+                    elif [ -f '$PRD_SSH_PATH/scripts/backupdata.sh' ]; then
+                        sudo '$PRD_SSH_PATH/scripts/backupdata.sh'
+                    elif [ -f '$PRD_SSH_PATH/scripts/dataodoo-backupper.sh' ]; then
+                        sudo '$PRD_SSH_PATH/scripts/dataodoo-backupper.sh'
+                    else
+                        echo '❌ backupdata script not found on remote production VPS at $PRD_SSH_PATH' >&2
+                        exit 1
+                    fi
+                "
+
+                log_info "Downloading fallback backup archive from Remote Production VPS to /tmp/backupdata-$SERVICE_NAME.zip..."
+                rsync -e "$prd_rsync_ssh" -avz "$PRD_SSH_USER@$PRD_SSH_HOST:/tmp/backupdata-$PRD_SERVICE_NAME.zip" "/tmp/backupdata-$SERVICE_NAME.zip"
+                log_success "Download completed."
+
+                # Remote cleanup
+                ssh "${prd_ssh_opts[@]}" "$PRD_SSH_USER@$PRD_SSH_HOST" "rm -f /tmp/backupdata-$PRD_SERVICE_NAME.zip" 2>/dev/null || true
+
+                log_info "Step 3/3: Restoring backup data into Staging database '$STG_DB_NAME'..."
+                if command -v restore_backupdata-$SERVICE_NAME &>/dev/null; then
+                    restore_backupdata-$SERVICE_NAME "/tmp/backupdata-$SERVICE_NAME.zip" --name "$STG_DB_NAME"
+                elif [ -f "$STG_PATH_TO_ODOO/scripts/restore_backupdata-$SERVICE_NAME.sh" ]; then
+                    "$STG_PATH_TO_ODOO/scripts/restore_backupdata-$SERVICE_NAME.sh" "/tmp/backupdata-$SERVICE_NAME.zip" --name "$STG_DB_NAME"
+                elif [ -f "$STG_PATH_TO_ODOO/scripts/restore_backupdata.sh" ]; then
+                    "$STG_PATH_TO_ODOO/scripts/restore_backupdata.sh" "/tmp/backupdata-$SERVICE_NAME.zip" --name "$STG_DB_NAME"
+                else
+                    fail_with_json "restore_backupdata utility not found on local staging instance."
+                fi
+
+                rm -f "/tmp/backupdata-$SERVICE_NAME.zip" 2>/dev/null || true
+            fi
             trigger_registry_reload "$STG_DB_NAME" "$STG_PATH_TO_ODOO"
             log_success "Database clone from remote production completed successfully."
         else

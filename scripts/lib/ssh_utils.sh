@@ -365,12 +365,16 @@ elif [ "$tool_type" = "deploy_rc" ] && [ -n "$dest_svc" ]; then
   cat << SUDO_EOF > "$tmp_sudoers"
 # Dedicated passwordless rules for cross-VPS deploy_release_candidate
 $target_user ALL=(root) NOPASSWD: /usr/local/sbin/backupdata-${dest_svc}
+$target_user ALL=(root) NOPASSWD: /usr/local/sbin/dump_database-${dest_svc}
+$target_user ALL=(root) NOPASSWD: /usr/local/sbin/export_filestore-${dest_svc}
 SUDO_EOF
 
   if [ -n "$dest_path" ]; then
     echo "$target_user ALL=(root) NOPASSWD: ${dest_path}/scripts/backupdata-${dest_svc}.sh" >> "$tmp_sudoers"
     echo "$target_user ALL=(root) NOPASSWD: ${dest_path}/scripts/backupdata.sh" >> "$tmp_sudoers"
     echo "$target_user ALL=(root) NOPASSWD: ${dest_path}/scripts/dataodoo-backupper.sh" >> "$tmp_sudoers"
+    echo "$target_user ALL=(root) NOPASSWD: ${dest_path}/scripts/dump_database-${dest_svc}.sh" >> "$tmp_sudoers"
+    echo "$target_user ALL=(root) NOPASSWD: ${dest_path}/scripts/export_filestore-${dest_svc}.sh" >> "$tmp_sudoers"
   fi
 
   chmod 0440 "$tmp_sudoers"

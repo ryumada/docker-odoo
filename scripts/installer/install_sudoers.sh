@@ -141,6 +141,8 @@ EOF
     append_sudoers_rule "$logged_in_user" "scripts" "backupdata-$SERVICE_NAME" "$temp_file"
     append_sudoers_rule "$logged_in_user" "scripts" "databasecloner-$SERVICE_NAME" "$temp_file"
     append_sudoers_rule "$logged_in_user" "scripts" "deploy_release_candidate-$SERVICE_NAME" "$temp_file"
+    append_sudoers_rule "$logged_in_user" "scripts" "dump_database-$SERVICE_NAME" "$temp_file"
+    append_sudoers_rule "$logged_in_user" "scripts" "export_filestore-$SERVICE_NAME" "$temp_file"
     append_sudoers_rule "$logged_in_user" "scripts" "restore_backupdata-$SERVICE_NAME" "$temp_file"
     append_sudoers_rule "$logged_in_user" "scripts" "snapshot-$SERVICE_NAME" "$temp_file"
     append_sudoers_rule "$logged_in_user" "root" "setup" "$temp_file"
