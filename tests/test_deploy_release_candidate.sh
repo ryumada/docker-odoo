@@ -239,6 +239,17 @@ assert_contains "$mock_output_helper" "Streaming remote database dump via dump_d
 assert_contains "$mock_output_helper" "sudo dump_database-afi" "Behavioral: Executes sudo dump_database-afi over SSH"
 assert_not_contains "$mock_output_helper" "FAIL_7Z_CALLED" "Behavioral (helper present): 7z is never invoked"
 
+# Test 4: Registry reload on staging and production network extraction
+echo -e "\n${TEST_COLOR_INFO}Test 4: Registry reload on staging and production network extraction${TEST_COLOR_RESET}"
+decoded_runner=$(echo "$b64_payload" | base64 -d)
+assert_contains "$decoded_runner" "DOCKER_NETWORK_MODE=" "Base64 runner extracts DOCKER_NETWORK_MODE from production .env"
+assert_contains "$decoded_runner" "docker network connect" "Base64 runner connects ephemeral container to network(s)"
+assert_contains "$rc_content" "trigger_registry_reload \"\$STG_DB_NAME\" \"\$STG_PATH_TO_ODOO\"" "deploy_release_candidate triggers registry reload on staging"
+assert_contains "$rc_manual_content" "trigger_registry_reload \"\$STG_DB_NAME\" \"\$STG_PATH_TO_ODOO\"" "deploy_release_candidate_manual triggers registry reload on staging"
+
+odoo_utils_content=$(cat scripts/lib/odoo_utils.sh)
+assert_contains "$odoo_utils_content" "docker compose exec -T" "odoo_utils.sh uses non-interactive -T flag"
+
 echo -e "\n=========================================="
 echo -e "Test Results: ${TEST_COLOR_SUCCESS}${test_passed} passed${TEST_COLOR_RESET}, ${TEST_COLOR_FAIL}${test_failed} failed${TEST_COLOR_RESET}"
 echo -e "=========================================="
