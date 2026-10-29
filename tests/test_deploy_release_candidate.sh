@@ -242,8 +242,8 @@ assert_not_contains "$mock_output_helper" "FAIL_7Z_CALLED" "Behavioral (helper p
 # Test 4: Registry reload on staging and host production dump execution
 echo -e "\n${TEST_COLOR_INFO}Test 4: Registry reload on staging and host production dump execution${TEST_COLOR_RESET}"
 decoded_runner=$(echo "$b64_payload" | base64 -d)
-assert_contains "$decoded_runner" "exec -T db pg_dump -U postgres" "Base64 runner uses docker compose exec -T db pg_dump -U postgres"
-assert_contains "$decoded_runner" "pg_dump -U postgres" "Base64 runner dumps as postgres user without password prompt"
+assert_contains "$decoded_runner" "exec -T odoo" "Base64 runner uses docker compose exec -T odoo"
+assert_contains "$decoded_runner" "pg_dump -h" "Base64 runner dumps from odoo container to db host"
 assert_contains "$rc_content" "trigger_registry_reload \"\$STG_DB_NAME\" \"\$STG_PATH_TO_ODOO\"" "deploy_release_candidate triggers registry reload on staging"
 assert_contains "$rc_manual_content" "trigger_registry_reload \"\$STG_DB_NAME\" \"\$STG_PATH_TO_ODOO\"" "deploy_release_candidate_manual triggers registry reload on staging"
 assert_contains "$rc_content" "Moving database dump from Production VPS to staging environment" "deploy_release_candidate moves dump file to staging"
