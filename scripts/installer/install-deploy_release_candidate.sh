@@ -211,10 +211,13 @@ function main() {
           echo -ne "${COLOR_CYAN}Enter remote sudo administrator username: ${COLOR_RESET}"
           read -r remote_admin_user
           if [ -n "$remote_admin_user" ]; then
+            echo -ne "${COLOR_CYAN}Enter password for '$remote_admin_user': ${COLOR_RESET}"
+            read -s -r remote_admin_password
+            echo ""
             local dest_svc_param=""
             [ -n "$PRD_SSH_PATH" ] && dest_svc_param=$(basename "$PRD_SSH_PATH")
             if declare -f install_pubkey_via_admin >/dev/null 2>&1; then
-              install_pubkey_via_admin "$PRD_SSH_HOST" "$PRD_SSH_PORT" "$remote_admin_user" "$PRD_SSH_USER" "${PRD_SSH_KEY}.pub" "auto" "deploy_rc" "$dest_svc_param" "$PRD_SSH_PATH" || true
+              install_pubkey_via_admin "$PRD_SSH_HOST" "$PRD_SSH_PORT" "$remote_admin_user" "$PRD_SSH_USER" "${PRD_SSH_KEY}.pub" "auto" "deploy_rc" "$dest_svc_param" "$PRD_SSH_PATH" "$remote_admin_password" || true
             else
               log_error "install_pubkey_via_admin function not available."
             fi

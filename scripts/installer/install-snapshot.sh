@@ -232,8 +232,11 @@ function main() {
         echo -ne "${COLOR_CYAN}Enter remote sudo administrator username: ${COLOR_RESET}"
         read -r remote_admin_user
         if [ -n "$remote_admin_user" ]; then
+          echo -ne "${COLOR_CYAN}Enter password for '$remote_admin_user': ${COLOR_RESET}"
+          read -s -r remote_admin_password
+          echo ""
           if declare -f install_pubkey_via_admin >/dev/null 2>&1; then
-            install_pubkey_via_admin "$SNAPSHOT_REMOTE_HOST" "$SNAPSHOT_REMOTE_PORT" "$remote_admin_user" "$SNAPSHOT_REMOTE_USER" "${SNAPSHOT_REMOTE_KEY}.pub" "auto" || true
+            install_pubkey_via_admin "$SNAPSHOT_REMOTE_HOST" "$SNAPSHOT_REMOTE_PORT" "$remote_admin_user" "$SNAPSHOT_REMOTE_USER" "${SNAPSHOT_REMOTE_KEY}.pub" "auto" "snapshot" "" "" "$remote_admin_password" || true
           else
             log_error "install_pubkey_via_admin function not available."
           fi

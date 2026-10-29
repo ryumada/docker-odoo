@@ -53,6 +53,8 @@ fi
 TARGET_HOST=""
 TARGET_USER=""
 ADMIN_USER=""
+ADMIN_PASS=""
+PASSWORD_STDIN=false
 TARGET_PORT=""
 SOURCE_IP="auto"
 FORCE=false
@@ -70,6 +72,8 @@ Options:
   -t, --target-host <HOST>   Hostname or IP of the Remote VPS
   -u, --target-user <USER>   SSH username on Remote VPS (default: from .env or root)
   -a, --admin-user <ADMIN>   Remote sudo admin account to install public key automatically
+  --admin-password <PASS>    Remote sudo admin password (used for SSH askpass & sudo -S)
+  --password-stdin           Read remote admin password from stdin
   -p, --port <PORT>          SSH port on Remote VPS (default: from .env or 22)
   --from <IP>                Restrict SSH key to source IP (default: auto-detected from connection)
   --no-from                  Do not restrict SSH key by source IP
@@ -82,6 +86,7 @@ Examples:
   ./scripts/generate-snapshot-ssh-key.sh --tool cloner --target-host dev-vps.example.com --target-user devops -a sysadmin
   ./scripts/generate-snapshot-ssh-key.sh --tool deploy_rc --target-host prd-vps.example.com -a sysadmin
   ./scripts/generate-deploy-rc-ssh-key.sh -a sysadmin
+  echo "secret" | ./scripts/generate-deploy-rc-ssh-key.sh -a sysadmin --password-stdin
 EOF
 }
 
@@ -117,6 +122,18 @@ while [[ $# -gt 0 ]]; do
       ;;
     --admin-user=*)
       ADMIN_USER="${1#*=}"
+      shift
+      ;;
+    --admin-password)
+      ADMIN_PASS="$2"
+      shift 2
+      ;;
+    --admin-password=*)
+      ADMIN_PASS="${1#*=}"
+      shift
+      ;;
+    --password-stdin)
+      PASSWORD_STDIN=true
       shift
       ;;
     -p|--port)
@@ -232,6 +249,16 @@ fi
 
 # Optional remote provisioning via admin account
 if [ -n "$ADMIN_USER" ]; then
+  if [ "$PASSWORD_STDIN" = true ] || [ ! -t 0 -a -z "$ADMIN_PASS" ]; then
+    read -r ADMIN_PASS || true
+  elif [ -z "$ADMIN_PASS" ] && [ -n "${ADMIN_PASSWORD:-}" ]; then
+    ADMIN_PASS="$ADMIN_PASSWORD"
+  elif [ -z "$ADMIN_PASS" ]; then
+    echo -ne "${COLOR_CYAN}Enter password for admin user '${ADMIN_USER}@${TARGET_HOST}': ${COLOR_RESET}"
+    read -s -r ADMIN_PASS
+    echo ""
+  fi
+
   log_info "Attempting remote provisioning onto $TARGET_HOST using admin user '$ADMIN_USER'..."
   PUB_KEY_PATH="${KEY_PATH}.pub"
   DEST_SVC_PARAM=""
@@ -252,7 +279,7 @@ if [ -n "$ADMIN_USER" ]; then
     fi
   fi
 
-  if install_pubkey_via_admin "$TARGET_HOST" "$TARGET_PORT" "$ADMIN_USER" "$TARGET_USER" "$PUB_KEY_PATH" "$SOURCE_IP" "$TOOL_TYPE" "$DEST_SVC_PARAM" "$DEST_PATH_PARAM"; then
+  if install_pubkey_via_admin "$TARGET_HOST" "$TARGET_PORT" "$ADMIN_USER" "$TARGET_USER" "$PUB_KEY_PATH" "$SOURCE_IP" "$TOOL_TYPE" "$DEST_SVC_PARAM" "$DEST_PATH_PARAM" "$ADMIN_PASS"; then
     log_info "Testing SSH connectivity to $TARGET_USER@$TARGET_HOST:$TARGET_PORT with newly installed key..."
     if ssh -i "$KEY_PATH" -p "$TARGET_PORT" -o BatchMode=yes -o StrictHostKeyChecking=accept-new "$TARGET_USER@$TARGET_HOST" "true" 2>/dev/null; then
       log_success "Passwordless SSH connectivity verified for $TARGET_USER@$TARGET_HOST."

@@ -267,8 +267,11 @@ Generates an ed25519 SSH key pair named `deploy_rc-$THIS_VPS_HOSTNAME-$TARGET_VP
 # Generate key interactively or using .env PRD_SSH_HOST
 ./scripts/generate-deploy-rc-ssh-key.sh
 
-# Provision automatically via remote administrator
+# Provision automatically via remote administrator (prompts for password once via stdin, or pipe it)
 ./scripts/generate-deploy-rc-ssh-key.sh -a sysadmin
+
+# Non-interactive provisioning via piped stdin
+echo "$ADMIN_PASSWORD" | ./scripts/generate-deploy-rc-ssh-key.sh -a sysadmin --password-stdin
 
 # Specify target VPS host directly
 ./scripts/generate-deploy-rc-ssh-key.sh --target-host prd-vps.example.com -a sysadmin

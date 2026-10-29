@@ -195,6 +195,7 @@ install_pubkey_via_admin() {
   local tool_type="${7:-snapshot}"
   local dest_service_name="$8"
   local dest_path="$9"
+  local admin_password="${10:-}"
 
   if [ -z "$target_host" ] || [ -z "$admin_user" ] || [ -z "$target_user" ] || [ -z "$pub_key_path" ]; then
     _ssh_log_error "install_pubkey_via_admin: target_host, admin_user, target_user, and pub_key_path are required."
@@ -242,9 +243,21 @@ install_pubkey_via_admin() {
     ip_mode="$source_ip"
   fi
 
+  if [ -z "$admin_password" ]; then
+    if [ -n "${ADMIN_PASSWORD:-}" ]; then
+      admin_password="$ADMIN_PASSWORD"
+    elif [ ! -t 0 ]; then
+      read -r admin_password || true
+    else
+      echo -ne "${SSH_COLOR_CYAN}Enter password for admin user '${admin_user}@${target_host}': ${SSH_COLOR_RESET}" >&2
+      read -s -r admin_password
+      echo "" >&2
+    fi
+  fi
+
   _ssh_log_info "Connecting via admin user '${admin_user}@${target_host}:${target_port}' with sudo to provision '${target_user}'..."
 
-  # Remote bash script executed via sudo bash
+  # Remote bash script executed via root shell
   local remote_cmd
   remote_cmd=$(cat << 'EOF'
 set -e
@@ -272,8 +285,8 @@ fi
 # Ensure target user exists or create them with locked password
 if ! id "$target_user" >/dev/null 2>&1; then
   echo "[+] User '$target_user' does not exist. Creating system account..." >&2
-  sudo useradd -m -s /bin/bash "$target_user"
-  sudo passwd -l "$target_user" >/dev/null 2>&1 || true
+  useradd -m -s /bin/bash "$target_user"
+  passwd -l "$target_user" >/dev/null 2>&1 || true
   echo "[+] Created account '$target_user' (password locked)." >&2
 else
   echo "[i] User '$target_user' exists." >&2
@@ -292,7 +305,7 @@ fi
 ssh_dir="$target_home/.ssh"
 auth_keys="$ssh_dir/authorized_keys"
 
-sudo install -d -m 700 -o "$target_user" -g "$target_user" "$ssh_dir"
+install -d -m 700 -o "$target_user" -g "$target_user" "$ssh_dir"
 
 # Format key entry with optional restrictions
 key_entry="$pub_key"
@@ -305,15 +318,15 @@ fi
 
 # Check if base key already exists in authorized_keys
 key_payload=$(echo "$pub_key" | awk '{print $2}')
-if [ -f "$auth_keys" ] && sudo grep -qF "$key_payload" "$auth_keys"; then
+if [ -f "$auth_keys" ] && grep -qF "$key_payload" "$auth_keys"; then
   echo "[i] SSH key already authorized in $auth_keys." >&2
 else
-  echo "$key_entry" | sudo tee -a "$auth_keys" >/dev/null
+  echo "$key_entry" >> "$auth_keys"
   echo "[+] Appended SSH key to $auth_keys." >&2
 fi
 
-sudo chmod 600 "$auth_keys"
-sudo chown "$target_user":"$target_user" "$auth_keys"
+chmod 600 "$auth_keys"
+chown "$target_user":"$target_user" "$auth_keys"
 
 # Optional sudoers configuration for cloner / deploy_rc tools
 if [ "$tool_type" = "cloner" ] && [ -n "$dest_svc" ]; then
@@ -338,7 +351,7 @@ SUDO_EOF
   chown root:root "$tmp_sudoers"
 
   if visudo -c -f "$tmp_sudoers" >/dev/null 2>&1; then
-    sudo mv "$tmp_sudoers" "$sudoers_file"
+    mv "$tmp_sudoers" "$sudoers_file"
     echo "[+] Installed validated sudoers rule: $sudoers_file" >&2
   else
     echo "[-] Sudoers validation failed for $tmp_sudoers. Skipping." >&2
@@ -364,7 +377,7 @@ SUDO_EOF
   chown root:root "$tmp_sudoers"
 
   if visudo -c -f "$tmp_sudoers" >/dev/null 2>&1; then
-    sudo mv "$tmp_sudoers" "$sudoers_file"
+    mv "$tmp_sudoers" "$sudoers_file"
     echo "[+] Installed validated sudoers rule: $sudoers_file" >&2
   else
     echo "[-] Sudoers validation failed for $tmp_sudoers. Skipping." >&2
@@ -381,11 +394,44 @@ EOF
 )
 
   local exec_res=0
-  if ssh -t -p "$target_port" -o StrictHostKeyChecking=ask "${admin_user}@${target_host}" \
-    "sudo bash -c $(printf '%q' "$remote_cmd") -- $(printf '%q' "$target_user") $(printf '%q' "$b64_pub_key") $(printf '%q' "$ip_mode") $(printf '%q' "$tool_type") $(printf '%q' "${dest_service_name:-}") $(printf '%q' "${dest_path:-}")"; then
-    exec_res=0
+  local remote_cmd_str
+  remote_cmd_str=$(printf '%q' "$remote_cmd")
+
+  if [ -n "$admin_password" ]; then
+    _ssh_log_info "Executing automated non-interactive provisioning via native OpenSSH askpass and sudo -S..."
+    local askpass_bin
+    askpass_bin=$(mktemp)
+    cat << 'ASKPASS_EOF' > "$askpass_bin"
+#!/bin/sh
+printf '%s\n' "$_SSH_ADMIN_PASS"
+ASKPASS_EOF
+    chmod 700 "$askpass_bin"
+
+    local remote_full_cmd
+    remote_full_cmd="sudo -S -p '' bash -c $remote_cmd_str -- $(printf '%q' "$target_user") $(printf '%q' "$b64_pub_key") $(printf '%q' "$ip_mode") $(printf '%q' "$tool_type") $(printf '%q' "${dest_service_name:-}") $(printf '%q' "${dest_path:-}")"
+
+    if printf "%s\n" "$admin_password" | \
+      _SSH_ADMIN_PASS="$admin_password" \
+      SSH_ASKPASS_REQUIRE=force \
+      SSH_ASKPASS="$askpass_bin" \
+      DISPLAY="${DISPLAY:-:0}" \
+      ssh -p "$target_port" \
+      -o StrictHostKeyChecking=accept-new \
+      -o BatchMode=no \
+      "${admin_user}@${target_host}" "$remote_full_cmd"; then
+      exec_res=0
+    else
+      exec_res=$?
+    fi
+    rm -f "$askpass_bin"
   else
-    exec_res=$?
+    _ssh_log_info "Connecting via interactive SSH terminal..."
+    if ssh -t -p "$target_port" -o StrictHostKeyChecking=ask "${admin_user}@${target_host}" \
+      "sudo bash -c $remote_cmd_str -- $(printf '%q' "$target_user") $(printf '%q' "$b64_pub_key") $(printf '%q' "$ip_mode") $(printf '%q' "$tool_type") $(printf '%q' "${dest_service_name:-}") $(printf '%q' "${dest_path:-}")"; then
+      exec_res=0
+    else
+      exec_res=$?
+    fi
   fi
 
   if [ $exec_res -eq 0 ]; then

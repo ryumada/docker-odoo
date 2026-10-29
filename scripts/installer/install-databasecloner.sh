@@ -209,10 +209,13 @@ function main() {
           echo -ne "${COLOR_CYAN}Enter remote sudo administrator username: ${COLOR_RESET}"
           read -r remote_admin_user
           if [ -n "$remote_admin_user" ]; then
+            echo -ne "${COLOR_CYAN}Enter password for '$remote_admin_user': ${COLOR_RESET}"
+            read -s -r remote_admin_password
+            echo ""
             local dest_svc_param=""
             [ -n "$CLONER_SSH_DEST_PATH" ] && dest_svc_param=$(basename "$CLONER_SSH_DEST_PATH")
             if declare -f install_pubkey_via_admin >/dev/null 2>&1; then
-              install_pubkey_via_admin "$CLONER_SSH_HOST" "$CLONER_SSH_PORT" "$remote_admin_user" "$CLONER_SSH_USER" "${CLONER_SSH_KEY}.pub" "auto" "cloner" "$dest_svc_param" "$CLONER_SSH_DEST_PATH" || true
+              install_pubkey_via_admin "$CLONER_SSH_HOST" "$CLONER_SSH_PORT" "$remote_admin_user" "$CLONER_SSH_USER" "${CLONER_SSH_KEY}.pub" "auto" "cloner" "$dest_svc_param" "$CLONER_SSH_DEST_PATH" "$remote_admin_password" || true
             else
               log_error "install_pubkey_via_admin function not available."
             fi
