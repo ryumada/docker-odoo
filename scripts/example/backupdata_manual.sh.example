@@ -411,14 +411,6 @@ chown -R "$REPOSITORY_OWNER":"$REPOSITORY_OWNER" "$OWNER_HOME/.odoo-tmp" 2>/dev/
 ZIP_FILE_NAME=backupdata-$SERVICE_NAME.zip
 BACKUP_FILE_PATH="$OWNER_HOME/$ZIP_FILE_NAME"
 
-# Check for 7z utility
-if ! command -v 7z &> /dev/null && ! command -v 7za &> /dev/null; then
-  log_error "7z command could not be found. Please install 7zip / p7zip-full first."
-  echo "For Ubuntu: sudo apt install 7zip || sudo apt install p7zip-full"
-  echo "For CentOS: sudo yum install p7zip p7zip-plugins"
-  exit 1
-fi
-
 # Self-elevate to root if not already
 if [ "$(id -u)" -ne 0 ]; then
     log_info "Elevating permissions to root..."
@@ -456,6 +448,14 @@ if [ -n "$SNAPSHOT_REMOTE_HOST" ]; then
   log_info "Executing backup data in Remote Secondary VPS Mode ($SNAPSHOT_REMOTE_USER@$SNAPSHOT_REMOTE_HOST)..."
   run_remote_backupdata "$SNAPSHOT_REMOTE_HOST" "$SNAPSHOT_REMOTE_USER" "$SNAPSHOT_REMOTE_PORT" "$SNAPSHOT_REMOTE_KEY"
   exit 0
+fi
+
+# Check for 7z utility (required for local packaging)
+if ! command -v 7z &> /dev/null && ! command -v 7za &> /dev/null; then
+  log_error "7z command could not be found. Please install 7zip / p7zip-full first."
+  echo "For Ubuntu: sudo apt install 7zip || sudo apt install p7zip-full"
+  echo "For CentOS: sudo yum install p7zip p7zip-plugins"
+  exit 1
 fi
 
 log_info "Start backup data for $SERVICE_NAME"
