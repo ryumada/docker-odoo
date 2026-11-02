@@ -37,6 +37,7 @@ scripts/*
 !scripts/generate_app_tree.sh
 !scripts/generate-deploy-rc-ssh-key.sh
 !scripts/generate-snapshot-ssh-key.sh
+!scripts/get-code-server-env.sh
 !scripts/git_addons_updater.sh
 !scripts/git_odoo-base_updater.sh
 !scripts/installer
@@ -62,6 +63,7 @@ scripts/*
 !scripts/lib/
 !scripts/long-process-mode.sh
 !scripts/validate-agent-config.sh
+!scripts/filestore-manager.sh
 
 utilities/*
 !utilities/README.md

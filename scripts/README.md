@@ -49,6 +49,56 @@ See the example file to create the data backup utility (`./scripts/example/backu
       backupdata-$SERVICE_NAME
       ```
 
+### Lightweight Backup Flags (Manual Mode)
+
+You can pass flags to exclude heavy chatter or web assets, or prune orphaned disk files before packaging:
+```bash
+# Exclude chatter attachments (dedup-safe: keeps records, images, and binary fields)
+backupdata-$SERVICE_NAME --exclude-chatter
+
+# Exclude regenerable web asset bundles (CSS/JS)
+backupdata-$SERVICE_NAME --exclude-assets
+
+# Prune unreferenced physical files from filestore before archiving
+backupdata-$SERVICE_NAME --clean-orphans
+
+# Combine options
+backupdata-$SERVICE_NAME --exclude-chatter --exclude-assets --clean-orphans
+```
+
+</details>
+
+<details>
+<summary>
+
+# Filestore Manager
+
+</summary>
+
+This utility analyzes, lists, audits, and safely cleans Odoo filestore attachments and orphaned files without breaking database integrity.
+
+Run directly from the repository root:
+
+```bash
+# 1. Storage breakdown by category, top models, and excludable savings
+./scripts/filestore-manager.sh summary
+
+# 2. List attachments with ownership, model, size, and category
+./scripts/filestore-manager.sh list --category chatter --limit 20
+./scripts/filestore-manager.sh list --model sale.order
+./scripts/filestore-manager.sh list --csv /tmp/attachments.csv
+
+# 3. Clean orphaned physical files (files on disk not referenced in ir_attachment)
+./scripts/filestore-manager.sh clean-orphans --dry-run
+./scripts/filestore-manager.sh clean-orphans -y
+
+# 4. Clean regenerable web assets (CSS/JS bundles; Odoo rebuilds them on demand)
+./scripts/filestore-manager.sh clean-assets
+
+# 5. Clean missing attachment records after restoring a lightweight backup
+./scripts/filestore-manager.sh clean-missing --category chatter -y
+```
+
 </details>
 
 <details>

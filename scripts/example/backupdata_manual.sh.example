@@ -2,7 +2,7 @@
 set -e
 # Category: Utility
 # Description: Backs up Odoo data manually (PostgreSQL dump + filestore).
-# Usage: ./scripts/backupdata_manual.sh
+# Usage: ./scripts/backupdata_manual.sh [--exclude-chatter] [--exclude-assets] [--clean-orphans]
 # Dependencies: 7z, pg_dump, sudo, git, ssh, rsync, ionice
 
 # Detect Repository Owner to run non-root commands as that user
@@ -16,6 +16,36 @@ REPOSITORY_OWNER=$(stat -c '%U' "$PATH_TO_ODOO")
 ENV_FILE=".env"
 UPDATE_SCRIPT="./scripts/update-env-file.sh"
 MAX_BACKUPS=3
+
+EXCLUDE_CHATTER=false
+EXCLUDE_ASSETS=false
+CLEAN_ORPHANS=false
+
+# Read defaults from .env
+if [ -f "$PATH_TO_ODOO/.env" ]; then
+  [ "$(grep "^BACKUP_EXCLUDE_CHATTER=" "$PATH_TO_ODOO/.env" 2>/dev/null | cut -d '=' -f2- | sed -e 's/[[:space:]"'\'']//g')" = "true" ] && EXCLUDE_CHATTER=true
+  [ "$(grep "^BACKUP_EXCLUDE_ASSETS=" "$PATH_TO_ODOO/.env" 2>/dev/null | cut -d '=' -f2- | sed -e 's/[[:space:]"'\'']//g')" = "true" ] && EXCLUDE_ASSETS=true
+  [ "$(grep "^BACKUP_CLEAN_ORPHANS=" "$PATH_TO_ODOO/.env" 2>/dev/null | cut -d '=' -f2- | sed -e 's/[[:space:]"'\'']//g')" = "true" ] && CLEAN_ORPHANS=true
+fi
+
+# Parse CLI overrides
+for arg in "$@"; do
+  case "$arg" in
+    --exclude-chatter)
+      EXCLUDE_CHATTER=true
+      ;;
+    --exclude-assets)
+      EXCLUDE_ASSETS=true
+      ;;
+    --clean-orphans)
+      CLEAN_ORPHANS=true
+      ;;
+    -h|--help)
+      echo "Usage: $0 [--exclude-chatter] [--exclude-assets] [--clean-orphans]"
+      exit 0
+      ;;
+  esac
+done
 
 # --- Logging Functions & Colors ---
 # Define colors for log messages
@@ -265,6 +295,138 @@ EOF
   fi
 }
 
+function prune_local_orphans() {
+  local db="$1"
+  local filestore_dir="$2"
+  if [ ! -d "$filestore_dir" ]; then
+    return 0
+  fi
+  log_info "Checking for orphaned files in $filestore_dir before backup..."
+  local t_dir
+  t_dir=$(mktemp -d)
+  find "$filestore_dir" -type f -printf '%P\n' 2>/dev/null | sort -u > "$t_dir/disk.txt"
+  run_psql -d "$db" -t -A -c "SELECT DISTINCT store_fname FROM ir_attachment WHERE store_fname IS NOT NULL ORDER BY store_fname;" 2>/dev/null > "$t_dir/db.txt"
+  comm -23 "$t_dir/disk.txt" "$t_dir/db.txt" > "$t_dir/orphans.txt"
+  local c
+  c=$(wc -l < "$t_dir/orphans.txt")
+  if [ "$c" -gt 0 ]; then
+    log_info "Pruning $c orphaned files from filestore..."
+    (cd "$filestore_dir" && xargs -r rm -f < "$t_dir/orphans.txt")
+    find "$filestore_dir" -mindepth 1 -type d -empty -delete 2>/dev/null || true
+    log_success "Pruned $c orphaned files."
+  else
+    log_info "No orphaned files found."
+  fi
+  rm -rf "$t_dir"
+}
+
+function generate_attachment_exclusions() {
+  local db="$1"
+  local exclude_txt="$2"
+  local exclude_csv="$3"
+  local ex_chatter="$4"
+  local ex_assets="$5"
+
+  local excluded_cats=()
+  [ "$ex_chatter" = true ] && excluded_cats+=("'chatter'")
+  [ "$ex_assets" = true ] && excluded_cats+=("'asset'")
+
+  if [ "${#excluded_cats[@]}" -eq 0 ]; then
+    touch "$exclude_txt"
+    return 0
+  fi
+
+  local cat_in
+  cat_in=$(IFS=,; echo "${excluded_cats[*]}")
+
+  local has_chatter
+  has_chatter=$(run_psql -d "$db" -t -A -c "SELECT count(*) FROM information_schema.tables WHERE table_name = 'message_attachment_rel';" 2>/dev/null || echo "0")
+
+  local cte
+  if [ "$has_chatter" = "1" ]; then
+    cte="
+WITH chatter_ids AS (
+  SELECT DISTINCT attachment_id FROM message_attachment_rel
+),
+classified AS (
+  SELECT
+    id, name, res_model, res_id, store_fname,
+    COALESCE(file_size, 0)::bigint AS file_size,
+    CASE
+      WHEN id IN (SELECT attachment_id FROM chatter_ids) THEN 'chatter'
+      WHEN res_model = 'ir.ui.view' AND (url LIKE '/web/assets/%' OR name LIKE '%.assets_%') THEN 'asset'
+      WHEN res_field IS NOT NULL AND res_field != '' THEN 'field'
+      WHEN res_model IS NOT NULL AND res_model != '' THEN 'record'
+      ELSE 'standalone'
+    END AS category
+  FROM ir_attachment
+  WHERE store_fname IS NOT NULL
+)"
+  else
+    cte="
+WITH classified AS (
+  SELECT
+    id, name, res_model, res_id, store_fname,
+    COALESCE(file_size, 0)::bigint AS file_size,
+    CASE
+      WHEN res_model = 'mail.message' THEN 'chatter'
+      WHEN res_model = 'ir.ui.view' AND (url LIKE '/web/assets/%' OR name LIKE '%.assets_%') THEN 'asset'
+      WHEN res_field IS NOT NULL AND res_field != '' THEN 'field'
+      WHEN res_model IS NOT NULL AND res_model != '' THEN 'record'
+      ELSE 'standalone'
+    END AS category
+  FROM ir_attachment
+  WHERE store_fname IS NOT NULL
+)"
+  fi
+
+  # Dedup rule: A store_fname is ONLY excluded if ALL references to it belong to excluded categories!
+  local sql_exclude="
+$cte,
+excludable_fnames AS (
+  SELECT store_fname
+  FROM classified
+  GROUP BY store_fname
+  HAVING bool_and(category IN ($cat_in))
+)
+SELECT store_fname FROM excludable_fnames;
+"
+  run_psql -d "$db" -t -A -c "$sql_exclude" 2>/dev/null | sed '/^[[:space:]]*$/d' > "$exclude_txt" || touch "$exclude_txt"
+
+  local count
+  count=$(wc -l < "$exclude_txt")
+  log_info "Identified $count unique filestore files to exclude (dedup-safe: $cat_in)."
+
+  if [ -n "$exclude_csv" ] && [ "$count" -gt 0 ]; then
+    local sql_csv="
+$cte,
+excludable_fnames AS (
+  SELECT store_fname
+  FROM classified
+  GROUP BY store_fname
+  HAVING bool_and(category IN ($cat_in))
+)
+SELECT
+  store_fname,
+  category,
+  COALESCE(res_model, ''),
+  COALESCE(res_id::text, ''),
+  REPLACE(REPLACE(COALESCE(name, ''), E'\t', ' '), E'\n', ' '),
+  file_size::text
+FROM classified
+WHERE store_fname IN (SELECT store_fname FROM excludable_fnames);
+"
+    {
+      echo "store_fname,category,res_model,res_id,name,file_size"
+      run_psql -d "$db" -t -A -F $'\t' -c "$sql_csv" 2>/dev/null | while IFS=$'\t' read -r sf cat mdl rid nm sz; do
+        [ -z "$sf" ] && continue
+        nm=$(echo "$nm" | sed 's/"/""/g')
+        echo "\"$sf\",\"$cat\",\"$mdl\",\"$rid\",\"$nm\",$sz"
+      done
+    } > "$exclude_csv"
+  fi
+}
+
 function run_remote_backupdata() {
   local host="$1"
   local user="$2"
@@ -330,12 +492,30 @@ function run_remote_backupdata() {
   local remote_staging="$remote_base/staging"
   local remote_cache_zip="$remote_cache/backupdata-$SERVICE_NAME.zip"
 
+  local has_remote_exclusions=false
+  local temp_exclude="/tmp/exclude-$SERVICE_NAME-$$.txt"
+  local temp_csv="/tmp/excluded_attachments-$SERVICE_NAME-$$.csv"
+  if [ "$EXCLUDE_CHATTER" = true ] || [ "$EXCLUDE_ASSETS" = true ]; then
+    generate_attachment_exclusions "$ODOO_DATABASE_NAME_PRD" "$temp_exclude" "$temp_csv" "$EXCLUDE_CHATTER" "$EXCLUDE_ASSETS"
+    if [ -s "$temp_exclude" ]; then
+      has_remote_exclusions=true
+      remote_mirror="$remote_base/mirror-lite/filestore"
+      remote_cache_zip="$remote_cache/backupdata-$SERVICE_NAME-lite.zip"
+      log_info "Using lightweight remote mirror and cache on Secondary VPS."
+    fi
+  fi
+
   log_info "Preparing directory structure on Secondary VPS under $remote_base/..."
   remote_exec "mkdir -p '$remote_mirror' '$remote_cache' '$remote_staging/tmp' && rm -rf '$remote_staging/tmp/zip_staging' && mkdir -p '$remote_staging/tmp/zip_staging' && chmod 700 '$remote_home/.odoo-snapshots' && if [ -L '$remote_mirror/filestore' ]; then rm -f '$remote_mirror/filestore'; fi"
 
+  local rsync_extra_opts=()
+  if [ "$has_remote_exclusions" = true ]; then
+    rsync_extra_opts=(--exclude-from="$temp_exclude" --delete-excluded)
+  fi
+
   if [ -d "$ODOO_FILESTORE_PATH" ]; then
     log_info "Syncing filestore to Secondary VPS (incremental pass 1)..."
-    remote_sync -az --delete "$ODOO_FILESTORE_PATH/" "$user@$host:$remote_mirror/"
+    remote_sync -a --delete "${rsync_extra_opts[@]}" "$ODOO_FILESTORE_PATH/" "$user@$host:$remote_mirror/"
   else
     log_warn "Filestore not found at $ODOO_FILESTORE_PATH. Skipping filestore."
   fi
@@ -348,25 +528,34 @@ function run_remote_backupdata() {
 
   if [ -d "$ODOO_FILESTORE_PATH" ]; then
     log_info "Syncing filestore catch-up changes to Secondary VPS..."
-    remote_sync -az "$ODOO_FILESTORE_PATH/" "$user@$host:$remote_mirror/"
+    local rsync_pass2_opts=()
+    [ "$has_remote_exclusions" = true ] && rsync_pass2_opts=(--exclude-from="$temp_exclude")
+    remote_sync -a "${rsync_pass2_opts[@]}" "$ODOO_FILESTORE_PATH/" "$user@$host:$remote_mirror/"
   fi
 
   local temp_manifest="/tmp/manifest-$SERVICE_NAME-$$.json"
   generate_manifest "$ODOO_DATABASE_NAME_PRD" "$temp_manifest"
-  remote_sync -az "$temp_manifest" "$user@$host:$remote_staging/tmp/zip_staging/manifest.json"
+  remote_sync -a "$temp_manifest" "$user@$host:$remote_staging/tmp/zip_staging/manifest.json"
   rm -f "$temp_manifest"
 
   local remote_files_to_update=("dump.sql" "manifest.json")
 
+  if [ "$has_remote_exclusions" = true ] && [ -f "$temp_csv" ]; then
+    log_info "Syncing excluded_attachments.csv to Secondary VPS..."
+    remote_sync -a "$temp_csv" "$user@$host:$remote_staging/tmp/zip_staging/excluded_attachments.csv"
+    remote_files_to_update+=("excluded_attachments.csv")
+    rm -f "$temp_csv" "$temp_exclude"
+  fi
+
   if [ -f "$PATH_TO_ODOO/git/git_hashes.txt" ]; then
     log_info "Syncing git_hashes.txt to Secondary VPS..."
-    remote_sync -az "$PATH_TO_ODOO/git/git_hashes.txt" "$user@$host:$remote_staging/tmp/zip_staging/git_hashes.txt"
+    remote_sync -a "$PATH_TO_ODOO/git/git_hashes.txt" "$user@$host:$remote_staging/tmp/zip_staging/git_hashes.txt"
     remote_files_to_update+=("git_hashes.txt")
   fi
 
   if [ -f "$PATH_TO_ODOO/odoo-base/git_hashes.txt" ]; then
     log_info "Syncing odoo-base/git_hashes.txt to Secondary VPS..."
-    remote_sync -az "$PATH_TO_ODOO/odoo-base/git_hashes.txt" "$user@$host:$remote_staging/tmp/zip_staging/odoo-base_git_hashes.txt"
+    remote_sync -a "$PATH_TO_ODOO/odoo-base/git_hashes.txt" "$user@$host:$remote_staging/tmp/zip_staging/odoo-base_git_hashes.txt"
     remote_files_to_update+=("odoo-base_git_hashes.txt")
   fi
 
@@ -460,6 +649,10 @@ fi
 
 log_info "Start backup data for $SERVICE_NAME"
 
+if [ "$CLEAN_ORPHANS" = true ]; then
+  prune_local_orphans "$ODOO_DATABASE_NAME_PRD" "$ODOO_FILESTORE_PATH"
+fi
+
 if [ -f "$BACKUP_FILE_PATH" ]; then
     log_warn "Backup file already exists. Removing it..."
     rm -f "$BACKUP_FILE_PATH"
@@ -477,6 +670,15 @@ trap cleanup_staging EXIT
 log_info "Create temporary directory"
 mkdir -p "$TEMP_DIR"
 
+local_has_exclusions=false
+if [ "$EXCLUDE_CHATTER" = true ] || [ "$EXCLUDE_ASSETS" = true ]; then
+  generate_attachment_exclusions "$ODOO_DATABASE_NAME_PRD" "$TEMP_DIR/exclude_store_fnames.txt" "$TEMP_DIR/excluded_attachments.csv" "$EXCLUDE_CHATTER" "$EXCLUDE_ASSETS"
+  if [ -s "$TEMP_DIR/exclude_store_fnames.txt" ]; then
+    local_has_exclusions=true
+    log_info "Active exclusions detected. Using lightweight staging and separate lite cache."
+  fi
+fi
+
 log_info "Backup database $ODOO_DATABASE_NAME_PRD"
 run_pg_dump --no-owner "$ODOO_DATABASE_NAME_PRD" > "$TEMP_DIR/dump.sql"
 
@@ -486,7 +688,13 @@ log_info "Linking filestore directory to temporary directory"
 if [ -d "$ODOO_FILESTORE_PATH" ]; then
   [ -L "$ODOO_FILESTORE_PATH/filestore" ] && rm -f "$ODOO_FILESTORE_PATH/filestore"
   rm -rf "$TEMP_DIR/filestore"
-  ln -sfn "$ODOO_FILESTORE_PATH" "$TEMP_DIR/filestore" 2>/dev/null || cp -al "$ODOO_FILESTORE_PATH" "$TEMP_DIR/filestore" 2>/dev/null || cp -r "$ODOO_FILESTORE_PATH" "$TEMP_DIR/filestore"
+  if [ "$local_has_exclusions" = true ]; then
+    log_info "Building lightweight filestore staging (excluding chatter/assets via hardlinks)..."
+    mkdir -p "$TEMP_DIR/filestore"
+    rsync -a --link-dest="$ODOO_FILESTORE_PATH/" --exclude-from="$TEMP_DIR/exclude_store_fnames.txt" "$ODOO_FILESTORE_PATH/" "$TEMP_DIR/filestore/"
+  else
+    ln -sfn "$ODOO_FILESTORE_PATH" "$TEMP_DIR/filestore" 2>/dev/null || cp -al "$ODOO_FILESTORE_PATH" "$TEMP_DIR/filestore" 2>/dev/null || cp -r "$ODOO_FILESTORE_PATH" "$TEMP_DIR/filestore"
+  fi
 else
   log_warn "Filestore not found at $ODOO_FILESTORE_PATH. Skipping filestore."
 fi
@@ -502,7 +710,11 @@ if [ -f "odoo-base/git_hashes.txt" ]; then
 fi
 
 CACHE_DIR="$OWNER_HOME/.odoo-snapshots/$SERVICE_NAME/cache"
-CACHE_ZIP="$CACHE_DIR/backupdata-$SERVICE_NAME.zip"
+if [ "$local_has_exclusions" = true ]; then
+  CACHE_ZIP="$CACHE_DIR/backupdata-$SERVICE_NAME-lite.zip"
+else
+  CACHE_ZIP="$CACHE_DIR/backupdata-$SERVICE_NAME.zip"
+fi
 
 log_info "Change Directory to $TEMP_DIR"
 cd "$TEMP_DIR"
@@ -513,6 +725,7 @@ chmod 700 "$OWNER_HOME/.odoo-snapshots" "$CACHE_DIR" 2>/dev/null || true
 FILES_TO_UPDATE=("dump.sql" "manifest.json")
 [ -f "git_hashes.txt" ] && FILES_TO_UPDATE+=("git_hashes.txt")
 [ -f "odoo-base_git_hashes.txt" ] && FILES_TO_UPDATE+=("odoo-base_git_hashes.txt")
+[ -f "excluded_attachments.csv" ] && FILES_TO_UPDATE+=("excluded_attachments.csv")
 
 zip_cmd="7z"
 command -v 7z &>/dev/null || zip_cmd="7za"
