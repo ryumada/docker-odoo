@@ -250,22 +250,22 @@ function process_repo() {
                     repo_updated=1 # false
                 else
                     log_warn "Pull failed for $repo_name ($current_branch). Attempting auto-recovery for divergent branch/conflict..."
-                    sudo -u "$REPOSITORY_OWNER" git -C "$subdir" merge --abort 2>/dev/null || true
-                    sudo -u "$REPOSITORY_OWNER" git -C "$subdir" reset --hard 2>/dev/null || true
+                    sudo -u "$REPOSITORY_OWNER" git -C "$subdir" merge --abort >/dev/null 2>&1 || true
+                    sudo -u "$REPOSITORY_OWNER" git -C "$subdir" reset --hard >/dev/null 2>&1 || true
 
-                    if [ "$current_branch" != "main" ] && sudo -u "$REPOSITORY_OWNER" git -C "$subdir" checkout main -q 2>/dev/null; then
+                    if [ "$current_branch" != "main" ] && sudo -u "$REPOSITORY_OWNER" git -C "$subdir" checkout main -q >/dev/null 2>&1; then
                         :
-                    elif [ "$current_branch" != "master" ] && sudo -u "$REPOSITORY_OWNER" git -C "$subdir" checkout master -q 2>/dev/null; then
+                    elif [ "$current_branch" != "master" ] && sudo -u "$REPOSITORY_OWNER" git -C "$subdir" checkout master -q >/dev/null 2>&1; then
                         :
                     else
-                        sudo -u "$REPOSITORY_OWNER" git -C "$subdir" checkout --detach -q 2>/dev/null || true
+                        sudo -u "$REPOSITORY_OWNER" git -C "$subdir" checkout --detach -q >/dev/null 2>&1 || true
                     fi
 
-                    sudo -u "$REPOSITORY_OWNER" git -C "$subdir" branch -D "$current_branch" 2>/dev/null || true
-                    sudo -u "$REPOSITORY_OWNER" git -C "$subdir" fetch --prune --tags -q 2>/dev/null || true
+                    sudo -u "$REPOSITORY_OWNER" git -C "$subdir" branch -D "$current_branch" >/dev/null 2>&1 || true
+                    sudo -u "$REPOSITORY_OWNER" git -C "$subdir" fetch --prune --tags -q >/dev/null 2>&1 || true
 
-                    if sudo -u "$REPOSITORY_OWNER" git -C "$subdir" checkout "$current_branch" -q 2>/dev/null; then
-                        sudo -u "$REPOSITORY_OWNER" git -C "$subdir" pull -q 2>/dev/null || true
+                    if sudo -u "$REPOSITORY_OWNER" git -C "$subdir" checkout "$current_branch" -q >/dev/null 2>&1; then
+                        sudo -u "$REPOSITORY_OWNER" git -C "$subdir" pull -q >/dev/null 2>&1 || true
                         local recovered_commit
                         recovered_commit=$(sudo -u "$REPOSITORY_OWNER" git -C "$subdir" rev-parse "$current_branch" 2>/dev/null || true)
                         if [ -n "$old_commit" ] && [ -n "$recovered_commit" ] && [ "$old_commit" != "$recovered_commit" ]; then
