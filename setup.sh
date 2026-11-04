@@ -1067,6 +1067,7 @@ EOF
 function writeServiceNameVariableOnEnvFile() {
   if ! grep -q "^SERVICE_NAME=" "$ENV_FILE"; then
     cat <<-EOF >> "$ENV_FILE"
+
 # # # # # # # # # # # # # # # # #
 # DIRECTORIES                   #
 # # # # # # # # # # # # # # # # #
