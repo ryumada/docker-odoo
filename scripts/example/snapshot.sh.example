@@ -728,6 +728,8 @@ except Exception:
 
 readonly SYSTEM_QUEUE_LOCK="/tmp/odoo-backup-system.queue.lock"
 readonly SYSTEM_QUEUE_ACTIVE="/tmp/odoo-backup-system.queue.active"
+# Fallback when SNAPSHOT_QUEUE_TIMEOUT is missing/invalid in .env (keep in sync with .env.example)
+readonly DEFAULT_SNAPSHOT_QUEUE_TIMEOUT=43200
 
 ensure_queue_files_exist() {
   local target_lock="$1"
@@ -852,7 +854,7 @@ function run_remote_snapshot() {
   log_success "SSH connection established with Secondary VPS."
 
   # Acquire queue slot on Secondary VPS to avoid I/O conflict with other instances
-  local queue_timeout="${SNAPSHOT_QUEUE_TIMEOUT:-14400}"
+  local queue_timeout="${SNAPSHOT_QUEUE_TIMEOUT:-$DEFAULT_SNAPSHOT_QUEUE_TIMEOUT}"
   acquire_secondary_vps_queue_token "$host" "$user" "$port" "$queue_timeout"
 
   # Lower I/O and CPU scheduling priority on Secondary VPS
@@ -1151,7 +1153,10 @@ function main() {
 
   # Read queue timeout setting from .env
   SNAPSHOT_QUEUE_TIMEOUT=$(grep "^SNAPSHOT_QUEUE_TIMEOUT=" "$PATH_TO_ODOO/.env" 2>/dev/null | cut -d '=' -f2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//')
-  [ -z "$SNAPSHOT_QUEUE_TIMEOUT" ] && SNAPSHOT_QUEUE_TIMEOUT="14400"
+  if ! [[ "$SNAPSHOT_QUEUE_TIMEOUT" =~ ^[0-9]+$ ]] || [ "$SNAPSHOT_QUEUE_TIMEOUT" -le 0 ]; then
+    [ -n "$SNAPSHOT_QUEUE_TIMEOUT" ] && log_warn "Invalid SNAPSHOT_QUEUE_TIMEOUT='$SNAPSHOT_QUEUE_TIMEOUT' in .env. Using default ${DEFAULT_SNAPSHOT_QUEUE_TIMEOUT}s."
+    SNAPSHOT_QUEUE_TIMEOUT="$DEFAULT_SNAPSHOT_QUEUE_TIMEOUT"
+  fi
 
   # Unified Host-Wide Queue Lock (prevents concurrent backup I/O between instances on the same host)
   ensure_queue_files_exist "$SYSTEM_QUEUE_LOCK" "$SYSTEM_QUEUE_ACTIVE"
