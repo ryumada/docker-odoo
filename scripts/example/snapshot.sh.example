@@ -35,6 +35,18 @@ log_warn() { log "${COLOR_WARN}" "⚠️" "$1"; }
 log_error() { log "${COLOR_ERROR}" "❌" "$1"; }
 # ------------------------------------
 
+# Shared queue lock (this host and the Secondary VPS), see scripts/lib/queue_lock.sh
+if [ -f "$CURRENT_DIR/lib/queue_lock.sh" ]; then
+  # shellcheck source=/dev/null
+  source "$CURRENT_DIR/lib/queue_lock.sh"
+elif [ -f "$PATH_TO_ODOO/scripts/lib/queue_lock.sh" ]; then
+  # shellcheck source=/dev/null
+  source "$PATH_TO_ODOO/scripts/lib/queue_lock.sh"
+else
+  log_error "scripts/lib/queue_lock.sh not found. Update docker-odoo (git pull) and re-run ./setup.sh."
+  exit 1
+fi
+
 function run_pg_dump() {
   local env_file="${PSQL_ENV_FILE:-$PATH_TO_ODOO/.env}"
   local db_host
@@ -535,6 +547,13 @@ function upload_to_gdrive() {
 
 
 function collectGitMetadataAndNonGitDirs() {
+  # Writes git_hashes.json/.txt and prints (stdout) every directory that must be bundled
+  # into the snapshot, one relative path per line:
+  #   - non-git directories under git/ and odoo-base/
+  #   - git repositories that cannot be re-cloned at their current state
+  #     (no remote, unreachable remote, unpushed commits, or uncommitted changes).
+  #     These are bundled WITH their .git directory, and their remote/branch/commit
+  #     is still recorded in git_hashes.json under "bundled_directories".
   local json_file=$1
   local txt_file=$2
 
@@ -546,87 +565,198 @@ repo_owner = sys.argv[2]
 json_file = sys.argv[3]
 txt_file = sys.argv[4]
 
+GIT_ENV = [
+    "env", "GIT_TERMINAL_PROMPT=0",
+    "GIT_SSH_COMMAND=ssh -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new",
+]
+REMOTE_CHECK_TIMEOUT = 30
+
+def read_env_value(key, default):
+    try:
+        with open(os.path.join(path_to_odoo, ".env")) as f:
+            for line in f:
+                if line.startswith(key + "="):
+                    val = line.split("=", 1)[1].split("#", 1)[0].strip().strip("\"").strip("\x27")
+                    return val or default
+    except Exception:
+        pass
+    return default
+
+try:
+    UNREACHABLE_BUNDLE_MAX_BYTES = int(read_env_value("SNAPSHOT_BUNDLE_UNREACHABLE_MAX_MB", "1024")) * 1024 * 1024
+except ValueError:
+    UNREACHABLE_BUNDLE_MAX_BYTES = 1024 * 1024 * 1024
+
 git_repos = []
 bundled_dirs = []
 txt_lines = []
 
-def run_git(cmd, cwd):
+def warn(msg):
+    sys.stderr.write("\033[0;33m[WARN] " + msg + "\033[0m\n")
+
+def git_cmd(cmd, cwd):
+    return ["sudo", "-u", repo_owner] + GIT_ENV + ["git", "-C", cwd] + cmd
+
+def run_git(cmd, cwd, timeout=60, strip=True):
     try:
-        res = subprocess.run(["sudo", "-u", repo_owner, "git", "-C", cwd] + cmd,
-                             stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=True)
-        return res.stdout.strip()
+        res = subprocess.run(git_cmd(cmd, cwd), stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                             text=True, check=True, timeout=timeout)
+        return res.stdout.strip() if strip else res.stdout
     except Exception:
         return ""
+
+def git_succeeds(cmd, cwd, timeout):
+    try:
+        subprocess.run(git_cmd(cmd, cwd), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                       check=True, timeout=timeout)
+        return True
+    except Exception:
+        return False
 
 def is_git_repo(path):
     if not os.path.isdir(path):
         return False
-    git_dir = os.path.join(path, ".git")
-    if os.path.exists(git_dir):
-        out = run_git(["rev-parse", "--is-inside-work-tree"], path)
-        return out == "true"
+    if os.path.exists(os.path.join(path, ".git")):
+        return run_git(["rev-parse", "--is-inside-work-tree"], path) == "true"
     return False
+
+def dir_size_bytes(path):
+    total = 0
+    for root, _dirs, files in os.walk(path):
+        for f in files:
+            try:
+                total += os.lstat(os.path.join(root, f)).st_size
+            except OSError:
+                pass
+    return total
+
+def human(n):
+    for unit in ("B", "KiB", "MiB", "GiB", "TiB"):
+        if n < 1024 or unit == "TiB":
+            return "{:.1f} {}".format(n, unit)
+        n /= 1024.0
+
+def uncommitted_changes(path):
+    out = run_git(["status", "--porcelain", "--untracked-files=normal"], path, strip=False)
+    changes = []
+    for line in out.splitlines():
+        if not line.strip():
+            continue
+        p = line[3:]
+        # Python bytecode is regenerated automatically; never a reason to bundle
+        if "__pycache__" in p or p.endswith(".pyc") or p.endswith(".pyo"):
+            continue
+        changes.append(line)
+    return changes
+
+def recoverability_issues(path, remote, commit):
+    reasons = []
+    if commit == "N/A":
+        reasons.append("no_commits")
+    if not remote:
+        reasons.append("no_remote")
+    elif not (git_succeeds(["ls-remote", "origin", "HEAD"], path, REMOTE_CHECK_TIMEOUT)
+              or git_succeeds(["ls-remote", "origin", "HEAD"], path, REMOTE_CHECK_TIMEOUT)):
+        reasons.append("remote_unreachable")
+    elif commit != "N/A":
+        unpushed = run_git(["rev-list", "--count", "HEAD", "--not", "--remotes"], path)
+        if unpushed and unpushed != "0":
+            reasons.append("unpushed_commits:" + unpushed)
+    changes = uncommitted_changes(path)
+    if changes:
+        reasons.append("uncommitted_changes:" + str(len(changes)))
+    return reasons
+
+def add_git_repo(category, full_path, name):
+    rel_path = os.path.relpath(full_path, path_to_odoo)
+    remote = run_git(["config", "--get", "remote.origin.url"], full_path)
+    branch = run_git(["branch", "--show-current"], full_path) or "HEAD"
+    commit = run_git(["rev-parse", "HEAD"], full_path) or "N/A"
+    reasons = recoverability_issues(full_path, remote, commit)
+    entry = {
+        "name": name,
+        "category": category,
+        "relative_path": rel_path,
+        "remote": remote or "N/A",
+        "branch": branch,
+        "commit": commit,
+    }
+    git_path = os.path.join(full_path, ".git")
+    is_worktree = os.path.isfile(git_path)
+    if is_worktree:
+        entry["git_worktree"] = True
+    size = dir_size_bytes(full_path) if reasons else 0
+    if reasons == ["remote_unreachable"] and size > UNREACHABLE_BUNDLE_MAX_BYTES:
+        # Only the network check failed (often transient) and the repo is large:
+        # do not bloat the snapshot, but flag it so restore/validation can report it.
+        entry["remote_check"] = "unreachable"
+        git_repos.append(entry)
+        txt_lines.append("  Git Directory: {0}\n  Git Remote: {1}\n  Git Branch: {2}\n  Git Hashes: {3}\n  Remote Check: unreachable (not bundled)\n".format(
+            rel_path, entry["remote"], branch, commit))
+        warn("Remote of {0} is unreachable and the repository is {1} (over SNAPSHOT_BUNDLE_UNREACHABLE_MAX_MB). "
+             "NOT bundled: restoring this snapshot depends on {2} being reachable.".format(rel_path, human(size), entry["remote"]))
+        return
+    if reasons:
+        entry.update({
+            "is_git": True,
+            "included_in_snapshot": True,
+            # A worktree only has a .git pointer file; its history lives in the main repository
+            "includes_git_dir": not is_worktree,
+            "bundled_reasons": reasons,
+            "size_bytes": size,
+        })
+        bundled_dirs.append(entry)
+        txt_lines.append(
+            "  Bundled Git Directory: {0}\n  Git Remote: {1}\n  Git Branch: {2}\n  Git Hashes: {3}\n  Bundled Reason: {4}\n".format(
+                rel_path, entry["remote"], branch, commit, ", ".join(reasons)))
+        warn("Git repository {0} cannot be re-cloned ({1}). Bundling it into the snapshot{3} ({2}). "
+             "Push it to a reachable remote to keep snapshots small.".format(
+                 rel_path, ", ".join(reasons), human(size),
+                 " (worktree: files only, no history)" if is_worktree else " with its .git"))
+    else:
+        git_repos.append(entry)
+        txt_lines.append("  Git Directory: {0}\n  Git Remote: {1}\n  Git Branch: {2}\n  Git Hashes: {3}\n".format(
+            rel_path, entry["remote"], branch, commit))
+
+def add_non_git_dir(category, full_path, name):
+    rel_path = os.path.relpath(full_path, path_to_odoo)
+    bundled_dirs.append({
+        "name": name,
+        "category": category,
+        "relative_path": rel_path,
+        "is_git": False,
+        "included_in_snapshot": True,
+    })
+    txt_lines.append("  Non-Git Directory (Bundled directly into snapshot): {0}\n".format(rel_path))
 
 search_roots = [
     ("git", os.path.join(path_to_odoo, "git")),
-    ("odoo-base", os.path.join(path_to_odoo, "odoo-base"))
+    ("odoo-base", os.path.join(path_to_odoo, "odoo-base")),
 ]
 
 for category, root in search_roots:
     if not os.path.isdir(root):
         continue
     if is_git_repo(root):
-        rel_path = os.path.relpath(root, path_to_odoo)
-        remote = run_git(["config", "--get", "remote.origin.url"], root) or "N/A"
-        branch = run_git(["branch", "--show-current"], root) or "HEAD"
-        commit = run_git(["rev-parse", "HEAD"], root) or "N/A"
-        git_repos.append({
-            "name": os.path.basename(root),
-            "category": category,
-            "relative_path": rel_path,
-            "remote": remote,
-            "branch": branch,
-            "commit": commit
-        })
-        txt_lines.append(f"  Git Directory: {rel_path}\n  Git Remote: {remote}\n  Git Branch: {branch}\n  Git Hashes: {commit}\n")
+        add_git_repo(category, root, os.path.basename(root))
         continue
-
     try:
         entries = sorted(os.listdir(root))
     except Exception:
         entries = []
-
     for entry in entries:
         full_path = os.path.join(root, entry)
         if not os.path.isdir(full_path):
             continue
-        rel_path = os.path.relpath(full_path, path_to_odoo)
         if is_git_repo(full_path):
-            remote = run_git(["config", "--get", "remote.origin.url"], full_path) or "N/A"
-            branch = run_git(["branch", "--show-current"], full_path) or "HEAD"
-            commit = run_git(["rev-parse", "HEAD"], full_path) or "N/A"
-            git_repos.append({
-                "name": entry,
-                "category": category,
-                "relative_path": rel_path,
-                "remote": remote,
-                "branch": branch,
-                "commit": commit
-            })
-            txt_lines.append(f"  Git Directory: {rel_path}\n  Git Remote: {remote}\n  Git Branch: {branch}\n  Git Hashes: {commit}\n")
+            add_git_repo(category, full_path, entry)
         else:
-            bundled_dirs.append({
-                "name": entry,
-                "category": category,
-                "relative_path": rel_path,
-                "included_in_snapshot": True
-            })
-            txt_lines.append(f"  Non-Git Directory (Bundled directly into snapshot): {rel_path}\n")
+            add_non_git_dir(category, full_path, entry)
 
 data = {
     "service_name": os.path.basename(path_to_odoo),
     "git_repositories": git_repos,
-    "bundled_directories": bundled_dirs
+    "bundled_directories": bundled_dirs,
 }
 
 with open(json_file, "w") as f:
@@ -726,87 +856,20 @@ except Exception:
   fi
 }
 
-readonly SYSTEM_QUEUE_LOCK="/tmp/odoo-backup-system.queue.lock"
-readonly SYSTEM_QUEUE_ACTIVE="/tmp/odoo-backup-system.queue.active"
+# Queue shared by every snapshot on a host (and on the Secondary VPS). Files: /tmp/odoo-backup-system.queue.*
+readonly SNAPSHOT_QUEUE_NAME="odoo-backup-system"
 # Fallback when SNAPSHOT_QUEUE_TIMEOUT is missing/invalid in .env (keep in sync with .env.example)
 readonly DEFAULT_SNAPSHOT_QUEUE_TIMEOUT=43200
 
-ensure_queue_files_exist() {
-  local target_lock="$1"
-  local target_active="$2"
-  if [ ! -f "$target_lock" ]; then
-    (umask 000 && touch "$target_lock") 2>/dev/null || true
-    chmod 666 "$target_lock" 2>/dev/null || true
-  fi
-  if [ ! -f "$target_active" ]; then
-    (umask 000 && touch "$target_active") 2>/dev/null || true
-    chmod 666 "$target_active" 2>/dev/null || true
-  fi
-}
-
 acquire_secondary_vps_queue_token() {
-  local host="$1" user="$2" port="$3" timeout="$4"
-  local poll_interval=15
-  local start_time current_time elapsed
-  start_time=$(date +%s)
-
-  log_info "Acquiring queue token on Secondary VPS ($host)..."
-
-  while true; do
-    local lock_status
-    lock_status=$(remote_exec "
-      lock_file=\"/tmp/odoo-backup-system.queue.lock\"
-      active_file=\"/tmp/odoo-backup-system.queue.active\"
-      if [ ! -f \"\$lock_file\" ]; then (umask 000 && touch \"\$lock_file\") 2>/dev/null || true; chmod 666 \"\$lock_file\" 2>/dev/null || true; fi
-      if [ ! -f \"\$active_file\" ]; then (umask 000 && touch \"\$active_file\") 2>/dev/null || true; chmod 666 \"\$active_file\" 2>/dev/null || true; fi
-
-      exec 9>\"\$lock_file\"
-      if flock -n 9; then
-        now=\$(date +%s)
-        if [ -s \"\$active_file\" ]; then
-          job_ts=\$(cat \"\$active_file\" 2>/dev/null | awk '{print \$1}')
-          job_desc=\$(cat \"\$active_file\" 2>/dev/null | cut -d' ' -f2-)
-          if [ -n \"\$job_ts\" ] && [ \$((now - job_ts)) -gt $timeout ]; then
-            echo \"[WARN] Overriding stale lock from \$job_desc (older than ${timeout}s)\" >&2
-          fi
-        fi
-        echo \"\$now $SERVICE_NAME (remote from $(hostname -s 2>/dev/null || hostname))\" > \"\$active_file\"
-        echo 'ACQUIRED'
-        exit 0
-      else
-        cat \"\$active_file\" 2>/dev/null || echo 'BUSY'
-        exit 1
-      fi
-    " 2>/dev/null || true)
-
-    if [ "$lock_status" = "ACQUIRED" ]; then
-      log_success "Acquired Secondary VPS queue slot for $SERVICE_NAME!"
-      return 0
-    fi
-
-    current_time=$(date +%s)
-    elapsed=$((current_time - start_time))
-    if [ "$elapsed" -ge "$timeout" ]; then
-      log_error "Secondary VPS queue wait timed out after ${timeout}s. Current active job: $lock_status"
-      return 1
-    fi
-
-    log_info "⏳ Secondary VPS busy with: $lock_status. Waiting in queue (${elapsed}s / ${timeout}s)..."
-    sleep "$poll_interval"
-  done
+  local host="$1" timeout="$4"
+  log_info "Acquiring queue slot on Secondary VPS ($host)..."
+  queue_lock_acquire_remote "$SNAPSHOT_QUEUE_NAME" "$SERVICE_NAME" \
+    "$SERVICE_NAME (remote from $(hostname -s 2>/dev/null || hostname))" "$timeout" remote_exec
 }
 
 release_secondary_vps_queue_token() {
-  remote_exec "
-    lock_file=\"/tmp/odoo-backup-system.queue.lock\"
-    active_file=\"/tmp/odoo-backup-system.queue.active\"
-    exec 9>\"\$lock_file\"
-    if flock -n 9; then
-      if [ -f \"\$active_file\" ] && grep -q '$SERVICE_NAME' \"\$active_file\"; then
-        rm -f \"\$active_file\"
-      fi
-    fi
-  " 2>/dev/null || true
+  queue_lock_release_remote
 }
 
 function run_remote_snapshot() {
@@ -961,7 +1024,7 @@ function run_remote_snapshot() {
   local files_to_sync=()
   for rel_dir in "${nongit_dirs[@]}"; do
     if [ -d "$PATH_TO_ODOO/$rel_dir" ]; then
-      log_info "Syncing non-git directory to Secondary VPS: $rel_dir"
+      log_info "Syncing bundled directory to Secondary VPS: $rel_dir"
       files_to_sync+=("$PATH_TO_ODOO/$rel_dir")
       files_to_sync+=("$PATH_TO_ODOO/./$rel_dir")
     fi
@@ -1158,21 +1221,21 @@ function main() {
     SNAPSHOT_QUEUE_TIMEOUT="$DEFAULT_SNAPSHOT_QUEUE_TIMEOUT"
   fi
 
-  # Unified Host-Wide Queue Lock (prevents concurrent backup I/O between instances on the same host)
-  ensure_queue_files_exist "$SYSTEM_QUEUE_LOCK" "$SYSTEM_QUEUE_ACTIVE"
-  exec 201>"$SYSTEM_QUEUE_LOCK"
+  # How often a waiting snapshot checks the queue, and when a holder without heartbeat counts as dead
+  SNAPSHOT_QUEUE_POLL_INTERVAL=$(grep "^SNAPSHOT_QUEUE_POLL_INTERVAL=" "$PATH_TO_ODOO/.env" 2>/dev/null | cut -d '=' -f2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//')
+  [[ "$SNAPSHOT_QUEUE_POLL_INTERVAL" =~ ^[0-9]+$ ]] && [ "$SNAPSHOT_QUEUE_POLL_INTERVAL" -gt 0 ] || SNAPSHOT_QUEUE_POLL_INTERVAL=60
+  SNAPSHOT_QUEUE_STALE_AFTER=$(grep "^SNAPSHOT_QUEUE_STALE_AFTER=" "$PATH_TO_ODOO/.env" 2>/dev/null | cut -d '=' -f2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//')
+  [[ "$SNAPSHOT_QUEUE_STALE_AFTER" =~ ^[0-9]+$ ]] && [ "$SNAPSHOT_QUEUE_STALE_AFTER" -gt 0 ] || SNAPSHOT_QUEUE_STALE_AFTER=600
+  QUEUE_LOCK_POLL_INTERVAL="$SNAPSHOT_QUEUE_POLL_INTERVAL"
+  QUEUE_LOCK_STALE_AFTER="$SNAPSHOT_QUEUE_STALE_AFTER"
+  # Markers written by older script versions have no heartbeat; treat them like the old code did
+  QUEUE_LOCK_LEGACY_STALE_AFTER="$SNAPSHOT_QUEUE_TIMEOUT"
 
-  if ! flock -n 201; then
-    local active_job
-    active_job=$(cat "$SYSTEM_QUEUE_ACTIVE" 2>/dev/null || echo "another service")
-    log_info "⏳ Host backup queue busy (active: $active_job). Waiting in queue (timeout: ${SNAPSHOT_QUEUE_TIMEOUT}s)..."
-    if ! flock -w "$SNAPSHOT_QUEUE_TIMEOUT" 201; then
-      log_error "Host snapshot queue wait timed out after ${SNAPSHOT_QUEUE_TIMEOUT}s."
-      exit 1
-    fi
-    log_success "Queue slot acquired on host. Proceeding with snapshot..."
+  # Unified Host-Wide Queue Lock (prevents concurrent backup I/O between instances on the same host)
+  if ! queue_lock_acquire_local "$SNAPSHOT_QUEUE_NAME" "$SERVICE_NAME" \
+      "$SERVICE_NAME (local on $(hostname -s 2>/dev/null || hostname))" "$SNAPSHOT_QUEUE_TIMEOUT"; then
+    exit 1
   fi
-  echo "$(date +%s) $SERVICE_NAME (local on $(hostname -s 2>/dev/null || hostname))" > "$SYSTEM_QUEUE_ACTIVE" 2>/dev/null || true
 
   # Lower I/O and CPU scheduling priority to avoid starving Odoo and PostgreSQL
   if command -v ionice >/dev/null 2>&1; then
@@ -1210,9 +1273,7 @@ function main() {
               rm -f "$TAR_FILE_PATH"
           fi
       fi
-      if [ -f "$SYSTEM_QUEUE_ACTIVE" ] && grep -q "$SERVICE_NAME" "$SYSTEM_QUEUE_ACTIVE"; then
-          rm -f "$SYSTEM_QUEUE_ACTIVE" 2>/dev/null || true
-      fi
+      queue_lock_release_all
   }
   trap cleanup_temp_files EXIT
 
@@ -1360,7 +1421,7 @@ EOF
 
   for rel_dir in "${nongit_dirs[@]}"; do
     if [ -d "$PATH_TO_ODOO/$rel_dir" ]; then
-      log_info "Adding non-git directory directly to snapshot archive: $rel_dir"
+      log_info "Adding bundled directory directly to snapshot archive: $rel_dir"
       files_dirs_to_tar+=("-C" "$PATH_TO_ODOO" "$rel_dir")
     fi
   done

@@ -535,11 +535,17 @@ try:
         print("Git Repositories:")
         for r in repos:
             commit_short = r.get("commit", "")[:8] if r.get("commit") else "N/A"
-            print(f"  • {r.get(\"name\")} ({r.get(\"relative_path\")}) branch={r.get(\"branch\")} commit={commit_short} remote={r.get(\"remote\")}")
+            note = " [remote was unreachable when the snapshot was taken]" if r.get("remote_check") == "unreachable" else ""
+            print(f"  • {r.get(\"name\")} ({r.get(\"relative_path\")}) branch={r.get(\"branch\")} commit={commit_short} remote={r.get(\"remote\")}{note}")
     if bundled:
-        print("Bundled Non-Git Directories:")
+        print("Bundled Directories (restored from the snapshot itself):")
         for b in bundled:
-            print(f"  • {b.get(\"name\")} ({b.get(\"relative_path\")}) [bundled directly in snapshot]")
+            if b.get("is_git"):
+                commit_short = b.get("commit", "")[:8] if b.get("commit") else "N/A"
+                reasons = ", ".join(b.get("bundled_reasons", []))
+                print(f"  • {b.get(\"name\")} ({b.get(\"relative_path\")}) git branch={b.get(\"branch\")} commit={commit_short} remote={b.get(\"remote\")} [bundled: {reasons}]")
+            else:
+                print(f"  • {b.get(\"name\")} ({b.get(\"relative_path\")}) [non-git, bundled directly in snapshot]")
 except Exception:
     pass
 ' "$json_file" 2>/dev/null || true
@@ -554,6 +560,72 @@ except Exception:
       echo "==========================================================================="
     fi
   fi
+}
+
+function list_bundled_git_repositories() {
+  # Prints "<relative_path>\t<commit>\t<reasons>" for git repositories that were bundled
+  # into the snapshot because they could not be re-cloned.
+  local json_file
+  json_file=$(find "$TEMP_DIR" -name "git_hashes*.json" -print 2>/dev/null | head -n 1)
+  [ -n "$json_file" ] && [ -f "$json_file" ] || return 0
+  python3 -c '
+import json, sys
+try:
+    with open(sys.argv[1]) as f:
+        data = json.load(f)
+    for b in data.get("bundled_directories", []):
+        if b.get("is_git") and b.get("relative_path"):
+            print("{0}\t{1}\t{2}".format(b["relative_path"], b.get("commit", "N/A"), ",".join(b.get("bundled_reasons", []))))
+except Exception:
+    pass
+' "$json_file" 2>/dev/null || true
+}
+
+function prepare_bundled_git_targets() {
+  # Bundled git repositories are restored by copying them from the snapshot with `cp -rn`
+  # (no-clobber). If the target already exists, no-clobber would silently keep the old files,
+  # so move the existing directory aside first and let the snapshot copy land in a clean place.
+  local src_root="$1"
+  local stamp
+  stamp=$(date +"%Y%m%d-%H%M%S")
+  while IFS=$'\t' read -r rel_path commit reasons; do
+    [ -n "$rel_path" ] || continue
+    [ -d "$src_root/$rel_path" ] || continue
+    local target_dir="$PATH_TO_ODOO/$rel_path"
+    if [ -e "$target_dir" ]; then
+      # Kept outside git/ and odoo-base/ so it is never scanned by the next snapshot or put on the addons path
+      local backup_dir="$PATH_TO_ODOO/.pre-restore-backups/$stamp/$rel_path"
+      mkdir -p "$(dirname "$backup_dir")"
+      if mv "$target_dir" "$backup_dir"; then
+        log_warn "Existing $rel_path moved to .pre-restore-backups/$stamp/$rel_path so the bundled copy from the snapshot (commit ${commit:0:8}) can be restored. Delete it once you've checked nothing in it is needed."
+      else
+        log_error "Could not move existing $rel_path aside. The bundled copy may be merged with old files."
+      fi
+    fi
+  done < <(list_bundled_git_repositories)
+}
+
+function verify_bundled_git_repositories() {
+  # Confirm each bundled git repository landed at the commit recorded in the snapshot.
+  local src_root="$1"
+  while IFS=$'\t' read -r rel_path commit reasons; do
+    [ -n "$rel_path" ] || continue
+    [ -d "$src_root/$rel_path" ] || continue
+    local target_dir="$PATH_TO_ODOO/$rel_path"
+    if [ ! -d "$target_dir" ]; then
+      log_error "Bundled repository $rel_path was not restored."
+      continue
+    fi
+    local head
+    head=$(sudo -u "$REPOSITORY_OWNER" git -C "$target_dir" rev-parse HEAD 2>/dev/null || true)
+    if [ -z "$head" ]; then
+      log_warn "Bundled repository $rel_path restored as files only (no usable git metadata, e.g. a worktree). Recorded commit: ${commit:0:8}."
+    elif [ "$head" = "$commit" ]; then
+      log_success "Bundled repository $rel_path restored at commit ${commit:0:8} (bundled because: $reasons)."
+    else
+      log_warn "Bundled repository $rel_path is at ${head:0:8}, but the snapshot recorded ${commit:0:8}."
+    fi
+  done < <(list_bundled_git_repositories)
 }
 
 function restore_git_repositories() {
@@ -572,7 +644,10 @@ import json, sys
 try:
     with open(sys.argv[1]) as f:
         data = json.load(f)
+    bundled = {b.get("relative_path") for b in data.get("bundled_directories", [])}
     for r in data.get("git_repositories", []):
+        if r.get("relative_path") in bundled:
+            continue
         name = r.get("name", "")
         rel_path = r.get("relative_path", "")
         remote = r.get("remote", "")
@@ -735,7 +810,10 @@ function restoreSnapshotDataOnly() {
     src_root="$TEMP_DIR/$TAR_PROJECT_ROOT"
   fi
 
-  # Restore bundled non-git directories if present in snapshot
+  # Move existing copies of bundled git repositories aside so cp -rn restores the snapshot's version
+  prepare_bundled_git_targets "$src_root"
+
+  # Restore bundled directories (non-git, and git repositories that could not be re-cloned)
   if [ -d "$src_root/git" ]; then
     log_info "Restoring bundled non-git directories in git/..."
     mkdir -p "$PATH_TO_ODOO/git"
@@ -752,6 +830,7 @@ function restoreSnapshotDataOnly() {
   # Git metadata display & repository synchronization
   display_git_metadata_summary
   restore_git_repositories
+  verify_bundled_git_repositories "$src_root"
 
   log_success "Data-only restoration completed successfully in fast mode."
 }
@@ -804,7 +883,10 @@ function restoreSnapshotFull() {
     fi
   done
 
-  # Restore bundled non-git directories if present in snapshot
+  # Move existing copies of bundled git repositories aside so cp -rn restores the snapshot's version
+  prepare_bundled_git_targets "$src_root"
+
+  # Restore bundled directories (non-git, and git repositories that could not be re-cloned)
   if [ -d "$src_root/git" ]; then
     log_info "Restoring bundled non-git directories in git/..."
     mkdir -p "$PATH_TO_ODOO/git"
@@ -821,6 +903,7 @@ function restoreSnapshotFull() {
   # Git metadata display & repository synchronization
   display_git_metadata_summary
   restore_git_repositories
+  verify_bundled_git_repositories "$src_root"
 
   # Run setup.sh in auto mode if enabled (provisions OS user 'odoo', datadirs, permissions, builds/pulls image)
   if [ "$RUN_SETUP" = true ] && [ -x "$PATH_TO_ODOO/setup.sh" ]; then
