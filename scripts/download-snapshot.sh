@@ -31,6 +31,18 @@ log_success() { log "${COLOR_SUCCESS}" "✅" "$1"; }
 log_warn() { log "${COLOR_WARN}" "⚠️" "$1"; }
 log_error() { log "${COLOR_ERROR}" "❌" "$1"; }
 
+# Snapshot storage helpers: sha256 sidecars, exact-name matching (scripts/lib/snapshot_storage.sh)
+if [ -f "$CURRENT_DIR/lib/snapshot_storage.sh" ]; then
+  # shellcheck source=/dev/null
+  source "$CURRENT_DIR/lib/snapshot_storage.sh"
+elif [ -f "$PATH_TO_ODOO/scripts/lib/snapshot_storage.sh" ]; then
+  # shellcheck source=/dev/null
+  source "$PATH_TO_ODOO/scripts/lib/snapshot_storage.sh"
+else
+  log_error "scripts/lib/snapshot_storage.sh not found. Update docker-odoo (git pull)."
+  exit 1
+fi
+
 # --- Load Default Configuration from .env ---
 ENV_FILE="$PATH_TO_ODOO/.env"
 GDRIVE_ACCESS_TOKEN=$(grep "^GDRIVE_ACCESS_TOKEN=" "$ENV_FILE" 2>/dev/null | cut -d '=' -f2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//' || true)
@@ -288,32 +300,7 @@ FILE_ID=""
 if [ -z "$TARGET_INPUT" ]; then
   # Interactive mode: list snapshots and prompt user
   log_info "No snapshot specified. Fetching available snapshots from Google Drive..."
-  QUERY="trashed = false and name contains 'snapshot-'"
-  [ -n "$GDRIVE_FOLDER_ID" ] && QUERY="$QUERY and '$GDRIVE_FOLDER_ID' in parents"
-
-  RESPONSE=$(curl -s -G \
-    -H "Authorization: Bearer $ACCESS_TOKEN" \
-    --data-urlencode "q=$QUERY" \
-    --data-urlencode "orderBy=createdTime desc" \
-    --data-urlencode "fields=files(id, name, size, createdTime)" \
-    --data-urlencode "supportsAllDrives=true" \
-    --data-urlencode "includeItemsFromAllDrives=true" \
-    --data-urlencode "pageSize=20" \
-    "https://www.googleapis.com/drive/v3/files")
-
-  MAP_DATA=$(python3 -c '
-import sys, json
-
-try:
-    data = json.load(sys.stdin)
-    files = data.get("files", [])
-    if not files:
-        sys.exit(2)
-    for idx, f in enumerate(files, 1):
-        print(f"{idx}\t{f.get(\"id\")}\t{f.get(\"name\")}\t{f.get(\"size\", 0)}\t{f.get(\"createdTime\", \"\")}")
-except Exception:
-    sys.exit(1)
-' <<< "$RESPONSE" || true)
+  MAP_DATA=$(gds_list_archives "$ACCESS_TOKEN" "$GDRIVE_FOLDER_ID" "*" 20 | awk -F'\t' '{printf "%d\t%s\t%s\t%s\t%s\n", NR, $3, $4, ($5 == "" ? 0 : $5), $6}' || true)
 
   if [ -z "$MAP_DATA" ]; then
     log_error "No snapshot files found on Google Drive."
@@ -345,53 +332,10 @@ except Exception:
   FILE_ID=$(echo "$SELECTED_LINE" | cut -f2)
 elif [ "$TARGET_INPUT" = "latest" ]; then
   log_info "Searching for the latest snapshot for service '$TARGET_SERVICE_NAME'..."
-  QUERY="trashed = false and name contains 'snapshot-${TARGET_SERVICE_NAME}'"
-  [ -n "$GDRIVE_FOLDER_ID" ] && QUERY="$QUERY and '$GDRIVE_FOLDER_ID' in parents"
-
-  RESPONSE=$(curl -s -G \
-    -H "Authorization: Bearer $ACCESS_TOKEN" \
-    --data-urlencode "q=$QUERY" \
-    --data-urlencode "orderBy=createdTime desc" \
-    --data-urlencode "fields=files(id, name, size, createdTime)" \
-    --data-urlencode "supportsAllDrives=true" \
-    --data-urlencode "includeItemsFromAllDrives=true" \
-    --data-urlencode "pageSize=1" \
-    "https://www.googleapis.com/drive/v3/files")
-
-  FILE_ID=$(python3 -c '
-import sys, json
-try:
-    data = json.load(sys.stdin)
-    files = data.get("files", [])
-    if files:
-        print(files[0].get("id", ""))
-except Exception:
-    pass
-' <<< "$RESPONSE")
-
+  FILE_ID=$(gds_list_archives "$ACCESS_TOKEN" "$GDRIVE_FOLDER_ID" "$TARGET_SERVICE_NAME" 1 | cut -f3 || true)
   if [ -z "$FILE_ID" ]; then
     log_warn "No snapshot found specifically for 'snapshot-${TARGET_SERVICE_NAME}'. Searching latest generic snapshot..."
-    QUERY="trashed = false and name contains 'snapshot-'"
-    [ -n "$GDRIVE_FOLDER_ID" ] && QUERY="$QUERY and '$GDRIVE_FOLDER_ID' in parents"
-    RESPONSE=$(curl -s -G \
-      -H "Authorization: Bearer $ACCESS_TOKEN" \
-      --data-urlencode "q=$QUERY" \
-      --data-urlencode "orderBy=createdTime desc" \
-      --data-urlencode "fields=files(id, name, size, createdTime)" \
-      --data-urlencode "supportsAllDrives=true" \
-      --data-urlencode "includeItemsFromAllDrives=true" \
-      --data-urlencode "pageSize=1" \
-      "https://www.googleapis.com/drive/v3/files")
-    FILE_ID=$(python3 -c '
-import sys, json
-try:
-    data = json.load(sys.stdin)
-    files = data.get("files", [])
-    if files:
-        print(files[0].get("id", ""))
-except Exception:
-    pass
-' <<< "$RESPONSE")
+    FILE_ID=$(gds_list_archives "$ACCESS_TOKEN" "$GDRIVE_FOLDER_ID" "*" 1 | cut -f3 || true)
   fi
 
   if [ -z "$FILE_ID" ]; then
@@ -504,6 +448,31 @@ fi
 
 DOWNLOADED_BYTES=$(wc -c < "$DEST_FILE" | tr -d ' ')
 log_success "Download complete! ($DOWNLOADED_BYTES bytes)"
+
+# --- Verify against the snapshot's .sha256 file (kept next to the download for restore) ---
+SIDECAR_ID=$(gds_find_by_name "$ACCESS_TOKEN" "$GDRIVE_FOLDER_ID" "$REMOTE_FILE_NAME.sha256")
+if [ -z "$SIDECAR_ID" ]; then
+  log_warn "No checksum file $REMOTE_FILE_NAME.sha256 on Google Drive (older snapshot?). The download could not be verified."
+else
+  SIDECAR_TMP="$DEST_FILE.sha256.download"
+  if gds_download "$ACCESS_TOKEN" "$SIDECAR_ID" "$SIDECAR_TMP" && EXPECTED_SHA=$(snap_sidecar_hash "$SIDECAR_TMP") && [ -n "$EXPECTED_SHA" ]; then
+    log_info "Verifying the download against $REMOTE_FILE_NAME.sha256..."
+    ACTUAL_SHA=$(snap_sha256_of "$DEST_FILE")
+    rm -f "$SIDECAR_TMP"
+    if [ "$ACTUAL_SHA" != "$EXPECTED_SHA" ]; then
+      log_error "CHECKSUM MISMATCH: expected $EXPECTED_SHA, downloaded file is $ACTUAL_SHA. Deleting the broken download."
+      rm -f "$DEST_FILE"
+      exit 1
+    fi
+    snap_write_sidecar "$EXPECTED_SHA" "$DEST_FILE.sha256" "$(basename "$DEST_FILE")"
+    chmod 644 "$DEST_FILE.sha256" 2>/dev/null || true
+    chown "$REPOSITORY_OWNER":"$REPOSITORY_OWNER" "$DEST_FILE.sha256" 2>/dev/null || true
+    log_success "Checksum verified (sha256 $ACTUAL_SHA). Saved $(basename "$DEST_FILE").sha256 next to it."
+  else
+    rm -f "$SIDECAR_TMP"
+    log_warn "Could not read $REMOTE_FILE_NAME.sha256 from Google Drive. The download could not be verified."
+  fi
+fi
 
 # Set permissions
 chmod 644 "$DEST_FILE" 2>/dev/null || true

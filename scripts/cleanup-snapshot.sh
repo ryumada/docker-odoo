@@ -31,6 +31,18 @@ log_success() { log "${COLOR_SUCCESS}" "✅" "$1"; }
 log_warn() { log "${COLOR_WARN}" "⚠️" "$1"; }
 log_error() { log "${COLOR_ERROR}" "❌" "$1"; }
 
+# Snapshot storage helpers: sha256 sidecars, exact-name Drive retention (scripts/lib/snapshot_storage.sh)
+if [ -f "$CURRENT_DIR/lib/snapshot_storage.sh" ]; then
+  # shellcheck source=/dev/null
+  source "$CURRENT_DIR/lib/snapshot_storage.sh"
+elif [ -f "$PATH_TO_ODOO/scripts/lib/snapshot_storage.sh" ]; then
+  # shellcheck source=/dev/null
+  source "$PATH_TO_ODOO/scripts/lib/snapshot_storage.sh"
+else
+  log_error "scripts/lib/snapshot_storage.sh not found. Update docker-odoo (git pull)."
+  exit 1
+fi
+
 # --- Load Default Configuration from .env ---
 ENV_FILE="$PATH_TO_ODOO/.env"
 GDRIVE_ACCESS_TOKEN=$(grep "^GDRIVE_ACCESS_TOKEN=" "$ENV_FILE" 2>/dev/null | cut -d '=' -f2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//' || true)
@@ -144,8 +156,8 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-if ! [[ "$MAX_BACKUPS" =~ ^[0-9]+$ ]] || [ "$MAX_BACKUPS" -lt 0 ]; then
-  log_error "Invalid retention value '$MAX_BACKUPS'. It must be a positive integer."
+if ! [[ "$MAX_BACKUPS" =~ ^[0-9]+$ ]] || [ "$MAX_BACKUPS" -lt 1 ]; then
+  log_error "Invalid retention value '$MAX_BACKUPS'. It must be at least 1 (retention never deletes every snapshot)."
   exit 1
 fi
 
@@ -268,189 +280,89 @@ if [ -z "$ACCESS_TOKEN" ]; then
   exit 1
 fi
 
-# Build query
-QUERY="trashed = false"
-if [ "$SHOW_ALL" = false ]; then
-  QUERY="$QUERY and (name contains 'snapshot-${TARGET_SERVICE_NAME}' or name contains 'snapshot--')"
+# --- Fetch, plan and delete. Each snapshot is kept or deleted together with its .sha256 file. ---
+if [ "$SHOW_ALL" = true ]; then
+  NAME_PREFIX="snapshot-"
+  PLAN_SERVICE="*"
 else
-  QUERY="$QUERY and name contains 'snapshot-'"
-fi
-
-if [ -n "$GDRIVE_FOLDER_ID" ]; then
-  QUERY="$QUERY and '$GDRIVE_FOLDER_ID' in parents"
+  NAME_PREFIX="snapshot-${TARGET_SERVICE_NAME}-"
+  PLAN_SERVICE="$TARGET_SERVICE_NAME"
 fi
 
 if [ "$LIST_ONLY" = true ]; then
   log_info "Fetching snapshots from Google Drive..."
+  PLAN_KEEP=0
 else
-  log_info "Fetching snapshots from Google Drive (retention policy: keep latest $MAX_BACKUPS)..."
+  log_info "Fetching snapshots from Google Drive (retention policy: keep latest $MAX_BACKUPS per service)..."
+  PLAN_KEEP="$MAX_BACKUPS"
 fi
 
 ACCESS_TOKEN=$(resolve_access_token "$ACCESS_TOKEN")
+if ! FILES_JSON=$(gds_fetch_files "$ACCESS_TOKEN" "$GDRIVE_FOLDER_ID" "$NAME_PREFIX"); then
+  log_error "Could not list snapshots on Google Drive."
+  exit 1
+fi
+PLAN=$(printf '%s' "$FILES_JSON" | gds_plan "$PLAN_SERVICE" "$PLAN_KEEP")
 
-ALL_FILES="[]"
-PAGE_TOKEN=""
-
-while :; do
-  ACCESS_TOKEN=$(resolve_access_token "$ACCESS_TOKEN")
-  CURL_ARGS=(
-    -s -G
-    -H "Authorization: Bearer $ACCESS_TOKEN"
-    --data-urlencode "q=$QUERY"
-    --data-urlencode "orderBy=createdTime desc"
-    --data-urlencode "fields=nextPageToken, files(id, name, size, createdTime)"
-    --data-urlencode "supportsAllDrives=true"
-    --data-urlencode "includeItemsFromAllDrives=true"
-    --data-urlencode "pageSize=1000"
-  )
-  if [ -n "$PAGE_TOKEN" ]; then
-    CURL_ARGS+=(--data-urlencode "pageToken=$PAGE_TOKEN")
-  fi
-
-  PAGE_RESP=$(curl "${CURL_ARGS[@]}" "https://www.googleapis.com/drive/v3/files")
-
-  if echo "$PAGE_RESP" | grep -q '"error":'; then
-    ERROR_MSG=$(echo "$PAGE_RESP" | grep -o '"message": *"[^"]*"' | head -n 1 | cut -d'"' -f4 || true)
-    log_error "Google Drive API error: ${ERROR_MSG:-$PAGE_RESP}"
-    exit 1
-  fi
-
-  PARSE_RESULT=$(python3 -c '
-import sys, json
-try:
-    accum = json.loads(sys.argv[1])
-    data = json.load(sys.stdin)
-    accum.extend(data.get("files", []))
-    print(data.get("nextPageToken", ""))
-    print(json.dumps(accum))
-except Exception as e:
-    sys.stderr.write(f"Error parsing page: {e}\n")
-    sys.exit(1)
-' "$ALL_FILES" <<< "$PAGE_RESP")
-
-  PAGE_TOKEN=$(echo "$PARSE_RESULT" | head -n 1)
-  ALL_FILES=$(echo "$PARSE_RESULT" | tail -n +2)
-
-  [ -z "$PAGE_TOKEN" ] && break
-done
-
-RESPONSE="{\"files\": $ALL_FILES}"
-
-# Parse files count and list
 python3 -c '
-import sys, json
-
-def format_size(bytes_val):
-    if not bytes_val:
-        return "N/A"
+import sys
+def fmt_size(v):
     try:
-        b = float(bytes_val)
-        for unit in ["B", "KB", "MB", "GB", "TB"]:
-            if b < 1024.0:
-                return f"{b:.1f} {unit}"
-            b /= 1024.0
-        return f"{b:.1f} PB"
+        b = float(v)
     except Exception:
         return "N/A"
-
-def format_date(iso_date):
-    if not iso_date:
-        return "N/A"
-    try:
-        return iso_date.replace("T", " ").split(".")[0]
-    except Exception:
-        return iso_date
-
-try:
-    data = json.load(sys.stdin)
-    files = data.get("files", [])
-    max_keep = int(sys.argv[1])
-    is_list_only = (len(sys.argv) > 2 and sys.argv[2].lower() == "true")
-
-    if not files:
-        print("-" * 110)
-        print(" No snapshot files found on Google Drive.")
-        print("-" * 110)
-        sys.exit(0)
-
-    header_fmt = "{:<4} | {:<9} | {:<45} | {:<10} | {:<19}"
-    row_fmt = "{:<4} | {:<18} | {:<45} | {:<10} | {:<19}"
-
-    print("=" * 110)
-    print(header_fmt.format("No", "Action", "Snapshot File Name", "Size", "Created At"))
-    print("-" * 110)
-
-    total_bytes = 0
-    keep_bytes = 0
-    delete_bytes = 0
-
-    for idx, f in enumerate(files, 1):
-        name = f.get("name", "")
-        f_size_raw = f.get("size")
-        size = format_size(f_size_raw)
-        created = format_date(f.get("createdTime"))
-        try:
-            b_val = int(f_size_raw or 0)
-        except Exception:
-            b_val = 0
-        total_bytes += b_val
-
-        if idx <= max_keep:
-            action = "\033[0;32m[KEEP]\033[0m"
-            keep_bytes += b_val
-        else:
-            action = "\033[0;31m[DELETE]\033[0m"
-            delete_bytes += b_val
-        print(row_fmt.format(idx, action, name, size, created))
-
-    print("=" * 110)
-    total = len(files)
-    to_delete = max(0, total - max_keep)
-    if is_list_only:
-        print(f"Total: {total} snapshot(s) found | Total Size: {format_size(total_bytes)}")
+    for unit in ["B", "KB", "MB", "GB", "TB"]:
+        if b < 1024.0:
+            return "%.1f %s" % (b, unit)
+        b /= 1024.0
+    return "%.1f PB" % b
+def fmt_date(d):
+    return d.replace("T", " ").split(".")[0] if d else "N/A"
+list_only = sys.argv[1] == "true"
+rows = [l.split("\t") for l in sys.stdin.read().splitlines() if l.strip()]
+archives = [r for r in rows if r[1] == "archive"]
+orphans = [r for r in rows if r[1] == "orphan"]
+if not archives and not orphans:
+    print("-" * 118); print(" No snapshot files found on Google Drive."); print("-" * 118); sys.exit(0)
+fmt = "{:<4} | {:<18} | {:<52} | {:<7} | {:<10} | {:<19}"
+print("=" * 118)
+print(fmt.format("No", "Action", "Snapshot File Name", "SHA256", "Size", "Created At").replace("{:<18}".format("Action"), "{:<9}".format("Action")))
+print("-" * 118)
+tot = keep_b = del_b = 0
+for i, r in enumerate(archives, 1):
+    try: b = int(r[4] or 0)
+    except Exception: b = 0
+    tot += b
+    if r[0] == "keep":
+        action = "\033[0;32m[KEEP]\033[0m"; keep_b += b
     else:
-        print(f"Total: {total} snapshot(s) found ({format_size(total_bytes)}) | Keeping: {min(total, max_keep)} ({format_size(keep_bytes)}) | Scheduled to delete: {to_delete} ({format_size(delete_bytes)})")
-except Exception as e:
-    sys.stderr.write(f"Error parsing response: {e}\n")
-    sys.exit(1)
-' "$MAX_BACKUPS" "$LIST_ONLY" <<< "$RESPONSE"
+        action = "\033[0;31m[DELETE]\033[0m"; del_b += b
+    print(fmt.format(i, action, r[3], "yes" if r[7] == "yes" else "missing", fmt_size(r[4]), fmt_date(r[5])))
+for r in orphans:
+    print(fmt.format("-", "\033[0;31m[DELETE]\033[0m", r[3], "orphan", fmt_size(r[4]), fmt_date(r[5])))
+print("=" * 118)
+kept = sum(1 for r in archives if r[0] == "keep")
+dele = len(archives) - kept
+side = sum(1 for r in rows if r[1] == "sidecar")
+missing = sum(1 for r in archives if r[7] != "yes")
+if list_only:
+    print("Total: %d snapshot(s) | Total Size: %s | Without checksum file: %d" % (len(archives), fmt_size(tot), missing))
+else:
+    print("Total: %d snapshot(s) (%s) | Keeping: %d (%s) | Scheduled to delete: %d (%s) + %d checksum file(s) + %d orphan checksum file(s)"
+          % (len(archives), fmt_size(tot), kept, fmt_size(keep_b), dele, fmt_size(del_b), side, len(orphans)))
+' "$LIST_ONLY" <<< "$PLAN"
 
 if [ "$LIST_ONLY" = true ]; then
   exit 0
 fi
 
-FILE_IDS=$(echo "$RESPONSE" | grep -o '"id": *"[^"]*"' | cut -d'"' -f4)
-TOTAL_FILES=$(echo "$FILE_IDS" | grep -c . || echo "0")
+DELETE_ARCHIVES=$(printf '%s\n' "$PLAN" | awk -F'\t' '$1=="delete" && $2=="archive"' | grep -c . || true)
+DELETE_OTHERS=$(printf '%s\n' "$PLAN" | awk -F'\t' '$1=="delete" && $2!="archive"' | grep -c . || true)
 
-if [ "$TOTAL_FILES" -eq 0 ]; then
-  exit 0
-fi
-
-if [ "$TOTAL_FILES" -le "$MAX_BACKUPS" ]; then
+if [ "$DELETE_ARCHIVES" -eq 0 ] && [ "$DELETE_OTHERS" -eq 0 ]; then
   echo ""
   log_success "All snapshots are within retention limit ($MAX_BACKUPS). No deletion needed."
   exit 0
-fi
-
-TO_DELETE_ITEMS=$(python3 -c '
-import sys, json
-try:
-    data = json.load(sys.stdin)
-    files = data.get("files", [])
-    max_keep = int(sys.argv[1])
-    excess = files[max_keep:]
-    for f in excess:
-        fid = f.get("id", "")
-        fname = f.get("name", "")
-        if fid:
-            print(f"{fid}\t{fname}")
-except Exception:
-    pass
-' "$MAX_BACKUPS" <<< "$RESPONSE")
-
-DELETE_COUNT=0
-if [ -n "$TO_DELETE_ITEMS" ]; then
-  DELETE_COUNT=$(echo "$TO_DELETE_ITEMS" | grep -c . || echo "0")
 fi
 
 echo ""
@@ -461,7 +373,7 @@ if [ "$DRY_RUN" = true ]; then
 fi
 
 if [ "$FORCE" = false ]; then
-  echo -ne "${COLOR_WARN}Are you sure you want to delete $DELETE_COUNT older snapshot(s) from Google Drive? [y/N]: ${COLOR_RESET}"
+  echo -ne "${COLOR_WARN}Are you sure you want to delete $DELETE_ARCHIVES older snapshot(s) and $DELETE_OTHERS checksum file(s) from Google Drive? [y/N]: ${COLOR_RESET}"
   read -r confirmation
   if [[ ! "$confirmation" =~ ^[Yy]$ ]]; then
     log_info "Cleanup operation aborted by user."
@@ -469,60 +381,15 @@ if [ "$FORCE" = false ]; then
   fi
 fi
 
-log_info "Deleting $DELETE_COUNT old snapshot(s) from Google Drive..."
-DELETED_COUNT=0
-FAILED_COUNT=0
-
-while IFS=$'\t' read -r fid fname; do
-  [ -z "$fid" ] && continue
-
-  del_token=$(resolve_access_token "$ACCESS_TOKEN")
-  [ -n "$del_token" ] && ACCESS_TOKEN="$del_token"
-
-  # Strategy 1: Permanent DELETE (requires ownership or Admin)
-  DEL_RESP=$(curl -s -w "\n%{http_code}" -X DELETE \
-    -H "Authorization: Bearer $ACCESS_TOKEN" \
-    "https://www.googleapis.com/drive/v3/files/${fid}?supportsAllDrives=true")
-  DEL_STATUS=$(echo "$DEL_RESP" | tail -n1)
-
-  # Strategy 2: Fallback to Move to Trash (works for Editors / shared folders)
-  if [ "$DEL_STATUS" != "204" ] && [ "$DEL_STATUS" != "200" ]; then
-    TRASH_RESP=$(curl -s -w "\n%{http_code}" -X PATCH \
-      -H "Authorization: Bearer $ACCESS_TOKEN" \
-      -H "Content-Type: application/json" \
-      -d '{"trashed": true}' \
-      "https://www.googleapis.com/drive/v3/files/${fid}?supportsAllDrives=true")
-    TRASH_STATUS=$(echo "$TRASH_RESP" | tail -n1)
-    if [ "$TRASH_STATUS" = "200" ]; then
-      DEL_STATUS="200"
-    fi
-  fi
-
-  # Strategy 3: Fallback to Unparenting from Folder
-  if [ "$DEL_STATUS" != "204" ] && [ "$DEL_STATUS" != "200" ] && [ -n "$GDRIVE_FOLDER_ID" ]; then
-    UNPARENT_RESP=$(curl -s -w "\n%{http_code}" -X PATCH \
-      -H "Authorization: Bearer $ACCESS_TOKEN" \
-      -H "Content-Type: application/json" \
-      "https://www.googleapis.com/drive/v3/files/${fid}?removeParents=${GDRIVE_FOLDER_ID}&supportsAllDrives=true")
-    UNPARENT_STATUS=$(echo "$UNPARENT_RESP" | tail -n1)
-    if [ "$UNPARENT_STATUS" = "200" ]; then
-      DEL_STATUS="200"
-    fi
-  fi
-
-  if [ "$DEL_STATUS" = "204" ] || [ "$DEL_STATUS" = "200" ]; then
-    log_success "Deleted snapshot: ${fname:-$fid}"
-    DELETED_COUNT=$((DELETED_COUNT + 1))
-  else
-    log_warn "Failed to delete snapshot '${fname:-$fid}' (ID: $fid, HTTP status: $DEL_STATUS)"
-    FAILED_COUNT=$((FAILED_COUNT + 1))
-  fi
-done <<< "$TO_DELETE_ITEMS"
+log_info "Deleting $DELETE_ARCHIVES old snapshot(s) and $DELETE_OTHERS checksum file(s) from Google Drive..."
+ACCESS_TOKEN=$(resolve_access_token "$ACCESS_TOKEN")
+SUMMARY=$(printf '%s\n' "$PLAN" | gds_apply_plan "$ACCESS_TOKEN" "$GDRIVE_FOLDER_ID")
+read -r DELETED_ARCHIVES DELETED_SIDECARS FAILED_COUNT <<< "$SUMMARY"
 
 echo ""
-if [ "$FAILED_COUNT" -eq 0 ]; then
-  log_success "Retention cleanup completed successfully. Deleted $DELETED_COUNT snapshot(s)."
+if [ "${FAILED_COUNT:-0}" -eq 0 ]; then
+  log_success "Retention cleanup completed successfully. Deleted $DELETED_ARCHIVES snapshot(s) and $DELETED_SIDECARS checksum file(s)."
 else
-  log_warn "Retention cleanup finished with warnings. Deleted: $DELETED_COUNT, Failed: $FAILED_COUNT."
+  log_warn "Retention cleanup finished with warnings. Deleted: $DELETED_ARCHIVES snapshot(s), $DELETED_SIDECARS checksum file(s). Failed: $FAILED_COUNT."
   log_info "If deletions failed, please ensure the Service Account has Editor/Content Manager permissions on the Google Drive folder."
 fi

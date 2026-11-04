@@ -59,6 +59,8 @@ fi
 # Source common utilities
 # shellcheck source=/dev/null
 source "$CURRENT_DIR/lib/odoo_utils.sh"
+# sha256 sidecar helpers (scripts/lib/snapshot_storage.sh)
+source "$CURRENT_DIR/lib/snapshot_storage.sh"
 
 # Configuration
 ENV_FILE=".env"
@@ -259,6 +261,29 @@ function isSnapshotFileExist() {
     log_error "Snapshot file '$SNAPSHOT_FILE_PATH' is 0 bytes (empty file)."
     exit 1
   fi
+  verifySnapshotChecksum
+}
+
+function verifySnapshotChecksum() {
+  # Checks the snapshot against the .sha256 file next to it (next to the real file when
+  # SNAPSHOT_FILE_PATH is a symlink such as ~/snapshot-<service>.tar.zst). Runs before
+  # anything is dropped, so a damaged snapshot never replaces a working database.
+  local real_path sidecar rc=0
+  real_path=$(readlink -f "$SNAPSHOT_FILE_PATH")
+  sidecar="$real_path.sha256"
+  [ -f "$sidecar" ] || sidecar="$SNAPSHOT_FILE_PATH.sha256"
+  if [ ! -f "$sidecar" ]; then
+    log_warn "No checksum file next to $SNAPSHOT_FILE_PATH (older snapshot?). Restoring without a checksum check."
+    return 0
+  fi
+  log_info "Verifying snapshot checksum ($(basename "$sidecar"))..."
+  snap_verify_file "$real_path" "$sidecar" || rc=$?
+  case "$rc" in
+    0) log_success "Snapshot checksum verified." ;;
+    2) log_warn "$(basename "$sidecar") is not a valid checksum file. Restoring without a checksum check." ;;
+    *) log_error "CHECKSUM MISMATCH: $SNAPSHOT_FILE_PATH does not match $(basename "$sidecar"). The snapshot is damaged; nothing was restored."
+       exit 1 ;;
+  esac
 }
 
 function isZstdInstalled() {

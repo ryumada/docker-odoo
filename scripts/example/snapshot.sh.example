@@ -47,6 +47,18 @@ else
   exit 1
 fi
 
+# Snapshot storage helpers: sha256 sidecars, Drive retention/upload checks, GCS checks
+if [ -f "$CURRENT_DIR/lib/snapshot_storage.sh" ]; then
+  # shellcheck source=/dev/null
+  source "$CURRENT_DIR/lib/snapshot_storage.sh"
+elif [ -f "$PATH_TO_ODOO/scripts/lib/snapshot_storage.sh" ]; then
+  # shellcheck source=/dev/null
+  source "$PATH_TO_ODOO/scripts/lib/snapshot_storage.sh"
+else
+  log_error "scripts/lib/snapshot_storage.sh not found. Update docker-odoo (git pull) and re-run ./setup.sh."
+  exit 1
+fi
+
 function run_pg_dump() {
   local env_file="${PSQL_ENV_FILE:-$PATH_TO_ODOO/.env}"
   local db_host
@@ -152,9 +164,11 @@ function moveSnapshotFileToTempDir() {
 
   log_info "Moving the snapshot file to $dest_dir/..."
   mv "$tar_file_path" "$dest_dir/$tar_file_name"
+  # Keep the checksum file next to its snapshot (sha256sum -c works inside this folder)
+  [ -f "$tar_file_path.sha256" ] && mv "$tar_file_path.sha256" "$dest_dir/$tar_file_name.sha256"
 
   chmod 755 "$dest_dir" 2>/dev/null || true
-  chmod 644 "$dest_dir/$tar_file_name" 2>/dev/null || true
+  chmod 644 "$dest_dir/$tar_file_name" "$dest_dir/$tar_file_name.sha256" 2>/dev/null || true
   chown -R "$REPOSITORY_OWNER":"$REPOSITORY_OWNER" "$dest_dir" 2>/dev/null || true
 
   # Also place/link at $OWNER_HOME for immediate convenient access
@@ -272,6 +286,8 @@ function resolve_gdrive_access_token() {
 }
 
 function cleanup_gdrive_old_snapshots() {
+  # Keeps the newest <max_backups> snapshots of this service on Google Drive.
+  # Each snapshot is deleted together with its .sha256 file (see scripts/lib/snapshot_storage.sh).
   local access_token="$1"
   local folder_id="$2"
   local service_name="$3"
@@ -283,119 +299,11 @@ function cleanup_gdrive_old_snapshots() {
     return 0
   fi
 
-  # Validate and renew token if expired
   local valid_token
   valid_token=$(resolve_gdrive_access_token "$access_token" "$raw_access_token" "$sa_input")
   [ -n "$valid_token" ] && access_token="$valid_token"
 
-  log_info "Running Google Drive lifecycle retention (keeping latest $max_backups snapshot(s) for $service_name)..."
-
-  local query="(name contains 'snapshot-${service_name}' or name contains 'snapshot--') and trashed = false"
-  if [ -n "$folder_id" ]; then
-    query="$query and '$folder_id' in parents"
-  fi
-
-  local file_ids=""
-  local page_token=""
-
-  while :; do
-    access_token=$(resolve_gdrive_access_token "$access_token" "$raw_access_token" "$sa_input")
-    local curl_args=(
-      -s -G
-      -H "Authorization: Bearer $access_token"
-      --data-urlencode "q=$query"
-      --data-urlencode "orderBy=createdTime desc"
-      --data-urlencode "fields=nextPageToken, files(id, name, createdTime)"
-      --data-urlencode "supportsAllDrives=true"
-      --data-urlencode "includeItemsFromAllDrives=true"
-      --data-urlencode "pageSize=1000"
-    )
-    [ -n "$page_token" ] && curl_args+=(--data-urlencode "pageToken=$page_token")
-
-    local response
-    response=$(curl "${curl_args[@]}" "https://www.googleapis.com/drive/v3/files")
-
-    if echo "$response" | grep -q '"error":'; then
-      log_error "Google Drive API returned an error during retention cleanup:"
-      log_error "$response"
-      return 1
-    fi
-
-    local page_ids
-    page_ids=$(echo "$response" | grep -o '"id": *"[^"]*"' | cut -d'"' -f4 || true)
-    if [ -n "$page_ids" ]; then
-      if [ -z "$file_ids" ]; then
-        file_ids="$page_ids"
-      else
-        file_ids=$(printf "%s\n%s" "$file_ids" "$page_ids")
-      fi
-    fi
-
-    page_token=$(python3 -c 'import sys, json; print(json.load(sys.stdin).get("nextPageToken", ""))' 2>/dev/null <<< "$response" || true)
-    [ -z "$page_token" ] && break
-  done
-
-  local total_count=0
-  if [ -n "$file_ids" ]; then
-    total_count=$(echo "$file_ids" | grep -c . || echo "0")
-  fi
-
-  if [ "$total_count" -le "$max_backups" ]; then
-    log_info "Total snapshots found on Google Drive ($total_count) is within retention limit ($max_backups). Nothing to delete."
-    return 0
-  fi
-
-  local delete_count=$((total_count - max_backups))
-  log_info "Found $total_count remote snapshots. Deleting $delete_count older snapshot(s)..."
-
-  local to_delete
-  to_delete=$(echo "$file_ids" | tail -n +$((max_backups + 1)))
-
-  for file_id in $to_delete; do
-    if [ -n "$file_id" ]; then
-      # Validate and renew token before deletion action if needed
-      local del_token
-      del_token=$(resolve_gdrive_access_token "$access_token" "$raw_access_token" "$sa_input")
-      [ -n "$del_token" ] && access_token="$del_token"
-
-      local del_resp del_status
-      del_resp=$(curl -s -w "\n%{http_code}" -X DELETE \
-        -H "Authorization: Bearer $access_token" \
-        "https://www.googleapis.com/drive/v3/files/${file_id}?supportsAllDrives=true")
-      del_status=$(echo "$del_resp" | tail -n1)
-
-      if [ "$del_status" != "204" ] && [ "$del_status" != "200" ]; then
-        local trash_resp trash_status
-        trash_resp=$(curl -s -w "\n%{http_code}" -X PATCH \
-          -H "Authorization: Bearer $access_token" \
-          -H "Content-Type: application/json" \
-          -d '{"trashed": true}' \
-          "https://www.googleapis.com/drive/v3/files/${file_id}?supportsAllDrives=true")
-        trash_status=$(echo "$trash_resp" | tail -n1)
-        if [ "$trash_status" = "200" ]; then
-          del_status="200"
-        fi
-      fi
-
-      if [ "$del_status" != "204" ] && [ "$del_status" != "200" ] && [ -n "$folder_id" ]; then
-        local unparent_resp unparent_status
-        unparent_resp=$(curl -s -w "\n%{http_code}" -X PATCH \
-          -H "Authorization: Bearer $access_token" \
-          -H "Content-Type: application/json" \
-          "https://www.googleapis.com/drive/v3/files/${file_id}?removeParents=${folder_id}&supportsAllDrives=true")
-        unparent_status=$(echo "$unparent_resp" | tail -n1)
-        if [ "$unparent_status" = "200" ]; then
-          del_status="200"
-        fi
-      fi
-
-      if [ "$del_status" = "204" ] || [ "$del_status" = "200" ]; then
-        log_info "Deleted old remote snapshot (ID: $file_id)"
-      else
-        log_warn "Failed to delete remote snapshot ID $file_id (HTTP $del_status). Check Service Account permissions (requires Editor/Manager on Google Drive folder)."
-      fi
-    fi
-  done
+  gds_retention "$access_token" "$folder_id" "$service_name" "$max_backups"
 }
 
 function upload_to_gdrive() {
@@ -476,6 +384,8 @@ function upload_to_gdrive() {
   local chunk_index=0
   local max_retries=3
   local retry_count=0
+  local upload_completed=false
+  local uploaded_id=""
 
   while [ "$start_byte" -lt "$file_size" ]; do
     local end_byte=$((start_byte + chunk_size - 1))
@@ -507,10 +417,11 @@ function upload_to_gdrive() {
     elif [ "$http_status" = "200" ] || [ "$http_status" = "201" ]; then
       # 200/201: File upload completed
       log_success "Google Drive chunked upload completed successfully for $file_name."
-      if [ -n "$max_backups_cfg" ]; then
-        cleanup_gdrive_old_snapshots "$access_token" "$folder_id" "$service_name" "$max_backups_cfg" "$raw_access_token" "$sa_key_path"
-      fi
-      return 0
+      uploaded_id=$(python3 -c 'import json,sys
+try: print(json.load(sys.stdin).get("id",""))
+except Exception: print("")' <<< "$response_body")
+      upload_completed=true
+      break
     else
       log_warn "Chunk upload failed with HTTP status: $http_status. Response: $response_body"
       retry_count=$((retry_count + 1))
@@ -537,11 +448,44 @@ function upload_to_gdrive() {
         fi
       elif [ "$query_status" = "200" ] || [ "$query_status" = "201" ]; then
         log_success "Google Drive upload was completed during session query."
-        return 0
+        uploaded_id=$(printf '%s' "$status_response" | tr -d '\r' | sed -n '/^$/,$p' | python3 -c 'import json,sys
+try: print(json.load(sys.stdin).get("id",""))
+except Exception: print("")')
+        upload_completed=true
+        break
       fi
     fi
   done
 
+  if [ "$upload_completed" != true ]; then
+    return 0
+  fi
+
+  # Long uploads can outlive the token
+  local fresh_token
+  fresh_token=$(resolve_gdrive_access_token "$access_token" "$raw_access_token" "$sa_key_path")
+  [ -n "$fresh_token" ] && access_token="$fresh_token"
+
+  # Upload the .sha256 sidecar and cross-check Drive's own sha256 of the uploaded file
+  if [ -f "$file_path.sha256" ]; then
+    if [ -z "$uploaded_id" ]; then
+      log_warn "Google Drive did not return the uploaded file ID; skipping the checksum check and .sha256 upload for $file_name."
+    else
+      local publish_rc=0
+      gds_publish_sidecar "$access_token" "$folder_id" "$uploaded_id" "$file_name" "$file_path.sha256" || publish_rc=$?
+      if [ "$publish_rc" -eq 1 ]; then
+        log_error "Removing the broken copy $file_name from Google Drive so it is never restored by mistake."
+        gds_delete_file "$access_token" "$uploaded_id" "$folder_id" >/dev/null || log_warn "Could not remove the broken copy $file_name from Google Drive. Delete it by hand."
+        return 1
+      fi
+    fi
+  else
+    log_warn "No .sha256 file next to $file_path; uploaded without a checksum file."
+  fi
+
+  if [ -n "$max_backups_cfg" ]; then
+    cleanup_gdrive_old_snapshots "$access_token" "$folder_id" "$service_name" "$max_backups_cfg" "$raw_access_token" "$sa_key_path"
+  fi
   return 0
 }
 
@@ -1096,7 +1040,12 @@ MANIFEST_EOF"
   fi
 
   log_info "Packaging snapshot-$SERVICE_NAME.tar.zst on Secondary VPS (compression level: $compression_level)..."
-  remote_exec "cd '$remote_staging' && shopt -s dotglob nullglob && tar -cf '$remote_staging/snapshot-$SERVICE_NAME.tar.zst' -I 'zstd -vT0 -$compression_level --ultra' --exclude='*.tar.zst' *"
+  # The archive is hashed while it is written; the .sha256 sidecar travels with it
+  if ! remote_exec "cd '$remote_staging' && shopt -s dotglob nullglob && set -o pipefail && rm -f snapshot-$SERVICE_NAME.tar.zst.sha256 && tar -cf - --exclude='*.tar.zst' --exclude='*.tar.zst.sha256' * | zstd -vT0 -$compression_level --ultra -c | tee '$remote_staging/snapshot-$SERVICE_NAME.tar.zst' | sha256sum | awk '{print \$1\"  snapshot-$SERVICE_NAME.tar.zst\"}' > '$remote_staging/snapshot-$SERVICE_NAME.tar.zst.sha256'"; then
+    log_error "Packaging snapshot-$SERVICE_NAME.tar.zst on Secondary VPS failed."
+    exit 1
+  fi
+  log_info "Snapshot sha256: $(remote_exec "awk 'NR==1{print \$1}' '$remote_staging/snapshot-$SERVICE_NAME.tar.zst.sha256'" 2>/dev/null)"
 
   log_info "Verifying snapshot archive integrity on Secondary VPS..."
   if ! remote_exec "
@@ -1133,7 +1082,8 @@ MANIFEST_EOF"
     fi
 
     local upload_funcs
-    upload_funcs=$(declare -f log log_info log_success log_warn log_error is_gdrive_token_valid get_gdrive_access_token_from_sa resolve_gdrive_access_token cleanup_gdrive_old_snapshots upload_to_gdrive)
+    # shellcheck disable=SC2046
+    upload_funcs=$(declare -f log log_info log_success log_warn log_error is_gdrive_token_valid get_gdrive_access_token_from_sa resolve_gdrive_access_token cleanup_gdrive_old_snapshots upload_to_gdrive _ss_log $(compgen -A function snap_) $(compgen -A function gds_))
 
     if remote_exec "bash -s" << REMOTE_EOF
 COLOR_RESET='$COLOR_RESET'
@@ -1157,8 +1107,28 @@ REMOTE_EOF
     remote_upload_attempted=true
     log_info "Moving snapshot archive to Google Cloud Storage (gs://$GCS_BUCKET_NAME)..."
     if remote_exec "gcloud storage cp '$remote_staging/snapshot-$SERVICE_NAME.tar.zst' 'gs://$GCS_BUCKET_NAME/snapshot-$SERVICE_NAME.tar.zst'"; then
-      remote_upload_success=true
-      log_success "Remote snapshot successfully uploaded to gs://$GCS_BUCKET_NAME/snapshot-$SERVICE_NAME.tar.zst from Secondary VPS."
+      local gcs_funcs gcs_rc=0
+      gcs_funcs=$(declare -f log log_info log_success log_warn log_error _ss_log gcs_crc32c_field gcs_verify_upload)
+      remote_exec "bash -s" << REMOTE_GCS_EOF || gcs_rc=$?
+COLOR_RESET='$COLOR_RESET'
+COLOR_INFO='$COLOR_INFO'
+COLOR_SUCCESS='$COLOR_SUCCESS'
+COLOR_WARN='$COLOR_WARN'
+COLOR_ERROR='$COLOR_ERROR'
+$gcs_funcs
+gcs_verify_upload '$remote_staging/snapshot-$SERVICE_NAME.tar.zst' 'gs://$GCS_BUCKET_NAME/snapshot-$SERVICE_NAME.tar.zst'
+REMOTE_GCS_EOF
+      if [ "$gcs_rc" -eq 1 ]; then
+        log_error "The copy in gs://$GCS_BUCKET_NAME/snapshot-$SERVICE_NAME.tar.zst is broken. Keeping the archive on the Secondary VPS."
+      else
+        remote_upload_success=true
+        if remote_exec "gcloud storage cp '$remote_staging/snapshot-$SERVICE_NAME.tar.zst.sha256' 'gs://$GCS_BUCKET_NAME/snapshot-$SERVICE_NAME.tar.zst.sha256'"; then
+          log_success "Uploaded checksum file gs://$GCS_BUCKET_NAME/snapshot-$SERVICE_NAME.tar.zst.sha256"
+        else
+          log_error "Could not upload gs://$GCS_BUCKET_NAME/snapshot-$SERVICE_NAME.tar.zst.sha256. The snapshot is uploaded but has no checksum file."
+        fi
+        log_success "Remote snapshot successfully uploaded to gs://$GCS_BUCKET_NAME/snapshot-$SERVICE_NAME.tar.zst from Secondary VPS."
+      fi
     else
       log_error "Failed to upload snapshot to gs://$GCS_BUCKET_NAME from Secondary VPS."
     fi
@@ -1167,14 +1137,14 @@ REMOTE_EOF
   if [ "$remote_upload_attempted" = true ]; then
     if [ "$remote_upload_success" = true ]; then
       log_info "Remote cloud upload succeeded. Cleaning up temporary archive on Secondary VPS..."
-      remote_exec "rm -f '$remote_staging/snapshot-$SERVICE_NAME.tar.zst'"
+      remote_exec "rm -f '$remote_staging/snapshot-$SERVICE_NAME.tar.zst' '$remote_staging/snapshot-$SERVICE_NAME.tar.zst.sha256'"
     else
       log_warn "Remote cloud upload failed. Preserving fallback archive on Secondary VPS at $remote_archives/snapshot-$SERVICE_NAME.tar.zst."
-      remote_exec "mv '$remote_staging/snapshot-$SERVICE_NAME.tar.zst' '$remote_archives/snapshot-$SERVICE_NAME.tar.zst'"
+      remote_exec "mv '$remote_staging/snapshot-$SERVICE_NAME.tar.zst' '$remote_archives/snapshot-$SERVICE_NAME.tar.zst' && { [ ! -f '$remote_staging/snapshot-$SERVICE_NAME.tar.zst.sha256' ] || mv '$remote_staging/snapshot-$SERVICE_NAME.tar.zst.sha256' '$remote_archives/snapshot-$SERVICE_NAME.tar.zst.sha256'; }"
     fi
   else
     log_info "Storing snapshot archive locally on Secondary VPS..."
-    remote_exec "mv '$remote_staging/snapshot-$SERVICE_NAME.tar.zst' '$remote_archives/snapshot-$SERVICE_NAME.tar.zst'"
+    remote_exec "mv '$remote_staging/snapshot-$SERVICE_NAME.tar.zst' '$remote_archives/snapshot-$SERVICE_NAME.tar.zst' && { [ ! -f '$remote_staging/snapshot-$SERVICE_NAME.tar.zst.sha256' ] || mv '$remote_staging/snapshot-$SERVICE_NAME.tar.zst.sha256' '$remote_archives/snapshot-$SERVICE_NAME.tar.zst.sha256'; }"
     log_success "Remote snapshot successfully created and stored on Secondary VPS at $remote_archives/snapshot-$SERVICE_NAME.tar.zst."
   fi
 
@@ -1272,6 +1242,7 @@ function main() {
           if [[ -n "$TAR_FILE_PATH" && -f "$TAR_FILE_PATH" ]]; then
               rm -f "$TAR_FILE_PATH"
           fi
+          [ -n "$TAR_FILE_PATH" ] && rm -f "$TAR_FILE_PATH.sha256" "$TAR_FILE_PATH.sha256.tmp"
       fi
       queue_lock_release_all
   }
@@ -1470,12 +1441,21 @@ EOF
 
   areYouReallySure "$TAR_FILE_PATH" "$ASK_TO_REPLACE_EXISTING_SNAPSHOT"
 
-  log_info "Backing up the database and its datadir directly to snapshot (single-pass zstd)..."
-  if ! tar -cf "$TAR_FILE_PATH" -I "zstd -vT0 -$SNAPSHOT_COMPRESSION_LEVEL --ultra" "${files_dirs_to_tar[@]}" > /dev/null 2>&1; then
+  log_info "Backing up the database and its datadir directly to snapshot (single-pass zstd + sha256)..."
+  # The archive is hashed while it is written, so a large snapshot is never read twice
+  if ! ( set -o pipefail
+         tar -cf - "${files_dirs_to_tar[@]}" 2>/dev/null \
+           | zstd -T0 -"$SNAPSHOT_COMPRESSION_LEVEL" --ultra -q -c \
+           | tee "$TAR_FILE_PATH" \
+           | sha256sum ) > "$TAR_FILE_PATH.sha256.tmp"; then
     log_error "tar failed to backup the database and its datadir."
+    rm -f "$TAR_FILE_PATH.sha256.tmp"
     rm -rf "$DATA_STAGING_DIR"
     exit 1
   fi
+  snap_write_sidecar "$(awk '{print $1}' "$TAR_FILE_PATH.sha256.tmp")" "$TAR_FILE_PATH.sha256" "$TAR_FILE_NAME"
+  rm -f "$TAR_FILE_PATH.sha256.tmp"
+  log_info "Snapshot sha256: $(snap_sidecar_hash "$TAR_FILE_PATH.sha256")"
 
   rm -rf "$DATA_STAGING_DIR"
 
@@ -1508,7 +1488,7 @@ EOF
   log_success "Snapshot archive verified successfully."
 
   log_info "Changing the ownership of the snapshot file..."
-  chown "$REPOSITORY_OWNER":"$REPOSITORY_OWNER" "$TAR_FILE_PATH"
+  chown "$REPOSITORY_OWNER":"$REPOSITORY_OWNER" "$TAR_FILE_PATH" "$TAR_FILE_PATH.sha256"
 
   local remote_upload_attempted=false
   local remote_upload_success=false
@@ -1533,8 +1513,19 @@ EOF
     if sudo -u "$REPOSITORY_OWNER" gcloud storage ls "gs://$GCS_BUCKET_NAME" > /dev/null 2>&1; then
       log_info "Uploading the snapshot file to Google Cloud Storage bucket: gs://$GCS_BUCKET_NAME."
       if sudo -u "$REPOSITORY_OWNER" gcloud storage cp "$TAR_FILE_PATH" "gs://$GCS_BUCKET_NAME/$TAR_FILE_NAME"; then
-        remote_upload_success=true
-        log_success "The snapshot File Created Successfully named $TAR_FILE_NAME. File Backed up at gs://$GCS_BUCKET_NAME/$TAR_FILE_NAME."
+        local gcs_rc=0
+        GCS_GCLOUD="sudo -u $REPOSITORY_OWNER gcloud" gcs_verify_upload "$TAR_FILE_PATH" "gs://$GCS_BUCKET_NAME/$TAR_FILE_NAME" || gcs_rc=$?
+        if [ "$gcs_rc" -eq 1 ]; then
+          log_error "The copy in gs://$GCS_BUCKET_NAME/$TAR_FILE_NAME is broken. Keeping the local snapshot."
+        else
+          remote_upload_success=true
+          if sudo -u "$REPOSITORY_OWNER" gcloud storage cp "$TAR_FILE_PATH.sha256" "gs://$GCS_BUCKET_NAME/$TAR_FILE_NAME.sha256"; then
+            log_success "Uploaded checksum file gs://$GCS_BUCKET_NAME/$TAR_FILE_NAME.sha256"
+          else
+            log_error "Could not upload gs://$GCS_BUCKET_NAME/$TAR_FILE_NAME.sha256. The snapshot is uploaded but has no checksum file."
+          fi
+          log_success "The snapshot File Created Successfully named $TAR_FILE_NAME. File Backed up at gs://$GCS_BUCKET_NAME/$TAR_FILE_NAME."
+        fi
       else
         log_error "Error can't copy the snapshot file to gs://$GCS_BUCKET_NAME. Exit code: $?"
       fi
@@ -1546,7 +1537,7 @@ EOF
 
   if [ "$remote_upload_attempted" = true ]; then
     if [ "$remote_upload_success" = true ]; then
-      rm -f "$TAR_FILE_PATH"
+      rm -f "$TAR_FILE_PATH" "$TAR_FILE_PATH.sha256"
     else
       log_warn "Remote upload failed. Preserving snapshot file locally in temporary directory."
       moveSnapshotFileToTempDir "$TAR_FILE_PATH" "$TAR_FILE_NAME"

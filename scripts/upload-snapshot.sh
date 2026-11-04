@@ -31,6 +31,18 @@ log_success() { log "${COLOR_SUCCESS}" "✅" "$1"; }
 log_warn() { log "${COLOR_WARN}" "⚠️" "$1"; }
 log_error() { log "${COLOR_ERROR}" "❌" "$1"; }
 
+# Snapshot storage helpers: sha256 sidecars, exact-name Drive retention (scripts/lib/snapshot_storage.sh)
+if [ -f "$CURRENT_DIR/lib/snapshot_storage.sh" ]; then
+  # shellcheck source=/dev/null
+  source "$CURRENT_DIR/lib/snapshot_storage.sh"
+elif [ -f "$PATH_TO_ODOO/scripts/lib/snapshot_storage.sh" ]; then
+  # shellcheck source=/dev/null
+  source "$PATH_TO_ODOO/scripts/lib/snapshot_storage.sh"
+else
+  log_error "scripts/lib/snapshot_storage.sh not found. Update docker-odoo (git pull)."
+  exit 1
+fi
+
 # --- Load Default Configuration from .env ---
 ENV_FILE="$PATH_TO_ODOO/.env"
 GDRIVE_ACCESS_TOKEN=$(grep "^GDRIVE_ACCESS_TOKEN=" "$ENV_FILE" 2>/dev/null | cut -d '=' -f2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//' || true)
@@ -296,6 +308,7 @@ if [ -z "$ACCESS_TOKEN" ]; then
 fi
 
 function cleanup_gdrive_old_snapshots() {
+  # Keeps the newest <max_keep> snapshots of <service>; each goes with its .sha256 file.
   local token="$1"
   local folder="$2"
   local service="$3"
@@ -309,113 +322,7 @@ function cleanup_gdrive_old_snapshots() {
   fresh_token=$(resolve_access_token "$token")
   [ -n "$fresh_token" ] && token="$fresh_token"
 
-  log_info "Running Google Drive retention lifecycle (keeping latest $max_keep snapshots for $service)..."
-
-  local query="(name contains 'snapshot-${service}' or name contains 'snapshot--') and trashed = false"
-  if [ -n "$folder" ]; then
-    query="$query and '$folder' in parents"
-  fi
-
-  local file_ids=""
-  local page_token=""
-
-  while :; do
-    token=$(resolve_access_token "$token")
-    local curl_args=(
-      -s -G
-      -H "Authorization: Bearer $token"
-      --data-urlencode "q=$query"
-      --data-urlencode "orderBy=createdTime desc"
-      --data-urlencode "fields=nextPageToken, files(id, name, createdTime)"
-      --data-urlencode "supportsAllDrives=true"
-      --data-urlencode "includeItemsFromAllDrives=true"
-      --data-urlencode "pageSize=1000"
-    )
-    [ -n "$page_token" ] && curl_args+=(--data-urlencode "pageToken=$page_token")
-
-    local response
-    response=$(curl "${curl_args[@]}" "https://www.googleapis.com/drive/v3/files")
-
-    if echo "$response" | grep -q '"error":'; then
-      log_error "Google Drive API returned an error during retention cleanup:"
-      log_error "$response"
-      return 1
-    fi
-
-    local page_ids
-    page_ids=$(echo "$response" | grep -o '"id": *"[^"]*"' | cut -d'"' -f4 || true)
-    if [ -n "$page_ids" ]; then
-      if [ -z "$file_ids" ]; then
-        file_ids="$page_ids"
-      else
-        file_ids=$(printf "%s\n%s" "$file_ids" "$page_ids")
-      fi
-    fi
-
-    page_token=$(python3 -c 'import sys, json; print(json.load(sys.stdin).get("nextPageToken", ""))' 2>/dev/null <<< "$response" || true)
-    [ -z "$page_token" ] && break
-  done
-
-  local total_count=0
-  if [ -n "$file_ids" ]; then
-    total_count=$(echo "$file_ids" | grep -c . || echo "0")
-  fi
-
-  if [ "$total_count" -le "$max_keep" ]; then
-    log_info "Total snapshots found on Google Drive ($total_count) is within retention limit ($max_keep). Nothing to delete."
-    return 0
-  fi
-
-  local delete_count=$((total_count - max_keep))
-  log_info "Found $total_count remote snapshots. Deleting $delete_count older snapshot(s)..."
-
-  local to_delete
-  to_delete=$(echo "$file_ids" | tail -n +$((max_keep + 1)))
-
-  for fid in $to_delete; do
-    if [ -n "$fid" ]; then
-      local del_token
-      del_token=$(resolve_access_token "$token")
-      [ -n "$del_token" ] && token="$del_token"
-
-      local del_resp del_status
-      del_resp=$(curl -s -w "\n%{http_code}" -X DELETE \
-        -H "Authorization: Bearer $token" \
-        "https://www.googleapis.com/drive/v3/files/${fid}?supportsAllDrives=true")
-      del_status=$(echo "$del_resp" | tail -n1)
-
-      if [ "$del_status" != "204" ] && [ "$del_status" != "200" ]; then
-        local trash_resp trash_status
-        trash_resp=$(curl -s -w "\n%{http_code}" -X PATCH \
-          -H "Authorization: Bearer $token" \
-          -H "Content-Type: application/json" \
-          -d '{"trashed": true}' \
-          "https://www.googleapis.com/drive/v3/files/${fid}?supportsAllDrives=true")
-        trash_status=$(echo "$trash_resp" | tail -n1)
-        if [ "$trash_status" = "200" ]; then
-          del_status="200"
-        fi
-      fi
-
-      if [ "$del_status" != "204" ] && [ "$del_status" != "200" ] && [ -n "$folder" ]; then
-        local unparent_resp unparent_status
-        unparent_resp=$(curl -s -w "\n%{http_code}" -X PATCH \
-          -H "Authorization: Bearer $token" \
-          -H "Content-Type: application/json" \
-          "https://www.googleapis.com/drive/v3/files/${fid}?removeParents=${folder}&supportsAllDrives=true")
-        unparent_status=$(echo "$unparent_resp" | tail -n1)
-        if [ "$unparent_status" = "200" ]; then
-          del_status="200"
-        fi
-      fi
-
-      if [ "$del_status" = "204" ] || [ "$del_status" = "200" ]; then
-        log_info "Deleted old remote snapshot (ID: $fid)"
-      else
-        log_warn "Failed to delete remote snapshot ID $fid (HTTP $del_status). Check Service Account permissions (requires Editor/Manager on Google Drive folder)."
-      fi
-    fi
-  done
+  gds_retention "$token" "$folder" "$service" "$max_keep"
 }
 
 function upload_snapshot() {
@@ -446,6 +353,12 @@ function upload_snapshot() {
     else
       upload_name="snapshot-${SERVICE_NAME}-$(date +"%Y%m%d-%H%M%S").tar.zst"
     fi
+  fi
+
+  # Never upload a snapshot that no longer matches its checksum file
+  if ! snap_check_or_create_sidecar "$file_path"; then
+    log_error "Upload aborted: $file_path does not match $file_path.sha256."
+    exit 1
   fi
 
   local file_size
@@ -554,6 +467,21 @@ function upload_snapshot() {
   if [ -n "$uploaded_file_id" ]; then
     log_info "File ID: $uploaded_file_id"
     log_info "Google Drive Link: https://drive.google.com/file/d/$uploaded_file_id/view"
+  fi
+
+  # Upload the .sha256 sidecar and cross-check Drive's own sha256 of the upload
+  if [ -n "$uploaded_file_id" ]; then
+    local fresh_token publish_rc=0
+    fresh_token=$(resolve_access_token "$token")
+    [ -n "$fresh_token" ] && token="$fresh_token"
+    gds_publish_sidecar "$token" "$folder" "$uploaded_file_id" "$upload_name" "$file_path.sha256" || publish_rc=$?
+    if [ "$publish_rc" -eq 1 ]; then
+      log_error "Removing the broken copy $upload_name from Google Drive so it is never restored by mistake."
+      gds_delete_file "$token" "$uploaded_file_id" "$folder" >/dev/null || log_warn "Could not remove the broken copy $upload_name. Delete it by hand."
+      exit 1
+    fi
+  else
+    log_warn "Google Drive did not return the file ID; skipping the checksum check and .sha256 upload."
   fi
 
   if [ -n "$max_keep" ]; then

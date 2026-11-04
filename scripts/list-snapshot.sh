@@ -31,6 +31,18 @@ log_success() { log "${COLOR_SUCCESS}" "✅" "$1"; }
 log_warn() { log "${COLOR_WARN}" "⚠️" "$1"; }
 log_error() { log "${COLOR_ERROR}" "❌" "$1"; }
 
+# Snapshot storage helpers: sha256 sidecars, exact-name matching (scripts/lib/snapshot_storage.sh)
+if [ -f "$CURRENT_DIR/lib/snapshot_storage.sh" ]; then
+  # shellcheck source=/dev/null
+  source "$CURRENT_DIR/lib/snapshot_storage.sh"
+elif [ -f "$PATH_TO_ODOO/scripts/lib/snapshot_storage.sh" ]; then
+  # shellcheck source=/dev/null
+  source "$PATH_TO_ODOO/scripts/lib/snapshot_storage.sh"
+else
+  log_error "scripts/lib/snapshot_storage.sh not found. Update docker-odoo (git pull)."
+  exit 1
+fi
+
 # --- Load Default Configuration from .env ---
 ENV_FILE="$PATH_TO_ODOO/.env"
 GDRIVE_ACCESS_TOKEN=$(grep "^GDRIVE_ACCESS_TOKEN=" "$ENV_FILE" 2>/dev/null | cut -d '=' -f2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//' || true)
@@ -242,110 +254,63 @@ if [ -z "$ACCESS_TOKEN" ]; then
   exit 1
 fi
 
-# Build query
-QUERY="trashed = false"
+# --- Fetch snapshots (archives only; their .sha256 files are shown as a column) ---
 if [ "$SHOW_ALL" = false ]; then
-  QUERY="$QUERY and name contains 'snapshot-${TARGET_SERVICE_NAME}'"
+  PLAN_SERVICE="$TARGET_SERVICE_NAME"
 else
-  QUERY="$QUERY and name contains 'snapshot-'"
-fi
-
-if [ -n "$GDRIVE_FOLDER_ID" ]; then
-  QUERY="$QUERY and '$GDRIVE_FOLDER_ID' in parents"
+  PLAN_SERVICE="*"
 fi
 
 if [ "$FORMAT_JSON" = false ]; then
   log_info "Fetching snapshots from Google Drive..."
 fi
 
-RESPONSE=$(curl -s -G \
-  -H "Authorization: Bearer $ACCESS_TOKEN" \
-  --data-urlencode "q=$QUERY" \
-  --data-urlencode "orderBy=createdTime desc" \
-  --data-urlencode "fields=files(id, name, size, createdTime, modifiedTime, md5Checksum)" \
-  --data-urlencode "supportsAllDrives=true" \
-  --data-urlencode "includeItemsFromAllDrives=true" \
-  --data-urlencode "pageSize=$LIMIT" \
-  "https://www.googleapis.com/drive/v3/files")
-
-# Check for API errors
-ERROR_MSG=$(echo "$RESPONSE" | grep -o '"message": *"[^"]*"' | head -n 1 | cut -d'"' -f4 || true)
-if [ -n "$ERROR_MSG" ]; then
-  log_error "Google Drive API error: $ERROR_MSG"
+if ! ROWS=$(gds_list_archives "$ACCESS_TOKEN" "$GDRIVE_FOLDER_ID" "$PLAN_SERVICE" "$LIMIT"); then
+  log_error "Could not list snapshots on Google Drive."
   exit 1
 fi
 
 if [ "$FORMAT_JSON" = true ]; then
-  if command -v jq >/dev/null 2>&1; then
-    echo "$RESPONSE" | jq '.files // []'
-  else
-    echo "$RESPONSE"
-  fi
+  python3 -c '
+import json, sys
+rows = [l.split("\t") for l in sys.stdin.read().splitlines() if l.strip()]
+print(json.dumps([{"id": r[2], "name": r[3], "size": r[4], "createdTime": r[5], "service": r[6],
+                   "sha256_file": r[7] == "yes"} for r in rows], indent=2))
+' <<< "$ROWS"
   exit 0
 fi
 
-# Parse files list using python or fallback
-FILES_COUNT=$(python3 -c '
-import sys, json
-try:
-    data = json.load(sys.stdin)
-    files = data.get("files", [])
-    print(len(files))
-except Exception:
-    print(0)
-' <<< "$RESPONSE" 2>/dev/null || echo "0")
-
+FILES_COUNT=$(printf '%s\n' "$ROWS" | grep -c . || true)
 if [ "$FILES_COUNT" -eq 0 ]; then
-  echo "--------------------------------------------------------------------------------------------------------"
+  echo "--------------------------------------------------------------------------------------------------------------------"
   echo " No snapshot files found on Google Drive."
   [ -n "$GDRIVE_FOLDER_ID" ] && echo " Folder ID: $GDRIVE_FOLDER_ID"
   [ "$SHOW_ALL" = false ] && echo " Service filter: $TARGET_SERVICE_NAME (use --all to see all snapshots)"
-  echo "--------------------------------------------------------------------------------------------------------"
+  echo "--------------------------------------------------------------------------------------------------------------------"
   exit 0
 fi
 
-echo "========================================================================================================"
-printf "%-4s | %-45s | %-33s | %-10s | %-19s\n" "No" "Snapshot File Name" "File ID" "Size" "Created At"
-echo "--------------------------------------------------------------------------------------------------------"
-
+echo "===================================================================================================================="
+printf "%-4s | %-52s | %-33s | %-7s | %-10s | %-19s\n" "No" "Snapshot File Name" "File ID" "SHA256" "Size" "Created At"
+echo "--------------------------------------------------------------------------------------------------------------------"
 python3 -c '
-import sys, json
-
-def format_size(bytes_val):
-    if not bytes_val:
-        return "N/A"
+import sys
+def fmt_size(v):
     try:
-        b = float(bytes_val)
-        for unit in ["B", "KB", "MB", "GB", "TB"]:
-            if b < 1024.0:
-                return f"{b:.1f} {unit}"
-            b /= 1024.0
-        return f"{b:.1f} PB"
+        b = float(v)
     except Exception:
         return "N/A"
-
-def format_date(iso_date):
-    if not iso_date:
-        return "N/A"
-    try:
-        return iso_date.replace("T", " ").split(".")[0]
-    except Exception:
-        return iso_date
-
-try:
-    data = json.load(sys.stdin)
-    files = data.get("files", [])
-    for idx, f in enumerate(files, 1):
-        name = f.get("name", "")
-        file_id = f.get("id", "")
-        size = format_size(f.get("size"))
-        created = format_date(f.get("createdTime"))
-        print(f"{idx:<4} | {name:<45} | {file_id:<33} | {size:<10} | {created:<19}")
-except Exception as e:
-    sys.stderr.write(f"Error rendering files: {e}\n")
-' <<< "$RESPONSE"
-
-echo "========================================================================================================"
+    for unit in ["B", "KB", "MB", "GB", "TB"]:
+        if b < 1024.0:
+            return "%.1f %s" % (b, unit)
+        b /= 1024.0
+    return "%.1f PB" % b
+for i, l in enumerate([l for l in sys.stdin.read().splitlines() if l.strip()], 1):
+    r = l.split("\t")
+    created = r[5].replace("T", " ").split(".")[0] if r[5] else "N/A"
+    print("%-4s | %-52s | %-33s | %-7s | %-10s | %-19s" % (i, r[3], r[2], "yes" if r[7] == "yes" else "missing", fmt_size(r[4]), created))
+' <<< "$ROWS"
+echo "===================================================================================================================="
 echo "Total: $FILES_COUNT snapshot(s) found."
 echo ""
 echo "To download a snapshot, run:"
