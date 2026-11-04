@@ -8,10 +8,18 @@
 #   archive: snapshot-<service>-YYYYMMDD-HHMMSS.tar.zst
 #   sidecar: snapshot-<service>-YYYYMMDD-HHMMSS.tar.zst.sha256
 #            content in sha256sum format: "<64 hex>  <archive name>"
+#   validation record: snapshot-<service>-YYYYMMDD-HHMMSS.tar.zst.validated.json
+#            written by the snapshot validator ONLY after a restore drill passed:
+#            {"schema": 1, "result": "pass", "archive": "<name>", "sha256": "<hex>",
+#             "validated_at": "<UTC ISO>", "validator_host": "...", ...extra fields}
 #
 # Retention counts archives only, per service, newest first by the timestamp in the name.
-# Deleting an archive also deletes its sidecar (archive first, so a failed delete never
-# leaves an archive without its hash). Sidecars whose archive is gone are removed too.
+# On top of the newest N it also keeps the newest snapshot with a trusted validation record
+# (result "pass" and sha256 equal to Drive's own sha256 of the archive), so a proven
+# backup is never rotated out before a newer one is proven.
+# Deleting an archive also deletes its .sha256 and .validated.json (archive first, so a
+# failed delete never leaves an archive without them). Leftovers whose archive is gone
+# are removed too.
 #
 # Every gds_* / gcs_* / snap_* function receives what it needs as arguments and only uses
 # curl, python3, sha256sum and gcloud, so they can be sent to the Secondary VPS with
@@ -95,6 +103,37 @@ snap_verify_file() {
   [ "$expected" = "$actual" ]
 }
 
+snap_write_validation_record() {
+  # Args: out_file archive_name sha256 [extra_json_object]
+  # Writes a "pass" validation record. Only call this after a restore drill PASSED.
+  python3 -c '
+import json, socket, sys, datetime
+out, name, sha = sys.argv[1], sys.argv[2], sys.argv[3]
+extra = json.loads(sys.argv[4]) if len(sys.argv) > 4 and sys.argv[4] else {}
+rec = {"schema": 1, "result": "pass", "archive": name, "sha256": sha,
+       "validated_at": datetime.datetime.utcnow().replace(microsecond=0).isoformat() + "Z",
+       "validator_host": socket.gethostname()}
+rec.update({k: v for k, v in extra.items() if k not in ("schema", "result", "archive", "sha256")})
+with open(out, "w") as f:
+    json.dump(rec, f, indent=2); f.write("\n")
+' "$@"
+}
+
+snap_validation_record_ok() {
+  # Args: record_file archive_name expected_sha256 (expected may be empty = not checked)
+  # Returns 0 when the record says "pass" for this archive (and this sha256).
+  python3 -c '
+import json, sys
+try:
+    r = json.load(open(sys.argv[1]))
+except Exception:
+    sys.exit(1)
+name, sha = sys.argv[2], sys.argv[3]
+ok = r.get("result") == "pass" and r.get("archive") in (None, name) and (not sha or r.get("sha256") == sha)
+sys.exit(0 if ok else 1)
+' "$1" "$2" "$3"
+}
+
 # --- Google Drive ------------------------------------------------------------
 
 gds_api_base() { echo "${GDS_API_BASE:-https://www.googleapis.com}"; }
@@ -153,19 +192,26 @@ print(json.dumps(files))
 }
 
 gds_plan() {
-  # Args: service ("*" = every service, each kept separately) keep (<=0 = keep all).
+  # Args: service ("*" = every service, each kept separately) keep (<=0 = keep all)
+  #       [protected names, newline separated: archives kept even beyond <keep>]
   # Reads the JSON array from gds_fetch_files on stdin. Prints TSV lines:
-  #   action  kind     id  name  size  createdTime  service  sidecar
-  #   keep|delete  archive|sidecar|orphan               (sidecar = yes/no for archives)
+  #   action  kind  id  name  size  createdTime  service  sidecar  validated
+  #   action    = keep | delete
+  #   kind      = archive | sidecar | validation | orphan (leftover whose archive is gone)
+  #   sidecar   = yes | no             (archive rows only)
+  #   validated = yes | protected | no (archive rows only; protected = kept because it is
+  #               the newest snapshot that passed a restore drill)
   # Order: per service newest archive first; each deleted archive is followed by its
-  # sidecar(s); orphan sidecars last. Files that do not match the naming are left out.
+  # .sha256 / .validated.json; leftovers last. Files that do not match the naming are left out.
   python3 -c '
 import json, re, sys
 service, keep = sys.argv[1], int(sys.argv[2])
+protected = set(n for n in (sys.argv[3] if len(sys.argv) > 3 else "").splitlines() if n)
 files = json.load(sys.stdin)
 arc_re = re.compile(r"^snapshot-(.+)-(\d{8}-\d{6})\.tar\.zst$")
 side_re = re.compile(r"^(snapshot-(.+)-(\d{8}-\d{6})\.tar\.zst)\.sha256$")
-archives, sidecars = [], {}
+val_re = re.compile(r"^(snapshot-(.+)-(\d{8}-\d{6})\.tar\.zst)\.validated\.json$")
+archives, sidecars, records = [], {}, {}
 for f in files:
     name = f.get("name", "")
     m = arc_re.match(name)
@@ -173,13 +219,16 @@ for f in files:
         if service in ("*", m.group(1)):
             archives.append((m.group(1), m.group(2), f.get("createdTime", ""), f))
         continue
-    m = side_re.match(name)
-    if m and service in ("*", m.group(2)):
-        sidecars.setdefault(m.group(1), []).append(f)
+    for rx, bucket in ((side_re, sidecars), (val_re, records)):
+        m = rx.match(name)
+        if m:
+            if service in ("*", m.group(2)):
+                bucket.setdefault(m.group(1), []).append(f)
+            break
 
-def row(action, kind, f, svc, extra=""):
+def row(action, kind, f, svc, *extra):
     return "\t".join([action, kind, f.get("id", ""), f.get("name", ""), str(f.get("size", "") or ""),
-                      f.get("createdTime", ""), svc, extra])
+                      f.get("createdTime", ""), svc] + list(extra))
 
 by_service = {}
 for a in archives:
@@ -187,21 +236,71 @@ for a in archives:
 archive_names = {a[3].get("name") for a in archives}
 for svc in sorted(by_service):
     items = sorted(by_service[svc], key=lambda a: (a[1], a[2]), reverse=True)
-    decisions = [("keep" if keep <= 0 or idx < keep else "delete", a[3]) for idx, a in enumerate(items)]
-    kept_names = {f.get("name") for action, f in decisions if action == "keep"}
-    for action, f in decisions:
+    decisions = []
+    for idx, a in enumerate(items):
+        name = a[3].get("name")
+        if keep <= 0 or idx < keep:
+            decisions.append(("keep", a[3], "yes" if name in records else "no"))
+        elif name in protected:
+            decisions.append(("keep", a[3], "protected"))
+        else:
+            decisions.append(("delete", a[3], "yes" if name in records else "no"))
+    kept_names = {f.get("name") for action, f, _v in decisions if action == "keep"}
+    for action, f, validated in decisions:
         name = f.get("name")
-        print(row(action, "archive", f, svc, "yes" if name in sidecars else "no"))
-        # Same-name duplicates: only drop the sidecar when no kept archive still uses it
+        print(row(action, "archive", f, svc, "yes" if name in sidecars else "no", validated))
+        # Same-name duplicates: only drop the extra files when no kept archive still uses them
         if action == "delete" and name not in kept_names:
             for s in sidecars.get(name, []):
                 print(row("delete", "sidecar", s, svc))
-for name, lst in sorted(sidecars.items()):
-    if name not in archive_names:
-        m = side_re.match(name + ".sha256")
-        for s in lst:
-            print(row("delete", "orphan", s, m.group(2) if m else ""))
-' "$1" "$2"
+            for r in records.get(name, []):
+                print(row("delete", "validation", r, svc))
+for bucket, rx in ((sidecars, side_re), (records, val_re)):
+    for name, lst in sorted(bucket.items()):
+        if name not in archive_names:
+            for x in lst:
+                m = rx.match(x.get("name", ""))
+                print(row("delete", "orphan", x, m.group(2) if m else ""))
+' "$1" "$2" "${3:-}"
+}
+
+gds_find_protected() {
+  # Args: token service ("*" allowed) keep. Reads the gds_fetch_files JSON on stdin.
+  # For each service, finds the newest snapshot with a trusted validation record
+  # (result "pass", same archive name, sha256 equal to Drive's sha256Checksum of the
+  # archive). Prints its name only when it would otherwise fall outside the newest <keep>.
+  local token="$1" service="$2" keep="$3" candidates svc idx name rec_id sha tmp done_svcs=" "
+  [[ "$keep" =~ ^[0-9]+$ ]] && [ "$keep" -gt 0 ] || return 0
+  candidates=$(python3 -c '
+import json, re, sys
+service = sys.argv[1]
+files = json.load(sys.stdin)
+arc_re = re.compile(r"^snapshot-(.+)-(\d{8}-\d{6})\.tar\.zst$")
+records = {f["name"][:-len(".validated.json")]: f for f in files if f.get("name", "").endswith(".tar.zst.validated.json")}
+by = {}
+for f in files:
+    m = arc_re.match(f.get("name", ""))
+    if m and service in ("*", m.group(1)):
+        by.setdefault(m.group(1), []).append((m.group(2), f.get("createdTime", ""), f))
+for svc in sorted(by):
+    items = sorted(by[svc], key=lambda a: (a[0], a[1]), reverse=True)
+    for idx, (_ts, _ct, f) in enumerate(items):
+        r = records.get(f["name"])
+        if r:
+            print("\t".join([svc, str(idx), f["name"], r["id"], f.get("sha256Checksum", "")]))
+' "$service")
+  [ -n "$candidates" ] || return 0
+  tmp=$(mktemp) || return 0
+  while IFS=$'\t' read -r svc idx name rec_id sha; do
+    [[ "$done_svcs" == *" $svc "* ]] && continue
+    if gds_download "$token" "$rec_id" "$tmp" && snap_validation_record_ok "$tmp" "$name" "$sha"; then
+      done_svcs="$done_svcs$svc "
+      [ "$idx" -ge "$keep" ] && echo "$name"
+    else
+      _ss_log warn "Ignoring $name.validated.json: it does not prove this exact snapshot passed a restore drill."
+    fi
+  done <<< "$candidates"
+  rm -f "$tmp"
 }
 
 gds_list_archives() {
@@ -252,15 +351,20 @@ gds_apply_plan() {
   local failed_names=" "
   while IFS=$'\t' read -r action kind fid name size created svc extra; do
     [ "$action" = "delete" ] || continue
-    if [ "$kind" = "sidecar" ] && [[ "$failed_names" == *" ${name%.sha256} "* ]]; then
-      _ss_log warn "Keeping sidecar $name because its archive could not be deleted."
-      continue
+    if [ "$kind" = "sidecar" ] || [ "$kind" = "validation" ]; then
+      local base_name="${name%.sha256}"
+      base_name="${base_name%.validated.json}"
+      if [[ "$failed_names" == *" $base_name "* ]]; then
+        _ss_log warn "Keeping $name because its snapshot could not be deleted."
+        continue
+      fi
     fi
     if status=$(gds_delete_file "$token" "$fid" "$folder"); then
       case "$kind" in
         archive) del_a=$((del_a + 1)); _ss_log info "Deleted old snapshot: $name" ;;
-        sidecar) del_s=$((del_s + 1)); _ss_log info "Deleted its checksum file: $name" ;;
-        orphan)  del_s=$((del_s + 1)); _ss_log info "Deleted checksum file without snapshot: $name" ;;
+        sidecar)    del_s=$((del_s + 1)); _ss_log info "Deleted its checksum file: $name" ;;
+        validation) del_s=$((del_s + 1)); _ss_log info "Deleted its validation record: $name" ;;
+        orphan)     del_s=$((del_s + 1)); _ss_log info "Deleted leftover file whose snapshot is gone: $name" ;;
       esac
     else
       failed=$((failed + 1))
@@ -272,12 +376,16 @@ gds_apply_plan() {
 }
 
 gds_retention() {
-  # Args: token folder_id service keep. Fetch -> plan -> delete for one service.
-  local token="$1" folder="$2" service="$3" keep="$4" files plan summary total kept
+  # Args: token folder_id service keep. Fetch -> find protected -> plan -> delete, for one service.
+  local token="$1" folder="$2" service="$3" keep="$4" files plan summary total kept protected
   [[ "$keep" =~ ^[0-9]+$ ]] && [ "$keep" -gt 0 ] || return 0
   _ss_log info "Running Google Drive retention for $service (keeping latest $keep snapshot(s), each with its .sha256)..."
   files=$(gds_fetch_files "$token" "$folder" "snapshot-${service}-") || return 1
-  plan=$(printf '%s' "$files" | gds_plan "$service" "$keep") || return 1
+  protected=$(printf '%s' "$files" | gds_find_protected "$token" "$service" "$keep")
+  if [ -n "$protected" ]; then
+    _ss_log info "Also keeping $protected: it is the newest snapshot that passed a restore drill."
+  fi
+  plan=$(printf '%s' "$files" | gds_plan "$service" "$keep" "$protected") || return 1
   total=$(printf '%s\n' "$plan" | awk -F'\t' '$2=="archive"' | grep -c . || true)
   kept=$(printf '%s\n' "$plan" | awk -F'\t' '$1=="keep" && $2=="archive"' | grep -c . || true)
   if ! printf '%s\n' "$plan" | awk -F'\t' '$1=="delete"' | grep -q .; then
@@ -287,11 +395,26 @@ gds_retention() {
   summary=$(printf '%s\n' "$plan" | gds_apply_plan "$token" "$folder")
   read -r d_a d_s d_f <<< "$summary"
   if [ "${d_f:-0}" -eq 0 ]; then
-    _ss_log info "Retention done for $service: kept $kept, deleted $d_a snapshot(s) and $d_s checksum file(s)."
+    _ss_log info "Retention done for $service: kept $kept, deleted $d_a snapshot(s) and $d_s related file(s)."
   else
-    _ss_log warn "Retention for $service finished with $d_f failed deletion(s): deleted $d_a snapshot(s) and $d_s checksum file(s)."
+    _ss_log warn "Retention for $service finished with $d_f failed deletion(s): deleted $d_a snapshot(s) and $d_s related file(s)."
   fi
   return 0
+}
+
+gds_publish_validation() {
+  # Args: token folder_id archive_name record_file
+  # Uploads <archive_name>.validated.json, replacing an older record with the same name.
+  local token="$1" folder="$2" name="$3" file="$4" old id
+  while old=$(gds_find_by_name "$token" "$folder" "$name.validated.json") && [ -n "$old" ]; do
+    gds_delete_file "$token" "$old" "$folder" >/dev/null || break
+  done
+  if ! id=$(gds_upload_small "$token" "$folder" "$name.validated.json" "$file" 2>/dev/null); then
+    _ss_log error "Could not upload $name.validated.json to Google Drive."
+    return 1
+  fi
+  _ss_log success "Recorded on Google Drive that $name passed a restore drill ($name.validated.json)."
+  echo "$id"
 }
 
 gds_find_by_name() {
@@ -438,5 +561,31 @@ gcs_verify_upload() {
     return 1
   fi
   _ss_log success "GCS crc32c matches the local snapshot ($url)."
+  return 0
+}
+
+gcs_publish_validation() {
+  # Args: gs_archive_url record_file. Uploads <archive>.validated.json next to the object.
+  local gc="${GCS_GCLOUD:-gcloud}"
+  # shellcheck disable=SC2086
+  if $gc storage cp "$2" "$1.validated.json" >/dev/null 2>&1; then
+    _ss_log success "Recorded that $1 passed a restore drill ($1.validated.json)."
+    return 0
+  fi
+  _ss_log error "Could not upload $1.validated.json."
+  return 1
+}
+
+gcs_invalidate_validation() {
+  # Args: gs_archive_url. The GCS snapshot object is overwritten on every run, so a
+  # validation record from the previous object must go as soon as a new one is uploaded.
+  local gc="${GCS_GCLOUD:-gcloud}"
+  # shellcheck disable=SC2086
+  if $gc storage ls "$1.validated.json" >/dev/null 2>&1; then
+    # shellcheck disable=SC2086
+    $gc storage rm "$1.validated.json" >/dev/null 2>&1 \
+      && _ss_log info "Removed the previous snapshot's validation record ($1.validated.json)." \
+      || _ss_log warn "Could not remove the old $1.validated.json; it no longer matches the new snapshot."
+  fi
   return 0
 }

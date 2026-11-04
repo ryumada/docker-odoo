@@ -1108,7 +1108,7 @@ REMOTE_EOF
     log_info "Moving snapshot archive to Google Cloud Storage (gs://$GCS_BUCKET_NAME)..."
     if remote_exec "gcloud storage cp '$remote_staging/snapshot-$SERVICE_NAME.tar.zst' 'gs://$GCS_BUCKET_NAME/snapshot-$SERVICE_NAME.tar.zst'"; then
       local gcs_funcs gcs_rc=0
-      gcs_funcs=$(declare -f log log_info log_success log_warn log_error _ss_log gcs_crc32c_field gcs_verify_upload)
+      gcs_funcs=$(declare -f log log_info log_success log_warn log_error _ss_log gcs_crc32c_field gcs_verify_upload gcs_invalidate_validation)
       remote_exec "bash -s" << REMOTE_GCS_EOF || gcs_rc=$?
 COLOR_RESET='$COLOR_RESET'
 COLOR_INFO='$COLOR_INFO'
@@ -1116,6 +1116,7 @@ COLOR_SUCCESS='$COLOR_SUCCESS'
 COLOR_WARN='$COLOR_WARN'
 COLOR_ERROR='$COLOR_ERROR'
 $gcs_funcs
+gcs_invalidate_validation 'gs://$GCS_BUCKET_NAME/snapshot-$SERVICE_NAME.tar.zst'
 gcs_verify_upload '$remote_staging/snapshot-$SERVICE_NAME.tar.zst' 'gs://$GCS_BUCKET_NAME/snapshot-$SERVICE_NAME.tar.zst'
 REMOTE_GCS_EOF
       if [ "$gcs_rc" -eq 1 ]; then
@@ -1514,6 +1515,8 @@ EOF
       log_info "Uploading the snapshot file to Google Cloud Storage bucket: gs://$GCS_BUCKET_NAME."
       if sudo -u "$REPOSITORY_OWNER" gcloud storage cp "$TAR_FILE_PATH" "gs://$GCS_BUCKET_NAME/$TAR_FILE_NAME"; then
         local gcs_rc=0
+        # The object was just replaced: the previous snapshot's validation record no longer applies
+        GCS_GCLOUD="sudo -u $REPOSITORY_OWNER gcloud" gcs_invalidate_validation "gs://$GCS_BUCKET_NAME/$TAR_FILE_NAME"
         GCS_GCLOUD="sudo -u $REPOSITORY_OWNER gcloud" gcs_verify_upload "$TAR_FILE_PATH" "gs://$GCS_BUCKET_NAME/$TAR_FILE_NAME" || gcs_rc=$?
         if [ "$gcs_rc" -eq 1 ]; then
           log_error "The copy in gs://$GCS_BUCKET_NAME/$TAR_FILE_NAME is broken. Keeping the local snapshot."

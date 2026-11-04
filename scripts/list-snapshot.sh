@@ -275,7 +275,7 @@ if [ "$FORMAT_JSON" = true ]; then
 import json, sys
 rows = [l.split("\t") for l in sys.stdin.read().splitlines() if l.strip()]
 print(json.dumps([{"id": r[2], "name": r[3], "size": r[4], "createdTime": r[5], "service": r[6],
-                   "sha256_file": r[7] == "yes"} for r in rows], indent=2))
+                   "sha256_file": r[7] == "yes", "drill_passed": len(r) > 8 and r[8] in ("yes", "protected")} for r in rows], indent=2))
 ' <<< "$ROWS"
   exit 0
 fi
@@ -290,9 +290,9 @@ if [ "$FILES_COUNT" -eq 0 ]; then
   exit 0
 fi
 
-echo "===================================================================================================================="
-printf "%-4s | %-52s | %-33s | %-7s | %-10s | %-19s\n" "No" "Snapshot File Name" "File ID" "SHA256" "Size" "Created At"
-echo "--------------------------------------------------------------------------------------------------------------------"
+echo "==============================================================================================================================="
+printf "%-4s | %-52s | %-33s | %-7s | %-7s | %-10s | %-19s\n" "No" "Snapshot File Name" "File ID" "SHA256" "Drill" "Size" "Created At"
+echo "-------------------------------------------------------------------------------------------------------------------------------"
 python3 -c '
 import sys
 def fmt_size(v):
@@ -308,9 +308,10 @@ def fmt_size(v):
 for i, l in enumerate([l for l in sys.stdin.read().splitlines() if l.strip()], 1):
     r = l.split("\t")
     created = r[5].replace("T", " ").split(".")[0] if r[5] else "N/A"
-    print("%-4s | %-52s | %-33s | %-7s | %-10s | %-19s" % (i, r[3], r[2], "yes" if r[7] == "yes" else "missing", fmt_size(r[4]), created))
+    drill = "passed" if len(r) > 8 and r[8] in ("yes", "protected") else "-"
+    print("%-4s | %-52s | %-33s | %-7s | %-7s | %-10s | %-19s" % (i, r[3], r[2], "yes" if r[7] == "yes" else "missing", drill, fmt_size(r[4]), created))
 ' <<< "$ROWS"
-echo "===================================================================================================================="
+echo "==============================================================================================================================="
 echo "Total: $FILES_COUNT snapshot(s) found."
 echo ""
 echo "To download a snapshot, run:"

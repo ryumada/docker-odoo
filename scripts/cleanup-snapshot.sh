@@ -302,7 +302,9 @@ if ! FILES_JSON=$(gds_fetch_files "$ACCESS_TOKEN" "$GDRIVE_FOLDER_ID" "$NAME_PRE
   log_error "Could not list snapshots on Google Drive."
   exit 1
 fi
-PLAN=$(printf '%s' "$FILES_JSON" | gds_plan "$PLAN_SERVICE" "$PLAN_KEEP")
+# The newest snapshot that passed a restore drill is kept even beyond --keep
+PROTECTED=$(printf '%s' "$FILES_JSON" | gds_find_protected "$ACCESS_TOKEN" "$PLAN_SERVICE" "$PLAN_KEEP")
+PLAN=$(printf '%s' "$FILES_JSON" | gds_plan "$PLAN_SERVICE" "$PLAN_KEEP" "$PROTECTED")
 
 python3 -c '
 import sys
@@ -324,10 +326,10 @@ archives = [r for r in rows if r[1] == "archive"]
 orphans = [r for r in rows if r[1] == "orphan"]
 if not archives and not orphans:
     print("-" * 118); print(" No snapshot files found on Google Drive."); print("-" * 118); sys.exit(0)
-fmt = "{:<4} | {:<18} | {:<52} | {:<7} | {:<10} | {:<19}"
-print("=" * 118)
-print(fmt.format("No", "Action", "Snapshot File Name", "SHA256", "Size", "Created At").replace("{:<18}".format("Action"), "{:<9}".format("Action")))
-print("-" * 118)
+fmt = "{:<4} | {:<18} | {:<52} | {:<7} | {:<9} | {:<10} | {:<19}"
+print("=" * 130)
+print(fmt.format("No", "Action", "Snapshot File Name", "SHA256", "Drill", "Size", "Created At").replace("{:<18}".format("Action"), "{:<9}".format("Action")))
+print("-" * 130)
 tot = keep_b = del_b = 0
 for i, r in enumerate(archives, 1):
     try: b = int(r[4] or 0)
@@ -337,18 +339,21 @@ for i, r in enumerate(archives, 1):
         action = "\033[0;32m[KEEP]\033[0m"; keep_b += b
     else:
         action = "\033[0;31m[DELETE]\033[0m"; del_b += b
-    print(fmt.format(i, action, r[3], "yes" if r[7] == "yes" else "missing", fmt_size(r[4]), fmt_date(r[5])))
+    drill = {"yes": "passed", "protected": "passed*"}.get(r[8] if len(r) > 8 else "", "-")
+    print(fmt.format(i, action, r[3], "yes" if r[7] == "yes" else "missing", drill, fmt_size(r[4]), fmt_date(r[5])))
 for r in orphans:
-    print(fmt.format("-", "\033[0;31m[DELETE]\033[0m", r[3], "orphan", fmt_size(r[4]), fmt_date(r[5])))
-print("=" * 118)
+    print(fmt.format("-", "\033[0;31m[DELETE]\033[0m", r[3], "leftover", "", fmt_size(r[4]), fmt_date(r[5])))
+print("=" * 130)
+if any(len(r) > 8 and r[8] == "protected" for r in archives):
+    print("passed* = kept beyond the limit: newest snapshot that passed a restore drill")
 kept = sum(1 for r in archives if r[0] == "keep")
 dele = len(archives) - kept
-side = sum(1 for r in rows if r[1] == "sidecar")
+side = sum(1 for r in rows if r[1] in ("sidecar", "validation"))
 missing = sum(1 for r in archives if r[7] != "yes")
 if list_only:
     print("Total: %d snapshot(s) | Total Size: %s | Without checksum file: %d" % (len(archives), fmt_size(tot), missing))
 else:
-    print("Total: %d snapshot(s) (%s) | Keeping: %d (%s) | Scheduled to delete: %d (%s) + %d checksum file(s) + %d orphan checksum file(s)"
+    print("Total: %d snapshot(s) (%s) | Keeping: %d (%s) | Scheduled to delete: %d (%s) + %d related file(s) + %d leftover file(s)"
           % (len(archives), fmt_size(tot), kept, fmt_size(keep_b), dele, fmt_size(del_b), side, len(orphans)))
 ' "$LIST_ONLY" <<< "$PLAN"
 
@@ -358,6 +363,10 @@ fi
 
 DELETE_ARCHIVES=$(printf '%s\n' "$PLAN" | awk -F'\t' '$1=="delete" && $2=="archive"' | grep -c . || true)
 DELETE_OTHERS=$(printf '%s\n' "$PLAN" | awk -F'\t' '$1=="delete" && $2!="archive"' | grep -c . || true)
+
+if [ -n "$PROTECTED" ]; then
+  log_info "Also keeping $(echo "$PROTECTED" | tr '\n' ' ')- the newest snapshot(s) that passed a restore drill."
+fi
 
 if [ "$DELETE_ARCHIVES" -eq 0 ] && [ "$DELETE_OTHERS" -eq 0 ]; then
   echo ""
@@ -373,7 +382,7 @@ if [ "$DRY_RUN" = true ]; then
 fi
 
 if [ "$FORCE" = false ]; then
-  echo -ne "${COLOR_WARN}Are you sure you want to delete $DELETE_ARCHIVES older snapshot(s) and $DELETE_OTHERS checksum file(s) from Google Drive? [y/N]: ${COLOR_RESET}"
+  echo -ne "${COLOR_WARN}Are you sure you want to delete $DELETE_ARCHIVES older snapshot(s) and $DELETE_OTHERS related file(s) from Google Drive? [y/N]: ${COLOR_RESET}"
   read -r confirmation
   if [[ ! "$confirmation" =~ ^[Yy]$ ]]; then
     log_info "Cleanup operation aborted by user."
@@ -381,15 +390,15 @@ if [ "$FORCE" = false ]; then
   fi
 fi
 
-log_info "Deleting $DELETE_ARCHIVES old snapshot(s) and $DELETE_OTHERS checksum file(s) from Google Drive..."
+log_info "Deleting $DELETE_ARCHIVES old snapshot(s) and $DELETE_OTHERS related file(s) (.sha256 / .validated.json) from Google Drive..."
 ACCESS_TOKEN=$(resolve_access_token "$ACCESS_TOKEN")
 SUMMARY=$(printf '%s\n' "$PLAN" | gds_apply_plan "$ACCESS_TOKEN" "$GDRIVE_FOLDER_ID")
 read -r DELETED_ARCHIVES DELETED_SIDECARS FAILED_COUNT <<< "$SUMMARY"
 
 echo ""
 if [ "${FAILED_COUNT:-0}" -eq 0 ]; then
-  log_success "Retention cleanup completed successfully. Deleted $DELETED_ARCHIVES snapshot(s) and $DELETED_SIDECARS checksum file(s)."
+  log_success "Retention cleanup completed successfully. Deleted $DELETED_ARCHIVES snapshot(s) and $DELETED_SIDECARS related file(s)."
 else
-  log_warn "Retention cleanup finished with warnings. Deleted: $DELETED_ARCHIVES snapshot(s), $DELETED_SIDECARS checksum file(s). Failed: $FAILED_COUNT."
+  log_warn "Retention cleanup finished with warnings. Deleted: $DELETED_ARCHIVES snapshot(s), $DELETED_SIDECARS related file(s). Failed: $FAILED_COUNT."
   log_info "If deletions failed, please ensure the Service Account has Editor/Content Manager permissions on the Google Drive folder."
 fi
