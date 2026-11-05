@@ -88,6 +88,15 @@ function append_sudoers_rule() {
     echo "$rule_content" >> "$output_file"
     log_info "Added sudoers rule for '$user': $script_path"
   fi
+
+  local sbin_path="/usr/local/sbin/$SCRIPT_NAME"
+  if [ -e "$sbin_path" ] || [ -L "$sbin_path" ]; then
+    local sbin_rule="$user ALL=(root) NOPASSWD: $sbin_path"
+    if ! grep -qF "$sbin_rule" "$output_file"; then
+      echo "$sbin_rule" >> "$output_file"
+      log_info "Added sudoers rule for '$user': $sbin_path"
+    fi
+  fi
 }
 
 function main() {
