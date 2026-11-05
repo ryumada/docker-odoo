@@ -13,6 +13,7 @@ context: Root Repository
 ## Core Checklist
 - 5-Line Signatures mandatory for all files.
 - No browser testing (use logs and build status).
+- Run `./scripts/generate_map.sh` after file/knowledge updates (syncs `REPO_MAP.md` and Graphify knowledge graph).
 
 ## Example
 ```yaml

@@ -319,3 +319,14 @@ executeCommand \
     "$finalize_cmd" \
     "Repository Map successfully created at: ${OUTPUT_FILE}" \
     "Output file verification failed."
+
+# 6. Update Graphify Knowledge Graph (if initialized)
+# ------------------------------------------------------------------------------
+if command -v graphify &>/dev/null && [ -d "${PROJECT_ROOT}/graphify-out" ]; then
+    log_info "Starting: Updating Graphify knowledge graph..."
+    if graphify update "${PROJECT_ROOT}" >/dev/null 2>&1; then
+        log_success "Graphify knowledge graph updated successfully."
+    else
+        log_warn "Graphify update exited with warning (non-fatal)."
+    fi
+fi

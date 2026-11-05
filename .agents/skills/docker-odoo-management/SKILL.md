@@ -71,6 +71,19 @@ docker compose exec odoo odoo-shell <database>
 - **Bash Syntax Guardrails**: Never prefix function declarations with `local` (`local fn() { ... }` is invalid in bash).
 - **JSON-Clean Outputs**: In CLI scripts with `JSON_MODE=true`, redirect verbose commands (`rsync`, `ssh` logs) to `>&2` to protect JSON stdout.
 
+### Filestore Optimization & Safe Pruning
+- **Rsync Compression**: Never use `-z` (`--compress`) when synchronizing Odoo filestore over `rsync`. Attachments (PDF, images, documents) are already compressed; gzip pegs a single CPU core at 100% and drastically throttles transfer throughput.
+- **SHA1 Deduplication Invariant**: Odoo filestores store files by SHA1 hash (`store_fname`). Multiple `ir_attachment` records (e.g., a chatter message and an official invoice) may reference the same physical file. Never exclude or delete a physical file unless **all** referencing attachment records belong to excludable categories (`bool_and(category IN (...))`).
+- **Remote Tool Validation**: When offloading packaging or compression to a secondary VPS, validate dependencies (`7z`, `zstd`) on the executing machine rather than failing pre-emptively on the source host.
+
+### Cross-VPS Deployments, Helpers & Dual-Path Sudoers
+- **Cross-VPS Helper Requirements**: Cross-VPS operations (e.g., `deploy_release_candidate`) require helper utilities (`dump_database-$SERVICE`, `export_filestore-$SERVICE`) to be installed on the **Production VPS**, not merely the initiating development/staging environment.
+- **Dual-Path Sudoers Rules**: Always configure passwordless sudoers rules for both the repository path (`<path>/scripts/<name>.sh`) and the binary symlink (`/usr/local/sbin/<name>`). Scripts invoked via PATH or `/usr/local/sbin/` will fail with `sudo: a password is required` if only the repository path is whitelisted.
+- **Multi-User Production Access**: When a non-owner SSH user (e.g. `devops`) interacts with a production deployment owned by another user (e.g. `devopsadmin`):
+  1. Add the SSH user to the owner's group: `sudo usermod -aG <owner_group> <ssh_user>`.
+  2. Ensure parent directory traversal: `chmod g+rx /home/<owner>` and `chmod -R g+rX <path_to_odoo>`.
+  3. Grant passwordless sudoers rules for the helper commands in `/etc/sudoers.d/`.
+
 ## Multi-Deployment Architecture
 
 - **Toggle**: Controlled via `ENABLE_MULTI_DEPLOYMENT=Y` in root `.env`. Default is `N` (single-deployment mode).

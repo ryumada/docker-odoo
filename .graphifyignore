@@ -1,0 +1,31 @@
+# Category: Config
+# File: .graphifyignore
+# Description: Ignore rules for Graphify knowledge graph indexing.
+# Usage: Auto-loaded by graphify during scan and update.
+# Maintainer: ryumada
+
+# Dependencies and Upstream Source
+odoo-base/
+fonts/
+node_modules/
+__pycache__/
+
+# Secrets and Sensitive Data
+.secrets/
+*.key
+*.pub
+*.pem
+id_ed25519*
+
+# Temporary and Backups
+.odoo-tmp/
+.odoo-snapshots/
+*.sql
+*.sql.zst
+*.zip
+*.tar
+*.tar.zst
+*.log
+
+# Graphify Internal Output & Cache
+graphify-out/
