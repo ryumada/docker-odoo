@@ -71,12 +71,13 @@ VALIDATOR_DIR=$(cfg VALIDATOR_WORK_DIR "$HOME/.odoo-validator")
 VALIDATOR_DISK_RESERVE_GB=$(cfg VALIDATOR_DISK_RESERVE_GB 5)
 VALIDATOR_WATCHDOG_INTERVAL=$(cfg VALIDATOR_WATCHDOG_INTERVAL 15)
 VALIDATOR_POSTGRES_IMAGE=$(cfg VALIDATOR_POSTGRES_IMAGE "")
-VALIDATOR_PG_CPUS=$(cfg VALIDATOR_PG_CPUS 2)
+VALIDATOR_PG_CPUS=$(cfg VALIDATOR_PG_CPUS auto)
 VALIDATOR_PG_MEMORY=$(cfg VALIDATOR_PG_MEMORY 2g)
 VALIDATOR_FILESTORE_MAX_MISSING_PCT=$(cfg VALIDATOR_FILESTORE_MAX_MISSING_PCT 1)
 VALIDATOR_QUEUE_TIMEOUT=$(cfg VALIDATOR_QUEUE_TIMEOUT 43200)
 VALIDATOR_GIT_TIMEOUT=$(cfg VALIDATOR_GIT_TIMEOUT 300)
 VALIDATOR_GIT_ALLOW_PROTOCOL=$(cfg VALIDATOR_GIT_ALLOW_PROTOCOL "https:ssh")
+VALIDATOR_PULL_POLICY=$(cfg VALIDATOR_PULL_POLICY always)
 GDRIVE_ACCESS_TOKEN=$(cfg GDRIVE_ACCESS_TOKEN "")
 GDRIVE_SERVICE_ACCOUNT_KEY=$(cfg GDRIVE_SERVICE_ACCOUNT_KEY "")
 GDRIVE_FOLDER_ID=$(cfg GDRIVE_FOLDER_ID "")
@@ -116,7 +117,9 @@ Options:
 Settings (environment or .env): VALIDATOR_WORK_DIR, VALIDATOR_DISK_RESERVE_GB,
 VALIDATOR_WATCHDOG_INTERVAL, VALIDATOR_POSTGRES_IMAGE, VALIDATOR_PG_CPUS, VALIDATOR_PG_MEMORY,
 VALIDATOR_FILESTORE_MAX_MISSING_PCT, VALIDATOR_QUEUE_TIMEOUT, VALIDATOR_GIT_TIMEOUT,
-VALIDATOR_GIT_ALLOW_PROTOCOL.
+VALIDATOR_GIT_ALLOW_PROTOCOL, VALIDATOR_PULL_POLICY.
+Prefer GDRIVE_SERVICE_ACCOUNT_KEY in .env over --token: command-line arguments are visible to
+other users of this host.
 
 Exit codes: 0 passed, 1 snapshot broken, 2 could not finish (nothing proven),
 3 usage or configuration error, 4 passed but the --publish record could not be written.
@@ -162,7 +165,8 @@ fi
 bad_settings=()
 [[ "$VALIDATOR_DISK_RESERVE_GB" =~ ^[0-9]+$ ]] || bad_settings+=("VALIDATOR_DISK_RESERVE_GB='$VALIDATOR_DISK_RESERVE_GB' (whole GB, e.g. 5)")
 [[ "$VALIDATOR_WATCHDOG_INTERVAL" =~ ^[1-9][0-9]*$ ]] || bad_settings+=("VALIDATOR_WATCHDOG_INTERVAL='$VALIDATOR_WATCHDOG_INTERVAL' (seconds, at least 1)")
-[[ "$VALIDATOR_PG_CPUS" =~ ^[0-9]+(\.[0-9]+)?$ ]] || bad_settings+=("VALIDATOR_PG_CPUS='$VALIDATOR_PG_CPUS' (e.g. 2 or 1.5)")
+[[ "$VALIDATOR_PG_CPUS" =~ ^(auto|[0-9]+(\.[0-9]+)?)$ ]] || bad_settings+=("VALIDATOR_PG_CPUS='$VALIDATOR_PG_CPUS' (auto, or e.g. 2 or 1.5)")
+[[ "$VALIDATOR_PULL_POLICY" =~ ^(always|missing)$ ]] || bad_settings+=("VALIDATOR_PULL_POLICY='$VALIDATOR_PULL_POLICY' (always or missing)")
 [[ "$VALIDATOR_PG_MEMORY" =~ ^[0-9]+[bkmgBKMG]?$ ]] || bad_settings+=("VALIDATOR_PG_MEMORY='$VALIDATOR_PG_MEMORY' (e.g. 2g)")
 [[ "$VALIDATOR_FILESTORE_MAX_MISSING_PCT" =~ ^[0-9]+(\.[0-9]+)?$ ]] || bad_settings+=("VALIDATOR_FILESTORE_MAX_MISSING_PCT='$VALIDATOR_FILESTORE_MAX_MISSING_PCT' (a number, e.g. 1 or 0.5)")
 [[ "$VALIDATOR_QUEUE_TIMEOUT" =~ ^[0-9]+$ ]] || bad_settings+=("VALIDATOR_QUEUE_TIMEOUT='$VALIDATOR_QUEUE_TIMEOUT' (seconds)")
@@ -171,6 +175,11 @@ bad_settings=()
 if [ ${#bad_settings[@]} -gt 0 ]; then
   for b in "${bad_settings[@]}"; do log_error "Invalid setting: $b"; done
   exit 3
+fi
+if [ "$VALIDATOR_PG_CPUS" = auto ]; then
+  # Half of this host's cores (at least 1), so a drill never takes every CPU from snapshots
+  VALIDATOR_PG_CPUS=$(( $(nproc 2>/dev/null || echo 2) / 2 ))
+  [ "$VALIDATOR_PG_CPUS" -ge 1 ] || VALIDATOR_PG_CPUS=1
 fi
 
 missing=()
@@ -200,7 +209,7 @@ ARCHIVE="" ARCHIVE_FD="" AR="" SIDECAR="" ARCHIVE_NAME="" ARCHIVE_SHA="" SERVICE
 DRIVE_TOKEN="" GCS_GENERATION=""
 DUMP_MEMBER="" MANIFEST_MEMBER="" GIT_HASHES_MEMBER="" SECRETS_USER_MEMBER="" FILESTORE_PREFIX=""
 ODOO_VERSION="" PG_IMAGE="" WATCHDOG_PID="" CHILD_PID="" ABORT_REASON="" RESULT=""
-FAILED=0 ERRORS=0 WARNED=0 PUBLISHED="" DB_STATS="{}"
+FAILED=0 ERRORS=0 WARNED=0 PUBLISHED="" DB_STATS="{}" PULL_WARNING=""
 
 mkdir -p "$WORK" "$VALIDATOR_DIR/reports" || { log_error "Cannot create $WORK"; exit 3; }
 chmod 700 "$VALIDATOR_DIR" "$VALIDATOR_DIR/runs" "$WORK" 2>/dev/null || true
@@ -482,6 +491,12 @@ fetch_snapshot() {
       GCS_GENERATION=$(gcloud storage objects describe "$SOURCE_REF" --format='value(generation)' 2>/dev/null)
       [[ "$GCS_GENERATION" =~ ^[0-9]+$ ]] || { record_stage "fetch" "error" "$(since "$t0")" "Could not read $(redact "$SOURCE_REF") from Google Cloud Storage"; finish error; }
       ARCHIVE_NAME=$(basename "$SOURCE_REF"); ARCHIVE="$WORK/$ARCHIVE_NAME"
+      size=$(gcloud storage objects describe "$SOURCE_REF#$GCS_GENERATION" --format='value(size)' 2>/dev/null)
+      free=$(free_bytes "$WORK")
+      if [[ "$size" =~ ^[0-9]+$ ]] && [ -n "$free" ] && [ $((size + RESERVE_BYTES)) -gt "$free" ]; then
+        record_stage "fetch" "error" "$(since "$t0")" "Not enough disk to download $ARCHIVE_NAME ($(human "$size") + reserve $(human "$RESERVE_BYTES") needed, $(human "$free") free)"
+        finish error
+      fi
       log_info "Downloading $(redact "$SOURCE_REF") (generation $GCS_GENERATION)..."
       run_bg gcloud storage cp "$SOURCE_REF#$GCS_GENERATION" "$ARCHIVE" >/dev/null 2>&1 \
         || { record_stage "fetch" "error" "$(since "$t0")" "Download of $(redact "$SOURCE_REF")#$GCS_GENERATION failed"; finish error; }
@@ -710,37 +725,60 @@ for b in d.get("bundled_directories", []):
 
 check_disk() {
   # The restored database lives in a Docker volume; the archive in the work folder.
-  local t0 dump_bytes need_db free_db
+  # Estimate: the production database size from the manifest (newer snapshots), else a factor of
+  # the dump size: a plain SQL dump restores to about 2.5x its size with Odoo's indexes, a
+  # compressed custom-format dump to several times more.
+  local t0 dump_bytes need_db free_db man_size head5 how
   t0=$(now_s)
   dump_bytes=$(awk -F'\t' -v n="$DUMP_MEMBER" '$2==n {print $1; exit}' "$WORK/members.tsv")
   [[ "$dump_bytes" =~ ^[0-9]+$ ]] || dump_bytes=0
-  need_db=$(( dump_bytes * 3 / 2 ))
+  man_size=$(python3 -c '
+import json, sys
+m = json.load(open(sys.argv[1]))
+v = ((m.get("sudodevops") or {}).get("postgres") or {}).get("db_size_bytes")
+print(int(v) if isinstance(v, (int, float)) and v > 0 else "")
+' "$WORK/manifest.json" 2>/dev/null)
+  head5=$( { tar -xOf "$AR" -I zstd --occurrence=1 "$DUMP_MEMBER" 2>/dev/null || true; } | head -c 5)
+  if [ -n "$man_size" ]; then
+    need_db=$(( man_size * 6 / 5 )); how="manifest database size x1.2"
+  elif [ "$head5" = "PGDMP" ]; then
+    need_db=$(( dump_bytes * 6 )); how="custom-format dump x6"
+  else
+    need_db=$(( dump_bytes * 5 / 2 )); how="plain dump x2.5"
+  fi
   free_db=$(free_bytes "$DOCKER_ROOT")
   if [ -n "$free_db" ] && [ $((need_db + RESERVE_BYTES)) -gt "$free_db" ]; then
-    record_stage "disk" "error" "$(since "$t0")" "{\"message\": \"Not enough disk for the restored database: need $(human "$need_db") + reserve $(human "$RESERVE_BYTES"), $(human "$free_db") free in $DOCKER_ROOT\"}"
+    record_stage "disk" "error" "$(since "$t0")" "{\"message\": \"Not enough disk for the restored database: need $(human "$need_db") ($how) + reserve $(human "$RESERVE_BYTES"), $(human "$free_db") free in $DOCKER_ROOT\"}"
     finish error
   fi
-  record_stage "disk" "pass" "$(since "$t0")" "{\"estimated_db_bytes\": $need_db, \"free_bytes\": ${free_db:-0}, \"reserve_bytes\": $RESERVE_BYTES, \"path\": $(jstr "$DOCKER_ROOT")}"
+  record_stage "disk" "pass" "$(since "$t0")" "{\"estimated_db_bytes\": $need_db, \"estimate\": $(jstr "$how"), \"free_bytes\": ${free_db:-0}, \"reserve_bytes\": $RESERVE_BYTES, \"path\": $(jstr "$DOCKER_ROOT")}"
 }
 
 pg_major_of_dump() {
-  # From the manifest (newer snapshots) or the "Dumped from database version" header of dump.sql.
-  local v
-  v=$(python3 -c '
+  # The throwaway server must understand everything in dump.sql: use the newer of the version
+  # the database ran ("Dumped from") and the pg_dump that wrote it ("Dumped by"), which can be
+  # newer and emit newer syntax. The manifest (newer snapshots) can raise it further.
+  local head v_from v_by v_man best=0 v
+  head=$( { tar -xOf "$AR" -I zstd --occurrence=1 "$DUMP_MEMBER" 2>/dev/null || true; } | head -c 65536 | tr -d '\0')
+  v_from=$(grep -a -m1 -o 'Dumped from database version [0-9.]*' <<< "$head" | awk '{print $NF}')
+  v_by=$(grep -a -m1 -o 'Dumped by pg_dump version [0-9.]*' <<< "$head" | awk '{print $NF}')
+  v_man=$(python3 -c '
 import json, sys
 m = json.load(open(sys.argv[1]))
 print(((m.get("sudodevops") or {}).get("postgres") or {}).get("server_version", ""))
 ' "$WORK/manifest.json" 2>/dev/null)
-  if [ -z "$v" ]; then
-    v=$( { tar -xOf "$AR" -I zstd --occurrence=1 "$DUMP_MEMBER" 2>/dev/null || true; } | head -c 65536 | grep -a -m1 -o 'Dumped from database version [0-9.]*' | awk '{print $NF}')
-  fi
-  v="${v%%.*}"
-  [[ "$v" =~ ^[0-9]{1,3}$ ]] && echo "$v"
+  for v in "$v_from" "$v_by" "$v_man"; do
+    v="${v%%.*}"
+    [[ "$v" =~ ^[0-9]{1,3}$ ]] && [ "$v" -gt "$best" ] && best="$v"
+  done
+  [ "$best" -gt 0 ] && echo "$best"
 }
 
 pg_exec() { docker exec -i "$PG_CONTAINER" psql -U postgres -X -v ON_ERROR_STOP=1 "$@"; }
 pg_query() { docker exec "$PG_CONTAINER" psql -U postgres -X -tA -F $'\t' -d "$1" -c "$2" 2>/dev/null; }
-pg_alive() { docker exec "$PG_CONTAINER" pg_isready -U postgres -q >/dev/null 2>&1; }
+# Over TCP: the image's temporary init server only listens on the socket, so a socket check
+# can succeed just before that server shuts down again.
+pg_alive() { docker exec "$PG_CONTAINER" pg_isready -h 127.0.0.1 -U postgres -q >/dev/null 2>&1; }
 
 restore_plain() {
   # Streams dump.sql into psql (stops at the first SQL error) and keeps its last 8 KiB, so the
@@ -762,9 +800,18 @@ stage_database() {
   t0=$(now_s)
   major=$(pg_major_of_dump)
   PG_IMAGE="${VALIDATOR_POSTGRES_IMAGE:-postgres:${major:-16}}"
-  if ! docker image inspect "$PG_IMAGE" >/dev/null 2>&1; then
+  # Refresh the tag on every drill: an old cached postgres:N can be too old for newer dumps
+  if [ "$VALIDATOR_PULL_POLICY" = always ] || ! docker image inspect "$PG_IMAGE" >/dev/null 2>&1; then
     log_info "[database] Pulling $PG_IMAGE..."
-    run_bg docker pull -q "$PG_IMAGE" >/dev/null 2>&1 || { record_stage "database" "error" "$(since "$t0")" "Could not pull $PG_IMAGE"; finish error; }
+    if ! run_bg docker pull -q "$PG_IMAGE" >/dev/null 2>&1; then
+      if docker image inspect "$PG_IMAGE" >/dev/null 2>&1; then
+        log_warn "[database] Could not refresh $PG_IMAGE; using the copy already on this host."
+        PULL_WARNING="could not refresh $PG_IMAGE, used the cached copy"
+      else
+        record_stage "database" "error" "$(since "$t0")" "Could not pull $PG_IMAGE"
+        finish error
+      fi
+    fi
   fi
 
   # Internal network: the drill containers cannot reach anything outside the host
@@ -772,10 +819,16 @@ stage_database() {
     || { record_stage "database" "error" "$(since "$t0")" "Could not create Docker network $DRILL_NET"; finish error; }
   pg_pass=$(head -c 24 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | head -c 24)
   log_info "[database] Starting throwaway $PG_IMAGE container..."
+  # The drill's database is thrown away, so durability is switched off to spare the disk, and the
+  # container is the first thing the kernel kills under memory pressure (never a snapshot job).
   if ! docker run -d --name "$PG_CONTAINER" --label odoo-drill="$RUN_ID" --network "$DRILL_NET" \
-       --cpus "$VALIDATOR_PG_CPUS" --memory "$VALIDATOR_PG_MEMORY" \
+       --cpus "$VALIDATOR_PG_CPUS" --memory "$VALIDATOR_PG_MEMORY" --memory-swap "$VALIDATOR_PG_MEMORY" \
+       --oom-score-adj 1000 --pids-limit 512 \
        -e POSTGRES_PASSWORD="$pg_pass" -e PGDATA=/var/lib/postgresql/data/pgdata \
-       --mount type=volume,dst=/var/lib/postgresql/data "$PG_IMAGE" >/dev/null 2>&1; then
+       --mount type=volume,dst=/var/lib/postgresql/data "$PG_IMAGE" \
+       -c fsync=off -c synchronous_commit=off -c full_page_writes=off \
+       -c wal_level=minimal -c max_wal_senders=0 -c max_wal_size=4GB -c checkpoint_timeout=30min \
+       -c autovacuum=off >/dev/null 2>&1; then
     record_stage "database" "error" "$(since "$t0")" "Could not start $PG_IMAGE"
     finish error
   fi
@@ -788,7 +841,18 @@ stage_database() {
   [ -n "$SECRETS_USER_MEMBER" ] && db_user=$(tar -xOf "$AR" -I zstd --occurrence=1 "$SECRETS_USER_MEMBER" 2>/dev/null | tr -d '[:space:]')
   db_user="${db_user:-odoo}"
   dbname="drill_$(tr -c 'a-zA-Z0-9_\n' '_' <<< "$SERVICE" | head -c 40)"
-  pg_exec -q -d postgres -c "CREATE ROLE $(python3 -c 'import sys; print("\"" + sys.argv[1].replace("\"", "\"\"") + "\"")' "$db_user") NOLOGIN;" >/dev/null 2>&1 || true
+  local role_sql
+  role_sql=$(python3 -c '
+import sys
+q = "\"" + sys.argv[1].replace("\"", "\"\"") + "\""
+sq = chr(39)
+lit = sq + sys.argv[1].replace(sq, sq + sq) + sq
+print("DO $do$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = %s) THEN CREATE ROLE %s NOLOGIN; END IF; END $do$;" % (lit, q))
+' "$db_user")
+  if ! pg_exec -q -d postgres -c "$role_sql" >/dev/null 2>"$WORK/role.err"; then
+    record_stage "database" "error" "$(since "$t0")" "Could not create role $db_user: $(tr '\n' ' ' < "$WORK/role.err")"
+    finish error
+  fi
   pg_exec -q -d postgres -c "CREATE DATABASE \"$dbname\";" >/dev/null 2>"$WORK/createdb.err" \
     || { record_stage "database" "error" "$(since "$t0")" "CREATE DATABASE failed: $(tr '\n' ' ' < "$WORK/createdb.err")"; finish error; }
 
@@ -854,7 +918,9 @@ except Exception: d={}
 d["message"]="Restored, but not a usable Odoo database: " + sys.argv[2]; print(json.dumps(d))' "$stats" "${verdict:-unknown}")"
     finish fail
   fi
-  record_stage "database" "pass" "$(since "$t0")" "$(python3 -c 'import json,sys; d=json.loads(sys.argv[1]); d["image"]=sys.argv[2]; d["restore_warnings"]=int(sys.argv[3] or 0); print(json.dumps(d))' "$stats" "$PG_IMAGE" "$(grep -a -c 'WARNING' "$WORK/restore.log" || true)")"
+  record_stage "database" "$([ -n "$PULL_WARNING" ] && echo warn || echo pass)" "$(since "$t0")" "$(python3 -c 'import json,sys; d=json.loads(sys.argv[1]); d["image"]=sys.argv[2]; d["restore_warnings"]=int(sys.argv[3] or 0)
+if sys.argv[4]: d["message"]=sys.argv[4]
+print(json.dumps(d))' "$stats" "$PG_IMAGE" "$(grep -a -c 'WARNING' "$WORK/restore.log" || true)" "$PULL_WARNING")"
   echo "$dbname" > "$WORK/dbname"
 }
 
@@ -910,11 +976,22 @@ print(json.dumps({"message": msg, "attachments": total, "files_in_archive": len(
 }
 
 publish_result() {
-  local t0 rec current
+  local t0 rec current checks git_status
   t0=$(now_s)
   rec="$WORK/validated.json"
+  # A record must say what was really proven. The git check is mandatory for a record: without it,
+  # nobody knows whether the code this database needs can still be restored.
+  checks=$(python3 -c '
+import json, sys
+print(json.dumps({s["name"]: s["status"] for s in map(json.loads, filter(str.strip, open(sys.argv[1])))
+                  if s["name"] not in ("publish", "revoke", "fetch", "disk")}))' "$STAGES_FILE")
+  git_status=$(python3 -c 'import json,sys; print(json.loads(sys.argv[1]).get("git", ""))' "$checks")
+  if [ "$git_status" != pass ]; then
+    record_stage "publish" "error" "$(since "$t0")" "Not publishing: the git check did not run (status '${git_status:-none}'), so this drill does not prove the snapshot's code can be restored"
+    return
+  fi
   if ! snap_write_validation_record "$rec" "$ARCHIVE_NAME" "$ARCHIVE_SHA" \
-      "{\"level\": \"database\", \"run_id\": \"$RUN_ID\", \"odoo_version\": $(jstr "$ODOO_VERSION"), \"postgres_image\": $(jstr "$PG_IMAGE"), \"drill_seconds\": $(( $(date +%s) - START_EPOCH ))$([ -n "$GCS_GENERATION" ] && echo ", \"gcs_generation\": \"$GCS_GENERATION\""), \"database\": $DB_STATS}"; then
+      "{\"level\": \"database\", \"run_id\": \"$RUN_ID\", \"checks\": $checks, \"odoo_version\": $(jstr "$ODOO_VERSION"), \"postgres_image\": $(jstr "$PG_IMAGE"), \"drill_seconds\": $(( $(date +%s) - START_EPOCH ))$([ -n "$GCS_GENERATION" ] && echo ", \"gcs_generation\": \"$GCS_GENERATION\""), \"database\": $DB_STATS}"; then
     record_stage "publish" "error" "$(since "$t0")" "Could not write the validation record"
     return
   fi
