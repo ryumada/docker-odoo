@@ -111,7 +111,7 @@ import json, socket, sys, datetime
 out, name, sha = sys.argv[1], sys.argv[2], sys.argv[3]
 extra = json.loads(sys.argv[4]) if len(sys.argv) > 4 and sys.argv[4] else {}
 rec = {"schema": 1, "result": "pass", "archive": name, "sha256": sha,
-       "validated_at": datetime.datetime.utcnow().replace(microsecond=0).isoformat() + "Z",
+       "validated_at": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
        "validator_host": socket.gethostname()}
 rec.update({k: v for k, v in extra.items() if k not in ("schema", "result", "archive", "sha256")})
 with open(out, "w") as f:
@@ -138,6 +138,75 @@ sys.exit(0 if ok else 1)
 
 gds_api_base() { echo "${GDS_API_BASE:-https://www.googleapis.com}"; }
 
+gds_curl() {
+  # Args: token curl-args... Runs curl with the bearer token read from a private (0600) header
+  # file, so the token never appears on a command line where other users could see it in ps.
+  local token="$1" hf rc
+  shift
+  hf=$(umask 077; mktemp) || return 1
+  printf 'Authorization: Bearer %s\n' "$token" > "$hf"
+  curl -H @"$hf" "$@"
+  rc=$?
+  rm -f "$hf"
+  return $rc
+}
+
+gds_token_from_sa() {
+  # Args: service account key (file path or JSON content). Prints a Drive access token.
+  local sa_input="$1" sa_json_content=""
+  if [ -f "$sa_input" ]; then
+    sa_json_content=$(cat "$sa_input")
+  elif [[ "$(printf '%s' "$sa_input" | tr -d '[:space:]' | head -c 1)" == "{" ]]; then
+    sa_json_content="$sa_input"
+  else
+    # Never print the value: it may be a private key
+    _ss_log error "Service Account key not found: GDRIVE_SERVICE_ACCOUNT_KEY is neither a readable file nor JSON content."
+    return 1
+  fi
+  local client_email token_uri key_pem
+  client_email=$(echo "$sa_json_content" | grep -o '"client_email": *"[^"]*"' | cut -d'"' -f4)
+  token_uri=$(echo "$sa_json_content" | grep -o '"token_uri": *"[^"]*"' | cut -d'"' -f4)
+  [ -z "$token_uri" ] && token_uri="https://oauth2.googleapis.com/token"
+  key_pem=$(echo "$sa_json_content" | grep -o '"private_key": *"[^"]*"' | sed 's/^"private_key": *"//;s/"$//')
+  if [ -z "$client_email" ] || [ -z "$key_pem" ]; then
+    _ss_log error "Could not parse client_email or private_key from Service Account JSON."
+    return 1
+  fi
+  local b64url_cmd='openssl base64 -e -A | tr "+/" "-_" | tr -d "="'
+  local now exp header_b64 claims claims_b64 unsigned_jwt sig_b64
+  now=$(date +%s); exp=$((now + 3600))
+  header_b64=$(echo -n '{"alg":"RS256","typ":"JWT"}' | eval "$b64url_cmd")
+  claims="{\"iss\":\"$client_email\",\"scope\":\"https://www.googleapis.com/auth/drive\",\"aud\":\"$token_uri\",\"exp\":$exp,\"iat\":$now}"
+  claims_b64=$(echo -n "$claims" | eval "$b64url_cmd")
+  unsigned_jwt="${header_b64}.${claims_b64}"
+  sig_b64=$(printf "%s" "$unsigned_jwt" | openssl dgst -sha256 -sign <(printf '%b' "$key_pem") -binary 2>/dev/null | eval "$b64url_cmd")
+  if [ -z "$sig_b64" ]; then
+    _ss_log error "Failed to sign Service Account JWT with openssl."
+    return 1
+  fi
+  # The signed assertion goes through a private file, not the command line
+  local af
+  af=$(umask 077; mktemp) || return 1
+  printf '%s' "${unsigned_jwt}.${sig_b64}" > "$af"
+  curl -s -X POST -d "grant_type=urn:ietf:params:oauth:grant-type:jwt-bearer" \
+    --data-urlencode "assertion@$af" "$token_uri" \
+    | grep -o '"access_token": *"[^"]*"' | cut -d'"' -f4
+  rm -f "$af"
+}
+
+gds_get_token() {
+  # Args: raw_token (string or file) sa_key (file or JSON). Prints an access token;
+  # the service account is preferred because its tokens can always be renewed.
+  local raw="$1" sa="$2"
+  if [ -n "$sa" ]; then
+    gds_token_from_sa "$sa"
+  elif [ -n "$raw" ] && [ -f "$raw" ]; then
+    if grep -q '"type": *"service_account"' "$raw" 2>/dev/null; then gds_token_from_sa "$raw"; else tr -d '\r\n' < "$raw"; echo; fi
+  else
+    echo "$raw"
+  fi
+}
+
 gds_fetch_files() {
   # Args: token folder_id name_prefix. Prints one JSON array of
   # {id, name, size, createdTime, sha256Checksum} for every non-trashed file whose
@@ -150,14 +219,14 @@ gds_fetch_files() {
   tmpdir=$(mktemp -d) || return 1
 
   while :; do
-    local args=(-s -G -H "Authorization: Bearer $token"
+    local args=(-s -G
       --data-urlencode "q=$query"
       --data-urlencode "fields=nextPageToken, files(id, name, size, createdTime, sha256Checksum)"
       --data-urlencode "supportsAllDrives=true"
       --data-urlencode "includeItemsFromAllDrives=true"
       --data-urlencode "pageSize=1000")
     [ -n "$page_token" ] && args+=(--data-urlencode "pageToken=$page_token")
-    if ! resp=$(curl "${args[@]}" "$base/drive/v3/files"); then
+    if ! resp=$(gds_curl "$token" "${args[@]}" "$base/drive/v3/files"); then
       rm -rf "$tmpdir"; echo "Google Drive request failed (curl)" >&2; return 1
     fi
     n=$((n + 1))
@@ -324,16 +393,16 @@ gds_delete_file() {
   # Args: token file_id folder_id. Tries delete, then trash, then removing it from the folder.
   local token="$1" fid="$2" folder="$3" base status
   base=$(gds_api_base)
-  status=$(curl -s -o /dev/null -w "%{http_code}" -X DELETE \
-    -H "Authorization: Bearer $token" "$base/drive/v3/files/${fid}?supportsAllDrives=true")
+  status=$(gds_curl "$token" -s -o /dev/null -w "%{http_code}" -X DELETE \
+    "$base/drive/v3/files/${fid}?supportsAllDrives=true")
   if [ "$status" = "204" ] || [ "$status" = "200" ]; then return 0; fi
-  status=$(curl -s -o /dev/null -w "%{http_code}" -X PATCH \
-    -H "Authorization: Bearer $token" -H "Content-Type: application/json" -d '{"trashed": true}' \
+  status=$(gds_curl "$token" -s -o /dev/null -w "%{http_code}" -X PATCH \
+    -H "Content-Type: application/json" -d '{"trashed": true}' \
     "$base/drive/v3/files/${fid}?supportsAllDrives=true")
   [ "$status" = "200" ] && return 0
   if [ -n "$folder" ]; then
-    status=$(curl -s -o /dev/null -w "%{http_code}" -X PATCH \
-      -H "Authorization: Bearer $token" -H "Content-Type: application/json" -d '{}' \
+    status=$(gds_curl "$token" -s -o /dev/null -w "%{http_code}" -X PATCH \
+      -H "Content-Type: application/json" -d '{}' \
       "$base/drive/v3/files/${fid}?removeParents=${folder}&supportsAllDrives=true")
     [ "$status" = "200" ] && return 0
   fi
@@ -424,7 +493,7 @@ gds_find_by_name() {
   esc=${name//\\/\\\\}; esc=${esc//\'/\\\'}
   query="name = '$esc' and trashed = false"
   [ -n "$folder" ] && query="$query and '$folder' in parents"
-  curl -s -G -H "Authorization: Bearer $token" \
+  gds_curl "$token" -s -G \
     --data-urlencode "q=$query" --data-urlencode "orderBy=createdTime desc" \
     --data-urlencode "fields=files(id)" --data-urlencode "supportsAllDrives=true" \
     --data-urlencode "includeItemsFromAllDrives=true" --data-urlencode "pageSize=1" \
@@ -442,7 +511,7 @@ gds_download() {
   # Args: token file_id dest_path. Returns 0 on HTTP 200.
   local base status
   base=$(gds_api_base)
-  status=$(curl -s -L -w "%{http_code}" -H "Authorization: Bearer $1" \
+  status=$(gds_curl "$1" -s -L -w "%{http_code}" \
     "$base/drive/v3/files/${2}?alt=media&supportsAllDrives=true" -o "$3")
   [ "$status" = "200" ]
 }
@@ -459,7 +528,7 @@ gds_upload_small() {
               "$boundary" "$meta" "$boundary"
             cat "$file"
             printf '\r\n--%s--\r\n' "$boundary"; } | \
-          curl -s -X POST -H "Authorization: Bearer $token" \
+          gds_curl "$token" -s -X POST \
             -H "Content-Type: multipart/related; boundary=$boundary" --data-binary @- \
             "$base/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true&fields=id,name" )
   id=$(printf '%s' "$resp" | python3 -c 'import json,sys
@@ -476,7 +545,7 @@ gds_remote_sha256() {
   # Args: token file_id. Prints Drive's sha256Checksum for the file (empty if not available yet).
   local base
   base=$(gds_api_base)
-  curl -s -G -H "Authorization: Bearer $1" --data-urlencode "fields=sha256Checksum" \
+  gds_curl "$1" -s -G --data-urlencode "fields=sha256Checksum" \
     --data-urlencode "supportsAllDrives=true" "$base/drive/v3/files/$2" | python3 -c '
 import json, sys
 try:

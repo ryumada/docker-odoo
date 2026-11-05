@@ -218,6 +218,49 @@ By default, `download-snapshot.sh` saves the file to `~/<filename>` and creates 
 <details>
 <summary>
 
+# Validate Snapshot
+
+</summary>
+
+Restore drill that proves a snapshot can really be recovered. It runs in throwaway Docker containers on an internal network with no outbound access, and never touches the production server or its database. Run it on the Secondary VPS (or any host with Docker, `zstd` and git access to your repositories).
+
+Checks, in order: checksum (`.sha256`), the whole archive decompresses, required files are present, `manifest.json`, every git repository can be re-cloned at its recorded commit (or is bundled), `dump.sql` restores completely (end-of-dump marker, zero SQL errors) into a matching Postgres version and looks like a usable Odoo database (core tables, users, keys and indexes), and every stored attachment exists in the filestore with the right size.
+
+```bash
+# Drill a local snapshot file
+./scripts/validate-snapshot.sh --file ~/snapshot-docker-odoo.tar.zst
+
+# Drill the newest Google Drive snapshot of a service and record the result next to it
+./scripts/validate-snapshot.sh --drive docker-odoo --publish
+
+# Drill one specific Google Drive snapshot
+./scripts/validate-snapshot.sh --drive docker-odoo --name snapshot-docker-odoo-20261104-010000.tar.zst --publish
+
+# Drill a snapshot in Google Cloud Storage
+./scripts/validate-snapshot.sh --gcs gs://my-bucket/snapshot-docker-odoo.tar.zst --publish
+```
+
+| Exit code | Meaning |
+|---|---|
+| `0` | Passed: the snapshot is recoverable (with `--publish`, the record was written) |
+| `1` | Failed: the snapshot itself is broken |
+| `2` | Could not finish for reasons outside the snapshot (Docker, network, Drive/GCS, unreachable git remote, not enough disk, interrupted). Nothing was proven either way |
+| `3` | Usage or configuration error (for example an invalid `VALIDATOR_*` value) |
+| `4` | Passed, but `--publish` could not write the record, so retention will not protect this snapshot |
+
+- Each run writes a JSON report to `~/.odoo-validator/reports/` (plus `latest-<service>.json`).
+- With `--publish`, a passed drill uploads `<snapshot>.validated.json` next to the snapshot, and retention then keeps the newest validated snapshot even beyond `MAX_SNAPSHOT_BACKUPS`. The record lists the result of every check. It is only written when the git check really ran (not with `--no-git-check` or without `git_hashes.json`); otherwise the drill exits `4`. A **failed** drill removes an existing record, so a snapshot that no longer restores stops being protected. Exit code `2` never touches records.
+- Prefer `GDRIVE_SERVICE_ACCOUNT_KEY` in `.env` over `--token`: command-line arguments are visible to other users of the host. Drive tokens are never put on command lines by the scripts themselves.
+- The drill reads one fixed copy of the snapshot: the archive is held open for the whole run, and a GCS object is downloaded at a fixed generation. If the snapshot is replaced while the drill runs, no record is written for the new file.
+- Git remotes come from the snapshot, so they are treated as untrusted: only real commit ids are accepted, and only the transports in `VALIDATOR_GIT_ALLOW_PROTOCOL` (default `https:ssh`) are used. The validator's user needs read access (deploy key or GitLab Reporter) to every repository.
+- One drill runs at a time per host (queue `odoo-snapshot-validator`, separate from the snapshot queue), at the lowest CPU and I/O priority. `VALIDATOR_DISK_RESERVE_GB` (default 5) keeps free disk for snapshots: a drill does not start below it and is stopped if free space falls below it while running. Leftovers of a drill that was killed are removed when the next drill starts.
+- This is phase 1 of the validator: it does not boot Odoo yet. Reports and records carry `"level": "database"`.
+
+</details>
+
+<details>
+<summary>
+
 # Upload Snapshot
 
 </summary>
