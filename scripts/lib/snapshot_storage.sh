@@ -111,7 +111,7 @@ import json, socket, sys, datetime
 out, name, sha = sys.argv[1], sys.argv[2], sys.argv[3]
 extra = json.loads(sys.argv[4]) if len(sys.argv) > 4 and sys.argv[4] else {}
 rec = {"schema": 1, "result": "pass", "archive": name, "sha256": sha,
-       "validated_at": datetime.datetime.utcnow().replace(microsecond=0).isoformat() + "Z",
+       "validated_at": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
        "validator_host": socket.gethostname()}
 rec.update({k: v for k, v in extra.items() if k not in ("schema", "result", "archive", "sha256")})
 with open(out, "w") as f:
@@ -137,6 +137,56 @@ sys.exit(0 if ok else 1)
 # --- Google Drive ------------------------------------------------------------
 
 gds_api_base() { echo "${GDS_API_BASE:-https://www.googleapis.com}"; }
+
+gds_token_from_sa() {
+  # Args: service account key (file path or JSON content). Prints a Drive access token.
+  local sa_input="$1" sa_json_content=""
+  if [ -f "$sa_input" ]; then
+    sa_json_content=$(cat "$sa_input")
+  elif [[ "$sa_input" =~ ^\{.*\}$ ]]; then
+    sa_json_content="$sa_input"
+  else
+    _ss_log error "Service Account JSON key file or content '$sa_input' not found."
+    return 1
+  fi
+  local client_email token_uri key_pem
+  client_email=$(echo "$sa_json_content" | grep -o '"client_email": *"[^"]*"' | cut -d'"' -f4)
+  token_uri=$(echo "$sa_json_content" | grep -o '"token_uri": *"[^"]*"' | cut -d'"' -f4)
+  [ -z "$token_uri" ] && token_uri="https://oauth2.googleapis.com/token"
+  key_pem=$(echo "$sa_json_content" | grep -o '"private_key": *"[^"]*"' | sed 's/^"private_key": *"//;s/"$//')
+  if [ -z "$client_email" ] || [ -z "$key_pem" ]; then
+    _ss_log error "Could not parse client_email or private_key from Service Account JSON."
+    return 1
+  fi
+  local b64url_cmd='openssl base64 -e -A | tr "+/" "-_" | tr -d "="'
+  local now exp header_b64 claims claims_b64 unsigned_jwt sig_b64
+  now=$(date +%s); exp=$((now + 3600))
+  header_b64=$(echo -n '{"alg":"RS256","typ":"JWT"}' | eval "$b64url_cmd")
+  claims="{\"iss\":\"$client_email\",\"scope\":\"https://www.googleapis.com/auth/drive\",\"aud\":\"$token_uri\",\"exp\":$exp,\"iat\":$now}"
+  claims_b64=$(echo -n "$claims" | eval "$b64url_cmd")
+  unsigned_jwt="${header_b64}.${claims_b64}"
+  sig_b64=$(printf "%s" "$unsigned_jwt" | openssl dgst -sha256 -sign <(printf '%b' "$key_pem") -binary 2>/dev/null | eval "$b64url_cmd")
+  if [ -z "$sig_b64" ]; then
+    _ss_log error "Failed to sign Service Account JWT with openssl."
+    return 1
+  fi
+  curl -s -X POST -d "grant_type=urn:ietf:params:oauth:grant-type:jwt-bearer" \
+    --data-urlencode "assertion=${unsigned_jwt}.${sig_b64}" "$token_uri" \
+    | grep -o '"access_token": *"[^"]*"' | cut -d'"' -f4
+}
+
+gds_get_token() {
+  # Args: raw_token (string or file) sa_key (file or JSON). Prints an access token;
+  # the service account is preferred because its tokens can always be renewed.
+  local raw="$1" sa="$2"
+  if [ -n "$sa" ]; then
+    gds_token_from_sa "$sa"
+  elif [ -n "$raw" ] && [ -f "$raw" ]; then
+    if grep -q '"type": *"service_account"' "$raw" 2>/dev/null; then gds_token_from_sa "$raw"; else tr -d '\r\n' < "$raw"; echo; fi
+  else
+    echo "$raw"
+  fi
+}
 
 gds_fetch_files() {
   # Args: token folder_id name_prefix. Prints one JSON array of
