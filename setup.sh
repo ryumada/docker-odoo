@@ -1406,6 +1406,8 @@ function main() {
     "$REPOSITORY_DIRPATH/scripts/installer/install-backupdata.sh"
     "$REPOSITORY_DIRPATH/scripts/installer/install-deploy_release_candidate.sh"
     "$REPOSITORY_DIRPATH/scripts/installer/install-restore_backupdata.sh"
+    "$REPOSITORY_DIRPATH/scripts/installer/install-dump_database.sh"
+    "$REPOSITORY_DIRPATH/scripts/installer/install-export_filestore.sh"
 
     ENABLE_DATABASE_CLONER=$(grep "^ENABLE_DATABASE_CLONER=" "$REPOSITORY_DIRPATH/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
     if [ -n "$ENABLE_DATABASE_CLONER" ]; then

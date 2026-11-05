@@ -670,6 +670,13 @@ main() {
             remote_has_export_helper=$(ssh "${prd_ssh_opts[@]}" "$PRD_SSH_USER@$PRD_SSH_HOST" "
                 if command -v export_filestore-$PRD_SERVICE_NAME &>/dev/null || [ -x '/usr/local/sbin/export_filestore-$PRD_SERVICE_NAME' ] || [ -f '$PRD_SSH_PATH/scripts/export_filestore-$PRD_SERVICE_NAME.sh' ] || [ -f '$PRD_SSH_PATH/scripts/export_filestore.sh' ]; then
                     echo 'true'
+                elif [ -f '$PRD_SSH_PATH/scripts/installer/install-export_filestore.sh' ] && sudo -n true 2>/dev/null; then
+                    sudo -n bash '$PRD_SSH_PATH/scripts/installer/install-export_filestore.sh' >/dev/null 2>&1 || true
+                    if command -v export_filestore-$PRD_SERVICE_NAME &>/dev/null || [ -x '/usr/local/sbin/export_filestore-$PRD_SERVICE_NAME' ]; then
+                        echo 'true'
+                    else
+                        echo 'false'
+                    fi
                 else
                     echo 'false'
                 fi
@@ -697,6 +704,13 @@ main() {
             remote_has_dump_helper=$(ssh "${prd_ssh_opts[@]}" "$PRD_SSH_USER@$PRD_SSH_HOST" "
                 if command -v dump_database-$PRD_SERVICE_NAME &>/dev/null || [ -x '/usr/local/sbin/dump_database-$PRD_SERVICE_NAME' ] || [ -f '$PRD_SSH_PATH/scripts/dump_database-$PRD_SERVICE_NAME.sh' ] || [ -f '$PRD_SSH_PATH/scripts/dump_database.sh' ]; then
                     echo 'true'
+                elif [ -f '$PRD_SSH_PATH/scripts/installer/install-dump_database.sh' ] && sudo -n true 2>/dev/null; then
+                    sudo -n bash '$PRD_SSH_PATH/scripts/installer/install-dump_database.sh' >/dev/null 2>&1 || true
+                    if command -v dump_database-$PRD_SERVICE_NAME &>/dev/null || [ -x '/usr/local/sbin/dump_database-$PRD_SERVICE_NAME' ]; then
+                        echo 'true'
+                    else
+                        echo 'false'
+                    fi
                 else
                     echo 'false'
                 fi

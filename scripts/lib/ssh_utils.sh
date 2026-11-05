@@ -375,6 +375,16 @@ SUDO_EOF
     echo "$target_user ALL=(root) NOPASSWD: ${dest_path}/scripts/dataodoo-backupper.sh" >> "$tmp_sudoers"
     echo "$target_user ALL=(root) NOPASSWD: ${dest_path}/scripts/dump_database-${dest_svc}.sh" >> "$tmp_sudoers"
     echo "$target_user ALL=(root) NOPASSWD: ${dest_path}/scripts/export_filestore-${dest_svc}.sh" >> "$tmp_sudoers"
+
+    # Automatically install dump_database and export_filestore helpers on remote host if missing
+    if [ -f "${dest_path}/scripts/installer/install-dump_database.sh" ]; then
+      echo "[+] Installing dump_database utility on remote target..." >&2
+      bash "${dest_path}/scripts/installer/install-dump_database.sh" >/dev/null 2>&1 || true
+    fi
+    if [ -f "${dest_path}/scripts/installer/install-export_filestore.sh" ]; then
+      echo "[+] Installing export_filestore utility on remote target..." >&2
+      bash "${dest_path}/scripts/installer/install-export_filestore.sh" >/dev/null 2>&1 || true
+    fi
   fi
 
   chmod 0440 "$tmp_sudoers"
