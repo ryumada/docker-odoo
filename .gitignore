@@ -65,6 +65,7 @@ scripts/*
 !scripts/upload-snapshot.sh
 !scripts/upload-temp-snapshots.sh
 !scripts/validate-snapshot.sh
+!scripts/setup-validator-docker.sh
 !scripts/lib/
 !scripts/long-process-mode.sh
 !scripts/validate-agent-config.sh

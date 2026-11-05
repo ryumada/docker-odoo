@@ -224,7 +224,22 @@ By default, `download-snapshot.sh` saves the file to `~/<filename>` and creates 
 
 Restore drill that proves a snapshot can really be recovered. It runs in throwaway Docker containers on an internal network with no outbound access, and never touches the production server or its database.
 
-**Where it runs.** When `SNAPSHOT_REMOTE_HOST` is set in `.env`, you start the validator on the main VPS as usual, but the drill runs on the Secondary VPS, over the same SSH connection the snapshot tool uses (`SNAPSHOT_REMOTE_USER`, `SNAPSHOT_REMOTE_PORT`, `SNAPSHOT_REMOTE_KEY`). The download, Docker and the restore all happen there; the main VPS only shows the live log and keeps the report. Nothing is installed on the Secondary VPS: the validator is sent over SSH for each run and removed afterwards. It needs Docker (its user in the `docker` group), `zstd`, `git`, `python3` and `curl` there, `gcloud` for GCS, and read access to your git repositories (GitLab Reporter). Without `SNAPSHOT_REMOTE_HOST`, or with `--local`, the drill runs on the host you start it on.
+**Where it runs.** When `SNAPSHOT_REMOTE_HOST` is set in `.env`, you start the validator on the main VPS as usual, but the drill runs on the Secondary VPS, over the same SSH connection the snapshot tool uses (`SNAPSHOT_REMOTE_USER`, `SNAPSHOT_REMOTE_PORT`, `SNAPSHOT_REMOTE_KEY`). The download, Docker and the restore all happen there; the main VPS only shows the live log and keeps the report. Nothing is installed on the Secondary VPS: the validator is sent over SSH for each run and removed afterwards. It needs rootless Docker for that user (see **Secondary VPS setup** below), `zstd`, `git`, `python3` and `curl` there, `gcloud` for GCS, and read access to your git repositories (GitLab Reporter). Without `SNAPSHOT_REMOTE_HOST`, or with `--local`, the drill runs on the host you start it on.
+
+**Secondary VPS setup (once).** Drills use **rootless Docker** for the SSH user (`SNAPSHOT_REMOTE_USER`, e.g. `odoo-backupper`): that user gets its own Docker daemon and never gets root. Do not add it to the `docker` group instead: that membership is equivalent to root on the VPS, and anyone with the main VPS's SSH key would have it. Set it up from the main VPS with a sudo admin account of the Secondary VPS:
+
+```bash
+./scripts/setup-validator-docker.sh -a sysadmin --check   # what is missing (nothing is changed)
+./scripts/setup-validator-docker.sh -a sysadmin           # set it up (asks for the admin password)
+echo "secret" | ./scripts/setup-validator-docker.sh -a sysadmin --password-stdin
+./scripts/setup-validator-docker.sh --check               # read-only check as the drill user, with its snapshot key
+```
+
+It reads `SNAPSHOT_REMOTE_HOST`, `SNAPSHOT_REMOTE_USER` and `SNAPSHOT_REMOTE_PORT` from `.env`, and only does what is missing (running it again is safe): installs `docker-ce-rootless-extras` (or `rootlesskit` with Ubuntu's `docker.io`), `uidmap`, `dbus-user-session` and `slirp4netns`; gives the user subordinate UID/GID ranges; adds the AppArmor profile Ubuntu 23.10+ needs for rootless user namespaces; delegates CPU, memory and process limits to user services (so drills can be limited); turns on lingering; runs `dockerd-rootless-setuptool.sh install` as the user; and checks that its Docker answers. It needs Docker Engine and cgroup v2 on the VPS, and never restarts the user's services while a drill is running. `--remove-docker-group` also takes the user out of the `docker` group. On the Secondary VPS itself: `sudo ./scripts/setup-validator-docker.sh --local -u odoo-backupper`.
+
+`./setup.sh` checks this automatically when `ENABLE_SNAPSHOT` and `SNAPSHOT_REMOTE_HOST` are set and the snapshot key works: if something is missing it offers to set it up (it asks for the admin account; leave it empty to skip), or adds a TODO when run non-interactively. The validator also checks it before each drill and names the missing step.
+
+Its images, containers and the drill's database live in `~odoo-backupper/.local/share/docker`, so that disk needs room for the restored database (the disk reserve check watches it automatically).
 
 Checks, in order: checksum (`.sha256`), the whole archive decompresses, required files are present, `manifest.json`, every git repository can be re-cloned at its recorded commit (or is bundled), `dump.sql` restores completely (end-of-dump marker, zero SQL errors) into a matching Postgres version and looks like a usable Odoo database (core tables, users, keys and indexes), and every stored attachment exists in the filestore with the right size.
 
@@ -254,7 +269,7 @@ Checks, in order: checksum (`.sha256`), the whole archive decompresses, required
 | `0` | Passed: the snapshot is recoverable (with `--publish`, the record was written) |
 | `1` | Failed: the snapshot itself is broken |
 | `2` | Could not finish for reasons outside the snapshot (Docker, network, Drive/GCS, unreachable git remote, not enough disk, interrupted, SSH to the Secondary VPS failed or was lost). Nothing was proven either way |
-| `3` | Usage or configuration error (for example an invalid `VALIDATOR_*` value, or a Secondary VPS missing Docker or a required tool) |
+| `3` | Usage or configuration error (for example an invalid `VALIDATOR_*` value, or a Secondary VPS missing a required tool or the rootless Docker setup; the log names the step) |
 | `4` | Passed, but `--publish` could not write the record, so retention will not protect this snapshot |
 
 - Each run writes a JSON report to `~/.odoo-validator/reports/` (plus `latest-<service>.json`) on the host you started it on. A drill that ran on the Secondary VPS has its report copied back, marked with `"remote"`.

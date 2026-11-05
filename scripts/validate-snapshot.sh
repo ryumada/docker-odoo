@@ -3,7 +3,7 @@ set -o pipefail
 # Category: Utility
 # Description: Restore drill for an Odoo snapshot in throwaway containers, proving it can be recovered (phase 1: checksum, archive, manifest, git, database restore, filestore).
 # Usage: ./scripts/validate-snapshot.sh (--file PATH | --drive SERVICE [--name FILE] | --gcs gs://BUCKET/OBJECT) [--publish] [options]
-# Dependencies: docker, zstd, tar, git, python3, curl, flock, sha256sum, openssl (Drive service account), gcloud (--gcs)
+# Dependencies: docker (rootless recommended on the drill host), zstd, tar, git, python3, curl, flock, sha256sum, openssl (Drive service account), gcloud (--gcs)
 #
 # What a drill does (nothing touches the production server or its database):
 #   1. checksum   archive matches its .sha256 sidecar (skipped, with a warning, if there is none)
@@ -412,10 +412,74 @@ if [ ${#missing[@]} -gt 0 ]; then
   log_error "Missing required tools: ${missing[*]}"
   exit 3
 fi
-if ! docker info >/dev/null 2>&1; then
-  log_error "Docker is not reachable for $(id -un). Add the user to the docker group or run as root."
-  exit 3
-fi
+# --- Docker on the drill host ---
+# Recommended: rootless Docker for the drill user (its own daemon, so the account never gets root).
+# The docker group also works but is root-equivalent, so it only gets a warning. The checks below say
+# exactly which setup step is missing (scripts/README.md, "Secondary VPS setup").
+docker_setup_help() {
+  local me="$1"
+  cat >&2 << HELP
+  Set up rootless Docker for $me once (every step is done for you, and repeating it is safe):
+    on the main VPS:   ./scripts/setup-validator-docker.sh -a <sudo-admin of this host>
+    or on this host:   sudo ./scripts/setup-validator-docker.sh --local -u $me
+  Details: scripts/README.md, Validate Snapshot > Secondary VPS setup.
+HELP
+}
+docker_preflight() {
+  local me uid rt sock i ctlfile ctls c missing_ctl=() sec
+  me=$(id -un); uid=$(id -u)
+  rt="${XDG_RUNTIME_DIR:-/run/user/$uid}"; sock="$rt/docker.sock"
+  if [ -z "${DOCKER_HOST:-}" ] && [ "$uid" != 0 ]; then
+    if [ -S "$sock" ]; then
+      export DOCKER_HOST="unix://$sock"
+    elif ! docker info >/dev/null 2>&1; then
+      # Neither this user's rootless daemon nor the system daemon: say which step is missing
+      if [ ! -f "$HOME/.config/systemd/user/docker.service" ]; then
+        if command -v dockerd-rootless.sh >/dev/null 2>&1 || command -v rootlesskit >/dev/null 2>&1; then
+          log_error "Rootless Docker is installed on this host but not set up for $me."
+        else
+          log_error "Docker is not usable by $me, and rootless Docker is not installed on this host."
+        fi
+        docker_setup_help "$me"; exit 3
+      fi
+      # Set up: its daemon may still be starting after this login
+      for i in $(seq "${VALIDATOR_DOCKER_START_WAIT:-20}"); do [ -S "$sock" ] && break; sleep 1; done
+      if [ ! -S "$sock" ]; then
+        log_error "Rootless Docker is set up for $me but not running ($sock is missing)."
+        echo "  As $me: systemctl --user enable --now docker" >&2
+        docker_setup_help "$me"; exit 3
+      fi
+      export DOCKER_HOST="unix://$sock"
+    fi
+  fi
+  if ! docker info >/dev/null 2>&1; then
+    if [ -n "${DOCKER_HOST:-}" ]; then
+      log_error "Docker at $DOCKER_HOST is not answering for $me. Check: systemctl --user status docker (rootless) or the DOCKER_HOST setting."
+    elif [ "$uid" = 0 ]; then
+      log_error "Docker is not running on this host (systemctl status docker)."
+    else
+      log_error "Docker is not usable by $me."
+      docker_setup_help "$me"
+    fi
+    exit 3
+  fi
+  sec=$(docker info -f '{{json .SecurityOptions}}' 2>/dev/null)
+  if [[ "$sec" == *"name=rootless"* ]]; then
+    # The drill's limits (--cpus, --memory, --pids-limit) need these cgroup controllers delegated
+    # to the user's systemd; without the limits a drill could starve the snapshots on this host.
+    ctlfile="${VALIDATOR_TEST_CGROUP_FILE:-/sys/fs/cgroup/user.slice/user-$uid.slice/user@$uid.service/cgroup.controllers}"
+    ctls=$(cat "$ctlfile" 2>/dev/null)
+    for c in cpu memory pids; do [[ " $ctls " == *" $c "* ]] || missing_ctl+=("$c"); done
+    if [ ${#missing_ctl[@]} -gt 0 ]; then
+      log_error "Rootless Docker for $me cannot limit ${missing_ctl[*]} (cgroup controllers not delegated), so a drill could take resources from snapshots."
+      docker_setup_help "$me"; exit 3
+    fi
+    [ -e "/var/lib/systemd/linger/$me" ] || log_warn "Lingering is off for $me: rootless Docker stops when no session is open, so every drill starts it again. Fix: ./scripts/setup-validator-docker.sh -a <sudo-admin> (on the main VPS)"
+  elif [ "$uid" != 0 ]; then
+    log_warn "$me uses the system Docker daemon (docker group). That membership is equivalent to root on this host; rootless Docker is safer: ./scripts/setup-validator-docker.sh -a <sudo-admin> --remove-docker-group (on the main VPS)."
+  fi
+}
+docker_preflight
 
 # --- Run state ---
 RUN_ID="$(date +"%Y%m%d-%H%M%S")-$$"

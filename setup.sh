@@ -942,6 +942,34 @@ EOF
   rm -rf "$temp_dir"
 }
 
+function setupValidatorDocker() {
+  # Snapshot drills (scripts/validate-snapshot.sh) run on the Secondary VPS with rootless Docker for the
+  # snapshot user. Checked with the snapshot key (no admin needed); set up through a sudo admin on request.
+  local host="$1" user="$2" port="$3" key="$4" admin out rc
+  local tool="$REPOSITORY_DIRPATH/scripts/setup-validator-docker.sh"
+  [ -x "$tool" ] || return 0
+  # setup.sh runs with set -e: keep the check's exit code instead of letting it end the setup
+  rc=0
+  out=$("$tool" --check -t "$host" -u "$user" -p "$port" -i "$key" 2>&1) || rc=$?
+  if [ "$rc" -eq 0 ]; then
+    log_success "Secondary VPS is ready for snapshot drills (rootless Docker for $user@$host)."
+    return 0
+  fi
+  if [ "$rc" -ne 3 ]; then
+    TODO+=("Could not check the Secondary VPS for snapshot drills. Run ./scripts/setup-validator-docker.sh --check to see why.")
+    return 0
+  fi
+  log_warn "Snapshot drills on $host need rootless Docker for $user. Missing:"
+  grep '^\[!\]' <<< "$out" | sed 's/^/    /' >&2 || true
+  if [ "$IS_NON_INTERACTIVE" != true ]; then
+    read -rp "❓ Sudo admin account on $host to set it up now (leave empty to skip): " admin || admin=""
+    if [ -n "$admin" ] && "$tool" -a "$admin" -t "$host" -u "$user" -p "$port"; then
+      return 0
+    fi
+  fi
+  TODO+=("Snapshot drills: set up rootless Docker for $user on $host with ./scripts/setup-validator-docker.sh -a <sudo-admin of $host>")
+}
+
 function validateDatetimeFormat() {
   local datetime_string="$1"
   local varmsg="$2"
@@ -1434,6 +1462,8 @@ function main() {
         if [ -n "$remote_key" ] && [ -f "$remote_key" ]; then
           if ! ssh -i "$remote_key" -p "$remote_port" -o BatchMode=yes -o StrictHostKeyChecking=accept-new "$remote_user@$remote_host" "true" 2>/dev/null; then
             TODO+=("Secondary VPS SSH Key not yet verified for $remote_user@$remote_host. Please add '$remote_key.pub' to ~/.ssh/authorized_keys on the Secondary VPS.")
+          else
+            setupValidatorDocker "$remote_host" "$remote_user" "$remote_port" "$remote_key"
           fi
         fi
       fi
