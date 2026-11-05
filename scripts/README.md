@@ -222,7 +222,9 @@ By default, `download-snapshot.sh` saves the file to `~/<filename>` and creates 
 
 </summary>
 
-Restore drill that proves a snapshot can really be recovered. It runs in throwaway Docker containers on an internal network with no outbound access, and never touches the production server or its database. Run it on the Secondary VPS (or any host with Docker, `zstd` and git access to your repositories).
+Restore drill that proves a snapshot can really be recovered. It runs in throwaway Docker containers on an internal network with no outbound access, and never touches the production server or its database.
+
+**Where it runs.** When `SNAPSHOT_REMOTE_HOST` is set in `.env`, you start the validator on the main VPS as usual, but the drill runs on the Secondary VPS, over the same SSH connection the snapshot tool uses (`SNAPSHOT_REMOTE_USER`, `SNAPSHOT_REMOTE_PORT`, `SNAPSHOT_REMOTE_KEY`). The download, Docker and the restore all happen there; the main VPS only shows the live log and keeps the report. Nothing is installed on the Secondary VPS: the validator is sent over SSH for each run and removed afterwards. It needs Docker (its user in the `docker` group), `zstd`, `git`, `python3` and `curl` there, `gcloud` for GCS, and read access to your git repositories (GitLab Reporter). Without `SNAPSHOT_REMOTE_HOST`, or with `--local`, the drill runs on the host you start it on.
 
 Checks, in order: checksum (`.sha256`), the whole archive decompresses, required files are present, `manifest.json`, every git repository can be re-cloned at its recorded commit (or is bundled), `dump.sql` restores completely (end-of-dump marker, zero SQL errors) into a matching Postgres version and looks like a usable Odoo database (core tables, users, keys and indexes), and every stored attachment exists in the filestore with the right size.
 
@@ -238,17 +240,25 @@ Checks, in order: checksum (`.sha256`), the whole archive decompresses, required
 
 # Drill a snapshot in Google Cloud Storage
 ./scripts/validate-snapshot.sh --gcs gs://my-bucket/snapshot-docker-odoo.tar.zst --publish
+
+# With a Secondary VPS, --file is a path ON the Secondary VPS (relative paths start in its home folder),
+# e.g. a snapshot kept there because its upload failed
+./scripts/validate-snapshot.sh --file .odoo-snapshots/docker-odoo/archives/snapshot-docker-odoo.tar.zst
+
+# Drill on this host even though SNAPSHOT_REMOTE_HOST is set
+./scripts/validate-snapshot.sh --local --file ~/snapshot-docker-odoo.tar.zst
 ```
 
 | Exit code | Meaning |
 |---|---|
 | `0` | Passed: the snapshot is recoverable (with `--publish`, the record was written) |
 | `1` | Failed: the snapshot itself is broken |
-| `2` | Could not finish for reasons outside the snapshot (Docker, network, Drive/GCS, unreachable git remote, not enough disk, interrupted). Nothing was proven either way |
-| `3` | Usage or configuration error (for example an invalid `VALIDATOR_*` value) |
+| `2` | Could not finish for reasons outside the snapshot (Docker, network, Drive/GCS, unreachable git remote, not enough disk, interrupted, SSH to the Secondary VPS failed or was lost). Nothing was proven either way |
+| `3` | Usage or configuration error (for example an invalid `VALIDATOR_*` value, or a Secondary VPS missing Docker or a required tool) |
 | `4` | Passed, but `--publish` could not write the record, so retention will not protect this snapshot |
 
-- Each run writes a JSON report to `~/.odoo-validator/reports/` (plus `latest-<service>.json`).
+- Each run writes a JSON report to `~/.odoo-validator/reports/` (plus `latest-<service>.json`) on the host you started it on. A drill that ran on the Secondary VPS has its report copied back, marked with `"remote"`.
+- Remote drills: the Drive service account key or token is read on the main VPS and sent over SSH stdin into a private (0600) folder on the Secondary VPS, never on a command line, and removed when the drill ends (a folder left behind by a lost session is removed by the next drill). GCS drills use the Secondary VPS's own `gcloud` login, like the snapshot tool. If the main VPS stops the validator (Ctrl-C, `kill`, lost connection), the drill on the Secondary VPS notices within a few seconds, stops and removes its containers.
 - With `--publish`, a passed drill uploads `<snapshot>.validated.json` next to the snapshot, and retention then keeps the newest validated snapshot even beyond `MAX_SNAPSHOT_BACKUPS`. The record lists the result of every check. It is only written when the git check really ran (not with `--no-git-check` or without `git_hashes.json`); otherwise the drill exits `4`. A **failed** drill removes an existing record, so a snapshot that no longer restores stops being protected. Exit code `2` never touches records.
 - Prefer `GDRIVE_SERVICE_ACCOUNT_KEY` in `.env` over `--token`: command-line arguments are visible to other users of the host. Drive tokens are never put on command lines by the scripts themselves.
 - The drill reads one fixed copy of the snapshot: the archive is held open for the whole run, and a GCS object is downloaded at a fixed generation. If the snapshot is replaced while the drill runs, no record is written for the new file.

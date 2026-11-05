@@ -19,6 +19,9 @@ set -o pipefail
 # <archive>.validated.json next to the snapshot (retention then protects that snapshot), and a
 # FAILED drill removes an existing one.
 #
+# Where it runs: on the Secondary VPS when SNAPSHOT_REMOTE_HOST is set (over SSH, like the snapshot
+# tool; nothing is installed there), otherwise on this host. --local forces this host.
+#
 # Results / exit codes:
 #   0 pass     the snapshot is recoverable (and, with --publish, the record was written)
 #   1 fail     the snapshot itself is broken
@@ -88,6 +91,7 @@ DRIVE_NAME=""
 PUBLISH=false
 KEEP_WORKDIR=false
 GIT_CHECK=true
+LOCAL_ONLY=false
 REPORT_PATH=""
 
 show_help() {
@@ -96,6 +100,10 @@ Usage: $(basename "$0") SOURCE [OPTIONS]
 
 Restore drill for an Odoo snapshot in throwaway containers (phase 1: checksum, archive,
 manifest, git, database restore and filestore checks). Production is never touched.
+
+Where the drill runs: on the Secondary VPS (SNAPSHOT_REMOTE_HOST, same SSH settings as the
+snapshot tool) when one is set, otherwise on this host. With a Secondary VPS, --file is a path
+on that VPS (relative to its home folder), and the report is copied back to this host.
 
 Source (one of):
   --file <PATH>            A local snapshot .tar.zst (its .sha256 next to it is used if present)
@@ -109,6 +117,7 @@ Options:
   --report <PATH>          Where to write the JSON report (default: $VALIDATOR_DIR/reports/)
   --keep-workdir           Keep the work folder for inspection (containers are always removed)
   --no-git-check           Skip the git repository check
+  --local                  Drill on this host even when SNAPSHOT_REMOTE_HOST is set
   --folder-id <ID>         Google Drive folder ID (default: GDRIVE_FOLDER_ID)
   --sa-key <PATH>          Google Drive service account key (default: GDRIVE_SERVICE_ACCOUNT_KEY)
   --token <TOKEN>          Google Drive access token (default: GDRIVE_ACCESS_TOKEN)
@@ -117,7 +126,7 @@ Options:
 Settings (environment or .env): VALIDATOR_WORK_DIR, VALIDATOR_DISK_RESERVE_GB,
 VALIDATOR_WATCHDOG_INTERVAL, VALIDATOR_POSTGRES_IMAGE, VALIDATOR_PG_CPUS, VALIDATOR_PG_MEMORY,
 VALIDATOR_FILESTORE_MAX_MISSING_PCT, VALIDATOR_QUEUE_TIMEOUT, VALIDATOR_GIT_TIMEOUT,
-VALIDATOR_GIT_ALLOW_PROTOCOL, VALIDATOR_PULL_POLICY.
+VALIDATOR_GIT_ALLOW_PROTOCOL, VALIDATOR_PULL_POLICY, VALIDATOR_REMOTE_WORK_DIR.
 Prefer GDRIVE_SERVICE_ACCOUNT_KEY in .env over --token: command-line arguments are visible to
 other users of this host.
 
@@ -137,6 +146,7 @@ while [ $# -gt 0 ]; do
     --report) need_value "$1" "${2:-}"; REPORT_PATH="$2"; shift 2 ;;
     --keep-workdir) KEEP_WORKDIR=true; shift ;;
     --no-git-check) GIT_CHECK=false; shift ;;
+    --local) LOCAL_ONLY=true; shift ;;
     --folder-id) need_value "$1" "${2:-}"; GDRIVE_FOLDER_ID="$2"; shift 2 ;;
     --sa-key) need_value "$1" "${2:-}"; GDRIVE_SERVICE_ACCOUNT_KEY="$2"; shift 2 ;;
     --token) need_value "$1" "${2:-}"; GDRIVE_ACCESS_TOKEN="$2"; shift 2 ;;
@@ -176,6 +186,217 @@ if [ ${#bad_settings[@]} -gt 0 ]; then
   for b in "${bad_settings[@]}"; do log_error "Invalid setting: $b"; done
   exit 3
 fi
+# --- Remote mode: the drill runs on the Secondary VPS (SNAPSHOT_REMOTE_HOST) ---
+# Same SSH settings as the snapshot tool. This host only sends the validator (script + libs) and
+# the storage credentials over SSH stdin, shows the drill's log live and keeps its report; Docker,
+# the download and the restore all happen on the Secondary VPS. --local drills on this host instead.
+SNAPSHOT_REMOTE_HOST=$(cfg SNAPSHOT_REMOTE_HOST "")
+SNAPSHOT_REMOTE_USER=$(cfg SNAPSHOT_REMOTE_USER "")
+SNAPSHOT_REMOTE_PORT=$(cfg SNAPSHOT_REMOTE_PORT 22)
+SNAPSHOT_REMOTE_KEY=$(cfg SNAPSHOT_REMOTE_KEY "")
+VALIDATOR_REMOTE_WORK_DIR=$(cfg VALIDATOR_REMOTE_WORK_DIR "")
+
+remote_fail() {
+  # Args: exit_code message. Writes a report on this host for a drill that never got a result.
+  local code="$1" msg="$2" svc
+  svc="$SOURCE_REF"
+  [ "$SOURCE_KIND" = drive ] || svc=$(sed -E 's/^snapshot-(.+)-[0-9]{8}-[0-9]{6}\.tar\.zst$/\1/; s/^snapshot-(.+)\.tar\.zst$/\1/' <<< "${SOURCE_REF##*/}")
+  [ -n "$REPORT_PATH" ] || REPORT_PATH="$VALIDATOR_DIR/reports/${svc:-unknown}-$(date +%Y%m%d-%H%M%S)-$$.json"
+  python3 -c '
+import json, sys
+kind, ref, svc, host, msg, out, now = sys.argv[1:8]
+json.dump({"schema": 1, "level": "database", "result": "error", "service": svc or None, "archive": None,
+           "source": {"kind": kind, "ref": ref}, "started_at": now, "finished_at": now,
+           "remote": {"host": host}, "stages": [{"name": "remote", "status": "error", "seconds": 0, "details": {"message": msg}}]},
+          open(out, "w"), indent=2)
+' "$SOURCE_KIND" "$(sed -E 's#([a-zA-Z][a-zA-Z0-9+.-]*://)[^/@[:space:]]+@#\1***@#g' <<< "$SOURCE_REF")" "$svc" \
+    "$SNAPSHOT_REMOTE_USER@$SNAPSHOT_REMOTE_HOST" "$msg" "$REPORT_PATH" "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" 2>/dev/null
+  chmod 600 "$REPORT_PATH" 2>/dev/null
+  ln -sf "$REPORT_PATH" "$VALIDATOR_DIR/reports/latest-${svc:-unknown}.json" 2>/dev/null
+  log_error "$msg"
+  log_info "Report: $REPORT_PATH"
+  exit "$code"
+}
+
+run_remote_drill() {
+  local host="$SNAPSHOT_REMOTE_HOST" user="$SNAPSHOT_REMOTE_USER" port="$SNAPSHOT_REMOTE_PORT" key="$SNAPSHOT_REMOTE_KEY"
+  local owner owner_home this_vps clean_tgt cmd missing=()
+  for cmd in ssh tar base64 python3; do command -v "$cmd" >/dev/null 2>&1 || missing+=("$cmd"); done
+  if [ ${#missing[@]} -gt 0 ]; then log_error "Missing required tools: ${missing[*]}"; exit 3; fi
+  if [ -z "$user" ]; then log_error "SNAPSHOT_REMOTE_USER is required when SNAPSHOT_REMOTE_HOST is set (or use --local)."; exit 3; fi
+  # Never let a setting reach ssh as an option
+  if [[ "$host" == -* || "$host" =~ [[:space:][:cntrl:]@] || "$user" == -* || "$user" =~ [[:space:][:cntrl:]@] ]] || ! [[ "$port" =~ ^[0-9]{1,5}$ ]]; then
+    log_error "Invalid SNAPSHOT_REMOTE_HOST/USER/PORT ('$user@$host:$port')."; exit 3
+  fi
+  mkdir -p "$VALIDATOR_DIR/reports" && chmod 700 "$VALIDATOR_DIR" 2>/dev/null || { log_error "Cannot create $VALIDATOR_DIR/reports"; exit 3; }
+
+  # The SSH key: SNAPSHOT_REMOTE_KEY, else the snapshot tool's default key names
+  owner=$(stat -c '%U' "$PATH_TO_ODOO" 2>/dev/null)
+  owner_home=$(getent passwd "$owner" 2>/dev/null | cut -d: -f6)
+  [ -d "$owner_home" ] || owner_home="$HOME"
+  if [ -z "$key" ]; then
+    this_vps=$(hostname -s 2>/dev/null || hostname 2>/dev/null || echo "vps-source")
+    clean_tgt=$(echo "$host" | sed -e 's|^.*://||' -e 's|:.*$||' -e 's|/.*$||' -e 's|[^a-zA-Z0-9._-]|_|g')
+    for cand in "$owner_home/.ssh/snapshot-${this_vps}-${clean_tgt}" "$owner_home/.ssh/id_ed25519-snapshot-$(basename "$PATH_TO_ODOO")" "$owner_home/.ssh/id_ed25519_snapshot"; do
+      [ -f "$cand" ] && { key="$cand"; break; }
+    done
+  fi
+  key="${key/#\~/$owner_home}"
+  local ssh_opts=(-p "$port" -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o ServerAliveInterval=30 -o ServerAliveCountMax=5 -o ConnectTimeout=20)
+  [ -n "$key" ] && [ -f "$key" ] && ssh_opts+=(-i "$key")
+
+  log_info "Connecting to the Secondary VPS ($user@$host:$port)..."
+  if ! ssh "${ssh_opts[@]}" "$user@$host" true </dev/null 2>/dev/null; then
+    remote_fail 2 "Cannot connect to the Secondary VPS at $user@$host:$port over SSH (the same connection the snapshot tool uses). Nothing was proven."
+  fi
+
+  # Storage credentials go over SSH stdin and into 0600 files there, never onto a command line
+  local sa_b64="" tok_b64=""
+  if [ "$SOURCE_KIND" = drive ]; then
+    if [ -n "$GDRIVE_SERVICE_ACCOUNT_KEY" ]; then
+      if [ -f "$GDRIVE_SERVICE_ACCOUNT_KEY" ]; then
+        sa_b64=$(base64 -w0 < "$GDRIVE_SERVICE_ACCOUNT_KEY") || { log_error "Cannot read GDRIVE_SERVICE_ACCOUNT_KEY."; exit 3; }
+      elif [[ "$(printf '%s' "$GDRIVE_SERVICE_ACCOUNT_KEY" | tr -d '[:space:]' | head -c 1)" == "{" ]]; then
+        sa_b64=$(printf '%s' "$GDRIVE_SERVICE_ACCOUNT_KEY" | base64 -w0)
+      else
+        log_error "GDRIVE_SERVICE_ACCOUNT_KEY is neither a readable file nor JSON content."; exit 3
+      fi
+    fi
+    if [ -n "$GDRIVE_ACCESS_TOKEN" ]; then
+      if [ -f "$GDRIVE_ACCESS_TOKEN" ]; then tok_b64=$(base64 -w0 < "$GDRIVE_ACCESS_TOKEN")
+      else tok_b64=$(printf '%s' "$GDRIVE_ACCESS_TOKEN" | base64 -w0); fi
+    fi
+  fi
+
+  local fwd=(--local)
+  case "$SOURCE_KIND" in
+    file) fwd+=(--file "$SOURCE_REF") ;;
+    drive) fwd+=(--drive "$SOURCE_REF"); [ -n "$DRIVE_NAME" ] && fwd+=(--name "$DRIVE_NAME") ;;
+    gcs) fwd+=(--gcs "$SOURCE_REF") ;;
+  esac
+  [ "$PUBLISH" = true ] && fwd+=(--publish)
+  [ "$KEEP_WORKDIR" = true ] && fwd+=(--keep-workdir)
+  [ "$GIT_CHECK" = true ] || fwd+=(--no-git-check)
+
+  local exports="" v
+  # Settings as configured here (auto values such as VALIDATOR_PG_CPUS are worked out on the Secondary VPS)
+  for v in VALIDATOR_DISK_RESERVE_GB VALIDATOR_WATCHDOG_INTERVAL VALIDATOR_POSTGRES_IMAGE VALIDATOR_PG_CPUS \
+           VALIDATOR_PG_MEMORY VALIDATOR_FILESTORE_MAX_MISSING_PCT VALIDATOR_QUEUE_TIMEOUT VALIDATOR_GIT_TIMEOUT \
+           VALIDATOR_GIT_ALLOW_PROTOCOL VALIDATOR_PULL_POLICY GDRIVE_FOLDER_ID; do
+    exports+="export $v=$(printf '%q' "${!v}")"$'\n'
+  done
+  for v in QUEUE_LOCK_STALE_AFTER QUEUE_LOCK_POLL_INTERVAL GDS_API_BASE; do
+    [ -n "${!v:-}" ] && exports+="export $v=$(printf '%q' "${!v}")"$'\n'
+  done
+
+  local payload bootf bfd out rc
+  payload=$(tar -C "$CURRENT_DIR" -cf - validate-snapshot.sh lib/queue_lock.sh lib/snapshot_storage.sh | base64 -w0) \
+    || { log_error "Cannot package the validator."; exit 3; }
+  bootf=$(mktemp) && out=$(mktemp) || { log_error "Cannot create temporary files."; exit 3; }
+  chmod 600 "$bootf" "$out"
+  {
+    cat <<'BOOT_HEAD'
+set -o pipefail
+umask 077
+trap 'exit 141' PIPE
+BOOT_HEAD
+    printf 'RWD=%q\n' "$VALIDATOR_REMOTE_WORK_DIR"
+    cat <<'BOOT_SETUP'
+[ -n "$RWD" ] || RWD="$HOME/.odoo-validator"
+case "$RWD" in "~/"*) RWD="$HOME/${RWD#\~/}" ;; esac
+mkdir -p "$RWD/remote" || { echo "Cannot create $RWD/remote on the Secondary VPS" >&2; exit 92; }
+chmod 700 "$RWD" "$RWD/remote" 2>/dev/null
+# Bundles of earlier drills whose session died (they may hold credentials)
+for d in "$RWD"/remote/*; do
+  [ -d "$d" ] || continue
+  p="${d##*-}"; [[ "$p" =~ ^[0-9]+$ ]] && [ -d "/proc/$p" ] && continue
+  rm -rf "$d"
+done
+B="$RWD/remote/$(date +%Y%m%d-%H%M%S)-$$"
+mkdir -p "$B/scripts" || { echo "Cannot create $B on the Secondary VPS" >&2; exit 92; }
+trap 'rm -rf "$B"' EXIT
+BOOT_SETUP
+    printf "printf '%%s' '%s' | base64 -d | tar -xf - -C \"\$B/scripts\" || { echo 'Cannot unpack the validator on the Secondary VPS (base64/tar missing?)' >&2; exit 92; }\n" "$payload"
+    if [ -n "$sa_b64" ]; then
+      printf "printf '%%s' '%s' | base64 -d > \"\$B/sa.json\" || exit 92\nexport GDRIVE_SERVICE_ACCOUNT_KEY=\"\$B/sa.json\"\n" "$sa_b64"
+    else
+      printf 'export GDRIVE_SERVICE_ACCOUNT_KEY=""\n'
+    fi
+    if [ -n "$tok_b64" ]; then
+      printf "printf '%%s' '%s' | base64 -d > \"\$B/token\" || exit 92\nexport GDRIVE_ACCESS_TOKEN=\"\$B/token\"\n" "$tok_b64"
+    else
+      printf 'export GDRIVE_ACCESS_TOKEN=""\n'
+    fi
+    printf '%s' "$exports"
+    printf 'export VALIDATOR_WORK_DIR="$RWD"\n'
+    printf 'ARGS=(%s)\n' "$(printf '%q ' "${fwd[@]}")"
+    cat <<'BOOT_RUN'
+cd "$HOME" 2>/dev/null || cd /
+# The drill's log is relayed to this SSH session; if the session is gone, writes just fail
+# (the relay ignores SIGPIPE, so the drill itself is never killed by a lost connection)
+"$B/scripts/validate-snapshot.sh" "${ARGS[@]}" --report "$B/report.json" </dev/null \
+  2> >(trap '' PIPE; while IFS= read -r l; do printf '%s\n' "$l" >&2; done) &
+vp=$!
+# If the main VPS disconnects (Ctrl-C, killed, network), stop the drill: it cleans up after itself
+( trap '' PIPE; exec </dev/null
+  while kill -0 "$vp" 2>/dev/null; do
+    sleep 5
+    if ! printf '\n' 2>/dev/null; then kill -TERM "$vp" 2>/dev/null; break; fi
+  done ) &
+wp=$!
+wait "$vp"; rc=$?
+kill "$wp" 2>/dev/null; wait "$wp" 2>/dev/null
+sleep 0.2
+if [ -f "$B/report.json" ]; then
+  printf '\n@@VALIDATOR-REPORT-BEGIN@@\n'; base64 -w0 < "$B/report.json"; printf '\n@@VALIDATOR-REPORT-END@@\n'
+fi
+exit "$rc"
+BOOT_RUN
+  } > "$bootf"
+
+  log_info "Running the drill on the Secondary VPS ($host); its log follows."
+  exec {bfd}<"$bootf"; rm -f "$bootf"
+  ssh "${ssh_opts[@]}" "$user@$host" "bash -s" <&"$bfd" > "$out" &
+  REMOTE_SSH_PID=$!
+  exec {bfd}<&-
+  trap 'kill -TERM "$REMOTE_SSH_PID" 2>/dev/null; rm -f "$out"; remote_fail 2 "Interrupted. The drill on the Secondary VPS stops by itself within a few seconds and removes its containers."' INT TERM
+  wait "$REMOTE_SSH_PID"; rc=$?
+  trap - INT TERM
+
+  local rep
+  rep=$(sed -n '/^@@VALIDATOR-REPORT-BEGIN@@$/,/^@@VALIDATOR-REPORT-END@@$/p' "$out" | sed '1d;$d' | tr -d '\n')
+  rm -f "$out"
+  if [ -n "$rep" ] && printf '%s' "$rep" | base64 -d > "$VALIDATOR_DIR/reports/.incoming.$$" 2>/dev/null \
+     && python3 -c '
+import json, sys
+r = json.load(open(sys.argv[1]))
+r["remote"] = {"host": sys.argv[2], "via": "ssh"}
+print(r.get("service") or "unknown")
+json.dump(r, open(sys.argv[1], "w"), indent=2)
+' "$VALIDATOR_DIR/reports/.incoming.$$" "$user@$host" > "$VALIDATOR_DIR/reports/.svc.$$" 2>/dev/null; then
+    local svc
+    svc=$(cat "$VALIDATOR_DIR/reports/.svc.$$"); rm -f "$VALIDATOR_DIR/reports/.svc.$$"
+    [ -n "$REPORT_PATH" ] || REPORT_PATH="$VALIDATOR_DIR/reports/$svc-$(date +%Y%m%d-%H%M%S)-$$.json"
+    mv "$VALIDATOR_DIR/reports/.incoming.$$" "$REPORT_PATH" && chmod 600 "$REPORT_PATH"
+    ln -sf "$REPORT_PATH" "$VALIDATOR_DIR/reports/latest-$svc.json" 2>/dev/null
+    log_info "Report (from the Secondary VPS): $REPORT_PATH"
+    case "$rc" in 0|1|2|3|4) exit "$rc" ;; esac
+    log_warn "The drill on the Secondary VPS ended unexpectedly (exit $rc)."
+    exit 2
+  fi
+  rm -f "$VALIDATOR_DIR/reports/.incoming.$$" "$VALIDATOR_DIR/reports/.svc.$$"
+  case "$rc" in
+    3) remote_fail 3 "The Secondary VPS cannot run the drill (missing tools, Docker access or settings: see the log above)." ;;
+    255) remote_fail 2 "The SSH connection to the Secondary VPS failed or was lost during the drill. Nothing was proven." ;;
+    92) remote_fail 2 "Could not prepare the drill on the Secondary VPS (see the log above). Nothing was proven." ;;
+    *) remote_fail 2 "The drill on the Secondary VPS returned no report (exit $rc). Nothing was proven." ;;
+  esac
+}
+
+if [ -n "$SNAPSHOT_REMOTE_HOST" ] && [ "$LOCAL_ONLY" != true ]; then
+  run_remote_drill
+fi
+
 if [ "$VALIDATOR_PG_CPUS" = auto ]; then
   # Half of this host's cores (at least 1), so a drill never takes every CPU from snapshots
   VALIDATOR_PG_CPUS=$(( $(nproc 2>/dev/null || echo 2) / 2 ))
