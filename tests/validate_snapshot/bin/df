@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+set -o pipefail
+# Category: Test
+# Description: Fake df for the validate-snapshot tests: reports plenty of free space, or almost none on demand.
+# Usage: put this folder first on PATH; the validator calls "df -PB1 <path>"
+# Dependencies: bash
+#
+# Knobs (environment):
+#   FAKE_DF_LOG=<file>       append the path asked about to this file
+#   FAKE_DF_LOW_FILE=<file>  while this file exists, report 1 KiB free (the "disk is full" case)
+#   FAKE_DF_AVAIL=<bytes>    free space reported otherwise (default 1 PiB)
+
+path="${*: -1}"
+[ -n "${FAKE_DF_LOG:-}" ] && printf '%s\n' "$path" >> "$FAKE_DF_LOG"
+avail="${FAKE_DF_AVAIL:-1125899906842624}"
+[ -n "${FAKE_DF_LOW_FILE:-}" ] && [ -e "$FAKE_DF_LOW_FILE" ] && avail=1024
+echo "Filesystem 1-blocks Used Available Capacity Mounted on"
+echo "fakefs $((avail * 2)) $avail $avail 50% /"

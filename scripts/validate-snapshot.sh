@@ -70,7 +70,30 @@ env_get() {
 }
 cfg() { local v="${!1:-}"; [ -n "$v" ] || v=$(env_get "$1"); [ -n "$v" ] || v="$2"; echo "$v"; }
 
-VALIDATOR_DIR=$(cfg VALIDATOR_WORK_DIR "$HOME/.odoo-validator")
+# Reports and work files go to the deployment owner's home (like the snapshot tool), whoever runs
+# the validator: as root (sudo) or as the owner. Anyone else falls back to their own home.
+DEPLOY_OWNER=$(stat -c '%U' "$PATH_TO_ODOO" 2>/dev/null)
+OWNER_HOME=$(getent passwd "$DEPLOY_OWNER" 2>/dev/null | cut -d: -f6)
+DIR_FALLBACK=""
+if [ -n "$OWNER_HOME" ] && [ -d "$OWNER_HOME" ] && { [ "$(id -u)" = 0 ] || [ "$(id -un)" = "$DEPLOY_OWNER" ]; }; then
+  default_dir="$OWNER_HOME/.odoo-validator"
+else
+  default_dir="$HOME/.odoo-validator"; [ -n "$OWNER_HOME" ] && [ "$OWNER_HOME" != "$HOME" ] && DIR_FALLBACK=yes
+fi
+VALIDATOR_DIR=$(cfg VALIDATOR_WORK_DIR "$default_dir")
+[ -n "$(cfg VALIDATOR_WORK_DIR "")" ] && DIR_FALLBACK=""
+# Root writes into the owner's home: hand the files to the owner so they stay readable and removable
+own_path() {
+  [ "$(id -u)" = 0 ] && [ -n "$DEPLOY_OWNER" ] && [ "$DEPLOY_OWNER" != root ] && [ -n "$OWNER_HOME" ] || return 0
+  local f; for f in "$@"; do [[ "$f" == "$OWNER_HOME"/* ]] && chown -h "$DEPLOY_OWNER": "$f" 2>/dev/null; done; return 0
+}
+prepare_dirs() {
+  mkdir -p "$VALIDATOR_DIR/reports" "$@" || return 1
+  chmod 700 "$VALIDATOR_DIR" 2>/dev/null
+  own_path "$VALIDATOR_DIR" "$VALIDATOR_DIR/reports" "$VALIDATOR_DIR/runs"
+  [ -z "$DIR_FALLBACK" ] || log_warn "Reports go to $VALIDATOR_DIR because $(id -un) is not $DEPLOY_OWNER (the owner of this deployment). Run as $DEPLOY_OWNER or with sudo to keep them in $OWNER_HOME/.odoo-validator."
+  DIR_FALLBACK=""
+}
 VALIDATOR_DISK_RESERVE_GB=$(cfg VALIDATOR_DISK_RESERVE_GB 5)
 VALIDATOR_WATCHDOG_INTERVAL=$(cfg VALIDATOR_WATCHDOG_INTERVAL 15)
 VALIDATOR_POSTGRES_IMAGE=$(cfg VALIDATOR_POSTGRES_IMAGE "")
@@ -213,6 +236,7 @@ json.dump({"schema": 1, "level": "database", "result": "error", "service": svc o
     "$SNAPSHOT_REMOTE_USER@$SNAPSHOT_REMOTE_HOST" "$msg" "$REPORT_PATH" "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" 2>/dev/null
   chmod 600 "$REPORT_PATH" 2>/dev/null
   ln -sf "$REPORT_PATH" "$VALIDATOR_DIR/reports/latest-${svc:-unknown}.json" 2>/dev/null
+  own_path "$REPORT_PATH" "$VALIDATOR_DIR/reports/latest-${svc:-unknown}.json"
   log_error "$msg"
   log_info "Report: $REPORT_PATH"
   exit "$code"
@@ -228,7 +252,7 @@ run_remote_drill() {
   if [[ "$host" == -* || "$host" =~ [[:space:][:cntrl:]@] || "$user" == -* || "$user" =~ [[:space:][:cntrl:]@] ]] || ! [[ "$port" =~ ^[0-9]{1,5}$ ]]; then
     log_error "Invalid SNAPSHOT_REMOTE_HOST/USER/PORT ('$user@$host:$port')."; exit 3
   fi
-  mkdir -p "$VALIDATOR_DIR/reports" && chmod 700 "$VALIDATOR_DIR" 2>/dev/null || { log_error "Cannot create $VALIDATOR_DIR/reports"; exit 3; }
+  prepare_dirs || { log_error "Cannot create $VALIDATOR_DIR/reports"; exit 3; }
 
   # The SSH key: SNAPSHOT_REMOTE_KEY, else the snapshot tool's default key names
   owner=$(stat -c '%U' "$PATH_TO_ODOO" 2>/dev/null)
@@ -328,7 +352,7 @@ BOOT_SETUP
       printf 'export GDRIVE_ACCESS_TOKEN=""\n'
     fi
     printf '%s' "$exports"
-    printf 'export VALIDATOR_WORK_DIR="$RWD"\n'
+    printf 'export VALIDATOR_WORK_DIR="$RWD" VALIDATOR_REMOTE_CHILD=1\n'
     printf 'ARGS=(%s)\n' "$(printf '%q ' "${fwd[@]}")"
     cat <<'BOOT_RUN'
 cd "$HOME" 2>/dev/null || cd /
@@ -379,6 +403,7 @@ json.dump(r, open(sys.argv[1], "w"), indent=2)
     [ -n "$REPORT_PATH" ] || REPORT_PATH="$VALIDATOR_DIR/reports/$svc-$(date +%Y%m%d-%H%M%S)-$$.json"
     mv "$VALIDATOR_DIR/reports/.incoming.$$" "$REPORT_PATH" && chmod 600 "$REPORT_PATH"
     ln -sf "$REPORT_PATH" "$VALIDATOR_DIR/reports/latest-$svc.json" 2>/dev/null
+    own_path "$REPORT_PATH" "$VALIDATOR_DIR/reports/latest-$svc.json"
     log_info "Report (from the Secondary VPS): $REPORT_PATH"
     case "$rc" in 0|1|2|3|4) exit "$rc" ;; esac
     log_warn "The drill on the Secondary VPS ended unexpectedly (exit $rc)."
@@ -493,10 +518,13 @@ START_EPOCH=$(date +%s)
 ARCHIVE="" ARCHIVE_FD="" AR="" SIDECAR="" ARCHIVE_NAME="" ARCHIVE_SHA="" SERVICE="" REMOTE_ARCHIVE_ID=""
 DRIVE_TOKEN="" GCS_GENERATION=""
 DUMP_MEMBER="" MANIFEST_MEMBER="" GIT_HASHES_MEMBER="" SECRETS_USER_MEMBER="" FILESTORE_PREFIX=""
+# Where dump.sql, manifest.json and the filestore are: "tar" (the snapshot itself) or "zip" (the
+# Odoo backup zip inside older snapshots, until docker-odoo's 2026-10 snapshot refactor)
+CORE_SRC="tar" CORE_MEMBERS="" INNER_ZIP="" INNER_ZIP_MEMBER=""
 ODOO_VERSION="" PG_IMAGE="" WATCHDOG_PID="" CHILD_PID="" ABORT_REASON="" RESULT=""
 FAILED=0 ERRORS=0 WARNED=0 PUBLISHED="" DB_STATS="{}" PULL_WARNING=""
 
-mkdir -p "$WORK" "$VALIDATOR_DIR/reports" || { log_error "Cannot create $WORK"; exit 3; }
+prepare_dirs "$VALIDATOR_DIR/runs" && mkdir -p "$WORK" || { log_error "Cannot create $WORK"; exit 3; }
 chmod 700 "$VALIDATOR_DIR" "$VALIDATOR_DIR/runs" "$WORK" 2>/dev/null || true
 : > "$STAGES_FILE"
 
@@ -614,7 +642,9 @@ with open(out, "w") as f:
     "$GCS_GENERATION" "$PUBLISHED"
   chmod 600 "$REPORT_PATH" 2>/dev/null || true
   ln -sf "$REPORT_PATH" "$VALIDATOR_DIR/reports/latest-${SERVICE:-unknown}.json" 2>/dev/null || true
-  log_info "Report: $REPORT_PATH"
+  own_path "$REPORT_PATH" "$VALIDATOR_DIR/reports/latest-${SERVICE:-unknown}.json"
+  # On the Secondary VPS this copy is temporary: the main VPS keeps the report and says where
+  [ -n "${VALIDATOR_REMOTE_CHILD:-}" ] || log_info "Report: $REPORT_PATH"
 }
 
 revoke_record() {
@@ -797,7 +827,7 @@ fetch_snapshot() {
   AR="/proc/$$/fd/$ARCHIVE_FD"
   SERVICE=$(sed -E 's/^snapshot-(.+)-[0-9]{8}-[0-9]{6}\.tar\.zst$/\1/; s/^snapshot-(.+)\.tar\.zst$/\1/' <<< "$ARCHIVE_NAME")
   [ "$SOURCE_KIND" = drive ] && SERVICE="$SOURCE_REF"
-  record_stage "fetch" "pass" "$(since "$t0")" "{\"archive\": $(jstr "$ARCHIVE_NAME"), \"bytes\": $(stat -c %s "$AR"), \"sha256_file\": $([ -n "$SIDECAR" ] && echo true || echo false)$([ -n "$GCS_GENERATION" ] && echo ", \"gcs_generation\": \"$GCS_GENERATION\"")}"
+  record_stage "fetch" "pass" "$(since "$t0")" "{\"archive\": $(jstr "$ARCHIVE_NAME"), \"bytes\": $(stat -L -c %s "$AR"), \"sha256_file\": $([ -n "$SIDECAR" ] && echo true || echo false)$([ -n "$GCS_GENERATION" ] && echo ", \"gcs_generation\": \"$GCS_GENERATION\"")}"
 }
 
 stage_checksum() {
@@ -872,25 +902,89 @@ with open(sys.argv[2], "w") as out:
   record_stage "archive" "pass" "$(since "$t0")" "{\"files\": $files, \"uncompressed_bytes\": $bytes}"
 }
 
+# One member of the snapshot to stdout, from the tar or from the backup zip inside it
+cat_member() {
+  if [ "${2:-tar}" = zip ]; then
+    python3 -c '
+import shutil, sys, zipfile
+try:
+    with zipfile.ZipFile(sys.argv[1]) as z, z.open(sys.argv[2]) as f:
+        shutil.copyfileobj(f, sys.stdout.buffer, 1 << 20)
+except BrokenPipeError:
+    sys.exit(141)
+' "$INNER_ZIP" "$1" 2>/dev/null
+  else
+    tar -xOf "$AR" -I zstd --occurrence=1 "$1"
+  fi
+}
+
+# Older snapshots keep dump.sql, manifest.json and filestore/ in backupdata-<service>.zip (Odoo's
+# backup format). Copy that zip out of the archive, check every file in it (CRC) and list it.
+open_inner_zip() {
+  local zbytes free err
+  INNER_ZIP_MEMBER=$(awk -F'\t' '$3 == "-" && $2 ~ /(^|\/)backupdata-[^\/]*\.zip$/ {print $2; exit}' "$WORK/members.tsv")
+  [ -n "$INNER_ZIP_MEMBER" ] || INNER_ZIP_MEMBER=$(awk -F'\t' '$3 == "-" && $2 ~ /^[^\/]*\.zip$/ {print $2; exit}' "$WORK/members.tsv")
+  [ -n "$INNER_ZIP_MEMBER" ] || return 1
+  zbytes=$(awk -F'\t' -v n="$INNER_ZIP_MEMBER" '$2 == n {print $1; exit}' "$WORK/members.tsv")
+  free=$(free_bytes "$WORK")
+  if [[ "$zbytes" =~ ^[0-9]+$ ]] && [ -n "$free" ] && [ $((zbytes + RESERVE_BYTES)) -gt "$free" ]; then
+    record_stage "structure" "error" "$(since "$1")" "Not enough disk to unpack $INNER_ZIP_MEMBER ($(human "$zbytes") + reserve $(human "$RESERVE_BYTES") needed, $(human "$free") free)"
+    finish error
+  fi
+  log_info "[structure] Older snapshot format: checking $INNER_ZIP_MEMBER ($(human "${zbytes:-0}")) inside the archive..."
+  INNER_ZIP="$WORK/inner.zip"
+  copy_zip() { tar -xOf "$AR" -I zstd --occurrence=1 "$INNER_ZIP_MEMBER" > "$INNER_ZIP"; }
+  run_bg copy_zip || { record_stage "structure" "fail" "$(since "$1")" "Cannot extract $INNER_ZIP_MEMBER from the archive"; finish fail; }
+  # members of the zip, same columns as members.tsv; every file is read once to check its CRC
+  check_zip() {
+    python3 -c '
+import stat, sys, zipfile
+try:
+    z = zipfile.ZipFile(sys.argv[1])
+except Exception as e:
+    print("not a valid zip file: %s" % e, file=sys.stderr); sys.exit(2)
+with z, open(sys.argv[2], "w") as out:
+    for i in z.infolist():
+        if i.is_dir():
+            continue
+        mode = i.external_attr >> 16
+        kind = "l" if stat.S_ISLNK(mode) else ("-" if not mode or stat.S_ISREG(mode) else "o")
+        out.write("%d\t%s\t%s\n" % (i.file_size, i.filename, kind))
+    bad = z.testzip()
+    if bad:
+        print("corrupted file in the zip: %s" % bad, file=sys.stderr); sys.exit(3)
+' "$INNER_ZIP" "$WORK/zip-members.tsv" 2> "$WORK/zip.err"
+  }
+  if ! run_bg check_zip; then
+    err=$(tail -n 2 "$WORK/zip.err" | tr '\n' ' ')
+    record_stage "structure" "fail" "$(since "$1")" "{\"message\": $(jstr "$INNER_ZIP_MEMBER is corrupted: ${err:-unreadable}"), \"zip\": $(jstr "$INNER_ZIP_MEMBER")}"
+    finish fail
+  fi
+  CORE_SRC="zip"; CORE_MEMBERS="$WORK/zip-members.tsv"
+}
+
 stage_structure() {
   local t0 fs_files fs_bytes missing=()
   t0=$(now_s)
-  member() { awk -F'\t' -v n="$1" '$2==n || substr($2, length($2)-length(n)) == "/" n {print $2; exit}' "$WORK/members.tsv"; }
+  CORE_MEMBERS="$WORK/members.tsv"
+  member() { awk -F'\t' -v n="$1" '$2==n || substr($2, length($2)-length(n)) == "/" n {print $2; exit}' "${2:-$WORK/members.tsv}"; }
   DUMP_MEMBER=$(member dump.sql)
-  MANIFEST_MEMBER=$(member manifest.json)
+  [ -n "$DUMP_MEMBER" ] || open_inner_zip "$t0" || true
+  DUMP_MEMBER=$(member dump.sql "$CORE_MEMBERS")
+  MANIFEST_MEMBER=$(member manifest.json "$CORE_MEMBERS")
   GIT_HASHES_MEMBER=$(member git_hashes.json)
   SECRETS_USER_MEMBER=$(member .secrets/db_user)
-  FILESTORE_PREFIX=$(awk -F'\t' 'match($2, /(^|\/)filestore\//) {print substr($2, 1, RSTART + RLENGTH - 1); exit}' "$WORK/members.tsv")
+  FILESTORE_PREFIX=$(awk -F'\t' 'match($2, /(^|\/)filestore\//) {print substr($2, 1, RSTART + RLENGTH - 1); exit}' "$CORE_MEMBERS")
   [ -n "$DUMP_MEMBER" ] || missing+=("dump.sql")
   [ -n "$MANIFEST_MEMBER" ] || missing+=("manifest.json")
   fs_files=0; fs_bytes=0
   if [ -n "$FILESTORE_PREFIX" ]; then
-    fs_files=$(awk -F'\t' -v p="$FILESTORE_PREFIX" 'index($2, p) == 1' "$WORK/members.tsv" | wc -l)
-    fs_bytes=$(awk -F'\t' -v p="$FILESTORE_PREFIX" 'index($2, p) == 1 && $1 > 0 {s+=$1} END {print s+0}' "$WORK/members.tsv")
+    fs_files=$(awk -F'\t' -v p="$FILESTORE_PREFIX" 'index($2, p) == 1' "$CORE_MEMBERS" | wc -l)
+    fs_bytes=$(awk -F'\t' -v p="$FILESTORE_PREFIX" 'index($2, p) == 1 && $1 > 0 {s+=$1} END {print s+0}' "$CORE_MEMBERS")
   fi
-  local details="{\"dump_sql\": $(jstr "$DUMP_MEMBER"), \"manifest\": $(jstr "$MANIFEST_MEMBER"), \"git_hashes\": $(jstr "$GIT_HASHES_MEMBER"), \"filestore_files\": $fs_files, \"filestore_bytes\": $fs_bytes"
+  local details="{\"format\": $([ "$CORE_SRC" = zip ] && jstr "older: $INNER_ZIP_MEMBER inside the archive" || jstr "current"), \"dump_sql\": $(jstr "$DUMP_MEMBER"), \"manifest\": $(jstr "$MANIFEST_MEMBER"), \"git_hashes\": $(jstr "$GIT_HASHES_MEMBER"), \"filestore_files\": $fs_files, \"filestore_bytes\": $fs_bytes"
   if [ ${#missing[@]} -gt 0 ]; then
-    record_stage "structure" "fail" "$(since "$t0")" "$details, \"message\": $(jstr "Missing from the archive: ${missing[*]}")}"
+    record_stage "structure" "fail" "$(since "$t0")" "$details, \"message\": $(jstr "Missing from the archive$([ "$CORE_SRC" = zip ] && echo " (and from $INNER_ZIP_MEMBER)"): ${missing[*]}")}"
     finish fail
   fi
   if [ -z "$GIT_HASHES_MEMBER" ] || [ -z "$FILESTORE_PREFIX" ]; then
@@ -903,7 +997,7 @@ stage_structure() {
 stage_manifest() {
   local t0 info
   t0=$(now_s)
-  tar -xOf "$AR" -I zstd --occurrence=1 "$MANIFEST_MEMBER" > "$WORK/manifest.json" 2>/dev/null
+  cat_member "$MANIFEST_MEMBER" "$CORE_SRC" > "$WORK/manifest.json" 2>/dev/null
   if ! info=$(python3 -c '
 import json, sys
 m = json.load(open(sys.argv[1]))
@@ -1015,7 +1109,7 @@ check_disk() {
   # compressed custom-format dump to several times more.
   local t0 dump_bytes need_db free_db man_size head5 how
   t0=$(now_s)
-  dump_bytes=$(awk -F'\t' -v n="$DUMP_MEMBER" '$2==n {print $1; exit}' "$WORK/members.tsv")
+  dump_bytes=$(awk -F'\t' -v n="$DUMP_MEMBER" '$2==n {print $1; exit}' "$CORE_MEMBERS")
   [[ "$dump_bytes" =~ ^[0-9]+$ ]] || dump_bytes=0
   man_size=$(python3 -c '
 import json, sys
@@ -1023,7 +1117,7 @@ m = json.load(open(sys.argv[1]))
 v = ((m.get("sudodevops") or {}).get("postgres") or {}).get("db_size_bytes")
 print(int(v) if isinstance(v, (int, float)) and v > 0 else "")
 ' "$WORK/manifest.json" 2>/dev/null)
-  head5=$( { tar -xOf "$AR" -I zstd --occurrence=1 "$DUMP_MEMBER" 2>/dev/null || true; } | head -c 5)
+  head5=$( { cat_member "$DUMP_MEMBER" "$CORE_SRC" 2>/dev/null || true; } | head -c 5)
   if [ -n "$man_size" ]; then
     need_db=$(( man_size * 6 / 5 )); how="manifest database size x1.2"
   elif [ "$head5" = "PGDMP" ]; then
@@ -1044,7 +1138,7 @@ pg_major_of_dump() {
   # the database ran ("Dumped from") and the pg_dump that wrote it ("Dumped by"), which can be
   # newer and emit newer syntax. The manifest (newer snapshots) can raise it further.
   local head v_from v_by v_man best=0 v
-  head=$( { tar -xOf "$AR" -I zstd --occurrence=1 "$DUMP_MEMBER" 2>/dev/null || true; } | head -c 65536 | tr -d '\0')
+  head=$( { cat_member "$DUMP_MEMBER" "$CORE_SRC" 2>/dev/null || true; } | head -c 65536 | tr -d '\0')
   v_from=$(grep -a -m1 -o 'Dumped from database version [0-9.]*' <<< "$head" | awk '{print $NF}')
   v_by=$(grep -a -m1 -o 'Dumped by pg_dump version [0-9.]*' <<< "$head" | awk '{print $NF}')
   v_man=$(python3 -c '
@@ -1068,7 +1162,7 @@ pg_alive() { docker exec "$PG_CONTAINER" pg_isready -h 127.0.0.1 -U postgres -q 
 restore_plain() {
   # Streams dump.sql into psql (stops at the first SQL error) and keeps its last 8 KiB, so the
   # end-of-dump marker can prove the dump is complete.
-  tar -xOf "$AR" -I zstd --occurrence=1 "$DUMP_MEMBER" \
+  cat_member "$DUMP_MEMBER" "$CORE_SRC" \
     | tee >(tail -c 8192 > "$WORK/dump.tail") \
     | docker exec -i "$PG_CONTAINER" psql -U postgres -X -v ON_ERROR_STOP=1 -q -d "$1" -o /dev/null > /dev/null 2> "$WORK/restore.log"
   local rc=$?
@@ -1076,7 +1170,7 @@ restore_plain() {
   return $rc
 }
 restore_custom() {
-  tar -xOf "$AR" -I zstd --occurrence=1 "$DUMP_MEMBER" \
+  cat_member "$DUMP_MEMBER" "$CORE_SRC" \
     | docker exec -i "$PG_CONTAINER" pg_restore -U postgres -d "$1" --no-owner --exit-on-error > /dev/null 2> "$WORK/restore.log"
 }
 
@@ -1142,7 +1236,7 @@ print("DO $do$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = %s) T
     || { record_stage "database" "error" "$(since "$t0")" "CREATE DATABASE failed: $(tr '\n' ' ' < "$WORK/createdb.err")"; finish error; }
 
   log_info "[database] Restoring $DUMP_MEMBER (stops at the first SQL error)..."
-  head5=$( { tar -xOf "$AR" -I zstd --occurrence=1 "$DUMP_MEMBER" 2>/dev/null || true; } | head -c 5)
+  head5=$( { cat_member "$DUMP_MEMBER" "$CORE_SRC" 2>/dev/null || true; } | head -c 5)
   if [ "$head5" = "PGDMP" ]; then
     run_bg restore_custom "$dbname"; rc=$?
   else
@@ -1251,7 +1345,7 @@ print(status)
 print(json.dumps({"message": msg, "attachments": total, "files_in_archive": len(present), "missing": len(missing),
                   "wrong_size": len(wrong_size), "not_regular_files": len(not_regular), "bad_pct": round(pct, 2),
                   "examples_missing": missing[:20], "examples_wrong_size": wrong_size[:20], "max_bad_pct": max_pct}))
-' "$WORK/expected.tsv" "$WORK/members.tsv" "$FILESTORE_PREFIX" "$VALIDATOR_FILESTORE_MAX_MISSING_PCT"); then
+' "$WORK/expected.tsv" "$CORE_MEMBERS" "$FILESTORE_PREFIX" "$VALIDATOR_FILESTORE_MAX_MISSING_PCT"); then
     record_stage "filestore" "fail" "$(since "$t0")" "The filestore check crashed; the filestore was not verified"
     finish fail
   fi

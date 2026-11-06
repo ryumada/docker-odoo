@@ -1,0 +1,211 @@
+#!/usr/bin/env bash
+set -o pipefail
+# Category: Test
+# Description: Fake docker for the validate-snapshot tests: a "container" is a local Postgres server (initdb/pg_ctl).
+# Usage: put this folder first on PATH; state in FAKE_DOCKER_STATE (required), Postgres binaries in PG_BIN
+# Dependencies: bash, python3, PostgreSQL server binaries (initdb, pg_ctl, psql, pg_isready, pg_restore), runuser (root)
+#
+# Every call is appended to $FAKE_DOCKER_STATE/calls.log, every "run" to run.log, every "pull" to pull.log.
+# Knobs (environment):
+#   FAKE_DOCKER_DOWN=1     docker info fails (Docker not reachable)
+#   FAKE_DOCKER_ROOTLESS=1 docker info reports a rootless daemon (SecurityOptions has name=rootless)
+#   FAKE_DOCKER_HOST_ONLY=unix:///path  the "daemon" answers only when DOCKER_HOST is exactly this value
+#                          (tests that the validator finds a rootless user's own socket by itself)
+#   FAKE_NO_IMAGE=1        no image is ever cached (image inspect fails)
+#   FAKE_PULL_FAIL=1       docker pull fails
+#   FAKE_SLOW_RESTORE=N    the restore (psql -o /dev/null / pg_restore) first sleeps N seconds; the sleep's
+#                          PID is written to $FAKE_DOCKER_STATE/slow_restore.pid so a test can kill it
+#   FAKE_PG_USER=user      run Postgres as this user via runuser (set by the tests when running as root)
+# The Postgres server listens on 127.0.0.1 only (port chosen by the OS), with its socket in the
+# container's own folder (mode 0700); TCP logins need a password nobody has (pg_isready still works).
+
+S="${FAKE_DOCKER_STATE:?FAKE_DOCKER_STATE is not set}"
+umask 077
+# A real container never inherits the docker client's open files (the validator holds its queue
+# lock open): close every descriptor above stderr, or a "container" would keep the lock forever.
+for _fd in /proc/$$/fd/*; do
+  _fd="${_fd##*/}"
+  [ "$_fd" -gt 2 ] 2>/dev/null && eval "exec $_fd>&-" 2>/dev/null
+done
+unset _fd
+mkdir -p "$S/c" "$S/net" "$S/img" 2>/dev/null
+chmod 711 "$S" "$S/c" 2>/dev/null
+printf '%s\n' "$*" >> "$S/calls.log"
+
+pgbin() { echo "${PG_BIN:?PG_BIN is not set}/$1"; }
+as_pg() { if [ -n "${FAKE_PG_USER:-}" ]; then runuser -u "$FAKE_PG_USER" -- "$@"; else "$@"; fi; }
+img_key() { printf '%s' "$1" | tr -c 'a-zA-Z0-9._-' '_'; }
+cdir_of() {
+  # Container name -> its folder (short folder names keep the socket path under 107 bytes)
+  local d
+  for d in "$S"/c/*; do
+    [ -f "$d/name" ] && [ "$(cat "$d/name")" = "$1" ] && { echo "$d"; return 0; }
+  done
+  return 1
+}
+free_port() { python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1]); s.close()'; }
+pg_stop() {
+  # Immediate shutdown of a container's Postgres, then wait until it is gone
+  local d="$1" pid
+  [ -f "$d/slow.pid" ] && kill "$(cat "$d/slow.pid")" 2>/dev/null
+  pid=$(head -n1 "$d/data/postmaster.pid" 2>/dev/null)
+  if [[ "$pid" =~ ^[0-9]+$ ]]; then
+    kill -QUIT "$pid" 2>/dev/null
+    for _ in $(seq 100); do kill -0 "$pid" 2>/dev/null || break; sleep 0.1; done
+    kill -KILL "$pid" 2>/dev/null
+  fi
+}
+
+if [ -n "${FAKE_DOCKER_HOST_ONLY:-}" ] && [ "${DOCKER_HOST:-}" != "$FAKE_DOCKER_HOST_ONLY" ]; then
+  echo "Cannot connect to the Docker daemon at ${DOCKER_HOST:-unix:///var/run/docker.sock} (fake)" >&2; exit 1
+fi
+cmd="$1"; shift || true
+case "$cmd" in
+  info)
+    [ "${FAKE_DOCKER_DOWN:-}" = 1 ] && { echo "Cannot connect to the Docker daemon (fake)" >&2; exit 1; }
+    case "${1:-} ${2:-}" in
+      "-f "*SecurityOptions*)
+        if [ "${FAKE_DOCKER_ROOTLESS:-}" = 1 ]; then
+          echo '["name=seccomp,profile=builtin","name=rootless","name=cgroupns"]'
+        else
+          echo '["name=apparmor","name=seccomp,profile=builtin","name=cgroupns"]'
+        fi ;;
+      "-f "*) mkdir -p "$S/root"; echo "$S/root" ;;
+      *) echo "fake docker" ;;
+    esac
+    exit 0 ;;
+
+  image)
+    [ "${1:-}" = inspect ] || exit 1
+    [ "${FAKE_NO_IMAGE:-}" = 1 ] && exit 1
+    [ -f "$S/img/$(img_key "${2:-}")" ] ;;
+
+  pull)
+    [ "${1:-}" = "-q" ] && shift
+    echo "$1" >> "$S/pull.log"
+    [ "${FAKE_PULL_FAIL:-}" = 1 ] && { echo "pull failed (fake)" >&2; exit 1; }
+    : > "$S/img/$(img_key "$1")"
+    echo "$1" ;;
+
+  network)
+    sub="$1"; shift
+    case "$sub" in
+      create)
+        label="" internal=0 name=""
+        while [ $# -gt 0 ]; do
+          case "$1" in
+            --internal) internal=1; shift ;;
+            --label) label="${2#odoo-drill=}"; shift 2 ;;
+            *) name="$1"; shift ;;
+          esac
+        done
+        [ -n "$name" ] && [ ! -e "$S/net/$name" ] || exit 1
+        printf '%s %s\n' "$label" "$internal" > "$S/net/$name" ;;
+      rm) [ -f "$S/net/$1" ] && rm -f "$S/net/$1" ;;
+      ls)
+        for f in "$S"/net/*; do
+          [ -f "$f" ] || continue
+          read -r label _ < "$f"
+          printf '%s %s\n' "$(basename "$f")" "$label"
+        done ;;
+      *) exit 1 ;;
+    esac ;;
+
+  ps)
+    # Only "ps -a --filter label=odoo-drill --format ..." is used: print "name run-id"
+    for d in "$S"/c/*; do
+      [ -f "$d/name" ] || continue
+      printf '%s %s\n' "$(cat "$d/name")" "$(cat "$d/label" 2>/dev/null)"
+    done ;;
+
+  rm)
+    while [[ "${1:-}" == -* ]]; do shift; done
+    rc=1
+    for n in "$@"; do
+      d=$(cdir_of "$n") || continue
+      pg_stop "$d"
+      rm -rf "$d" && rc=0
+    done
+    exit $rc ;;
+
+  run)
+    printf '%s\n' "$*" >> "$S/run.log"
+    name="" label="" image="" pgargs=()
+    while [ $# -gt 0 ]; do
+      case "$1" in
+        -d) shift ;;
+        --name) name="$2"; shift 2 ;;
+        --label) label="${2#odoo-drill=}"; shift 2 ;;
+        --network|--cpus|--memory|--memory-swap|--oom-score-adj|--pids-limit|-e|--mount) shift 2 ;;
+        -*) shift ;;
+        *) image="$1"; shift; break ;;
+      esac
+    done
+    while [ $# -gt 0 ]; do
+      [ "$1" = "-c" ] && [ -n "${2:-}" ] && { pgargs+=("-c" "$2"); shift 2; continue; }
+      shift
+    done
+    [ -n "$name" ] && [ -n "$image" ] || { echo "fake docker run: name and image are required" >&2; exit 1; }
+    cdir_of "$name" >/dev/null && { echo "container $name exists" >&2; exit 1; }
+    if [ "${FAKE_NO_IMAGE:-}" = 1 ] || [ ! -f "$S/img/$(img_key "$image")" ]; then
+      echo "Unable to find image '$image' (fake)" >&2; exit 125
+    fi
+    # Unique folder per container, never reused: a late "docker rm" of an old container (the
+    # watchdog and the drill's own cleanup may both remove it) must never hit a new one
+    d=$(mktemp -d "$S/c/XXXXXX") || exit 1
+    n="${d##*/}"
+    printf '%s' "$name" > "$d/name"; printf '%s' "$label" > "$d/label"; printf '%s' "$image" > "$d/image"
+    if [ -n "${FAKE_PG_USER:-}" ]; then chmod 711 "$d"; chown "$FAKE_PG_USER" "$d"; fi
+    as_pg "$(pgbin initdb)" -D "$d/data" -U postgres --auth-local=trust --auth-host=scram-sha-256 \
+      -E UTF8 --no-sync >"$d/initdb.log" 2>&1 || { echo "initdb failed (see $d/initdb.log)" >&2; exit 1; }
+    opts="-c listen_addresses=127.0.0.1 -k $d -c unix_socket_permissions=0700"
+    for a in "${pgargs[@]}"; do [ "$a" = "-c" ] || opts="$opts -c $a"; done
+    for _ in 1 2 3 4 5; do
+      port=$(free_port)
+      if as_pg "$(pgbin pg_ctl)" -D "$d/data" -l "$d/data/server.log" -w -t 30 -o "$opts -p $port" start >/dev/null 2>&1; then
+        echo "$port" > "$d/port"
+        printf 'fake%s\n' "$n"
+        exit 0
+      fi
+    done
+    echo "Postgres did not start (see $d/data/server.log)" >&2
+    exit 1 ;;
+
+  exec)
+    interactive=0
+    while [[ "${1:-}" == -* ]]; do [ "$1" = "-i" ] && interactive=1; shift; done
+    name="$1"; shift
+    d=$(cdir_of "$name") || { echo "No such container: $name" >&2; exit 1; }
+    port=$(cat "$d/port" 2>/dev/null)
+    tool="$1"; shift
+    case "$tool" in
+      pg_isready)
+        exec "$(pgbin pg_isready)" -h 127.0.0.1 -p "$port" -q -t 2 ;;
+      psql|pg_restore)
+        args=()
+        restore=0
+        [ "$tool" = pg_restore ] && restore=1
+        while [ $# -gt 0 ]; do
+          case "$1" in
+            -h|-p) shift 2; continue ;;
+            -o) [ "${2:-}" = /dev/null ] && restore=1; args+=("$1" "$2"); shift 2; continue ;;
+          esac
+          args+=("$1"); shift
+        done
+        if [ "$restore" = 1 ] && [ -n "${FAKE_SLOW_RESTORE:-}" ]; then
+          sleep "$FAKE_SLOW_RESTORE" &
+          sp=$!
+          echo "$sp" > "$S/slow_restore.pid"; echo "$sp" > "$d/slow.pid"
+          trap 'kill "$sp" 2>/dev/null; exit 143' TERM INT HUP
+          wait "$sp" 2>/dev/null
+          trap - TERM INT HUP
+          rm -f "$d/slow.pid"
+          [ -d "$d/data" ] || exit 1
+        fi
+        [ "$interactive" = 1 ] || exec </dev/null
+        exec "$(pgbin "$tool")" -h "$d" -p "$port" "${args[@]}" ;;
+      *) echo "fake docker exec: unsupported command $tool" >&2; exit 1 ;;
+    esac ;;
+
+  *) echo "fake docker: unsupported command '$cmd'" >&2; exit 1 ;;
+esac

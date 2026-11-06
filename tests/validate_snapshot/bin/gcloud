@@ -1,0 +1,77 @@
+#!/usr/bin/env bash
+set -o pipefail
+# Category: Test
+# Description: Fake gcloud for the validate-snapshot tests: GCS objects are files, each upload a new generation.
+# Usage: put this folder first on PATH; objects live under FAKE_GCS_ROOT (required)
+# Dependencies: bash
+#
+# Layout: $FAKE_GCS_ROOT/<bucket>/<object>/<generation> holds the bytes of each generation, and
+# $FAKE_GCS_ROOT/<bucket>/<object>/live names the current one (no "live" = object deleted).
+# Supported: storage objects describe URL[#GEN] --format='value(generation|size)', storage cp, ls, rm.
+# Every call is appended to $FAKE_GCS_ROOT/calls.log.
+
+R="${FAKE_GCS_ROOT:?FAKE_GCS_ROOT is not set}"
+mkdir -p "$R"
+printf '%s\n' "$*" >> "$R/calls.log"
+
+odir() {
+  # gs://bucket/obj[#gen] -> folder of the object (prints nothing for an invalid URL)
+  local u="${1%%#*}"
+  [[ "$u" == gs://*/* ]] || return 1
+  u="${u#gs://}"
+  case "$u" in *..*) return 1 ;; esac
+  echo "$R/$u"
+}
+gen_of() {
+  # URL -> the requested generation, else the live one
+  local d="$1" url="$2"
+  if [[ "$url" == *#* ]]; then
+    [ -f "$d/${url##*#}" ] && echo "${url##*#}"
+  else
+    [ -f "$d/live" ] && cat "$d/live"
+  fi
+}
+upload() {
+  # src_file gs_url
+  local d g
+  d=$(odir "$2") || return 1
+  mkdir -p "$d" || return 1
+  g=$(( $(date +%s%N) / 1000 ))
+  while [ -e "$d/$g" ]; do g=$((g + 1)); done
+  cp "$1" "$d/$g" && echo "$g" > "$d/live"
+}
+
+[ "${1:-}" = storage ] || { echo "fake gcloud: only 'storage' is supported" >&2; exit 2; }
+shift
+sub="${1:-}"; shift || true
+case "$sub" in
+  objects)
+    [ "${1:-}" = describe ] || exit 2
+    url="$2"; fmt="${3:-}"
+    d=$(odir "$url") || exit 1
+    g=$(gen_of "$d" "$url")
+    [ -n "$g" ] || { echo "ERROR: $url not found" >&2; exit 1; }
+    case "$fmt" in
+      "--format=value(generation)") echo "$g" ;;
+      "--format=value(size)") stat -c %s "$d/$g" ;;
+      *) printf 'generation: %s\nsize: %s\n' "$g" "$(stat -c %s "$d/$g")" ;;
+    esac ;;
+  cp)
+    src="$1"; dst="$2"
+    if [[ "$src" == gs://* ]]; then
+      d=$(odir "$src") || exit 1
+      g=$(gen_of "$d" "$src")
+      [ -n "$g" ] || { echo "ERROR: $src not found" >&2; exit 1; }
+      cp "$d/$g" "$dst"
+    else
+      upload "$src" "$dst"
+    fi ;;
+  ls)
+    d=$(odir "$1") || exit 1
+    [ -f "$d/live" ] && echo "${1%%#*}" ;;
+  rm)
+    d=$(odir "$1") || exit 1
+    [ -f "$d/live" ] || { echo "ERROR: $1 not found" >&2; exit 1; }
+    rm -f "$d/live" ;;
+  *) echo "fake gcloud: unsupported 'storage $sub'" >&2; exit 2 ;;
+esac
