@@ -59,7 +59,7 @@ run_pg_dump() {
     [ -z "$docker_net" ] && docker_net="host"
     net=$(echo "$docker_net" | cut -d "," -f 1)
     if [ -n "$db_user" ] && [ -n "$db_pass" ]; then
-      docker run -i --rm --network="$net" -e PGPASSWORD="$db_pass" postgres pg_dump -h "$db_host" -p "$db_port" -U "$db_user" "$@"
+      PGPASSWORD="$db_pass" docker run -i --rm --network="$net" -e PGPASSWORD postgres pg_dump -h "$db_host" -p "$db_port" -U "$db_user" "$@"
     else
       docker run -i --rm --network="$net" -v "$PATH_TO_ODOO/.secrets:/secrets:ro" postgres bash -c '
         db_u="$1"

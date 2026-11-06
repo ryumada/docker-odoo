@@ -78,7 +78,7 @@ function run_pg_dump() {
     [ -z "$db_port" ] && db_port="5432"
     [ -z "$docker_net" ] && docker_net="host"
     local net=$(echo "$docker_net" | cut -d "," -f 1)
-    docker run -i --rm --network="$net" -e PGPASSWORD="$db_pass" postgres pg_dump -h "$db_host" -p "$db_port" -U "$db_user" "$@"
+    PGPASSWORD="$db_pass" docker run -i --rm --network="$net" -e PGPASSWORD postgres pg_dump -h "$db_host" -p "$db_port" -U "$db_user" "$@"
   else
     sudo -u postgres pg_dump "$@"
   fi
@@ -108,7 +108,7 @@ function run_psql() {
     [ -z "$db_port" ] && db_port="5432"
     [ -z "$docker_net" ] && docker_net="host"
     local net=$(echo "$docker_net" | cut -d "," -f 1)
-    docker run -i --rm --network="$net" -e PGPASSWORD="$db_pass" postgres psql -h "$db_host" -p "$db_port" -U "$db_user" "${db_default[@]}" "$@"
+    PGPASSWORD="$db_pass" docker run -i --rm --network="$net" -e PGPASSWORD postgres psql -h "$db_host" -p "$db_port" -U "$db_user" "${db_default[@]}" "$@"
   else
     sudo -u postgres psql "${db_default[@]}" "$@"
   fi
@@ -331,8 +331,8 @@ function main() {
       rm -rf "$db_temp_dir"
       log_success "Backup for '$DB' is completed manually."
     else
-      curl -s -X POST \
-        -F "master_pwd=$ADMIN_PASSWD" \
+      printf '%s' "$ADMIN_PASSWD" | curl -s -X POST \
+        -F "master_pwd=<-" \
         -F "name=$DB" \
         -F "backup_format=zip" \
         -o "$BACKUP_FILE_PATH" \

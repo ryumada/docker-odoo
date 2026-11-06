@@ -361,7 +361,7 @@ function run_psql() {
     [ -z "$db_port" ] && db_port="5432"
     [ -z "$docker_net" ] && docker_net="host"
     local net=$(echo "$docker_net" | cut -d "," -f 1)
-    docker run -i --rm --network="$net" -e PGPASSWORD="$db_pass" postgres psql -h "$db_host" -p "$db_port" -U "$db_user" "${db_default[@]}" "$@"
+    PGPASSWORD="$db_pass" docker run -i --rm --network="$net" -e PGPASSWORD postgres psql -h "$db_host" -p "$db_port" -U "$db_user" "${db_default[@]}" "$@"
   else
     sudo -u postgres psql "${db_default[@]}" "$@"
   fi
@@ -378,16 +378,16 @@ function restoreOdooDataViaEndpoint() {
 
   local response
   if [ "$NEUTRALIZE_DB" = "true" ]; then
-    response=$(curl -s -X POST \
-      -F "master_pwd=$ADMIN_PASSWD" \
+    response=$(printf '%s' "$ADMIN_PASSWD" | curl -s -X POST \
+      -F "master_pwd=<-" \
       -F "name=$RESTORED_DB_NAME" \
       -F "backup_file=@$BACKUPDATA_FILE_PATH" \
       -F "copy=true" \
       -F "neutralize_database=$NEUTRALIZE_DB" \
       "http://localhost:$PORT/web/database/restore")
   else
-    response=$(curl -s -X POST \
-      -F "master_pwd=$ADMIN_PASSWD" \
+    response=$(printf '%s' "$ADMIN_PASSWD" | curl -s -X POST \
+      -F "master_pwd=<-" \
       -F "name=$RESTORED_DB_NAME" \
       -F "backup_file=@$BACKUPDATA_FILE_PATH" \
       -F "copy=true" \
@@ -490,8 +490,8 @@ function main() {
       SAFETY_BACKUP_PATH="$safety_backup_dir/$SAFETY_BACKUP_NAME"
 
       log_info "Creating safety backup at $SAFETY_BACKUP_PATH"
-      curl -s -X POST \
-        -F "master_pwd=$ADMIN_PASSWD" \
+      printf '%s' "$ADMIN_PASSWD" | curl -s -X POST \
+        -F "master_pwd=<-" \
         -F "name=$RESTORED_DB_NAME" \
         -F "backup_format=zip" \
         -o "$SAFETY_BACKUP_PATH" \
@@ -507,8 +507,8 @@ function main() {
 
       log_info "Dropping existing database $RESTORED_DB_NAME..."
       # Try dropping via API first
-      drop_response=$(curl -s -X POST \
-        -F "master_pwd=$ADMIN_PASSWD" \
+      drop_response=$(printf '%s' "$ADMIN_PASSWD" | curl -s -X POST \
+        -F "master_pwd=<-" \
         -F "name=$RESTORED_DB_NAME" \
         "http://localhost:$PORT/web/database/drop")
 

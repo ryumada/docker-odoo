@@ -66,7 +66,7 @@ docker compose exec odoo odoo-shell <database>
 - **SQL Dumps & Object Ownership**:
   - Always dump with `--no-owner` to avoid hardcoding source usernames in the DDL.
   - On the target environment, restore via the Odoo container using the target's `.secrets`:
-    `docker compose exec -T -e PGPASSWORD="$pass" odoo psql -h "$db_host" -p "$db_port" -U "$user" -d "$db_name" < file.sql`
+    `PGPASSWORD="$pass" docker exec -i -e PGPASSWORD "$(docker compose ps -q odoo)" psql -h "$db_host" -p "$db_port" -U "$user" -d "$db_name" < file.sql` (the password comes from the environment, never the command line)
   - Reassign ownership of tables/sequences/views in `public` schema to `$user` to prevent `base_registry_signaling` permission errors during `odoo-registry-reload`.
 - **Bash Syntax Guardrails**: Never prefix function declarations with `local` (`local fn() { ... }` is invalid in bash).
 - **JSON-Clean Outputs**: In CLI scripts with `JSON_MODE=true`, redirect verbose commands (`rsync`, `ssh` logs) to `>&2` to protect JSON stdout.

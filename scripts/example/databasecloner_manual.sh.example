@@ -210,7 +210,7 @@ function run_psql() {
     [ -z "$db_port" ] && db_port="5432"
     [ -z "$docker_net" ] && docker_net="host"
     local net=$(echo "$docker_net" | cut -d "," -f 1)
-    docker run -i --rm --network="$net" -e PGPASSWORD="$db_pass" postgres psql -h "$db_host" -p "$db_port" -U "$db_user" "${db_default[@]}" "$@"
+    PGPASSWORD="$db_pass" docker run -i --rm --network="$net" -e PGPASSWORD postgres psql -h "$db_host" -p "$db_port" -U "$db_user" "${db_default[@]}" "$@"
   else
     sudo -u postgres psql "${db_default[@]}" "$@"
   fi
@@ -227,7 +227,7 @@ function run_pg_dump() {
     [ -z "$db_port" ] && db_port="5432"
     [ -z "$docker_net" ] && docker_net="host"
     local net=$(echo "$docker_net" | cut -d "," -f 1)
-    docker run -i --rm --network="$net" -e PGPASSWORD="$db_pass" postgres pg_dump -h "$db_host" -p "$db_port" -U "$db_user" "$@"
+    PGPASSWORD="$db_pass" docker run -i --rm --network="$net" -e PGPASSWORD postgres pg_dump -h "$db_host" -p "$db_port" -U "$db_user" "$@"
   else
     sudo -u postgres pg_dump "$@"
   fi
@@ -761,7 +761,7 @@ function run_interactive_push_mode() {
 
         log_info "Dropping old database '$ODOO_DB_NAME_ENV' if it exists..."
         curl -s -X POST \
-            -d "master_pwd=$DEST_ADMIN_PASSWD" \
+            --data-urlencode "master_pwd@"<(printf '%s' "$DEST_ADMIN_PASSWD") \
             -d "name=$ODOO_DB_NAME_ENV" \
             "http://localhost:$DEST_PORT/web/database/drop" >/dev/null 2>&1 || true
 
@@ -784,16 +784,16 @@ function run_interactive_push_mode() {
 
         log_info "Restoring database schema/data via direct localhost endpoint..."
         if [ "$ODOO_VERSION_NUM" -ge 16 ]; then
-          response=$(curl -s -X POST \
-            -F "master_pwd=$DEST_ADMIN_PASSWD" \
+          response=$(printf '%s' "$DEST_ADMIN_PASSWD" | curl -s -X POST \
+            -F "master_pwd=<-" \
             -F "name=$ODOO_DB_NAME_ENV" \
             -F "backup_file=@$ODOO_TMP_DIR/db_dump_only_$ODOO_DB_NAME_ENV.zip" \
             -F "copy=true" \
             -F "neutralize_database=$NEUTRALIZE_DB" \
             "http://localhost:$DEST_PORT/web/database/restore")
         else
-          response=$(curl -s -X POST \
-            -F "master_pwd=$DEST_ADMIN_PASSWD" \
+          response=$(printf '%s' "$DEST_ADMIN_PASSWD" | curl -s -X POST \
+            -F "master_pwd=<-" \
             -F "name=$ODOO_DB_NAME_ENV" \
             -F "backup_file=@$ODOO_TMP_DIR/db_dump_only_$ODOO_DB_NAME_ENV.zip" \
             -F "copy=true" \

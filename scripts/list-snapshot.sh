@@ -192,7 +192,7 @@ function get_gdrive_access_token_from_sa() {
   local token_response
   token_response=$(curl -s -X POST \
     -d "grant_type=urn:ietf:params:oauth:grant-type:jwt-bearer" \
-    --data-urlencode "assertion=$jwt" \
+    --data-urlencode "assertion@"<(printf '%s' "$jwt") \
     "$token_uri")
 
   echo "$token_response" | grep -o '"access_token": *"[^"]*"' | cut -d'"' -f4
@@ -203,7 +203,7 @@ function is_gdrive_token_valid() {
   [ -z "$token" ] && return 1
 
   local resp http_code exp
-  resp=$(curl -s --connect-timeout 5 --max-time 10 -w "\n%{http_code}" "https://oauth2.googleapis.com/tokeninfo?access_token=${token}" 2>/dev/null || true)
+  resp=$(curl -s --connect-timeout 5 --max-time 10 -w "\n%{http_code}" --data-urlencode "access_token@"<(printf '%s' "${token}") "https://oauth2.googleapis.com/tokeninfo" 2>/dev/null || true)
   http_code=$(echo "$resp" | tail -n1)
 
   if [ "$http_code" = "200" ]; then

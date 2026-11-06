@@ -420,8 +420,8 @@ function main() {
   checkOdooEndpoint "$SOURCE_PORT"
 
   log_info "Requesting backup from source Odoo instance..."
-  curl -s -X POST \
-       -F "master_pwd=$SOURCE_ADMIN_PASSWD" \
+  printf '%s' "$SOURCE_ADMIN_PASSWD" | curl -s -X POST \
+       -F "master_pwd=<-" \
        -F "name=$ODOO_DATABASE_NAME_PRD" \
        -F "backup_format=zip" \
        -o "$TEMP_BACKUP_FILE" \
@@ -448,14 +448,14 @@ function main() {
   if [ -n "$dest_db_name_from_env" ] && [ "$dest_db_name_from_env" != "$ODOO_DB_NAME_ENV" ]; then
     log_info "Dropping previous database '$dest_db_name_from_env'..."
     curl -s -X POST \
-      -d "master_pwd=$DEST_ADMIN_PASSWD" \
+      --data-urlencode "master_pwd@"<(printf '%s' "$DEST_ADMIN_PASSWD") \
       -d "name=$dest_db_name_from_env" \
       "http://localhost:$DEST_PORT/web/database/drop" >/dev/null 2>&1 || true
   fi
 
   log_info "Dropping old database '$ODOO_DB_NAME_ENV' if it exists..."
   drop_response=$(curl -s -X POST \
-    -d "master_pwd=$DEST_ADMIN_PASSWD" \
+    --data-urlencode "master_pwd@"<(printf '%s' "$DEST_ADMIN_PASSWD") \
     -d "name=$ODOO_DB_NAME_ENV" \
     "http://localhost:$DEST_PORT/web/database/drop")
 
@@ -481,16 +481,16 @@ function main() {
   log_info "Neutralize database option: $NEUTRALIZE_DB"
 
   if [ "$NEUTRALIZE_DB" = "true" ]; then
-    response=$(curl -s -X POST \
-      -F "master_pwd=$DEST_ADMIN_PASSWD" \
+    response=$(printf '%s' "$DEST_ADMIN_PASSWD" | curl -s -X POST \
+      -F "master_pwd=<-" \
       -F "name=$ODOO_DB_NAME_ENV" \
       -F "backup_file=@$TEMP_BACKUP_FILE" \
       -F "copy=true" \
       -F "neutralize_database=true" \
       "http://localhost:$DEST_PORT/web/database/restore")
   else
-    response=$(curl -s -X POST \
-      -F "master_pwd=$DEST_ADMIN_PASSWD" \
+    response=$(printf '%s' "$DEST_ADMIN_PASSWD" | curl -s -X POST \
+      -F "master_pwd=<-" \
       -F "name=$ODOO_DB_NAME_ENV" \
       -F "backup_file=@$TEMP_BACKUP_FILE" \
       -F "copy=true" \

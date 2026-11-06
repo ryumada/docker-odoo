@@ -165,7 +165,7 @@ function run_psql() {
         [ -z "$db_port" ] && db_port="5432"
         [ -z "$docker_net" ] && docker_net="host"
         local net=$(echo "$docker_net" | cut -d "," -f 1)
-        docker run -i --rm --network="$net" -e PGPASSWORD="$db_pass" postgres psql -h "$db_host" -p "$db_port" -U "$db_user" "${db_default[@]}" "$@"
+        PGPASSWORD="$db_pass" docker run -i --rm --network="$net" -e PGPASSWORD postgres psql -h "$db_host" -p "$db_port" -U "$db_user" "${db_default[@]}" "$@"
     else
         sudo -u postgres psql "${db_default[@]}" "$@"
     fi
@@ -670,7 +670,8 @@ if [ "$IS_RENEW_DB" == "true" ]; then
 
             (
                 cd "$STG_PATH_TO_ODOO"
-                docker compose exec -T -e PGPASSWORD="$stg_db_pass" odoo psql -h "$stg_db_host" -p "$stg_db_port" -U "$local_db_user" "$@"
+                # PGPASSWORD comes from the environment (-e NAME), so the password is not on a command line
+                PGPASSWORD="$stg_db_pass" docker exec -i -e PGPASSWORD "$(docker compose ps -q odoo)" psql -h "$stg_db_host" -p "$stg_db_port" -U "$local_db_user" "$@"
             )
         }
 
@@ -783,7 +784,7 @@ if [ "$IS_RENEW_DB" == "true" ]; then
             log_info "Dropping old database '$STG_DB_NAME_FROM_ENV' if it exists..."
 
             drop_response=$(curl -s -X POST \
-                -d "master_pwd=$STG_ADMIN_PASSWD" \
+                --data-urlencode "master_pwd@"<(printf '%s' "$STG_ADMIN_PASSWD") \
                 -d "name=$STG_DB_NAME_FROM_ENV" \
                 "http://localhost:$STG_PORT/web/database/drop")
 
@@ -809,15 +810,15 @@ if [ "$IS_RENEW_DB" == "true" ]; then
 
         log_info "Requesting backup from production $SERVICE_NAME_PRD instance..."
         if [ "$JSON_MODE" = "true" ]; then
-            curl -s -X POST \
-                -F "master_pwd=$PRD_ADMIN_PASSWD" \
+            printf '%s' "$PRD_ADMIN_PASSWD" | curl -s -X POST \
+                -F "master_pwd=<-" \
                 -F "name=$PRD_DB_NAME" \
                 -F "backup_format=zip" \
                 -o "$TEMP_BACKUP_FILE" \
                 "http://localhost:$PRD_PORT/web/database/backup" >&2
         else
-            curl -s -X POST \
-                -F "master_pwd=$PRD_ADMIN_PASSWD" \
+            printf '%s' "$PRD_ADMIN_PASSWD" | curl -s -X POST \
+                -F "master_pwd=<-" \
                 -F "name=$PRD_DB_NAME" \
                 -F "backup_format=zip" \
                 -o "$TEMP_BACKUP_FILE" \
@@ -857,7 +858,7 @@ if [ "$IS_RENEW_DB" == "true" ]; then
         # Build curl arguments
         CURL_RESTORE_ARGS=(
             -sS -X POST
-            -F "master_pwd=$STG_ADMIN_PASSWD"
+            -F "master_pwd=<-"
             -F "name=$STG_DB_NAME"
             -F "backup_file=@$TEMP_BACKUP_FILE"
             -F "copy=true"
@@ -871,7 +872,8 @@ if [ "$IS_RENEW_DB" == "true" ]; then
         # Execute restore with high timeout (database restore can be slow)
         # --connect-timeout: max time to establish connection
         # --max-time: max time for the entire operation (1 hour default)
-        response=$(curl "${CURL_RESTORE_ARGS[@]}" \
+        # The master password reaches curl on stdin (master_pwd=<-), never on its command line
+        response=$(printf '%s' "$STG_ADMIN_PASSWD" | curl "${CURL_RESTORE_ARGS[@]}" \
             --connect-timeout 10 \
             --max-time 3600 \
             "http://localhost:$STG_PORT/web/database/restore")

@@ -115,12 +115,13 @@ function run_psql() {
     [ -z "$db_port" ] && db_port="5432"
     [ -z "$docker_net" ] && docker_net="host"
     net=$(echo "$docker_net" | cut -d "," -f 1)
-    docker run -i --rm --network="$net" -e PGPASSWORD="$db_pass" postgres psql -h "$db_host" -p "$db_port" -U "$db_user" "${db_default[@]}" "$@"
+    PGPASSWORD="$db_pass" docker run -i --rm --network="$net" -e PGPASSWORD postgres psql -h "$db_host" -p "$db_port" -U "$db_user" "${db_default[@]}" "$@"
   elif command -v docker >/dev/null 2>&1 && docker compose -f "$PATH_TO_ODOO/docker-compose.yml" ps db --format json 2>/dev/null | grep -q '"State":"running"' 2>/dev/null; then
     local db_user db_pass
     db_user=$(cat "$PATH_TO_ODOO/.secrets/db_user" 2>/dev/null || echo "postgres")
     db_pass=$(cat "$PATH_TO_ODOO/.secrets/db_password" 2>/dev/null || true)
-    docker compose -f "$PATH_TO_ODOO/docker-compose.yml" exec -T -e PGPASSWORD="$db_pass" db psql -U "$db_user" "${db_default[@]}" "$@"
+    # PGPASSWORD comes from the environment (-e NAME), so the password is not on a command line
+    PGPASSWORD="$db_pass" docker exec -i -e PGPASSWORD "$(docker compose -f "$PATH_TO_ODOO/docker-compose.yml" ps -q db)" psql -U "$db_user" "${db_default[@]}" "$@"
   else
     sudo -u postgres psql "${db_default[@]}" "$@"
   fi

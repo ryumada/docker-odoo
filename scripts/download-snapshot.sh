@@ -210,7 +210,7 @@ function get_gdrive_access_token_from_sa() {
   local token_response
   token_response=$(curl -s -X POST \
     -d "grant_type=urn:ietf:params:oauth:grant-type:jwt-bearer" \
-    --data-urlencode "assertion=$jwt" \
+    --data-urlencode "assertion@"<(printf '%s' "$jwt") \
     "$token_uri")
 
   echo "$token_response" | grep -o '"access_token": *"[^"]*"' | cut -d'"' -f4
@@ -221,7 +221,7 @@ function is_gdrive_token_valid() {
   [ -z "$token" ] && return 1
 
   local resp http_code exp
-  resp=$(curl -s --connect-timeout 5 --max-time 10 -w "\n%{http_code}" "https://oauth2.googleapis.com/tokeninfo?access_token=${token}" 2>/dev/null || true)
+  resp=$(curl -s --connect-timeout 5 --max-time 10 -w "\n%{http_code}" --data-urlencode "access_token@"<(printf '%s' "${token}") "https://oauth2.googleapis.com/tokeninfo" 2>/dev/null || true)
   http_code=$(echo "$resp" | tail -n1)
 
   if [ "$http_code" = "200" ]; then
@@ -355,7 +355,7 @@ elif [[ "$TARGET_INPUT" == *.tar.zst ]] || [[ "$TARGET_INPUT" == snapshot-* ]]; 
   [ -n "$GDRIVE_FOLDER_ID" ] && QUERY="$QUERY and '$GDRIVE_FOLDER_ID' in parents"
 
   RESPONSE=$(curl -s -G \
-    -H "Authorization: Bearer $ACCESS_TOKEN" \
+    -H @<(printf 'Authorization: Bearer %s\n' "$ACCESS_TOKEN") \
     --data-urlencode "q=$QUERY" \
     --data-urlencode "fields=files(id, name, size, createdTime)" \
     --data-urlencode "supportsAllDrives=true" \
@@ -385,7 +385,7 @@ fi
 # --- Retrieve File Metadata ---
 log_info "Fetching file details for ID: $FILE_ID..."
 META_RESPONSE=$(curl -s -G \
-  -H "Authorization: Bearer $ACCESS_TOKEN" \
+  -H @<(printf 'Authorization: Bearer %s\n' "$ACCESS_TOKEN") \
   --data-urlencode "fields=id,name,size,mimeType,createdTime" \
   --data-urlencode "supportsAllDrives=true" \
   "https://www.googleapis.com/drive/v3/files/$FILE_ID")
@@ -427,7 +427,7 @@ log_info "Downloading to: $DEST_FILE..."
 
 # --- Execute Download ---
 HTTP_STATUS=$(curl -# -L -w "%{http_code}" \
-  -H "Authorization: Bearer $ACCESS_TOKEN" \
+  -H @<(printf 'Authorization: Bearer %s\n' "$ACCESS_TOKEN") \
   "https://www.googleapis.com/drive/v3/files/${FILE_ID}?alt=media&supportsAllDrives=true" \
   -o "$DEST_FILE")
 

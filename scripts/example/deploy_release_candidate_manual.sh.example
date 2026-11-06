@@ -163,7 +163,7 @@ function run_psql() {
         [ -z "$db_port" ] && db_port="5432"
         [ -z "$docker_net" ] && docker_net="host"
         local net=$(echo "$docker_net" | cut -d "," -f 1)
-        docker run -i --rm --network="$net" -e PGPASSWORD="$db_pass" postgres psql -h "$db_host" -p "$db_port" -U "$db_user" "${db_default[@]}" "$@"
+        PGPASSWORD="$db_pass" docker run -i --rm --network="$net" -e PGPASSWORD postgres psql -h "$db_host" -p "$db_port" -U "$db_user" "${db_default[@]}" "$@"
     else
         sudo -u postgres psql "${db_default[@]}" "$@"
     fi
@@ -181,7 +181,7 @@ function run_pg_dump() {
         [ -z "$db_port" ] && db_port="5432"
         [ -z "$docker_net" ] && docker_net="host"
         local net=$(echo "$docker_net" | cut -d "," -f 1)
-        docker run -i --rm --network="$net" -e PGPASSWORD="$db_pass" postgres pg_dump -h "$db_host" -p "$db_port" -U "$db_user" "$@"
+        PGPASSWORD="$db_pass" docker run -i --rm --network="$net" -e PGPASSWORD postgres pg_dump -h "$db_host" -p "$db_port" -U "$db_user" "$@"
     else
         sudo -u postgres pg_dump "$@"
     fi
@@ -746,7 +746,8 @@ main() {
 
                 (
                     cd "$STG_PATH_TO_ODOO"
-                    docker compose exec -T -e PGPASSWORD="$stg_db_pass" odoo psql -h "$stg_db_host" -p "$stg_db_port" -U "$local_db_user" "$@"
+                    # PGPASSWORD comes from the environment (-e NAME), so the password is not on a command line
+                    PGPASSWORD="$stg_db_pass" docker exec -i -e PGPASSWORD "$(docker compose ps -q odoo)" psql -h "$stg_db_host" -p "$stg_db_port" -U "$local_db_user" "$@"
                 )
             }
 
@@ -995,16 +996,16 @@ main() {
                 CURL_OUT=$(mktemp)
 
                 if [ "$ODOO_VERSION_NUM" -ge 16 ]; then
-                  curl -s -X POST \
-                    -F "master_pwd=$STG_ADMIN_PASSWD" \
+                  printf '%s' "$STG_ADMIN_PASSWD" | curl -s -X POST \
+                    -F "master_pwd=<-" \
                     -F "name=$STG_DB_NAME" \
                     -F "backup_file=@/tmp/db_dump_only_$STG_DB_NAME.zip" \
                     -F "copy=true" \
                     -F "neutralize_database=$NEUTRALIZE_DB" \
                     "http://localhost:$STG_PORT/web/database/restore" > "$CURL_OUT" 2>&1 || true
                 else
-                  curl -s -X POST \
-                    -F "master_pwd=$STG_ADMIN_PASSWD" \
+                  printf '%s' "$STG_ADMIN_PASSWD" | curl -s -X POST \
+                    -F "master_pwd=<-" \
                     -F "name=$STG_DB_NAME" \
                     -F "backup_file=@/tmp/db_dump_only_$STG_DB_NAME.zip" \
                     -F "copy=true" \
