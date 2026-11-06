@@ -4,7 +4,7 @@
 # Usage: source scripts/lib/queue_lock.sh
 # Dependencies: flock, date, hostname, id, ssh (remote mode)
 #
-# How the queue works (all files live in /tmp):
+# How the queue works (all files live in /tmp, or in QUEUE_LOCK_DIR when it is set):
 #   /tmp/<queue>.queue.lock
 #       Shared file, never deleted. Only used with a short flock so that
 #       "check markers -> write my marker" happens as one atomic step.
@@ -36,6 +36,9 @@
 : "${QUEUE_LOCK_STALE_AFTER:=600}"        # marker without heartbeat for this long = dead job
 : "${QUEUE_LOCK_HEARTBEAT:=60}"           # seconds between heartbeats
 : "${QUEUE_LOCK_LEGACY_STALE_AFTER:=43200}" # legacy markers have no heartbeat
+# QUEUE_LOCK_DIR (optional, default /tmp): folder of the lock files on this host. Only for
+# isolated runs such as the tests; jobs that share a queue must use the same folder. It is
+# never sent to a remote host: the remote side uses its own QUEUE_LOCK_DIR, else /tmp.
 
 QUEUE_LOCK_LOCAL_QUEUE=""
 QUEUE_LOCK_LOCAL_HOLDER=""
@@ -67,7 +70,7 @@ __ql_try() {
   # Args: queue holder token description stale_after legacy_stale_after hold(0|1)
   # Prints one line: "ACQUIRED", "BUSY <who>" or "ERROR <why>". Returns 0, 1 or 2.
   local queue="$1" holder="$2" token="$3" desc="$4" stale="$5" legacy_stale="$6" hold="${7:-0}"
-  local base="/tmp/$queue.queue"
+  local base="${QUEUE_LOCK_DIR:-/tmp}/$queue.queue"
   local lock="$base.lock"
   local marker="$base.active.$holder.u$(id -u)"
   local fd now f ts rest age limit who
@@ -126,7 +129,7 @@ __ql_try() {
 
 __ql_beat() {
   # Args: queue holder token. Refreshes our marker's timestamp if it is still ours.
-  local marker="/tmp/$1.queue.active.$2.u$(id -u)" token="$3" ts tok rest
+  local marker="${QUEUE_LOCK_DIR:-/tmp}/$1.queue.active.$2.u$(id -u)" token="$3" ts tok rest
   [ -f "$marker" ] || { echo "LOST"; return 1; }
   read -r ts tok rest < "$marker" || { echo "LOST"; return 1; }
   [ "$tok" = "$token" ] || { echo "LOST"; return 1; }
@@ -135,7 +138,7 @@ __ql_beat() {
 
 __ql_release() {
   # Args: queue holder token. Deletes our marker only if it is still ours.
-  local marker="/tmp/$1.queue.active.$2.u$(id -u)" token="$3" ts tok rest
+  local marker="${QUEUE_LOCK_DIR:-/tmp}/$1.queue.active.$2.u$(id -u)" token="$3" ts tok rest
   [ -f "$marker" ] || return 0
   read -r ts tok rest < "$marker" 2>/dev/null || true
   if [ "$tok" = "$token" ]; then rm -f "$marker" 2>/dev/null || true; fi
@@ -156,7 +159,7 @@ queue_lock_acquire_local() {
     out=$(__ql_try "$queue" "$holder" "$token" "$desc" "$QUEUE_LOCK_STALE_AFTER" "$QUEUE_LOCK_LEGACY_STALE_AFTER" 0) || rc=$?
     if [ "$rc" -eq 0 ]; then
       # __ql_try ran in a subshell, so take and keep the flock here in the main shell.
-      exec {QUEUE_LOCK_HELD_FD}<"/tmp/$queue.queue.lock"
+      exec {QUEUE_LOCK_HELD_FD}<"${QUEUE_LOCK_DIR:-/tmp}/$queue.queue.lock"
       if ! flock -n "$QUEUE_LOCK_HELD_FD"; then
         exec {QUEUE_LOCK_HELD_FD}<&-
         QUEUE_LOCK_HELD_FD=""

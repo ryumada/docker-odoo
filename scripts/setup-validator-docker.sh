@@ -168,20 +168,36 @@ for kind in uid gid; do
   fi
 done
 
-# AppArmor: Ubuntu 23.10+ blocks unprivileged user namespaces unless a profile allows them
-if [ "$(sysctl -n kernel.apparmor_restrict_unprivileged_userns 2>/dev/null)" = 1 ]; then
+# AppArmor: Ubuntu 23.10+ blocks unprivileged user namespaces unless a profile allows them.
+# Read the kernel switch directly (rootlesskit does the same); the profile must name the real binary
+# (not a symlink), and it only counts once it is loaded in the kernel.
+aa_restrict=$(cat /proc/sys/kernel/apparmor_restrict_unprivileged_userns 2>/dev/null || echo 0)
+rk="" prof=""
+aa_loaded() { grep -qF "$rk (" /sys/kernel/security/apparmor/profiles 2>/dev/null; }
+aa_diag() {
+  say "    kernel.apparmor_restrict_unprivileged_userns = $aa_restrict"
+  say "    rootlesskit binary: ${rk:-not found}"
+  say "    profile file: $prof $([ -f "$prof" ] && echo '(present)' || echo '(missing)')"
+  say "    loaded in the kernel: $(grep -F "$rk (" /sys/kernel/security/apparmor/profiles 2>/dev/null || echo 'no')"
+  say "    other profiles mentioning rootlesskit: $(grep -ls rootlesskit /etc/apparmor.d/* 2>/dev/null | grep -vxF "$prof" | tr '\n' ' ')"
+}
+if [ "$aa_restrict" = 1 ]; then
   rk=$(command -v rootlesskit 2>/dev/null || true)
   if [ -z "$rk" ]; then
-    miss "AppArmor profile for rootlesskit (after the packages are installed)"
+    [ "$mode" = check ] && miss "AppArmor profile for rootlesskit (after the packages are installed)" \
+      || die "rootlesskit is not installed, so its AppArmor profile cannot be set up."
   else
+    rk=$(readlink -f "$rk")
     prof="/etc/apparmor.d/$(printf '%s' "${rk#/}" | tr / .)"
-    if [ -f "$prof" ] && grep -q userns "$prof"; then
+    if [ -f "$prof" ] && grep -q userns "$prof" && { [ "$(id -u)" != 0 ] || aa_loaded; }; then
       ok "AppArmor allows user namespaces for $rk ($prof)"
     elif [ "$mode" = check ]; then
-      miss "AppArmor profile $prof (user namespaces for rootlesskit)"
+      if [ -f "$prof" ]; then miss "AppArmor profile $prof exists but is not loaded"; else miss "AppArmor profile $prof (user namespaces for rootlesskit)"; fi
     else
-      cat > "$prof" << PROF
+      if ! { [ -f "$prof" ] && grep -q userns "$prof"; }; then
+        cat > "$prof" << PROF
 # Written by docker-odoo setup-validator-docker.sh: lets rootless Docker create user namespaces
+# ref: https://ubuntu.com/blog/ubuntu-23-10-restricted-unprivileged-user-namespaces
 abi <abi/4.0>,
 include <tunables/global>
 
@@ -191,8 +207,15 @@ include <tunables/global>
   include if exists <local/$(basename "$prof")>
 }
 PROF
-      apparmor_parser -r "$prof" 2>/dev/null || systemctl reload apparmor 2>/dev/null || die "Could not load $prof."
-      did "AppArmor profile $prof"
+        did "Wrote AppArmor profile $prof"
+      fi
+      apparmor_parser -r "$prof" >&2 || say "[i] apparmor_parser -r $prof failed; restarting AppArmor instead"
+      aa_loaded || systemctl restart apparmor.service >&2
+      if ! aa_loaded; then
+        say "[-] The AppArmor profile for rootlesskit is not loaded, so rootless Docker cannot start:"
+        aa_diag; exit 1
+      fi
+      did "AppArmor profile loaded: $rk may create user namespaces"
     fi
   fi
 else
@@ -276,6 +299,18 @@ asu() {
 limits_active || die "CPU, memory and process limits are not active for $tu's services yet ($ctl: $(cat "$ctl" 2>/dev/null)). Run this again when no drill is running, or reboot."
 ok "$tu's services can limit cpu, memory and pids"
 
+# Prove that the drill user can create a user namespace with rootlesskit before the setup tool runs
+rk_bin=$(readlink -f "$(command -v rootlesskit 2>/dev/null)" 2>/dev/null)
+if [ -n "$rk_bin" ]; then
+  if rk_out=$(cd / && asu "$rk_bin" --net=host true 2>&1); then
+    ok "rootlesskit works for $tu"
+  else
+    say "[-] rootlesskit cannot start for $tu, so rootless Docker cannot either:"
+    printf '%s\n' "$rk_out" | tail -n 5 | sed 's/^/    /' >&2
+    rk="$rk_bin"; prof="/etc/apparmor.d/$(printf '%s' "${rk#/}" | tr / .)"; aa_diag
+    exit 1
+  fi
+fi
 if [ -f "$home/.config/systemd/user/docker.service" ]; then
   ok "Rootless Docker already set up for $tu"
   asu systemctl --user enable --now docker.service >/dev/null 2>&1

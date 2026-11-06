@@ -281,6 +281,8 @@ Checks, in order: checksum (`.sha256`), the whole archive decompresses, required
 - One drill runs at a time per host (queue `odoo-snapshot-validator`, separate from the snapshot queue), at the lowest CPU and I/O priority. `VALIDATOR_DISK_RESERVE_GB` (default 5) keeps free disk for snapshots: a drill does not start below it and is stopped if free space falls below it while running. Leftovers of a drill that was killed are removed when the next drill starts.
 - This is phase 1 of the validator: it does not boot Odoo yet. Reports and records carry `"level": "database"`.
 
+**Tests.** `./tests/test_validate_snapshot.sh [local|storage|credentials|remote|all]` (from the repo root; `TVS_KEEP=1` keeps the work folder, `TVS_VERBOSE=1` shows the log under a failed check). They are safe on a real VPS or dev machine: everything happens in one `mktemp` folder that is removed at the end, the validator runs from a copy of `scripts/` with an empty `.env` (your real `.env`, Secondary VPS and Drive credentials are never read), queue locks go to that folder (`QUEUE_LOCK_DIR`), Docker, `df` and `gcloud` are fakes (a "container" is a throwaway local Postgres on 127.0.0.1), Google Drive is a local mock, and the remote suite starts its own `sshd` on 127.0.0.1 without touching `~/.ssh`. Linux only; needs `python3`, `zstd`, `tar`, `git`, `curl`, `openssl`, `flock`, the PostgreSQL server binaries (`PG_BIN` to choose them), and `ssh`/`sshd` for the remote suite (skipped with the reason if a login is not possible). Support files are in `tests/validate_snapshot/`.
+
 </details>
 
 <details>
