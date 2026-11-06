@@ -169,17 +169,39 @@ for kind in uid gid; do
 done
 
 # AppArmor: Ubuntu 23.10+ blocks unprivileged user namespaces unless a profile allows them.
-# Read the kernel switch directly (rootlesskit does the same); the profile must name the real binary
-# (not a symlink), and it only counts once it is loaded in the kernel.
+# Exactly ONE enabled profile may attach to rootlesskit: two (e.g. Ubuntu's own
+# /etc/apparmor.d/rootlesskit plus one from Docker's hint) make AppArmor refuse to run it at all.
+# Read the kernel switch directly (rootlesskit does the same) and name the real binary, not a symlink.
 aa_restrict=$(cat /proc/sys/kernel/apparmor_restrict_unprivileged_userns 2>/dev/null || echo 0)
-rk="" prof=""
-aa_loaded() { grep -qF "$rk (" /sys/kernel/security/apparmor/profiles 2>/dev/null; }
+aa_dir=/etc/apparmor.d
+aa_kprof=/sys/kernel/security/apparmor/profiles
+rk="" prof="" ours_marker="Written by docker-odoo setup-validator-docker.sh"
+aa_enabled() { [ -f "$1" ] && [ ! -e "$aa_dir/disable/$(basename "$1")" ]; }
+# Profile files (top level, enabled) whose header attaches to $rk
+aa_attaching() {
+  local f re
+  re=$(printf '%s' "$rk" | sed 's/[.[\*^$()+?{|]/\\&/g')
+  for f in "$aa_dir"/*; do
+    aa_enabled "$f" || continue
+    grep -qsE "^[[:space:]]*(profile[[:space:]]+[^[:space:]]+[[:space:]]+)?\"?$re\"?([[:space:]]|\{|$)" "$f" && echo "$f"
+  done
+}
+# Name the kernel lists a profile file under: "profile NAME ..." or else the attached path
+aa_name() {
+  local h
+  h=$(grep -m1 -E "^[[:space:]]*(profile[[:space:]]+[^[:space:]]+[[:space:]]+)?\"?/" "$1" | sed 's/^[[:space:]]*//')
+  case "$h" in profile\ *) set -- $h; printf '%s' "${2//\"/}" ;; *) set -- $h; printf '%s' "${1//\"/}" ;; esac
+}
+aa_is_loaded() { awk -v n="$1 (" 'index($0, n) == 1 { f = 1 } END { exit !f }' "$aa_kprof" 2>/dev/null; }
+# Our old profile can stay loaded in the kernel after its file is gone (it still clashes)
+aa_stale() { [ -n "$aa_keep" ] && [ "$(aa_name "$aa_keep")" != "$rk" ] && [ ! -f "$prof" ] && aa_is_loaded "$rk"; }
 aa_diag() {
   say "    kernel.apparmor_restrict_unprivileged_userns = $aa_restrict"
   say "    rootlesskit binary: ${rk:-not found}"
-  say "    profile file: $prof $([ -f "$prof" ] && echo '(present)' || echo '(missing)')"
-  say "    loaded in the kernel: $(grep -F "$rk (" /sys/kernel/security/apparmor/profiles 2>/dev/null || echo 'no')"
-  say "    other profiles mentioning rootlesskit: $(grep -ls rootlesskit /etc/apparmor.d/* 2>/dev/null | grep -vxF "$prof" | tr '\n' ' ')"
+  say "    profiles attaching to it: $(aa_attaching | tr '\n' ' ')"
+  say "    loaded in the kernel: $(grep -iF rootlesskit "$aa_kprof" 2>/dev/null | tr '\n' ' ' || echo 'none')"
+  say "    kernel log (AppArmor, last lines):"
+  { journalctl -k --no-pager -n 300 2>/dev/null || dmesg 2>/dev/null; } | grep -iE 'apparmor=.*(rootlesskit|userns)|conflicting profile' | tail -n 5 | sed 's/^/      /' >&2
 }
 if [ "$aa_restrict" = 1 ]; then
   rk=$(command -v rootlesskit 2>/dev/null || true)
@@ -188,15 +210,36 @@ if [ "$aa_restrict" = 1 ]; then
       || die "rootlesskit is not installed, so its AppArmor profile cannot be set up."
   else
     rk=$(readlink -f "$rk")
-    prof="/etc/apparmor.d/$(printf '%s' "${rk#/}" | tr / .)"
-    if [ -f "$prof" ] && grep -q userns "$prof" && { [ "$(id -u)" != 0 ] || aa_loaded; }; then
-      ok "AppArmor allows user namespaces for $rk ($prof)"
+    prof="$aa_dir/$(printf '%s' "${rk#/}" | tr / .)"
+    mapfile -t aa_files < <(aa_attaching)
+    # A profile that came with the system (Ubuntu's apparmor package) wins over ours
+    aa_keep=""
+    for f in "${aa_files[@]}"; do [ "$f" != "$prof" ] && grep -q 'userns' "$f" && { aa_keep="$f"; break; }; done
+    if [ -z "$aa_keep" ] && [ -f "$prof" ] && grep -q userns "$prof" && aa_enabled "$prof"; then aa_keep="$prof"; fi
+    aa_extra=(); for f in "${aa_files[@]}"; do [ "$f" != "$aa_keep" ] && aa_extra+=("$f"); done
+    if [ -n "$aa_keep" ] && [ ${#aa_extra[@]} -eq 0 ] && { [ "$(id -u)" != 0 ] || { aa_is_loaded "$(aa_name "$aa_keep")" && ! aa_stale; }; }; then
+      ok "AppArmor allows user namespaces for $rk ($aa_keep)"
     elif [ "$mode" = check ]; then
-      if [ -f "$prof" ]; then miss "AppArmor profile $prof exists but is not loaded"; else miss "AppArmor profile $prof (user namespaces for rootlesskit)"; fi
+      if [ ${#aa_extra[@]} -gt 0 ] || aa_stale; then miss "More than one AppArmor profile attaches to $rk (${aa_files[*]}): AppArmor then refuses to run it"
+      elif [ -n "$aa_keep" ]; then miss "AppArmor profile $aa_keep is not loaded"
+      else miss "AppArmor profile $prof (user namespaces for rootlesskit)"; fi
     else
-      if ! { [ -f "$prof" ] && grep -q userns "$prof"; }; then
+      # Take duplicates out: ours are removed, anything else is disabled (reversible) and named
+      for f in "${aa_extra[@]}"; do
+        apparmor_parser -R "$f" >/dev/null 2>&1
+        if grep -qF "$ours_marker" "$f"; then
+          rm -f "$f"; did "Removed duplicate AppArmor profile $f (written by an earlier run; $aa_keep already covers rootlesskit)"
+        else
+          mkdir -p "$aa_dir/disable" && ln -sf "$f" "$aa_dir/disable/$(basename "$f")"
+          did "Disabled duplicate AppArmor profile $f ($aa_keep already covers rootlesskit). Undo: sudo rm $aa_dir/disable/$(basename "$f") && sudo apparmor_parser -r $f"
+        fi
+      done
+      if aa_stale; then
+        printf '%s' "$rk" > "${aa_kprof%/profiles}/.remove" 2>/dev/null && did "Unloaded a leftover AppArmor profile '$rk' (its file was already gone)"
+      fi
+      if [ -z "$aa_keep" ]; then
         cat > "$prof" << PROF
-# Written by docker-odoo setup-validator-docker.sh: lets rootless Docker create user namespaces
+# $ours_marker: lets rootless Docker create user namespaces
 # ref: https://ubuntu.com/blog/ubuntu-23-10-restricted-unprivileged-user-namespaces
 abi <abi/4.0>,
 include <tunables/global>
@@ -207,15 +250,15 @@ include <tunables/global>
   include if exists <local/$(basename "$prof")>
 }
 PROF
-        did "Wrote AppArmor profile $prof"
+        aa_keep="$prof"; did "Wrote AppArmor profile $prof"
       fi
-      apparmor_parser -r "$prof" >&2 || say "[i] apparmor_parser -r $prof failed; restarting AppArmor instead"
-      aa_loaded || systemctl restart apparmor.service >&2
-      if ! aa_loaded; then
-        say "[-] The AppArmor profile for rootlesskit is not loaded, so rootless Docker cannot start:"
+      apparmor_parser -r "$aa_keep" >&2 || say "[i] apparmor_parser -r $aa_keep failed; restarting AppArmor instead"
+      aa_is_loaded "$(aa_name "$aa_keep")" || systemctl restart apparmor.service >&2
+      if ! aa_is_loaded "$(aa_name "$aa_keep")"; then
+        say "[-] The AppArmor profile for rootlesskit ($aa_keep) is not loaded, so rootless Docker cannot start:"
         aa_diag; exit 1
       fi
-      did "AppArmor profile loaded: $rk may create user namespaces"
+      ok "AppArmor: $aa_keep lets $rk create user namespaces (the only profile for it)"
     fi
   fi
 else
@@ -307,7 +350,7 @@ if [ -n "$rk_bin" ]; then
   else
     say "[-] rootlesskit cannot start for $tu, so rootless Docker cannot either:"
     printf '%s\n' "$rk_out" | tail -n 5 | sed 's/^/    /' >&2
-    rk="$rk_bin"; prof="/etc/apparmor.d/$(printf '%s' "${rk#/}" | tr / .)"; aa_diag
+    rk="$rk_bin"; aa_diag
     exit 1
   fi
 fi
