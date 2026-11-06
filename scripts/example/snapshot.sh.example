@@ -738,6 +738,46 @@ function writeGitHash() {
   done
 }
 
+# Reads the Odoo version from odoo/release.py without running it, the way Odoo builds it:
+# version_info is the only literal there (series, major_version and version are computed from it),
+# so series = "<version_info[0]>.<version_info[1]>". Falls back to ODOO_VERSION in .env, and
+# otherwise leaves the version empty with a warning (never a made-up default).
+function odoo_version_from_release_py() {
+  # Args: path to release.py. Prints: version<TAB>major_version<TAB>version_info (JSON), or nothing.
+  python3 - "$1" <<'PY' 2>/dev/null || true
+import ast, json, sys
+try:
+    tree = ast.parse(open(sys.argv[1], encoding="utf-8").read())
+except Exception:
+    sys.exit()
+lit, version_info = {}, None
+for node in tree.body:
+    if not isinstance(node, ast.Assign):
+        continue
+    for target in node.targets:
+        if not isinstance(target, ast.Name):
+            continue
+        if target.id == "version_info" and isinstance(node.value, (ast.Tuple, ast.List)):
+            version_info = [e.value if isinstance(e, ast.Constant)
+                            else (e.id.lower() if isinstance(e, ast.Name) else None)
+                            for e in node.value.elts]
+        elif target.id in ("version", "series", "serie", "major_version") \
+                and isinstance(node.value, ast.Constant) and isinstance(node.value.value, str):
+            lit[target.id] = node.value.value
+series = lit.get("series") or lit.get("serie") or lit.get("major_version")
+if not series and version_info and len(version_info) >= 2 and None not in version_info[:2]:
+    series = "%s.%s" % (version_info[0], version_info[1])
+if not series:
+    sys.exit()
+version = lit.get("version") or series
+safe = lambda v: "".join(c for c in str(v) if c.isalnum() or c in ".~+_-")[:40]
+version, series = safe(version), safe(series)
+if not series:
+    sys.exit()
+print("%s\t%s\t%s" % (version or series, series, json.dumps(version_info) if version_info else "null"))
+PY
+}
+
 function extract_odoo_version_info() {
   local active_base_path
   active_base_path=$(grep "^ACTIVE_ODOO_BASE_PATH=" "$PATH_TO_ODOO/.env" 2>/dev/null | cut -d '=' -f2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//')
@@ -755,48 +795,29 @@ function extract_odoo_version_info() {
     release_py_file=$(find "$PATH_TO_ODOO/odoo-base" "$PATH_TO_ODOO/odoo" -name "release.py" -path "*/odoo/release.py" 2>/dev/null | head -n 1 || true)
   fi
 
-  MANIFEST_VERSION="16.0"
-  MANIFEST_MAJOR_VERSION="16"
-  MANIFEST_VERSION_INFO='[16, 0, 0, "final", 0, ""]'
+  MANIFEST_VERSION=""
+  MANIFEST_MAJOR_VERSION=""
+  MANIFEST_VERSION_INFO="null"
 
+  local parsed=""
   if [ -n "$release_py_file" ] && [ -f "$release_py_file" ] && command -v python3 >/dev/null 2>&1; then
-    local version_json
-    version_json=$(python3 -c '
-import sys, json, ast
-try:
-    with open(sys.argv[1], "r") as f:
-        tree = ast.parse(f.read())
-    version = "16.0"
-    version_info = [16, 0, 0, "final", 0, ""]
-    major_version = "16"
-    for node in tree.body:
-        if isinstance(node, ast.Assign):
-            for target in node.targets:
-                if isinstance(target, ast.Name):
-                    if target.id == "version" and isinstance(node.value, ast.Constant):
-                        version = str(node.value.value)
-                    elif target.id in ("major_version", "series", "serie") and isinstance(node.value, ast.Constant):
-                        major_version = str(node.value.value)
-                    elif target.id == "version_info" and isinstance(node.value, ast.Tuple):
-                        version_info = [
-                            elt.value if isinstance(elt, ast.Constant)
-                            else (elt.id.lower() if isinstance(elt, ast.Name) else str(elt))
-                            for elt in node.value.elts
-                        ]
-    print(json.dumps({"version": version, "version_info": version_info, "major_version": major_version}))
-except Exception:
-    print(json.dumps({"version": "16.0", "version_info": [16, 0, 0, "final", 0, ""], "major_version": "16"}))
-' "$release_py_file" 2>/dev/null || true)
+    parsed=$(odoo_version_from_release_py "$release_py_file")
+  fi
+  if [ -n "$parsed" ]; then
+    IFS=$'\t' read -r MANIFEST_VERSION MANIFEST_MAJOR_VERSION MANIFEST_VERSION_INFO <<< "$parsed"
+    log_info "Odoo version from ${release_py_file#$PATH_TO_ODOO/}: $MANIFEST_VERSION"
+    return 0
+  fi
 
-    if [ -n "$version_json" ]; then
-      local extracted_v extracted_mv extracted_vi
-      extracted_v=$(echo "$version_json" | python3 -c 'import sys, json; print(json.load(sys.stdin).get("version", ""))' 2>/dev/null || true)
-      extracted_mv=$(echo "$version_json" | python3 -c 'import sys, json; print(json.load(sys.stdin).get("major_version", ""))' 2>/dev/null || true)
-      extracted_vi=$(echo "$version_json" | python3 -c 'import sys, json; print(json.dumps(json.load(sys.stdin).get("version_info", [])))' 2>/dev/null || true)
-      [ -n "$extracted_v" ] && MANIFEST_VERSION="$extracted_v"
-      [ -n "$extracted_mv" ] && MANIFEST_MAJOR_VERSION="$extracted_mv"
-      [ -n "$extracted_vi" ] && [ "$extracted_vi" != "[]" ] && MANIFEST_VERSION_INFO="$extracted_vi"
-    fi
+  local env_version
+  env_version=$(grep "^ODOO_VERSION=" "$PATH_TO_ODOO/.env" 2>/dev/null | cut -d '=' -f2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//' || true)
+  if [[ "$env_version" =~ ^([0-9]+)(\.([0-9]+))?$ ]]; then
+    MANIFEST_VERSION="${BASH_REMATCH[1]}.${BASH_REMATCH[3]:-0}"
+    MANIFEST_MAJOR_VERSION="$MANIFEST_VERSION"
+    MANIFEST_VERSION_INFO="[${BASH_REMATCH[1]}, ${BASH_REMATCH[3]:-0}, 0, \"final\", 0, \"\"]"
+    log_warn "Could not read the Odoo version from release.py; using ODOO_VERSION=$env_version from .env ($MANIFEST_VERSION)."
+  else
+    log_warn "Could not read the Odoo version (no readable odoo/release.py and no numeric ODOO_VERSION in .env). manifest.json will have no version."
   fi
 }
 

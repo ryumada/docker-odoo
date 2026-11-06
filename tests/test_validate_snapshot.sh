@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -o pipefail
 # Category: Test
-# Description: Test suite for scripts/validate-snapshot.sh (local drills, older zip snapshots, Drive/GCS storage, credentials, rootless Docker, remote SSH mode) and scripts/setup-validator-docker.sh.
-# Usage: ./tests/test_validate_snapshot.sh [local|formats|storage|credentials|rootless|setup|remote|all]   (run from the repo root; TVS_KEEP=1 keeps the work folder)
+# Description: Test suite for scripts/validate-snapshot.sh (local drills, older zip snapshots, Odoo version, Drive/GCS storage, credentials, rootless Docker, remote SSH mode), scripts/setup-validator-docker.sh, and the Odoo version reader in scripts/example/snapshot.sh.example.
+# Usage: ./tests/test_validate_snapshot.sh [local|formats|version|storage|credentials|rootless|setup|remote|all]   (run from the repo root; TVS_KEEP=1 keeps the work folder)
 # Dependencies: bash, python3, zstd, tar, git, curl, openssl, flock, PostgreSQL server binaries (PG_BIN), ssh + sshd (remote suite)
 #
 # Safe on a real VPS or dev machine: everything happens inside one mktemp folder that is removed at
@@ -15,9 +15,9 @@ set -o pipefail
 REPO_ROOT=$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)
 SUITE="${1:-all}"
 case "$SUITE" in
-  local|formats|storage|credentials|rootless|setup|remote|all) ;;
+  local|formats|version|storage|credentials|rootless|setup|remote|all) ;;
   -h|--help) sed -n '3,14p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
-  *) echo "Usage: $0 [local|formats|storage|credentials|rootless|setup|remote|all]" >&2; exit 3 ;;
+  *) echo "Usage: $0 [local|formats|version|storage|credentials|rootless|setup|remote|all]" >&2; exit 3 ;;
 esac
 if [ ! -f "$REPO_ROOT/scripts/validate-snapshot.sh" ]; then
   echo "scripts/validate-snapshot.sh not found under $REPO_ROOT" >&2
@@ -26,7 +26,7 @@ fi
 
 # shellcheck source=validate_snapshot/lib.sh
 source "$REPO_ROOT/tests/validate_snapshot/lib.sh"
-for s in local formats storage credentials rootless setup remote; do
+for s in local formats version storage credentials rootless setup remote; do
   # shellcheck source=/dev/null
   source "$REPO_ROOT/tests/validate_snapshot/suite_$s.sh"
 done
@@ -39,7 +39,7 @@ tvs_setup "$REPO_ROOT"
 started=$(date +%s)
 
 if [ "$SUITE" = all ]; then
-  suite_local; suite_formats; suite_storage; suite_credentials; suite_rootless; suite_setup; suite_remote
+  suite_local; suite_formats; suite_version; suite_storage; suite_credentials; suite_rootless; suite_setup; suite_remote
 else
   "suite_$SUITE"
 fi

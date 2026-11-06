@@ -23,6 +23,11 @@ set -o pipefail
 #   oldzip           good, in the older layout              oldzip-corrupt   one file in the zip fails its CRC
 #   oldzip-nodump    the zip has no dump.sql                oldzip-missing   5 of 20 attachments not in the zip
 #   oldzip-linkfs    filestore stored in the zip as a symlink (nothing to restore)
+# Odoo version in manifest.json (the database is always Odoo 17.0, base 17.0.1.3):
+#   odoomanifest   version, version_info and major_version as the fixed snapshot tool writes them
+#   buggyversion   what the snapshot tool wrote before the version fix: version 16.0, version_info right
+#   wrongversion   the old 16.0 default in every field (release.py not found), so only the database knows
+#   noversion      no version in the manifest at all
 
 OUT="$1"; VARIANT="$2"; SERVICE="${3:-svc}"; TS="${4:-20260101-000000}"
 [ -n "$OUT" ] && [ -n "$VARIANT" ] || { echo "usage: mkfixture.sh OUT_DIR VARIANT [SERVICE] [TIMESTAMP]" >&2; exit 2; }
@@ -110,7 +115,15 @@ EOF
 } > "$STAGE/dump.sql"
 rm -f "$STAGE/attachments.sql"
 
-if [ "$VARIANT" = plaindump ] || [ "$VARIANT" = newerdump ]; then
+if [ "$VARIANT" = odoomanifest ]; then
+  echo '{"odoo_dump": "1", "version": "17.0", "version_info": [17, 0, 0, "final", 0, ""], "major_version": "17.0", "modules": {}}' > "$STAGE/manifest.json"
+elif [ "$VARIANT" = buggyversion ]; then
+  echo '{"odoo_dump": "1", "version": "16.0", "version_info": [17, 0, 0, "final", 0, ""], "major_version": "16", "modules": {}}' > "$STAGE/manifest.json"
+elif [ "$VARIANT" = wrongversion ]; then
+  echo '{"odoo_dump": "1", "version": "16.0", "version_info": [16, 0, 0, "final", 0, ""], "major_version": "16", "modules": {}}' > "$STAGE/manifest.json"
+elif [ "$VARIANT" = noversion ]; then
+  echo '{"odoo_dump": "1", "version": "", "version_info": null, "major_version": "", "modules": {}}' > "$STAGE/manifest.json"
+elif [ "$VARIANT" = plaindump ] || [ "$VARIANT" = newerdump ]; then
   echo '{"version": "17.0", "service": "'"$SERVICE"'"}' > "$STAGE/manifest.json"
 else
   echo '{"version": "17.0", "service": "'"$SERVICE"'", "sudodevops": {"postgres": {"server_version": "16.4", "db_size_bytes": 52428800}}}' > "$STAGE/manifest.json"

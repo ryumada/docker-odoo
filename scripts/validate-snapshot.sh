@@ -521,7 +521,7 @@ DUMP_MEMBER="" MANIFEST_MEMBER="" GIT_HASHES_MEMBER="" SECRETS_USER_MEMBER="" FI
 # Where dump.sql, manifest.json and the filestore are: "tar" (the snapshot itself) or "zip" (the
 # Odoo backup zip inside older snapshots, until docker-odoo's 2026-10 snapshot refactor)
 CORE_SRC="tar" CORE_MEMBERS="" INNER_ZIP="" INNER_ZIP_MEMBER=""
-ODOO_VERSION="" PG_IMAGE="" WATCHDOG_PID="" CHILD_PID="" ABORT_REASON="" RESULT=""
+ODOO_VERSION="" MANIFEST_ODOO_VERSION="" PG_IMAGE="" WATCHDOG_PID="" CHILD_PID="" ABORT_REASON="" RESULT=""
 FAILED=0 ERRORS=0 WARNED=0 PUBLISHED="" DB_STATS="{}" PULL_WARNING=""
 
 prepare_dirs "$VALIDATOR_DIR/runs" && mkdir -p "$WORK" || { log_error "Cannot create $WORK"; exit 3; }
@@ -995,19 +995,44 @@ stage_structure() {
 }
 
 stage_manifest() {
-  local t0 info
+  local t0 out status
   t0=$(now_s)
   cat_member "$MANIFEST_MEMBER" "$CORE_SRC" > "$WORK/manifest.json" 2>/dev/null
-  if ! info=$(python3 -c '
-import json, sys
+  # The Odoo series ("18.0") comes from version_info first: it is the only field Odoo's release.py
+  # holds literally, and snapshot tools before the version fix wrote "version": "16.0" for every
+  # deployment while version_info was right. stage_database compares it with the restored database.
+  if ! out=$(python3 - "$WORK/manifest.json" <<'PY' 2>/dev/null
+import json, re, sys
 m = json.load(open(sys.argv[1]))
-print(m.get("version") or m.get("major_version") or "")
-' "$WORK/manifest.json" 2>/dev/null) || [ -z "$info" ]; then
-    record_stage "manifest" "fail" "$(since "$t0")" "manifest.json is unreadable or has no Odoo version"
+if not isinstance(m, dict):
+    raise SystemExit(1)
+def series_of(v):
+    hit = re.match(r"^((?:saas~)?\d+\.\d+)", str(v or "").strip())
+    return hit.group(1) if hit else ""
+vi = m.get("version_info")
+from_vi = "%s.%s" % (vi[0], vi[1]) if isinstance(vi, list) and len(vi) >= 2 and None not in vi[:2] else ""
+from_vi = series_of(from_vi)
+from_version = series_of(m.get("version"))
+version = from_vi or from_version or series_of(m.get("major_version"))
+details = {"odoo_version": version or None}
+status = "pass"
+if not version:
+    status = "warn"
+    details["message"] = "manifest.json has no Odoo version (the restored database tells it instead)"
+elif from_vi and from_version and from_vi != from_version:
+    status = "warn"
+    details["manifest_version"] = str(m.get("version"))
+    details["message"] = ("manifest.json disagrees with itself: version_info says %s but version says %s "
+                          "(written by a snapshot tool from before the Odoo version fix: update docker-odoo on that "
+                          "deployment and re-run ./setup.sh, which installs the fixed snapshot tool)" % (from_vi, m.get("version")))
+print(status + "\x1f" + version + "\x1f" + json.dumps(details))
+PY
+); then
+    record_stage "manifest" "fail" "$(since "$t0")" "manifest.json is unreadable"
     finish fail
   fi
-  ODOO_VERSION="$info"
-  record_stage "manifest" "pass" "$(since "$t0")" "{\"odoo_version\": $(jstr "$ODOO_VERSION")}"
+  IFS=$'\x1f' read -r status ODOO_VERSION out <<< "$out"
+  record_stage "manifest" "$status" "$(since "$t0")" "$out"
 }
 
 # git_hashes.json comes from the archive: never let its values reach git as options, and only
@@ -1297,9 +1322,26 @@ except Exception: d={}
 d["message"]="Restored, but not a usable Odoo database: " + sys.argv[2]; print(json.dumps(d))' "$stats" "${verdict:-unknown}")"
     finish fail
   fi
-  record_stage "database" "$([ -n "$PULL_WARNING" ] && echo warn || echo pass)" "$(since "$t0")" "$(python3 -c 'import json,sys; d=json.loads(sys.argv[1]); d["image"]=sys.argv[2]; d["restore_warnings"]=int(sys.argv[3] or 0)
+  # The restored database is the truth about the Odoo version: base 18.0.1.3 is series 18.0
+  local db_series version_warning=""
+  db_series=$(python3 -c 'import json,sys
+v = str(json.loads(sys.argv[1]).get("base_version") or "")
+parts = v.split(".")
+print(".".join(parts[:-2]) if len(parts) >= 4 else "")' "$stats" 2>/dev/null)
+  if [ -n "$db_series" ]; then
+    if [ -n "$ODOO_VERSION" ] && [ "$ODOO_VERSION" != "$db_series" ]; then
+      version_warning="manifest.json says Odoo $ODOO_VERSION but the database is Odoo $db_series; the snapshot tool recorded the wrong version (update docker-odoo on that deployment and re-run ./setup.sh)"
+    fi
+    MANIFEST_ODOO_VERSION="$ODOO_VERSION"
+    ODOO_VERSION="$db_series"
+  fi
+  local db_message
+  db_message=$(printf '%s\n' "$PULL_WARNING" "$version_warning" | sed '/^$/d' | paste -sd ';' - | sed 's/;/; /g')
+  record_stage "database" "$([ -n "$db_message" ] && echo warn || echo pass)" "$(since "$t0")" "$(python3 -c 'import json,sys; d=json.loads(sys.argv[1]); d["image"]=sys.argv[2]; d["restore_warnings"]=int(sys.argv[3] or 0)
+if sys.argv[5]: d["odoo_version"]=sys.argv[5]
+if sys.argv[6] and sys.argv[6] != sys.argv[5]: d["manifest_odoo_version"]=sys.argv[6]
 if sys.argv[4]: d["message"]=sys.argv[4]
-print(json.dumps(d))' "$stats" "$PG_IMAGE" "$(grep -a -c 'WARNING' "$WORK/restore.log" || true)" "$PULL_WARNING")"
+print(json.dumps(d))' "$stats" "$PG_IMAGE" "$(grep -a -c 'WARNING' "$WORK/restore.log" || true)" "$db_message" "$db_series" "$MANIFEST_ODOO_VERSION")"
   echo "$dbname" > "$WORK/dbname"
 }
 
