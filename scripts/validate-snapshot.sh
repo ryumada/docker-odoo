@@ -1045,20 +1045,22 @@ git_safe() {
     timeout "$VALIDATOR_GIT_TIMEOUT" git "$@"
 }
 git_check_commit() {
-  # Args: remote commit. Prints found | missing | unreachable
+  # Args: remote commit. Prints found:by-id | found:history | missing | unreachable
   local remote="$1" commit="$2" tmp
   tmp=$(mktemp -d "$WORK/git.XXXXXX") || { echo unreachable; return; }
   git init -q --bare "$tmp" >/dev/null 2>&1
   if ! git_safe ls-remote -q --heads -- "$remote" >/dev/null 2>&1 \
      && ! git_safe ls-remote -q -- "$remote" >/dev/null 2>&1; then
     echo unreachable
-  # Fast path: fetch just that commit (GitHub/GitLab allow fetching reachable commits by id)
-  elif git_safe -C "$tmp" fetch -q --depth=1 -- "$remote" "$commit" >/dev/null 2>&1; then
-    echo found
+  # Fast path: fetch just that commit object, no trees or files (GitHub/GitLab allow fetching
+  # reachable commits by id; a server without partial clone ignores the filter and sends the files)
+  elif git_safe -C "$tmp" fetch -q --depth=1 --filter=tree:0 -- "$remote" "$commit" >/dev/null 2>&1 \
+       && git -C "$tmp" cat-file -e "$commit^{commit}" 2>/dev/null; then
+    echo found:by-id
   # Slow path: history without file contents, then look for the commit
   elif git_safe -C "$tmp" fetch -q --filter=tree:0 -- "$remote" "+refs/heads/*:refs/heads/*" "+refs/tags/*:refs/tags/*" >/dev/null 2>&1 \
        && git -C "$tmp" cat-file -e "$commit^{commit}" 2>/dev/null; then
-    echo found
+    echo found:history
   else
     echo missing
   fi
@@ -1087,7 +1089,7 @@ for b in d.get("bundled_directories", []):
     return
   fi
 
-  local kind rel remote commit shown state ok=0 bad=0 unreachable=0 problems=() checked=()
+  local kind rel remote commit shown state t_repo ok=0 bad=0 unreachable=0 problems=() checked=()
   while IFS=$'\t' read -r kind rel remote commit; do
     [ -n "$rel" ] || continue
     if [ "$kind" = "bundled" ]; then
@@ -1109,10 +1111,11 @@ for b in d.get("bundled_directories", []):
       bad=$((bad + 1)); problems+=("$rel: invalid or missing commit id '$(printf '%.80s' "$commit")'"); continue
     fi
     log_info "[git] $rel: checking ${commit:0:8} on $shown..."
+    t_repo=$(now_s)
     run_bg git_check_commit "$remote" "$commit" > "$WORK/git_state" 2>/dev/null
     state=$(cat "$WORK/git_state" 2>/dev/null)
     case "$state" in
-      found) ok=$((ok + 1)); checked+=("$rel: ${commit:0:8} found on remote") ;;
+      found:*) ok=$((ok + 1)); checked+=("$rel: ${commit:0:8} found on remote (${state#found:}, $(since "$t_repo")s)") ;;
       missing) bad=$((bad + 1)); problems+=("$rel: commit ${commit:0:8} is not on $shown") ;;
       *) unreachable=$((unreachable + 1)); problems+=("$rel: cannot reach $shown (network, credentials or VALIDATOR_GIT_ALLOW_PROTOCOL)") ;;
     esac

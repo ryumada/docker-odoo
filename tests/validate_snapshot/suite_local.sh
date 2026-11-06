@@ -24,6 +24,12 @@ suite_local() {
   check_eq "database stats: 2 users" 2 "$(rj "$r" 'r["database"]["users"]')"
   check_eq "database stats: 20 stored attachments" 20 "$(rj "$r" 'r["database"]["attachments_stored"]')"
   check_eq "git: odoo-base found and custom_addons bundled" 2 "$(stage_of "$r" git ok)"
+  check "git: the report says how the commit was found and how long it took" python3 -c '
+import json, re, sys
+r = json.load(open(sys.argv[1]))
+git = next(s for s in r["stages"] if s["name"] == "git")
+sys.exit(0 if any(re.fullmatch(r"odoo-base: [0-9a-f]{8} found on remote \((by-id|history), [0-9.]+s\)", c)
+                  for c in git["details"]["checked"]) else 1)' "$r"
   check_eq "no publish without --publish" "" "$(rj "$r" 'r["record_published"]')"
   check_not "no validation record written" test -e "$good.validated.json"
   check "no drill container left" no_containers
@@ -76,6 +82,28 @@ suite_local() {
   check_rc "no .sha256 still passes" 0
   check_eq "checksum stage skipped" skip "$(stage_of "$VS_REPORT" checksum)"
   check_eq "skipped checksum still records the sha256" "$(sha256sum "$a" | cut -d' ' -f1)" "$(stage_of "$VS_REPORT" checksum sha256)"
+
+  tvs_section "local: git finds a commit by its id, or in the history when the server refuses that"
+  local hist_wt="$T/git/hist-wt" hist_old hist_new
+  mkdir -p "$hist_wt"
+  ( export HOME="$T/home" GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null
+    cd "$hist_wt" && git init -q -b main . && echo one > f && git add f \
+      && git -c user.name=test -c user.email=test@example.invalid commit -q -m one \
+      && echo two > f && git -c user.name=test -c user.email=test@example.invalid commit -q -am two \
+      && git clone -q --bare . "$T/git/hist.git" ) >/dev/null 2>&1
+  hist_old=$(git -C "$hist_wt" rev-parse HEAD~1 2>/dev/null); hist_new=$(git -C "$hist_wt" rev-parse HEAD 2>/dev/null)
+  a=$(FIXTURE_GIT_REMOTE="file://$T/git/hist.git" FIXTURE_GIT_COMMIT="$hist_new" fx good)
+  vs git-tip -- --file "$a"
+  check_rc "the branch tip passes" 0
+  check_grep "the tip is fetched by its id" "$VS_REPORT" "found on remote (by-id,"
+  a=$(FIXTURE_GIT_REMOTE="file://$T/git/hist.git" FIXTURE_GIT_COMMIT="$hist_old" fx good)
+  vs git-old-v2 -- --file "$a"
+  check_rc "an older commit passes" 0
+  check_grep "an older commit is fetched by its id too (git protocol v2)" "$VS_REPORT" "found on remote (by-id,"
+  # Protocol v0 servers send only branch tips by id unless configured otherwise: the history path finds it
+  vs git-old-v0 GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=protocol.version GIT_CONFIG_VALUE_0=0 -- --file "$a"
+  check_rc "an older commit passes when the server refuses it by id" 0
+  check_grep "and is found in the history" "$VS_REPORT" "found on remote (history,"
 
   tvs_section "local: git values from the archive never reach git as options"
   a=$(fx gitinject)

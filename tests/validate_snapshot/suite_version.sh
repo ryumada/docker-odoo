@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -o pipefail
 # Category: Test
-# Description: Odoo version: how scripts/example/snapshot.sh.example reads it from odoo/release.py, and how
-#              validate-snapshot.sh reads manifest.json and checks it against the restored database.
+# Description: Odoo version: how scripts/lib/odoo_version.sh reads it from odoo/release.py (used by the snapshot tool
+#              and by the backup tools' fallback), and how validate-snapshot.sh checks manifest.json against the database.
 # Usage: sourced by tests/test_validate_snapshot.sh (suite "version"); needs tests/validate_snapshot/lib.sh
 # Dependencies: lib.sh, mkfixture.sh (odoomanifest, buggyversion, wrongversion, noversion), python3, PostgreSQL server binaries
 
@@ -22,20 +22,41 @@ version = series + RELEASE_LEVELS_DISPLAY[version_info[3]] + str(version_info[4]
 EOF
 }
 
-# Runs extract_odoo_version_info from the snapshot tool against one deployment folder.
-# Prints "version|major_version|version_info" and leaves the tool's log in $T/ver/<name>.log
+# Runs the snapshot tool's extract_odoo_version_info (which uses scripts/lib/odoo_version.sh) against one
+# deployment folder. Prints "version|major_version|version_info" and leaves the log in $T/ver/<name>.log
 snap_version() {
   local dep="$1" name
   name=$(basename "$dep")
   ( set +o pipefail; set -e   # the snapshot tool's own shell options
     log_info() { echo "INFO $1" >> "$T/ver/$name.log"; }
     log_warn() { echo "WARN $1" >> "$T/ver/$name.log"; }
-    eval "$(sed -n '/^function odoo_version_from_release_py()/,/^}/p;/^function extract_odoo_version_info()/,/^}/p' \
-      "$T/app/scripts/example/snapshot.sh.example")"
+    # shellcheck source=/dev/null
+    source "$T/app/scripts/lib/odoo_version.sh"
+    eval "$(sed -n '/^function extract_odoo_version_info()/,/^}/p' "$T/app/scripts/example/snapshot.sh.example")"
     PATH_TO_ODOO="$dep"
     extract_odoo_version_info
     echo "$MANIFEST_VERSION|$MANIFEST_MAJOR_VERSION|$MANIFEST_VERSION_INFO"
   )
+}
+
+# Runs a backup tool's generate_manifest with the database query failing, so its fallback writes the
+# manifest. Prints the manifest's "version|version_info" ("" when it is not valid JSON).
+backup_fallback_manifest() {
+  # backup_fallback_manifest SCRIPT DEPLOYMENT_DIR
+  local script="$1" dep="$2" out="$T/ver/manifest-$RANDOM.json"
+  ( set +o pipefail; set -e
+    log_info() { :; }; log_warn() { echo "WARN $1" >> "$T/ver/backup.log"; }
+    run_psql() { return 1; }
+    eval "$(python3 -c '
+import sys
+s = open(sys.argv[1]).read()
+i = s.index("function generate_manifest() {")
+j = s.index("\n  fi\n}\n", i) + len("\n  fi\n}\n")
+print(s[i:j])' "$script")"
+    PATH_TO_ODOO="$dep"
+    generate_manifest testdb "$out"
+  ) || return 0
+  rj "$out" 'r["version"] + "|" + json.dumps(r["version_info"])'
 }
 
 suite_version() {
@@ -79,9 +100,32 @@ suite_version() {
     check_eq "no release.py and no ODOO_VERSION: empty, never a made-up 16.0" "||null" "$(snap_version "$T/ver/nothing")"
     check_grep "and warns" "$T/ver/nothing.log" "manifest.json will have no version"
 
+    check_grep "the snapshot tool loads the shared reader" "$T/app/scripts/example/snapshot.sh.example" 'source "$PATH_TO_ODOO/scripts/lib/odoo_version.sh"'
+
     out=$(snap_version "$T/ver/odoo18")
     check "the values make a valid manifest.json" python3 -c 'import json,sys; v,mv,vi=sys.argv[1].split("|"); json.loads("{\"version\": \"%s\", \"version_info\": %s, \"major_version\": \"%s\"}" % (v, vi, mv))' "$out"
   fi
+
+  tvs_section "version: the backup tools' fallback when the database cannot be queried"
+  local tool d
+  # The backup tools load scripts/lib/odoo_version.sh from the deployment (PATH_TO_ODOO)
+  for d in odoo18 nothing; do
+    mkdir -p "$T/ver/$d/scripts/lib"; cp "$T/app/scripts/lib/odoo_version.sh" "$T/ver/$d/scripts/lib/"
+  done
+  ver_release_py "$T/ver/nolib" 18 0
+  for tool in example/backupdata_manual.sh.example dataodoo-backupper.sh; do
+    if [ ! -f "$T/app/scripts/$tool" ]; then
+      skip "$tool fallback" "not found"; continue
+    fi
+    check_eq "$tool: Odoo 18 deployment gets 18.0 (not 16.0)" '18.0|[18, 0, 0, "final", 0, ""]' \
+      "$(backup_fallback_manifest "$T/app/scripts/$tool" "$T/ver/odoo18")"
+    check_eq "$tool: nothing to read gives a valid manifest with no version" '|null' \
+      "$(backup_fallback_manifest "$T/app/scripts/$tool" "$T/ver/nothing")"
+    rm -f "$T/ver/backup.log"
+    check_eq "$tool: without scripts/lib/odoo_version.sh it still writes a valid manifest" '|null' \
+      "$(backup_fallback_manifest "$T/app/scripts/$tool" "$T/ver/nolib")"
+    check_grep "$tool: and says the library is missing" "$T/ver/backup.log" "odoo_version.sh not found"
+  done
 
   tvs_section "version: the validator reads the manifest and checks it against the database"
   a=$(fx odoomanifest)

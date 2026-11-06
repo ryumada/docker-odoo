@@ -145,14 +145,24 @@ function generate_manifest() {
   "
 
   if ! run_psql -d "$db_name" -t -A -c "$MANIFEST_SQL" > "$target_file" 2>/dev/null; then
-    log_warn "Could not query database for manifest. Falling back to basic manifest."
+    log_warn "Could not query database for manifest. Falling back to the Odoo version in release.py or .env."
+    local MANIFEST_VERSION="" MANIFEST_MAJOR_VERSION="" MANIFEST_VERSION_INFO="null"
+    if ! declare -F odoo_version_detect >/dev/null && [ -f "$PATH_TO_ODOO/scripts/lib/odoo_version.sh" ]; then
+      # shellcheck source=/dev/null
+      source "$PATH_TO_ODOO/scripts/lib/odoo_version.sh"
+    fi
+    if declare -F odoo_version_detect >/dev/null; then
+      odoo_version_detect "$PATH_TO_ODOO"
+    else
+      log_warn "scripts/lib/odoo_version.sh not found (update docker-odoo and re-run ./setup.sh); manifest.json will have no Odoo version."
+    fi
     cat <<EOF > "$target_file"
 {
     "odoo_dump": "1",
     "db_name": "$db_name",
-    "version": "16.0",
-    "version_info": [16, 0, 0, "final", 0, ""],
-    "major_version": "16",
+    "version": "$MANIFEST_VERSION",
+    "version_info": $MANIFEST_VERSION_INFO,
+    "major_version": "$MANIFEST_MAJOR_VERSION",
     "modules": {}
 }
 EOF
