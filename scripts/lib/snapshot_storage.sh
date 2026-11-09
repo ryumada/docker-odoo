@@ -673,27 +673,34 @@ gcs_invalidate_validation() {
 
 snap_inbox_handoff() {
   # Args: archive mode(move|link) inbox_root service reserve_gb source_host drive_result_file gcs_object kept_copy
+  #       [snapshots_root]
   #   archive            the archive on this host (its .sha256 next to it)
   #   mode               move: the archive leaves its place (only used when it would be deleted
   #                      otherwise, so a failed hand-off loses nothing that was going to be kept);
   #                      link: a hard link (the archive is also kept where it is); never a copy
   #   reserve_gb         free space that must remain on the inbox's disk afterwards, or no hand-off
+  #                      (raised to what the next snapshot needs there, from snapshots_root/*/stats.json)
   #   drive_result_file  "<name>\t<file id>" written by upload_to_gdrive (empty: not on Drive)
   #   gcs_object         gs://bucket/object the archive was uploaded to (empty: not on GCS)
   #   kept_copy          path of the copy kept on this host besides the inbox (empty: none)
   # Returns 0 when handed off, 2 when skipped (disk below the reserve, nothing changed), 1 on error.
   local archive="$1" mode="$2" inbox="$3" service="$4" reserve_gb="${5:-5}" source_host="$6"
-  local drive_result="$7" gcs_object="$8" kept="$9"
-  local dir="$inbox/$service" name="" drive_name="" drive_id="" hash free need incoming target old trash generation=""
+  local drive_result="$7" gcs_object="$8" kept="$9" stats_root="${10:-}"
+  local dir="$inbox/$service" name="" drive_name="" drive_id="" hash free need why incoming target old trash generation=""
   [ -f "$archive" ] || { _ss_log error "Validator inbox: $archive not found."; return 1; }
   [[ "$reserve_gb" =~ ^[0-9]+$ ]] || reserve_gb=5
   mkdir -p "$dir" && chmod 700 "$inbox" "$dir" 2>/dev/null || { _ss_log error "Validator inbox: cannot create $dir."; return 1; }
 
   # Moving frees nothing and linking takes no space, but either keeps the archive on this disk
   free=$(df -PB1 "$dir" 2>/dev/null | awk 'NR == 2 {print $4}')
-  need=$(( reserve_gb * 1024 * 1024 * 1024 ))
+  need=$(snap_disk_reserve_bytes "$reserve_gb" "$stats_root" "$dir")
+  why=${need#* }; need=${need%% *}
+  case "$why" in
+    stats:*) why="what the next snapshot of ${why#stats:} needs there, from its stats.json" ;;
+    *) why="VALIDATOR_DISK_RESERVE_GB=${reserve_gb}" ;;
+  esac
   if ! [[ "$free" =~ ^[0-9]+$ ]] || [ "$free" -lt "$need" ]; then
-    _ss_log warn "Validator inbox: only ${free:-unknown} bytes free on $dir (reserve ${reserve_gb} GB); this snapshot is not kept for a drill."
+    _ss_log warn "Validator inbox: only ${free:-unknown} bytes free on $dir (reserve $need bytes: $why); this snapshot is not kept for a drill."
     return 2
   fi
 
@@ -754,4 +761,73 @@ PY
   fi
   _ss_log success "Validator inbox: $name is waiting for a drill in $target."
   return 0
+}
+
+# --- Snapshot disk statistics (Secondary VPS) ----------------------------------
+# After each remote snapshot, the snapshot tool writes <snapshots root>/<service>/stats.json on the
+# Secondary VPS (~/.odoo-snapshots/<service>/stats.json):
+#   {"schema": 1, "service", "updated_at" (UTC), "source_host",
+#    "dump_bytes", "archive_bytes",
+#    "peak_bytes"   free space the snapshot took on that disk at its peak (staged dump, new filestore
+#                   files, bundled folders and the archive), or null when it could not be measured,
+#    "need_bytes"   the larger of peak_bytes and dump_bytes + archive_bytes}
+# The validator and the inbox hand-off keep need_bytes (+25%) free on that disk when it is more than
+# VALIDATOR_DISK_RESERVE_GB, so a drill never takes the room the next snapshot needs. Only files
+# updated in the last SNAP_STATS_MAX_AGE_DAYS days count (a deployment that stopped sending
+# snapshots stops reserving disk).
+SNAP_STATS_MAX_AGE_DAYS="${SNAP_STATS_MAX_AGE_DAYS:-30}"
+
+snap_write_stats() {
+  # Args: file service source_host dump_bytes archive_bytes free_before free_at_peak
+  local file="$1" service="$2" host="$3" dump="$4" archive="$5" before="$6" at_peak="$7" peak=null need tmp
+  [[ "$dump" =~ ^[0-9]+$ ]] || dump=0
+  [[ "$archive" =~ ^[0-9]+$ ]] || archive=0
+  if [[ "$before" =~ ^[0-9]+$ ]] && [[ "$at_peak" =~ ^[0-9]+$ ]] && [ "$before" -gt "$at_peak" ]; then
+    peak=$((before - at_peak))
+  fi
+  need=$((dump + archive))
+  [ "$peak" != null ] && [ "$peak" -gt "$need" ] && need=$peak
+  service=${service//[\"\\]/}; host=${host//[\"\\]/}
+  tmp="$file.tmp.$$"
+  printf '{\n  "schema": 1,\n  "service": "%s",\n  "updated_at": "%s",\n  "source_host": "%s",\n  "dump_bytes": %s,\n  "archive_bytes": %s,\n  "peak_bytes": %s,\n  "need_bytes": %s\n}\n' \
+    "$service" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$host" "$dump" "$archive" "$peak" "$need" > "$tmp" \
+    && chmod 600 "$tmp" && mv -f "$tmp" "$file" || { rm -f "$tmp"; return 1; }
+}
+
+snap_stats_reserve() {
+  # Args: snapshots_root path...
+  # Prints "<need_bytes> <service>" for the largest need_bytes among the recent stats.json files,
+  # only when the snapshots root is on the same disk as one of the paths; prints nothing otherwise.
+  local root="$1" root_dev p same=false f n best=0 best_svc=""
+  shift
+  [ -d "$root" ] || return 0
+  root_dev=$(stat -c %d "$root" 2>/dev/null) || return 0
+  for p in "$@"; do
+    [ -n "$p" ] && [ "$(stat -c %d "$p" 2>/dev/null)" = "$root_dev" ] && { same=true; break; }
+  done
+  [ "$same" = true ] || return 0
+  while IFS= read -r f; do
+    n=$(sed -n 's/.*"need_bytes": *\([0-9][0-9]*\).*/\1/p' "$f" 2>/dev/null | head -n 1)
+    [[ "$n" =~ ^[0-9]+$ ]] || continue
+    if [ "$n" -gt "$best" ]; then best=$n; best_svc=$(basename "$(dirname "$f")"); fi
+  done < <(find "$root" -mindepth 2 -maxdepth 2 -name stats.json -type f -mtime "-${SNAP_STATS_MAX_AGE_DAYS}" 2>/dev/null)
+  [ "$best" -gt 0 ] && echo "$best $best_svc"
+  return 0
+}
+
+snap_disk_reserve_bytes() {
+  # Args: reserve_gb snapshots_root path...
+  # Prints "<bytes> <reason>": reason "fixed" (reserve_gb), "stats:<service>" (the room the largest recent
+  # snapshot on that disk needed, +25%, when that is more), or "off" (reserve_gb is 0: no reserve at all).
+  local gb="$1" root="$2" fixed line n
+  shift 2
+  [[ "$gb" =~ ^[0-9]+$ ]] || gb=5
+  fixed=$((gb * 1024 * 1024 * 1024))
+  [ "$fixed" -gt 0 ] || { echo "0 off"; return 0; }
+  line=$(snap_stats_reserve "$root" "$@")
+  if [ -n "$line" ]; then
+    n=${line%% *}; n=$((n + n / 4))
+    if [ "$n" -gt "$fixed" ]; then echo "$n stats:${line#* }"; return 0; fi
+  fi
+  echo "$fixed fixed"
 }

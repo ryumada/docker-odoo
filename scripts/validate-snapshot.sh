@@ -698,9 +698,19 @@ finish() {
 
 free_bytes() { df -PB1 "$1" 2>/dev/null | awk 'NR==2 {print $4}'; }
 human() { numfmt --to=iec-i --suffix=B "$1" 2>/dev/null || echo "$1 B"; }
-RESERVE_BYTES=$(( VALIDATOR_DISK_RESERVE_GB * 1024 * 1024 * 1024 ))
 DOCKER_ROOT=$(docker info -f '{{.DockerRootDir}}' 2>/dev/null)
 [ -d "$DOCKER_ROOT" ] || DOCKER_ROOT="/var/lib/docker"
+# The reserve keeps room for snapshots: VALIDATOR_DISK_RESERVE_GB, or more when a remote snapshot staged on
+# this disk recently needed more (its ~/.odoo-snapshots/<service>/stats.json, written by the snapshot tool)
+RESERVE_INFO=$(snap_disk_reserve_bytes "$VALIDATOR_DISK_RESERVE_GB" "$HOME/.odoo-snapshots" "$VALIDATOR_DIR" "$DOCKER_ROOT")
+RESERVE_BYTES=${RESERVE_INFO%% *}
+RESERVE_FROM=${RESERVE_INFO#* }
+case "$RESERVE_FROM" in
+  stats:*) RESERVE_FROM="snapshot stats of ${RESERVE_FROM#stats:}"
+           log_info "Disk reserve: $(human "$RESERVE_BYTES"), the room the last snapshot of ${RESERVE_FROM#snapshot stats of } took on this disk (+25%, from its stats.json), more than VALIDATOR_DISK_RESERVE_GB=$VALIDATOR_DISK_RESERVE_GB." ;;
+  off) RESERVE_FROM="off (VALIDATOR_DISK_RESERVE_GB=0)" ;;
+  *) RESERVE_FROM="VALIDATOR_DISK_RESERVE_GB" ;;
+esac
 
 start_watchdog() {
   # Gives the disk back to snapshots if it runs low while the drill is running: removes the
@@ -790,7 +800,7 @@ fetch_snapshot() {
       REMOTE_ARCHIVE_ID=$(cut -f3 <<< "$row"); ARCHIVE_NAME=$(cut -f4 <<< "$row"); size=$(cut -f5 <<< "$row")
       free=$(free_bytes "$WORK")
       if [ -n "$size" ] && [ -n "$free" ] && [ $((size + RESERVE_BYTES)) -gt "$free" ]; then
-        record_stage "fetch" "error" "$(since "$t0")" "Not enough disk to download $ARCHIVE_NAME ($(human "$size") + reserve $(human "$RESERVE_BYTES") needed, $(human "$free") free)"
+        record_stage "fetch" "error" "$(since "$t0")" "Not enough disk to download $ARCHIVE_NAME ($(human "$size") + reserve $(human "$RESERVE_BYTES") [$RESERVE_FROM] needed, $(human "$free") free)"
         finish error
       fi
       log_info "Downloading $ARCHIVE_NAME ($(human "${size:-0}")) from Google Drive..."
@@ -809,7 +819,7 @@ fetch_snapshot() {
       size=$(gcloud storage objects describe "$SOURCE_REF#$GCS_GENERATION" --format='value(size)' 2>/dev/null)
       free=$(free_bytes "$WORK")
       if [[ "$size" =~ ^[0-9]+$ ]] && [ -n "$free" ] && [ $((size + RESERVE_BYTES)) -gt "$free" ]; then
-        record_stage "fetch" "error" "$(since "$t0")" "Not enough disk to download $ARCHIVE_NAME ($(human "$size") + reserve $(human "$RESERVE_BYTES") needed, $(human "$free") free)"
+        record_stage "fetch" "error" "$(since "$t0")" "Not enough disk to download $ARCHIVE_NAME ($(human "$size") + reserve $(human "$RESERVE_BYTES") [$RESERVE_FROM] needed, $(human "$free") free)"
         finish error
       fi
       log_info "Downloading $(redact "$SOURCE_REF") (generation $GCS_GENERATION)..."
@@ -928,7 +938,7 @@ open_inner_zip() {
   zbytes=$(awk -F'\t' -v n="$INNER_ZIP_MEMBER" '$2 == n {print $1; exit}' "$WORK/members.tsv")
   free=$(free_bytes "$WORK")
   if [[ "$zbytes" =~ ^[0-9]+$ ]] && [ -n "$free" ] && [ $((zbytes + RESERVE_BYTES)) -gt "$free" ]; then
-    record_stage "structure" "error" "$(since "$1")" "Not enough disk to unpack $INNER_ZIP_MEMBER ($(human "$zbytes") + reserve $(human "$RESERVE_BYTES") needed, $(human "$free") free)"
+    record_stage "structure" "error" "$(since "$1")" "Not enough disk to unpack $INNER_ZIP_MEMBER ($(human "$zbytes") + reserve $(human "$RESERVE_BYTES") [$RESERVE_FROM] needed, $(human "$free") free)"
     finish error
   fi
   log_info "[structure] Older snapshot format: checking $INNER_ZIP_MEMBER ($(human "${zbytes:-0}")) inside the archive..."
@@ -1155,10 +1165,10 @@ print(int(v) if isinstance(v, (int, float)) and v > 0 else "")
   fi
   free_db=$(free_bytes "$DOCKER_ROOT")
   if [ -n "$free_db" ] && [ $((need_db + RESERVE_BYTES)) -gt "$free_db" ]; then
-    record_stage "disk" "error" "$(since "$t0")" "{\"message\": \"Not enough disk for the restored database: need $(human "$need_db") ($how) + reserve $(human "$RESERVE_BYTES"), $(human "$free_db") free in $DOCKER_ROOT\"}"
+    record_stage "disk" "error" "$(since "$t0")" "{\"message\": \"Not enough disk for the restored database: need $(human "$need_db") ($how) + reserve $(human "$RESERVE_BYTES") [$RESERVE_FROM], $(human "$free_db") free in $DOCKER_ROOT\"}"
     finish error
   fi
-  record_stage "disk" "pass" "$(since "$t0")" "{\"estimated_db_bytes\": $need_db, \"estimate\": $(jstr "$how"), \"free_bytes\": ${free_db:-0}, \"reserve_bytes\": $RESERVE_BYTES, \"path\": $(jstr "$DOCKER_ROOT")}"
+  record_stage "disk" "pass" "$(since "$t0")" "{\"estimated_db_bytes\": $need_db, \"estimate\": $(jstr "$how"), \"free_bytes\": ${free_db:-0}, \"reserve_bytes\": $RESERVE_BYTES, \"reserve_from\": $(jstr "$RESERVE_FROM"), \"path\": $(jstr "$DOCKER_ROOT")}"
 }
 
 pg_major_of_dump() {

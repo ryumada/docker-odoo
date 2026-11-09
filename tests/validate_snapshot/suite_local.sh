@@ -230,6 +230,36 @@ sys.exit(0 if any(re.fullmatch(r"odoo-base: [0-9a-f]{8} found on remote \((by-id
   check_rc "not enough disk before the restore is an error" 2
   check_eq "disk stage error" error "$(stage_of "$VS_REPORT" disk)"
 
+  tvs_section "local: the disk reserve keeps the room the next snapshot needs (stats.json)"
+  local st="$T/home/.odoo-snapshots"
+  check_eq "fixed reserve without snapshot stats" "VALIDATOR_DISK_RESERVE_GB" "$(stage_of "$T/reports/good.json" disk reserve_from)"
+  mkdir -p "$st/small" "$st/old" "$st/big"
+  printf '{\n  "schema": 1,\n  "service": "small",\n  "need_bytes": 1000\n}\n' > "$st/small/stats.json"
+  vs stats-small -- --file "$good"
+  check_rc "a snapshot needing less than VALIDATOR_DISK_RESERVE_GB passes" 0
+  check_eq "and the fixed reserve stays" "1073741824 VALIDATOR_DISK_RESERVE_GB" "$(stage_of "$VS_REPORT" disk reserve_bytes) $(stage_of "$VS_REPORT" disk reserve_from)"
+  printf '{\n  "schema": 1,\n  "service": "old",\n  "need_bytes": 1000000000000000\n}\n' > "$st/old/stats.json"
+  touch -d '40 days ago' "$st/old/stats.json"
+  vs stats-old -- --file "$good"
+  check_rc "stats older than 30 days do not count" 0
+  check_eq "fixed reserve" "VALIDATOR_DISK_RESERVE_GB" "$(stage_of "$VS_REPORT" disk reserve_from)"
+  printf '{\n  "schema": 1,\n  "service": "big",\n  "need_bytes": 2000000000\n}\n' > "$st/big/stats.json"
+  vs stats-big -- --file "$good"
+  check_rc "a larger snapshot raises the reserve, still room" 0
+  check_eq "reserve = what the snapshot of big needed +25%" "2500000000 snapshot stats of big" "$(stage_of "$VS_REPORT" disk reserve_bytes) $(stage_of "$VS_REPORT" disk reserve_from)"
+  check_grep "the log says why the reserve is larger" "$VS_LOG" "the room the last snapshot of big took on this disk"
+  vs stats-full FAKE_DF_AVAIL=2500000000 -- --file "$good"
+  check_rc "no room for the drill next to the next snapshot: not started" 2
+  check_eq "disk stage error" error "$(stage_of "$VS_REPORT" disk)"
+  case "$(stage_of "$VS_REPORT" disk message)" in
+    *"[snapshot stats of big]"*) pass "the error names the snapshot that needs the room" ;;
+    *) fail "the error names the snapshot that needs the room" "$(stage_of "$VS_REPORT" disk message)" ;;
+  esac
+  vs stats-off VALIDATOR_DISK_RESERVE_GB=0 FAKE_DF_AVAIL=2500000000 -- --file "$good"
+  check_rc "VALIDATOR_DISK_RESERVE_GB=0 turns the reserve off, stats included" 0
+  check_eq "reserve off" "0" "$(stage_of "$VS_REPORT" disk reserve_bytes)"
+  rm -rf "$st"
+
   tvs_section "local: the watchdog stops a drill when the disk runs low"
   local t0 secs
   vs_bg watchdog FAKE_SLOW_RESTORE=60 FAKE_DF_LOW_FILE="$T/disk-low" -- --file "$good"

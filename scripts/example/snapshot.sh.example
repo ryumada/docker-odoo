@@ -788,6 +788,24 @@ release_secondary_vps_queue_token() {
   queue_lock_release_remote
 }
 
+function remote_write_stats() {
+  # Args: free_before free_at_peak dump_bytes archive_bytes. Called from run_remote_snapshot (uses its
+  # remote_exec and remote_base). Writes ~/.odoo-snapshots/<service>/stats.json on the Secondary VPS (see
+  # snap_write_stats): the room this snapshot took there, which the validator keeps free for the next one.
+  local funcs source_host
+  source_host=$(hostname -f 2>/dev/null || hostname 2>/dev/null || echo unknown)
+  funcs=$(declare -f snap_write_stats)
+  if remote_exec "bash -s" << REMOTE_STATS_EOF
+$funcs
+snap_write_stats '$remote_base/stats.json' '$SERVICE_NAME' '$source_host' '$3' '$4' '$1' '$2'
+REMOTE_STATS_EOF
+  then
+    log_info "Recorded snapshot sizes on Secondary VPS ($remote_base/stats.json): dump $3 bytes, archive $4 bytes, peak ${5:-unknown} bytes."
+  else
+    log_warn "Could not write $remote_base/stats.json on the Secondary VPS; drills there keep only VALIDATOR_DISK_RESERVE_GB free."
+  fi
+}
+
 function remote_inbox_handoff() {
   # Args: mode(move|link) archive_on_secondary kept_copy gcs_object. Called from run_remote_snapshot
   # (uses its remote_exec, remote_home and remote_staging). Hands the archive to the validator inbox
@@ -795,7 +813,8 @@ function remote_inbox_handoff() {
   # drill worker takes it. Returns 0 when handed off; otherwise the caller does what it did before.
   local mode="$1" src="$2" kept="$3" gcs_object="$4" funcs source_host
   source_host=$(hostname -f 2>/dev/null || hostname 2>/dev/null || echo unknown)
-  funcs=$(declare -f log log_info log_success log_warn log_error _ss_log snap_sha256_of snap_sidecar_hash snap_write_sidecar snap_inbox_handoff)
+  funcs=$(declare -f log log_info log_success log_warn log_error _ss_log snap_sha256_of snap_sidecar_hash snap_write_sidecar snap_inbox_handoff snap_stats_reserve snap_disk_reserve_bytes)
+  funcs+=$'\n'"SNAP_STATS_MAX_AGE_DAYS='$SNAP_STATS_MAX_AGE_DAYS'"
   remote_exec "bash -s" << REMOTE_INBOX_EOF
 COLOR_RESET='$COLOR_RESET'
 COLOR_INFO='$COLOR_INFO'
@@ -803,7 +822,7 @@ COLOR_SUCCESS='$COLOR_SUCCESS'
 COLOR_WARN='$COLOR_WARN'
 COLOR_ERROR='$COLOR_ERROR'
 $funcs
-snap_inbox_handoff '$src' '$mode' '$remote_home/.odoo-validator/inbox' '$SERVICE_NAME' '$VALIDATOR_DISK_RESERVE_GB' '$source_host' '$remote_staging/.drive-upload' '$gcs_object' '$kept'
+snap_inbox_handoff '$src' '$mode' '$remote_home/.odoo-validator/inbox' '$SERVICE_NAME' '$VALIDATOR_DISK_RESERVE_GB' '$source_host' '$remote_staging/.drive-upload' '$gcs_object' '$kept' '$remote_home/.odoo-snapshots'
 REMOTE_INBOX_EOF
 }
 
@@ -914,6 +933,9 @@ function run_remote_snapshot() {
 
   log_info "Preparing directory structure on Secondary VPS under $remote_base/..."
   remote_exec "mkdir -p '$remote_mirror' '$remote_cache' '$remote_staging/tmp' '$remote_archives' && chmod 700 '$remote_home/.odoo-snapshots' && if [ -L '$remote_mirror/filestore' ]; then rm -f '$remote_mirror/filestore'; fi"
+  # Free space on the Secondary VPS before anything is staged, for stats.json (the room this snapshot takes)
+  local remote_free_before
+  remote_free_before=$(remote_exec "df -PB1 '$remote_base' 2>/dev/null | awk 'NR == 2 {print \$4}'" 2>/dev/null | tr -d '\r\n')
 
   local odoo_filestore_path="/var/lib/odoo/$SERVICE_NAME/filestore/$ODOO_DATABASE_NAME_PRD"
   if [ -d "$odoo_filestore_path" ]; then
@@ -1055,6 +1077,14 @@ MANIFEST_EOF"
     exit 1
   fi
   log_success "Snapshot archive verified successfully on Secondary VPS."
+
+  # The disk is at its fullest now (staged files and the archive): record what this snapshot took
+  local remote_free_peak="" remote_dump_bytes="" remote_archive_bytes="" remote_peak=""
+  read -r remote_free_peak remote_dump_bytes remote_archive_bytes < <(remote_exec "printf '%s %s %s\\n' \"\$(df -PB1 '$remote_base' 2>/dev/null | awk 'NR == 2 {print \$4}')\" \"\$(stat -c %s '$remote_staging/dump.sql' 2>/dev/null || echo 0)\" \"\$(stat -c %s '$remote_staging/snapshot-$SERVICE_NAME.tar.zst' 2>/dev/null || echo 0)\"" 2>/dev/null)
+  if [[ "$remote_free_before" =~ ^[0-9]+$ ]] && [[ "$remote_free_peak" =~ ^[0-9]+$ ]] && [ "$remote_free_before" -gt "$remote_free_peak" ]; then
+    remote_peak=$((remote_free_before - remote_free_peak))
+  fi
+  remote_write_stats "$remote_free_before" "$remote_free_peak" "$remote_dump_bytes" "$remote_archive_bytes" "$remote_peak"
 
   # Clean up uncompressed staged data files on Secondary VPS
   remote_exec "rm -rf '$remote_staging/filestore' '$remote_staging/dump.sql' '$remote_staging/manifest.json'"
