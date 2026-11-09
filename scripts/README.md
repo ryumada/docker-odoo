@@ -164,6 +164,8 @@ Before you run the restore snapshot script, you need to prepare [snapshot utilit
 ./scripts/restore-snapshot.sh --data-only ~/snapshot-docker-odoo.tar.zst -y
 ```
 
+A restore stops with PostgreSQL's own error instead of reporting success when anything goes wrong: a dump that does not end with pg_dump's "dump complete" line is refused before the filestore or the database is touched, the old database is dropped with any open sessions closed (a running Odoo in data-only mode used to make the drop fail silently), every SQL error fails the restore, and the restored database must contain installed Odoo modules. The only errors tolerated, with a warning, are comments on objects only a superuser owns (`must be owner of extension`, `must be owner of schema public`), which are normal when restoring as the deployment's database user. When anything went wrong, the full PostgreSQL log is kept in `~/.odoo-tmp/<service>/restore-<db>-<time>.log`. Tested by `./tests/test_restore_snapshot.sh` against a throwaway PostgreSQL (safe anywhere: one `mktemp` folder, 127.0.0.1 only, nothing under `/var/lib/odoo` is touched).
+
 </details>
 
 <details>

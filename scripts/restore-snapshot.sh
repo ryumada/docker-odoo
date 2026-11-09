@@ -462,6 +462,15 @@ function restoreOdooData() {
     return 1
   fi
 
+  # pg_dump ends every complete plain dump with this line. Checked before the filestore or the
+  # database is touched, so a cut-short snapshot leaves the current deployment as it is.
+  local dump_format=plain
+  head -c 5 "$sql_dump_file" 2>/dev/null | grep -q "PGDMP" && dump_format=custom
+  if [ "$dump_format" = plain ] && ! tail -c 4096 "$sql_dump_file" | grep -q -- "-- PostgreSQL database dump complete"; then
+    log_error "$(basename "$sql_dump_file") is incomplete (it does not end with pg_dump's \"dump complete\" line). Nothing was restored."
+    return 1
+  fi
+
   # Discover filestore directory
   local filestore_source
   filestore_source=$(find "$TEMP_DIR" -maxdepth 4 -type d -name "filestore" 2>/dev/null | head -n 1)
@@ -483,28 +492,84 @@ function restoreOdooData() {
     chown -R odoo:odoo "/var/lib/odoo/$SERVICE_NAME" 2>/dev/null || true
   fi
 
-  # Restore database
-  log_info "Restoring database $ODOO_DATABASE_NAME_PRD from $(basename "$sql_dump_file")..."
-  run_psql -c "DROP DATABASE IF EXISTS \"$ODOO_DATABASE_NAME_PRD\"" --quiet -t -P pager=off 2> /dev/null > /dev/null || log_error "Can't drop database"
-  run_psql -c "CREATE DATABASE \"$ODOO_DATABASE_NAME_PRD\" OWNER \"$ODOO_DATABASE_USER\"" --quiet -t -P pager=off 2> /dev/null > /dev/null || log_error "Can't create database"
+  # Restore database. Nothing is hidden: each step fails with PostgreSQL's own message, and the
+  # full log is kept in $ODOO_TMP_DIR when anything went wrong.
+  local db="$ODOO_DATABASE_NAME_PRD" restore_log rc=0
+  restore_log="$ODOO_TMP_DIR/restore-$db-$(date +%Y%m%d-%H%M%S).log"
+  : > "$restore_log"
+  log_info "Restoring database $db from $(basename "$sql_dump_file")..."
+  recreate_database "$db" "$ODOO_DATABASE_USER" "$restore_log" || return 1
 
-  if head -c 5 "$sql_dump_file" 2>/dev/null | grep -q "PGDMP"; then
+  if [ "$dump_format" = custom ]; then
     log_info "Detected PostgreSQL custom-format dump. Restoring via pg_restore..."
-    local restore_status=0
-    run_pg_restore --no-owner -d "$ODOO_DATABASE_NAME_PRD" < "$sql_dump_file" 2> /dev/null > /dev/null || restore_status=$?
-    if [ "$restore_status" -gt 1 ]; then
-      log_error "Can't restore database via pg_restore (exit code: $restore_status)"
-      return 1
-    else
-      log_success "Database $ODOO_DATABASE_NAME_PRD restored successfully."
-    fi
+    run_pg_restore --no-owner -d "$db" < "$sql_dump_file" > /dev/null 2>> "$restore_log" || rc=$?
+    check_restore_errors "$restore_log" "$rc" pg_restore || return 1
   else
-    sed -i "1i SET ROLE \"$ODOO_DATABASE_USER\";" "$sql_dump_file"
-    if ! run_psql -d "$ODOO_DATABASE_NAME_PRD" --quiet -t -P pager=off < "$sql_dump_file" 2> /dev/null > /dev/null; then
-      log_error "Can't restore database from $sql_dump_file"
-      return 1
-    fi
-    log_success "Database $ODOO_DATABASE_NAME_PRD restored successfully."
+    # Objects are created as the deployment's database user, streamed so the dump is not rewritten on disk
+    { printf 'SET ROLE "%s";\n' "$ODOO_DATABASE_USER"; cat "$sql_dump_file"; } \
+      | run_psql -X -d "$db" --quiet -t -P pager=off > /dev/null 2>> "$restore_log" || rc=$?
+    check_restore_errors "$restore_log" "$rc" psql || return 1
+  fi
+
+  # A restore that ran without errors but left no Odoo behind (empty or foreign dump) is not a restore
+  local installed
+  installed=$(run_psql -X -d "$db" -tA -c "SELECT count(*) FROM ir_module_module WHERE state = 'installed'" 2>> "$restore_log" | tr -d '[:space:]' || true)
+  if ! [[ "$installed" =~ ^[0-9]+$ ]] || [ "$installed" -eq 0 ]; then
+    log_error "Database $db was restored but has no installed Odoo modules (ir_module_module: '${installed:-missing}'). Full log: $restore_log"
+    return 1
+  fi
+
+  [ -s "$restore_log" ] || rm -f "$restore_log"
+  log_success "Database $db restored successfully ($installed installed modules)."
+  return 0
+}
+
+function recreate_database() {
+  # Args: database owner log_file. Drops the database, closing any open sessions first (a running
+  # Odoo in data-only mode keeps it open, and the drop used to fail silently), then creates it.
+  local db="$1" owner="$2" log_file="$3" version out
+  version=$(run_psql -X -tA -c "SHOW server_version_num" 2>> "$log_file" | tr -d '[:space:]' || true)
+  if ! [[ "$version" =~ ^[0-9]+$ ]]; then
+    log_error "Can't connect to PostgreSQL to restore $db: $(tail -n 3 "$log_file" | tr '\n' ' ')"
+    return 1
+  fi
+  if [ "$version" -ge 130000 ]; then
+    out=$(run_psql -X -q -c "DROP DATABASE IF EXISTS \"$db\" WITH (FORCE)" 2>&1) \
+      || { log_error "Can't drop database $db: $out"; return 1; }
+  else
+    run_psql -X -q -tA -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '$db' AND pid <> pg_backend_pid()" > /dev/null 2>&1 || true
+    out=$(run_psql -X -q -c "DROP DATABASE IF EXISTS \"$db\"" 2>&1) \
+      || { log_error "Can't drop database $db (stop Odoo and retry): $out"; return 1; }
+  fi
+  out=$(run_psql -X -q -c "CREATE DATABASE \"$db\" OWNER \"$owner\"" 2>&1) \
+    || { log_error "Can't create database $db: $out"; return 1; }
+  return 0
+}
+
+# Errors that are normal when a dump made with --no-owner is restored by the deployment's own
+# database user rather than a superuser: comments on objects only a superuser owns.
+RESTORE_HARMLESS_ERRORS='must be owner of extension|must be owner of schema public'
+
+function check_restore_errors() {
+  # Args: log_file exit_code tool (psql | pg_restore). Fails on a bad exit code or on any error
+  # that is not one of RESTORE_HARMLESS_ERRORS; harmless ones are reported as a warning.
+  local log_file="$1" rc="$2" tool="$3" errors bad harmless
+  # psql: "psql:<file>:<line>: ERROR:  ..." (or "ERROR:  ..."); pg_restore: "pg_restore: error: ..."
+  errors=$(grep -a -E 'ERROR:|FATAL:|PANIC:|pg_restore: error:' "$log_file" || true)
+  bad=$(printf '%s\n' "$errors" | grep -a -vE "$RESTORE_HARMLESS_ERRORS" | sed '/^$/d' || true)
+  harmless=$(printf '%s\n' "$errors" | grep -a -cE "$RESTORE_HARMLESS_ERRORS" || true)
+
+  # psql exits 0 even when statements fail (that is what the error lines are for); any other
+  # exit is a lost connection or a crash. pg_restore exits 1 when it hit errors, more on failure.
+  if [ -n "$bad" ] || { [ "$tool" = psql ] && [ "$rc" -ne 0 ]; } || [ "$rc" -gt 1 ]; then
+    log_error "Database restore failed ($tool exit code $rc, $(printf '%s\n' "$bad" | sed '/^$/d' | wc -l) error(s)). First errors:"
+    printf '%s\n' "$bad" | sed '/^$/d' | head -n 5 | cut -c1-300 | sed 's/^/    /' >&2
+    [ -z "$bad" ] && tail -n 5 "$log_file" | cut -c1-300 | sed 's/^/    /' >&2
+    log_error "Full log: $log_file"
+    return 1
+  fi
+  if [ "${harmless:-0}" -gt 0 ]; then
+    log_warn "$harmless harmless restore error(s) ignored (objects only a superuser can comment on). Log: $log_file"
   fi
   return 0
 }
