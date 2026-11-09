@@ -35,11 +35,12 @@ Details live in `scripts/README.md` (snapshot tool, validator, Secondary VPS set
 
 ### Problems that already existed
 1. [x] `restore-snapshot.sh` hides `psql` / `pg_restore` errors, so a half-failed restore can report success. Fixed: errors shown and fatal (known-harmless ones warn), cut-short dumps refused before anything is touched, open sessions no longer block the drop, Odoo modules checked after the restore (`tests/test_restore_snapshot.sh`).
-2. [ ] Data-only restore doesn't extract bundled repository folders.
-3. [ ] The addon's access-control findings from the earlier review.
+2. [x] Data-only restore doesn't extract bundled repository folders. Fixed: members chosen from the archive's listing, bundled directories extracted whole, configuration and custom directories left out; both restore modes refuse a snapshot missing a bundled directory before changing anything (`tests/test_restore_snapshot.sh`).
+3. [x] The addon's access-control findings from the earlier review. Done in `sudodevops_odoo_utilities` (A01-A04, tracked in its own `TODO.md`); A01 checked against the code: no self-grant, migration no longer re-grants, listing methods check access, stop and `.env` need a Manager, name and path unique per server, `requeue` restricted, `with_user` tests present.
+14. [ ] Block `/queue_job/` at the reverse proxy in the nginx templates (`nginx-configurations/`): queue_job's `runjob` route runs a job as superuser, without login, for anyone who knows its UUID ("Fix first" item 7 of the addon review). First check how the job runner reaches Odoo, so blocking the path does not stop the runner.
 
 ### Snapshot side
-4. [ ] `sudodevops` block in `manifest.json` (database size, filestore size, attachment count) via a shared `scripts/lib/odoo_sizes.sh`; `disk_free_monitor.sh` uses it too (records `null`, not `0`, on failure). The drill's disk estimate then uses real sizes.
+4. [x] `sudodevops` block in `manifest.json` (database size, filestore size, attachment count) via a shared `scripts/lib/odoo_sizes.sh`; `disk_free_monitor.sh` uses it too (records `null`, not `0`, on failure). The drill's disk estimate then uses real sizes. Done: also the PostgreSQL version; works for a database on another host; `disk_free_monitor.sh` now supports one too (`tests/test_odoo_sizes.sh`).
 5. [ ] Remote mode: hand the archive to the validator inbox on the Secondary VPS instead of deleting it; keep only the newest pending snapshot per deployment.
 6. [ ] Write `stats.json` on the Secondary VPS after each remote snapshot, for the disk reserve.
 7. [ ] Optional: dated snapshots in GCS instead of one overwritten object.

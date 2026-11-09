@@ -2,8 +2,11 @@
 set -e
 # Category: Utility
 # Description: Monitors the disk free space and calculates the size of Odoo database and filestore.
-# Usage: ./scripts/disk_free_monitor.sh [DB_NAME]
-# Dependencies: sudo, psql, du, df, git
+# Usage: ./scripts/disk_free_monitor.sh [DB_NAME]   (ODOO_FILESTORE_ROOT overrides /var/lib/odoo)
+# Dependencies: sudo, psql (local database) or docker (database on another host), find, df, git, python3
+#
+# Sizes come from scripts/lib/odoo_sizes.sh, shared with the snapshot tool, so a database on another
+# host (DB_HOST in .env) is measured too. A size that cannot be measured shows as "unknown", never 0.
 
 # Detect Repository Owner to run non-root commands as that user
 CURRENT_DIR=$(dirname "$(readlink -f "$0")")
@@ -25,6 +28,17 @@ log() {
 log_info() { log "${COLOR_INFO}" "ℹ️" "$1"; }
 log_success() { log "${COLOR_SUCCESS}" "✅" "$1"; }
 log_error() { log "${COLOR_ERROR}" "❌" "$1"; }
+log_warn() { log "\033[0;33m" "⚠️" "$1"; }
+
+if [ -f "$CURRENT_DIR/lib/odoo_sizes.sh" ]; then
+  # shellcheck source=/dev/null
+  source "$CURRENT_DIR/lib/odoo_sizes.sh"
+else
+  log_error "scripts/lib/odoo_sizes.sh not found. Update docker-odoo (git pull)."
+  exit 1
+fi
+ENV_FILE="$PATH_TO_ODOO/.env"
+FILESTORE_ROOT="${ODOO_FILESTORE_ROOT:-/var/lib/odoo}/$SERVICE_NAME/filestore"
 
 # Self-elevate to root if not already
 if [ "$(id -u)" -ne 0 ]; then
@@ -47,7 +61,9 @@ fi
 TARGET_DB="$1"
 if [ -z "$TARGET_DB" ]; then
     log_info "No database name provided. Fetching all databases for user '$DB_USER'..."
-    DB_LIST=$(sudo -u postgres psql -tAc "SELECT datname FROM pg_database WHERE datdba = (SELECT usesysid FROM pg_user WHERE usename = '$DB_USER');")
+    # The query goes through stdin so psql quotes the user name itself (:'owner'); -c does not substitute
+    DB_LIST=$(echo "SELECT datname FROM pg_database WHERE datdba = (SELECT usesysid FROM pg_user WHERE usename = :'owner') ORDER BY datname" \
+      | odoo_sizes_psql "$ENV_FILE" -X -q -tA -d postgres -v owner="$DB_USER" 2>/dev/null || true)
     if [ -z "$DB_LIST" ]; then
         log_error "No databases found for user '$DB_USER'."
         exit 1
@@ -63,27 +79,34 @@ echo "--------------------------------------------------------"
 
 TOTAL_DB_SIZE=0
 TOTAL_FILESTORE=0
+UNKNOWN=0
+
+readable() {
+  # Args: bytes or empty. Prints a human size, or "unknown".
+  if [[ "$1" =~ ^[0-9]+$ ]]; then
+    numfmt --to=iec-i --suffix=B --format="%9.2f" "$1" 2>/dev/null || echo "$1 B"
+  else
+    echo "  unknown"
+  fi
+}
 
 for DB_NAME in $DB_LIST; do
-    # Calculate DB size via PostgreSQL
-    DB_BYTES=$(sudo -u postgres psql -tAc "SELECT pg_database_size('$DB_NAME');" 2>/dev/null || echo 0)
-    
-    # Calculate Filestore size via du
-    FILESTORE_PATH="/var/lib/odoo/$SERVICE_NAME/filestore/$DB_NAME"
-    FILESTORE_BYTES=0
-    if [ -d "$FILESTORE_PATH" ]; then
-        FILESTORE_BYTES=$(sudo du -sb "$FILESTORE_PATH" | cut -f1)
-    fi
+    SIZES=$(odoo_sizes_json "$ENV_FILE" "$DB_NAME" "$FILESTORE_ROOT/$DB_NAME")
+    read -r DB_BYTES FILESTORE_BYTES FILESTORE_FILES ATTACHMENTS < <(python3 -c '
+import json, sys
+d = json.loads(sys.argv[1])
+v = lambda x: "" if x is None else str(x)
+print(v(d["postgres"]["db_size_bytes"]) or "-", v(d["filestore"]["bytes"]) or "-",
+      v(d["filestore"]["files"]) or "-", v(d["attachments"]["stored"]) or "-")' "$SIZES")
+    [ "$DB_BYTES" = "-" ] && DB_BYTES=""
+    [ "$FILESTORE_BYTES" = "-" ] && FILESTORE_BYTES=""
 
-    TOTAL_DB_SIZE=$((TOTAL_DB_SIZE + DB_BYTES))
-    TOTAL_FILESTORE=$((TOTAL_FILESTORE + FILESTORE_BYTES))
+    if [ -n "$DB_BYTES" ]; then TOTAL_DB_SIZE=$((TOTAL_DB_SIZE + DB_BYTES)); else UNKNOWN=$((UNKNOWN + 1)); fi
+    if [ -n "$FILESTORE_BYTES" ]; then TOTAL_FILESTORE=$((TOTAL_FILESTORE + FILESTORE_BYTES)); else UNKNOWN=$((UNKNOWN + 1)); fi
 
-    DB_READABLE=$(numfmt --to=iec-i --suffix=B --format="%9.2f" "$DB_BYTES" 2>/dev/null || echo "$DB_BYTES B")
-    FS_READABLE=$(numfmt --to=iec-i --suffix=B --format="%9.2f" "$FILESTORE_BYTES" 2>/dev/null || echo "$FILESTORE_BYTES B")
-    
     echo -e "Database: \033[1;32m$DB_NAME\033[0m"
-    echo "  - PostgreSQL Size : $DB_READABLE"
-    echo "  - Filestore Size  : $FS_READABLE"
+    echo "  - PostgreSQL Size : $(readable "$DB_BYTES")"
+    echo "  - Filestore Size  : $(readable "$FILESTORE_BYTES") (${FILESTORE_FILES/-/unknown} files, ${ATTACHMENTS/-/unknown} stored attachments)"
     echo ""
 done
 
@@ -95,6 +118,7 @@ TOTAL_ALL_READABLE=$(numfmt --to=iec-i --suffix=B --format="%.2f" "$TOTAL_COMBIN
 echo "--------------------------------------------------------"
 echo "Summary"
 echo "--------------------------------------------------------"
+[ "$UNKNOWN" -gt 0 ] && log_warn "$UNKNOWN size(s) could not be measured: the totals below leave them out."
 echo "Total PostgreSQL : $TOTAL_DB_READABLE"
 echo "Total Filestore  : $TOTAL_FS_READABLE"
 echo -e "Total Combined   : \033[1;33m$TOTAL_ALL_READABLE\033[0m"

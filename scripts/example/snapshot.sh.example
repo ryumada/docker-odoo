@@ -71,6 +71,18 @@ else
   exit 1
 fi
 
+# Database and filestore sizes for manifest.json
+if [ -f "$CURRENT_DIR/lib/odoo_sizes.sh" ]; then
+  # shellcheck source=/dev/null
+  source "$CURRENT_DIR/lib/odoo_sizes.sh"
+elif [ -f "$PATH_TO_ODOO/scripts/lib/odoo_sizes.sh" ]; then
+  # shellcheck source=/dev/null
+  source "$PATH_TO_ODOO/scripts/lib/odoo_sizes.sh"
+else
+  log_error "scripts/lib/odoo_sizes.sh not found. Update docker-odoo (git pull) and re-run ./setup.sh."
+  exit 1
+fi
+
 function run_pg_dump() {
   local env_file="${PSQL_ENV_FILE:-$PATH_TO_ODOO/.env}"
   local db_host
@@ -980,6 +992,7 @@ function run_remote_snapshot() {
     \"version\": \"$MANIFEST_VERSION\",
     \"version_info\": $MANIFEST_VERSION_INFO,
     \"major_version\": \"$MANIFEST_MAJOR_VERSION\",
+    \"sudodevops\": $SUDODEVOPS_JSON,
     \"modules\": {}
 }
 MANIFEST_EOF"
@@ -1256,6 +1269,11 @@ function main() {
   # Extract Odoo version metadata
   extract_odoo_version_info
 
+  # Measured before the dump, for manifest.json's "sudodevops" block: the validator sizes its disk
+  # check from db_size_bytes and picks its PostgreSQL from server_version. Unknown values are null.
+  SUDODEVOPS_JSON=$(odoo_sizes_json "${PSQL_ENV_FILE:-$PATH_TO_ODOO/.env}" "$ODOO_DATABASE_NAME_PRD" "/var/lib/odoo/$SERVICE_NAME/filestore/$ODOO_DATABASE_NAME_PRD")
+  log_info "Sizes for manifest.json: $SUDODEVOPS_JSON"
+
   # --- Branch: Remote Secondary VPS Snapshot Mode ---
   if [ -n "$SNAPSHOT_REMOTE_HOST" ]; then
     if [ -z "$SNAPSHOT_REMOTE_USER" ]; then
@@ -1315,6 +1333,7 @@ function main() {
     "version": "$MANIFEST_VERSION",
     "version_info": $MANIFEST_VERSION_INFO,
     "major_version": "$MANIFEST_MAJOR_VERSION",
+    "sudodevops": $SUDODEVOPS_JSON,
     "modules": {}
 }
 EOF

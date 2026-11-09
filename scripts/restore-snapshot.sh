@@ -870,6 +870,74 @@ function restoreFromSnapshotViaBackupData() {
   log_success "Restoration via direct data restore completed."
 }
 
+function extractForDataOnly() {
+  # Extracts only what a data-only restore uses: the database dump, filestore, manifest, git
+  # metadata and the bundled directories under git/ and odoo-base/ (repositories that cannot be
+  # re-cloned, and plain folders). The members are chosen from the archive's own listing, so a
+  # bundled addon is always extracted whole and never matched file by file by a name pattern.
+  # Configuration, scripts and custom directories are left out, as data-only never restores them.
+  local pick="$TEMP_DIR/.data-only-members"
+  log_info "Listing $SNAPSHOT_FILE_PATH to extract the database, filestore and bundled directories..."
+  if ! ( set -o pipefail
+         case "$SNAPSHOT_FILE_PATH" in
+           *.zst|*.zstd) zstd -dcq "$SNAPSHOT_FILE_PATH" ;;
+           *) cat "$SNAPSHOT_FILE_PATH" ;;
+         esac | python3 -c '
+import fnmatch, sys, tarfile
+prefix = sys.argv[2].strip("/")  # older archives also hold the deployment under its absolute path
+core = {"dump.sql", "manifest.json", "git_hashes.json", "git_hashes.txt"}
+picked = []
+for m in tarfile.open(fileobj=sys.stdin.buffer, mode="r|*"):
+    name = m.name
+    rel = name[len(prefix) + 1:] if prefix and name.startswith(prefix + "/") else name
+    parts = rel.split("/")
+    base = parts[-1]
+    if (parts[0] in ("git", "odoo-base") and len(parts) > 1) or "filestore" in parts \
+            or base in core or fnmatch.fnmatch(base, "backupdata*.zip") \
+            or (base.endswith(".sql") and len(parts) <= 4):
+        picked.append(name)
+with open(sys.argv[1], "wb") as f:
+    f.write(b"".join(n.encode("utf-8", "surrogateescape") + b"\0" for n in picked))
+' "$pick" "$TAR_PROJECT_ROOT" ); then
+    log_error "Could not read $SNAPSHOT_FILE_PATH (damaged or not a snapshot archive)."
+    exit 1
+  fi
+  if [ ! -s "$pick" ]; then
+    log_error "$SNAPSHOT_FILE_PATH holds no database dump, filestore or bundled directory to restore."
+    exit 1
+  fi
+  log_info "Extracting $(tr -cd '\0' < "$pick" | wc -c) entries..."
+  if ! tar -xaf "$SNAPSHOT_FILE_PATH" -C "$TEMP_DIR" --no-recursion --null --verbatim-files-from -T "$pick"; then
+    log_error "Failed to extract snapshot."
+    exit 1
+  fi
+  rm -f "$pick"
+}
+
+function check_bundled_directories_present() {
+  # Args: src_root. Every directory git_hashes.json says was bundled must be in the extracted
+  # snapshot; a missing one means a broken snapshot, so the restore stops before changing anything.
+  local src_root="$1" json_file missing
+  json_file=$(find "$TEMP_DIR" -maxdepth 4 -name "git_hashes.json" -print 2>/dev/null | head -n 1)
+  [ -n "$json_file" ] && [ -f "$json_file" ] || return 0
+  missing=$(python3 -c '
+import json, os, sys
+try:
+    data = json.load(open(sys.argv[1]))
+except Exception:
+    sys.exit(0)
+for b in data.get("bundled_directories", []):
+    rel = (b.get("relative_path") or "").strip("/")
+    if rel and not os.path.isdir(os.path.join(sys.argv[2], rel)):
+        print(rel)
+' "$json_file" "$src_root" 2>/dev/null || true)
+  if [ -n "$missing" ]; then
+    log_error "The snapshot lists bundled directories that are not in the archive: $(echo "$missing" | tr '\n' ' ')- nothing was restored."
+    return 1
+  fi
+  return 0
+}
+
 function restoreSnapshotDataOnly() {
   log_info "Starting DATA-ONLY snapshot restoration for $SERVICE_NAME (fast mode)"
 
@@ -877,28 +945,21 @@ function restoreSnapshotDataOnly() {
   isZstdInstalled
   isSnapshotFileExist
 
-  log_info "Performing fast selective extraction from $SNAPSHOT_FILE_PATH..."
   rm -rf "$TEMP_DIR" && mkdir -p "$TEMP_DIR"
+  extractForDataOnly
 
-  # Fast selective extraction: unpack only backup bundle, filestore, dump sql, and metadata
-  if ! tar -xaf "$SNAPSHOT_FILE_PATH" -C "$TEMP_DIR" --wildcards "*backupdata*.zip" "*filestore*" "*.sql" "*manifest.json*" "*git_hashes*" 2>/dev/null; then
-    log_info "Selective extraction not matched, extracting full archive..."
-    if ! tar -xaf "$SNAPSHOT_FILE_PATH" -C "$TEMP_DIR"; then
-      log_error "Failed to extract snapshot."
-      exit 1
-    fi
+  local src_root="$TEMP_DIR"
+  if [ -d "$TEMP_DIR/$TAR_PROJECT_ROOT" ]; then
+    src_root="$TEMP_DIR/$TAR_PROJECT_ROOT"
   fi
+  # Before anything is restored: Odoo without the snapshot's bundled addons would not start cleanly
+  check_bundled_directories_present "$src_root" || exit 1
 
   log_info "Restoring Odoo database and filestore..."
   restoreOdooData
 
   # Reload registry dynamically without downtime
   trigger_registry_reload "$ODOO_DATABASE_NAME_PRD" "$PATH_TO_ODOO" 2>/dev/null || true
-
-  local src_root="$TEMP_DIR"
-  if [ -d "$TEMP_DIR/$TAR_PROJECT_ROOT" ]; then
-    src_root="$TEMP_DIR/$TAR_PROJECT_ROOT"
-  fi
 
   # Move existing copies of bundled git repositories aside so cp -rn restores the snapshot's version
   prepare_bundled_git_targets "$src_root"
@@ -944,6 +1005,7 @@ function restoreSnapshotFull() {
   if [ -d "$TEMP_DIR/$TAR_PROJECT_ROOT" ]; then
     src_root="$TEMP_DIR/$TAR_PROJECT_ROOT"
   fi
+  check_bundled_directories_present "$src_root" || exit 1
 
   log_info "Restoring configuration and environment..."
   [ -f "$src_root/conf/odoo.conf" ] && cp -f "$src_root/conf/odoo.conf" "$PATH_TO_ODOO/conf/odoo.conf"
