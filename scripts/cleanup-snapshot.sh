@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -e
 # Category: Utility
-# Description: Checks and deletes old Odoo snapshots on Google Drive based on retention policy.
-# Usage: ./scripts/cleanup-snapshot.sh [-l|--list] [--keep N] [--dry-run] [--force] [--all]
+# Description: Checks and deletes old Odoo snapshots on Google Drive (or, with --local, the ones kept on this host) based on retention policy.
+# Usage: ./scripts/cleanup-snapshot.sh [--local] [-l|--list] [--keep N] [--dry-run] [--force] [--all]
 # Dependencies: curl, openssl, sudo, git, python3
 
 # Detect Repository Owner to run non-root commands as that user
@@ -57,14 +57,23 @@ FORCE=false
 SHOW_ALL=false
 LIST_ONLY=false
 CUSTOM_SERVICE_NAME=""
+LOCAL_MODE=false
+KEEP_GIVEN=false
+OWNER_HOME="${SNAPSHOT_OWNER_HOME:-$(eval echo "~$REPOSITORY_OWNER")}"   # SNAPSHOT_OWNER_HOME: tests only
+LOCAL_MAX_BACKUPS=$(grep "^SNAPSHOT_LOCAL_MAX_BACKUPS=" "$ENV_FILE" 2>/dev/null | cut -d '=' -f2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//' || true)
 
 show_help() {
   cat << EOF
 Usage: $(basename "$0") [OPTIONS]
 
-Checks and deletes oldest Odoo snapshot files stored on Google Drive.
+Checks and deletes oldest Odoo snapshot files stored on Google Drive. With --local, the snapshots
+kept on this host instead ($OWNER_HOME/.odoo-snapshots/<service>/archives: not uploaded, because no
+cloud storage is set or the upload failed). Retention keeps the newest N and the newest snapshot that
+passed a restore drill.
 
 Options:
+  --local                        Work on the snapshots kept on this host (default --keep from .env:
+                                 SNAPSHOT_LOCAL_MAX_BACKUPS=${LOCAL_MAX_BACKUPS:-<empty: keep all>})
   -l, --list                     List snapshot files on Google Drive with sizes and exit
   -k, --keep, --max-backups <N>  Number of latest snapshots to retain (default from .env: $MAX_BACKUPS)
   -d, --dry-run                  Simulate deletion without actually deleting files
@@ -83,6 +92,8 @@ Examples:
   ./scripts/cleanup-snapshot.sh --keep 24
   ./scripts/cleanup-snapshot.sh --keep 24 --force
   ./scripts/cleanup-snapshot.sh --all --keep 10
+  ./scripts/cleanup-snapshot.sh --local --list
+  ./scripts/cleanup-snapshot.sh --local --keep 3 --dry-run
 EOF
 }
 
@@ -94,10 +105,16 @@ while [[ $# -gt 0 ]]; do
       ;;
     -k|--keep|--max-backups)
       MAX_BACKUPS="$2"
+      KEEP_GIVEN=true
       shift 2
       ;;
     --keep=*|--max-backups=*)
       MAX_BACKUPS="${1#*=}"
+      KEEP_GIVEN=true
+      shift
+      ;;
+    --local)
+      LOCAL_MODE=true
       shift
       ;;
     -d|--dry-run)
@@ -155,6 +172,74 @@ while [[ $# -gt 0 ]]; do
       ;;
   esac
 done
+
+# --- Local mode: the snapshots kept on this host (no Google Drive needed) ---
+if [ "$LOCAL_MODE" = true ]; then
+  [ "$KEEP_GIVEN" = true ] || MAX_BACKUPS="$LOCAL_MAX_BACKUPS"
+  if [ "$LIST_ONLY" = false ] && [ -z "$MAX_BACKUPS" ]; then
+    log_error "SNAPSHOT_LOCAL_MAX_BACKUPS is empty in .env (keep every local snapshot). Pass --keep N to clean up anyway, or --list to look."
+    exit 1
+  fi
+  if [ "$LIST_ONLY" = false ] && { ! [[ "$MAX_BACKUPS" =~ ^[0-9]+$ ]] || [ "$MAX_BACKUPS" -lt 1 ]; }; then
+    log_error "Invalid retention value '$MAX_BACKUPS'. It must be at least 1 (these are the only copies of these snapshots)."
+    exit 1
+  fi
+  [ "$(id -u)" = 0 ] || log_warn "Not running as root: an archive another user's process has open (a drill, an upload) cannot be seen. Run with sudo to be sure."
+  if [ "$SHOW_ALL" = true ]; then
+    mapfile -t LOCAL_SERVICES < <(for d in "$OWNER_HOME"/.odoo-snapshots/*/archives; do [ -d "$d" ] && basename "$(dirname "$d")"; done)
+  else
+    LOCAL_SERVICES=("${CUSTOM_SERVICE_NAME:-$SERVICE_NAME}")
+  fi
+  TOTAL_DELETE=0
+  echo "=================================================================================================="
+  printf '%-4s | %-9s | %-50s | %-12s | %s\n' "No" "Action" "Snapshot folder" "Size" "Why"
+  echo "--------------------------------------------------------------------------------------------------"
+  i=0
+  for svc in "${LOCAL_SERVICES[@]}"; do
+    dir="$OWNER_HOME/.odoo-snapshots/$svc/archives"
+    plan=$(snap_local_plan "$dir" "$svc" "$([ "$LIST_ONLY" = true ] && echo 1000000 || echo "$MAX_BACKUPS")") || plan=""
+    while IFS=$'\t' read -r action name bytes reason; do
+      [ -n "$name" ] || continue
+      i=$((i + 1))
+      case "$action" in keep) a="[KEEP]" ;; delete) a="[DELETE]"; TOTAL_DELETE=$((TOTAL_DELETE + 1)) ;; *) a="[SKIP]" ;; esac
+      [ "$LIST_ONLY" = true ] && a="-"
+      case "$reason" in
+        newest) why=$([ "$LIST_ONLY" = true ] && echo "" || echo "within the newest $MAX_BACKUPS") ;;
+        drill) why="newest that passed a restore drill" ;;
+        other-files) why="folder holds other files: left alone" ;;
+        in-use) why="open by a running process: left alone" ;;
+        *) why="older than the newest $MAX_BACKUPS" ;;
+      esac
+      [ -f "$dir/$name/snapshot-$svc.tar.zst.validated.json" ] && [ "$reason" != drill ] && why="${why:+$why, }has a drill record"
+      printf '%-4s | %-9s | %-50s | %-12s | %s\n' "$i" "$a" "$svc/$name" "$(numfmt --to=iec-i --suffix=B "$bytes" 2>/dev/null || echo "$bytes B")" "$why"
+    done <<< "$plan"
+  done
+  echo "=================================================================================================="
+  [ "$i" -gt 0 ] || echo " No local snapshots found under $OWNER_HOME/.odoo-snapshots."
+  [ "$LIST_ONLY" = true ] && exit 0
+  if [ "$TOTAL_DELETE" -eq 0 ]; then
+    log_success "All local snapshots are within the retention limit ($MAX_BACKUPS). No deletion needed."
+    exit 0
+  fi
+  if [ "$DRY_RUN" = true ]; then
+    log_warn "DRY-RUN mode enabled: $TOTAL_DELETE local snapshot(s) would be deleted, nothing was."
+    exit 0
+  fi
+  if [ "$FORCE" = false ]; then
+    echo -ne "${COLOR_WARN}Delete $TOTAL_DELETE local snapshot(s)? They were never uploaded, so this host has the only copy. [y/N]: ${COLOR_RESET}"
+    read -r confirmation
+    if [[ ! "$confirmation" =~ ^[Yy]$ ]]; then
+      log_info "Cleanup operation aborted by user."
+      exit 0
+    fi
+  fi
+  LOCAL_FAILED=0
+  for svc in "${LOCAL_SERVICES[@]}"; do
+    snap_local_retention "$OWNER_HOME/.odoo-snapshots/$svc/archives" "$svc" "$MAX_BACKUPS" "$OWNER_HOME/snapshot-$svc.tar.zst" || LOCAL_FAILED=1
+  done
+  [ "$LOCAL_FAILED" = 0 ] && log_success "Local retention cleanup completed." || { log_error "Some local snapshots could not be removed (see above)."; exit 1; }
+  exit 0
+fi
 
 if ! [[ "$MAX_BACKUPS" =~ ^[0-9]+$ ]] || [ "$MAX_BACKUPS" -lt 1 ]; then
   log_error "Invalid retention value '$MAX_BACKUPS'. It must be at least 1 (retention never deletes every snapshot)."

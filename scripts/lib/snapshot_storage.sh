@@ -831,3 +831,99 @@ snap_disk_reserve_bytes() {
   fi
   echo "$fixed fixed"
 }
+
+# --- Local archive retention (this host) ---------------------------------------
+# A snapshot that is not uploaded (no cloud storage set, or the upload failed) stays on this host in
+#   <archives dir>/snapshot-<service>.tar.zst-YYYYMMDD-HHMMSS/   (~/.odoo-snapshots/<service>/archives)
+#     snapshot-<service>.tar.zst  [.sha256]  [.validated.json]
+# Retention keeps the newest <keep> of these folders, plus the newest one with a trusted validation
+# record (it passed a restore drill), and never touches:
+#   - a folder holding any other file (someone put it there: it is reported, not deleted),
+#   - an archive some process has open (a drill, an upload or a copy in progress).
+# These are the only copies of those snapshots, so <keep> is at least 1 and empty means keep all.
+
+snap_file_in_use() {
+  # Args: path. Returns 0 when a process has the file open (checked through /proc; as root, every
+  # process). Best effort: returns 1 when nothing it can see has it open.
+  local target pattern
+  target=$(readlink -f "$1" 2>/dev/null) || return 1
+  pattern=$(printf '%s' "$target" | sed 's/[][*?\\]/\\&/g')   # find -lname takes a glob
+  # (no pipe: under pipefail, find's complaint about a process that just ended would hide the match)
+  [ -n "$(find /proc/[0-9]*/fd -mindepth 1 -maxdepth 1 -lname "$pattern" -print -quit 2>/dev/null)" ]
+}
+
+snap_local_plan() {
+  # Args: archives_dir service keep
+  # Prints one line per snapshot folder, newest first: action<TAB>folder<TAB>archive_bytes<TAB>reason
+  #   action: keep | delete | skip (left alone although over the limit)
+  #   reason: newest (within <keep>) | drill (newest that passed a drill) | old | other-files | in-use
+  local dir="$1" service="$2" keep="$3" archive="snapshot-$2.tar.zst" f name n=0 drill="" bytes extra sha
+  [ -d "$dir" ] || return 0
+  [[ "$keep" =~ ^[0-9]+$ ]] && [ "$keep" -ge 1 ] || return 1
+  local folders=()
+  while IFS= read -r name; do folders+=("$name"); done < <(
+    for f in "$dir"/*/; do
+      name=$(basename "$f")
+      [[ "$name" =~ ^snapshot-.+\.tar\.zst-[0-9]{8}-[0-9]{6}$ ]] || continue
+      [ "${name%-????????-??????}" = "$archive" ] && [ -f "$f$archive" ] && [ ! -L "$f$archive" ] && echo "$name"
+    done | sort -r)
+  # The newest folder whose archive passed a restore drill (record "pass" with the archive's sha256)
+  for name in "${folders[@]}"; do
+    f="$dir/$name/$archive"
+    [ -f "$f.validated.json" ] || continue
+    sha=$(snap_sidecar_hash "$f.sha256")
+    [ -n "$sha" ] || continue
+    if snap_validation_record_ok "$f.validated.json" "$archive" "$sha"; then drill="$name"; break; fi
+  done
+  for name in "${folders[@]}"; do
+    n=$((n + 1))
+    f="$dir/$name/$archive"
+    bytes=$(stat -c %s "$f" 2>/dev/null || echo 0)
+    if [ "$n" -le "$keep" ]; then printf 'keep\t%s\t%s\tnewest\n' "$name" "$bytes"; continue; fi
+    if [ "$name" = "$drill" ]; then printf 'keep\t%s\t%s\tdrill\n' "$name" "$bytes"; continue; fi
+    extra=$(find "$dir/$name" -mindepth 1 -maxdepth 1 ! -name "$archive" ! -name "$archive.sha256" ! -name "$archive.validated.json" -print -quit 2>/dev/null)
+    if [ -n "$extra" ]; then printf 'skip\t%s\t%s\tother-files\n' "$name" "$bytes"; continue; fi
+    if snap_file_in_use "$f"; then printf 'skip\t%s\t%s\tin-use\n' "$name" "$bytes"; continue; fi
+    printf 'delete\t%s\t%s\told\n' "$name" "$bytes"
+  done
+}
+
+snap_local_apply() {
+  # Args: archives_dir service. Reads a snap_local_plan on stdin and deletes its "delete" folders:
+  # the archive first, then its .sha256 and .validated.json, then the folder. Prints "<deleted> <failed>".
+  local dir="$1" archive="snapshot-$2.tar.zst" action name bytes reason deleted=0 failed=0 d
+  while IFS=$'\t' read -r action name bytes reason; do
+    [ "$action" = delete ] || continue
+    d="$dir/$name"
+    if rm -f "$d/$archive" && rm -f "$d/$archive.sha256" "$d/$archive.validated.json" && rmdir "$d" 2>/dev/null; then
+      deleted=$((deleted + 1))
+    else
+      failed=$((failed + 1)); _ss_log warn "Local retention: could not remove $d completely."
+    fi
+  done
+  echo "$deleted $failed"
+}
+
+snap_local_retention() {
+  # Args: archives_dir service keep [home_link]
+  # Applies local retention (see above) and logs what it did; home_link is the convenience link to the
+  # newest snapshot (e.g. ~/snapshot-<service>.tar.zst), removed when it points to a deleted folder.
+  local dir="$1" service="$2" keep="$3" link="${4:-}" plan del skip res
+  [ -n "$keep" ] || return 0
+  if ! [[ "$keep" =~ ^[0-9]+$ ]] || [ "$keep" -lt 1 ]; then
+    _ss_log warn "Local retention: SNAPSHOT_LOCAL_MAX_BACKUPS='$keep' is not a number of at least 1; keeping every local snapshot."
+    return 0
+  fi
+  plan=$(snap_local_plan "$dir" "$service" "$keep") || return 0
+  del=$(printf '%s\n' "$plan" | grep -c '^delete' || true)
+  skip=$(printf '%s\n' "$plan" | awk -F'\t' '$1 == "skip" {print $2 " (" $4 ")"}')
+  [ -n "$skip" ] && _ss_log warn "Local retention: left alone although over the limit of $keep: $(echo "$skip" | tr '\n' ' ')"
+  printf '%s\n' "$plan" | awk -F'\t' '$4 == "drill" {print $2}' | while read -r n; do
+    _ss_log info "Local retention: also keeping $n, the newest local snapshot that passed a restore drill."
+  done
+  [ "$del" -gt 0 ] || return 0
+  res=$(printf '%s\n' "$plan" | snap_local_apply "$dir" "$service")
+  _ss_log info "Local retention: removed ${res%% *} local snapshot(s) older than the newest $keep in $dir."
+  if [ -n "$link" ] && [ -L "$link" ] && [ ! -e "$link" ]; then rm -f "$link"; fi
+  [ "${res##* }" = 0 ] || { _ss_log warn "Local retention: ${res##* } old local snapshot(s) could not be removed."; return 1; }
+}

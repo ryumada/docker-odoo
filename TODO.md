@@ -43,8 +43,8 @@ Details live in `scripts/README.md` (snapshot tool, validator, Secondary VPS set
 4. [x] `sudodevops` block in `manifest.json` (database size, filestore size, attachment count) via a shared `scripts/lib/odoo_sizes.sh`; `disk_free_monitor.sh` uses it too (records `null`, not `0`, on failure). The drill's disk estimate then uses real sizes. Done: also the PostgreSQL version; works for a database on another host; `disk_free_monitor.sh` now supports one too (`tests/test_odoo_sizes.sh`).
 5. [x] Remote mode: hand the archive to the validator inbox on the Secondary VPS instead of deleting it; keep only the newest pending snapshot per deployment. Done: `SNAPSHOT_VALIDATOR_INBOX` (default off); moved after the upload, hard-linked when the archive is kept there anyway, never copied; skipped below `VALIDATOR_DISK_RESERVE_GB`; `job.json` records the Drive name and id and the GCS object and generation for the worker (#10); layout in `scripts/README.md` (`tests/test_validator_inbox.sh`).
 6. [x] Write `stats.json` on the Secondary VPS after each remote snapshot, for the disk reserve. Done: `~/.odoo-snapshots/<service>/stats.json` with the dump and archive sizes and the free space the snapshot took at its fullest point; the validator and the inbox hand-off raise the reserve to the largest recent need on that disk (+25%), and the report says which reserve applied (`tests/test_snapshot_stats.sh`, local suite of `tests/test_validate_snapshot.sh`).
-7. [ ] Optional: dated snapshots in GCS instead of one overwritten object.
-8. [ ] Optional: retention for local archive folders.
+7. [-] Dropped (owner's decision): dated snapshots in GCS. GCS history is kept with the bucket's own tools instead: Object Versioning plus a lifecycle rule (see "For the owner").
+8. [x] Optional: retention for local archive folders. Done: `SNAPSHOT_LOCAL_MAX_BACKUPS` (default 5, empty keeps all) applied after each local snapshot to `~/.odoo-snapshots/<service>/archives`; keeps the newest N plus the newest that passed a drill, never deletes a folder with other files or an archive in use; manual `cleanup-snapshot.sh --local [--list|--dry-run|--keep N]` (`tests/test_local_retention.sh`).
 
 ### Validator
 9. [ ] Phase 2: start Odoo against the restored copy. Neutralize the database, no outbound network, check registry load and boot, `/web/login` returns 200.
@@ -56,6 +56,7 @@ Details live in `scripts/README.md` (snapshot tool, validator, Secondary VPS set
 13. [ ] Alerts by email, Google Chat / Slack webhook and Telegram.
 
 ## For the owner (not code)
+- [ ] GCS buckets used for snapshots: turn on Object Versioning and add a lifecycle rule for noncurrent versions (e.g. keep the newest N with `numNewerVersions`, or delete after `daysSinceNoncurrentTime`). The snapshot tool overwrites one object per deployment, so without versioning the previous snapshot is gone as soon as the next upload finishes.
 - [ ] On every nginx VPS: add the `/queue_job/` block to each Odoo site in `/etc/nginx/sites-available/` (see README, "`/queue_job/` is closed at the proxy"), then `sudo nginx -t && sudo systemctl reload nginx`. Traefik deployments: re-run `./setup.sh`.
 - [ ] Check that Odoo's `PORT` and `GEVENT_PORT` are closed to the internet in the firewall (host network: Odoo listens on every interface, and `/queue_job/runjob` is open on those ports without the proxy).
 - [ ] On every deployment: update docker-odoo and re-run `./setup.sh` (installs the fixed snapshot, backup and restore tools). AFI still runs the old snapshot tool.

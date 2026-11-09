@@ -371,7 +371,14 @@ Inspects and cleans up older Odoo snapshots on Google Drive based on retention p
 
 # Delete snapshots keeping the latest 10
 ./scripts/cleanup-snapshot.sh --keep 10 --force
+
+# The snapshots kept on this host (not uploaded): list, simulate, clean up
+./scripts/cleanup-snapshot.sh --local --list
+./scripts/cleanup-snapshot.sh --local --dry-run
+sudo ./scripts/cleanup-snapshot.sh --local --keep 3
 ```
+
+**Snapshots kept on this host.** A snapshot that is not uploaded (no cloud storage set, or the upload failed) stays in `~/.odoo-snapshots/<service>/archives/snapshot-<service>.tar.zst-YYYYMMDD-HHMMSS/` with its `.sha256`. After each local snapshot, the snapshot tool keeps the newest `SNAPSHOT_LOCAL_MAX_BACKUPS` of them (default 5 in `.env.example`; empty keeps all), plus the newest one that passed a restore drill (`validate-snapshot.sh --file ... --publish` writes its `.validated.json` there). It never deletes a folder that holds any other file (reported instead) or an archive a process has open, such as a running drill or `upload-temp-snapshots.sh` (seen through `/proc`; run the manual cleanup with `sudo` so other users' processes are seen too). These are the only copies of those snapshots, so the limit is at least 1 and the manual cleanup asks before deleting. Snapshots on the Secondary VPS are not affected: there each deployment keeps a single `archives/snapshot-<service>.tar.zst`, replaced by the next one. Tested by `./tests/test_local_retention.sh`.
 
 </details>
 

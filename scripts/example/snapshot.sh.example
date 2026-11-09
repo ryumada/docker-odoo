@@ -1338,6 +1338,8 @@ function main() {
   SNAPSHOT_VALIDATOR_INBOX=$(grep "^SNAPSHOT_VALIDATOR_INBOX=" "$PATH_TO_ODOO/.env" 2>/dev/null | cut -d '=' -f2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//')
   VALIDATOR_DISK_RESERVE_GB=$(grep "^VALIDATOR_DISK_RESERVE_GB=" "$PATH_TO_ODOO/.env" 2>/dev/null | cut -d '=' -f2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//')
   [ "$SNAPSHOT_VALIDATOR_INBOX" = true ] || SNAPSHOT_VALIDATOR_INBOX=false
+  # How many snapshots kept on this host (not uploaded) to retain; empty keeps all (see snap_local_retention)
+  SNAPSHOT_LOCAL_MAX_BACKUPS=$(grep "^SNAPSHOT_LOCAL_MAX_BACKUPS=" "$PATH_TO_ODOO/.env" 2>/dev/null | cut -d '=' -f2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//')
   [[ "$VALIDATOR_DISK_RESERVE_GB" =~ ^[0-9]+$ ]] || VALIDATOR_DISK_RESERVE_GB=5
   [ -z "$SNAPSHOT_REMOTE_PORT" ] && SNAPSHOT_REMOTE_PORT="22"
 
@@ -1597,6 +1599,9 @@ EOF
   else
     moveSnapshotFileToTempDir "$TAR_FILE_PATH" "$TAR_FILE_NAME"
   fi
+
+  # Snapshots kept on this host: only the newest SNAPSHOT_LOCAL_MAX_BACKUPS (and the newest that passed a drill)
+  snap_local_retention "$OWNER_HOME/.odoo-snapshots/$SERVICE_NAME/archives" "$SERVICE_NAME" "$SNAPSHOT_LOCAL_MAX_BACKUPS" "$OWNER_HOME/$TAR_FILE_NAME" || true
   echo
 }
 
