@@ -47,7 +47,7 @@ Details live in `scripts/README.md` (snapshot tool, validator, Secondary VPS set
 8. [x] Optional: retention for local archive folders. Done: `SNAPSHOT_LOCAL_MAX_BACKUPS` (default 5, empty keeps all) applied after each local snapshot to `~/.odoo-snapshots/<service>/archives`; keeps the newest N plus the newest that passed a drill, never deletes a folder with other files or an archive in use; manual `cleanup-snapshot.sh --local [--list|--dry-run|--keep N]` (`tests/test_local_retention.sh`).
 
 ### Validator
-9. [ ] Phase 2: start Odoo against the restored copy. Neutralize the database, no outbound network, check registry load and boot, `/web/login` returns 200.
+9. [x] Phase 2: start Odoo against the restored copy. Neutralize the database, no outbound network, check registry load and boot, `/web/login` returns 200. Done: on by default (`--no-boot` / `VALIDATOR_BOOT=false`); code checked out at the proved commits; image pulled with the snapshot's pull key or built from `dockerfile.example` + `requirements.txt` and cached; pass bar = registry, installed modules and `/web/login` (other ERROR lines warn, `VALIDATOR_BOOT_STRICT=true` per deployment makes them fail); reports and records carry `"level": "boot"` (`boot` suite of `tests/test_validate_snapshot.sh`).
 10. [ ] Worker (systemd timer or cron) that drills inbox snapshots automatically, with `VALIDATOR_MIN_INTERVAL_HOURS`.
 
 ### Odoo addon
@@ -56,6 +56,7 @@ Details live in `scripts/README.md` (snapshot tool, validator, Secondary VPS set
 13. [ ] Alerts by email, Google Chat / Slack webhook and Telegram.
 
 ## For the owner (not code)
+- [ ] First real boot drill per deployment: run `./scripts/validate-snapshot.sh --drive <service>` and check the `boot` stage. The first one builds the drill image on the Secondary VPS (a few minutes, needs internet there and about 1.5 GB of disk per image). Deployments in builder/production mode pull their image with the `DOCKER_PULL_KEY` from the snapshot's `.env` instead. Set `VALIDATOR_BOOT_STRICT=true` for deployments whose log turns out clean.
 - [ ] GCS buckets used for snapshots: turn on Object Versioning and add a lifecycle rule for noncurrent versions (e.g. keep the newest N with `numNewerVersions`, or delete after `daysSinceNoncurrentTime`). The snapshot tool overwrites one object per deployment, so without versioning the previous snapshot is gone as soon as the next upload finishes.
 - [ ] On every nginx VPS: add the `/queue_job/` block to each Odoo site in `/etc/nginx/sites-available/` (see README, "`/queue_job/` is closed at the proxy"), then `sudo nginx -t && sudo systemctl reload nginx`. Traefik deployments: re-run `./setup.sh`.
 - [ ] Check that Odoo's `PORT` and `GEVENT_PORT` are closed to the internet in the firewall (host network: Odoo listens on every interface, and `/queue_job/runjob` is open on those ports without the proxy).

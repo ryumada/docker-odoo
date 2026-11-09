@@ -203,6 +203,16 @@ suite_remote() {
   check_eq "--local used this host's Docker" "$((n + 1))" "$(cat "$T/dl/run.log" 2>/dev/null | wc -l)"
   check "clean after the drills" wait_until 15 remote_clean
 
+  tvs_section "remote: Odoo boots on the Secondary VPS"
+  a=$(fx bootgood rboot 20260101-000000 "$T/rhome/snapshots")
+  # shellcheck disable=SC2046
+  vs remote-boot $(remote_env) VALIDATOR_BOOT=true VALIDATOR_BOOT_STRICT=true -- --file "$a"
+  check_rc "remote drill with the boot check passes" 0
+  check_eq "remote report level boot" boot "$(rj "$VS_REPORT" 'r["level"]')"
+  check "the drill image was built on the Secondary VPS (dockerfile.example travels with the validator)" grep -q "odoo-drill/rboot:build-" "$T/dr/build.log"
+  check_eq "VALIDATOR_BOOT_STRICT forwarded" true "$(rj "$VS_REPORT" "[s for s in r['stages'] if s['name']=='boot'][-1]['details']['strict']")"
+  check "clean after the boot drill" wait_until 15 remote_clean
+
   tvs_section "remote: connection and configuration problems"
   local closed
   closed=$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1]); s.close()')

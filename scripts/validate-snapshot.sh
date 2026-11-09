@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -o pipefail
 # Category: Utility
-# Description: Restore drill for an Odoo snapshot in throwaway containers, proving it can be recovered (phase 1: checksum, archive, manifest, git, database restore, filestore).
+# Description: Restore drill for an Odoo snapshot in throwaway containers, proving it can be recovered (checksum, archive, manifest, git, database restore, filestore, then Odoo itself boots on the restored copy).
 # Usage: ./scripts/validate-snapshot.sh (--file PATH | --drive SERVICE [--name FILE] | --gcs gs://BUCKET/OBJECT) [--publish] [options]
 # Dependencies: docker (rootless recommended on the drill host), zstd, tar, git, python3, curl, flock, sha256sum, openssl (Drive service account), gcloud (--gcs)
 #
@@ -15,6 +15,16 @@ set -o pipefail
 #                 SQL errors (ON_ERROR_STOP + end-of-dump marker), on an internal Docker network
 #                 with no outbound access, and looks like a usable Odoo database
 #   7. filestore  every stored attachment exists in the archive with the right size
+#   8. code       odoo-base and every repository checked out at its recorded commit (bundled
+#                 folders from the archive)
+#   9. image      the deployment's Odoo image: pulled from its registry (ODOO_IMAGE_NAME in the
+#                 snapshot's .env, with its pull key) or built from dockerfile.example + the
+#                 snapshot's requirements.txt (else odoo-base's), cached by the hash of its inputs
+#  10. boot       the restored database is neutralized, then Odoo starts on it (no cron, no
+#                 workers, no queue_job runner, still no outbound network): the registry loads,
+#                 every installed module is found and loads, and /web/login answers 200.
+#                 Other ERROR/CRITICAL lines are warnings (VALIDATOR_BOOT_STRICT=true: failures).
+#                 --no-boot (or VALIDATOR_BOOT=false) stops after the filestore stage.
 # The result is written as a JSON report. With --publish, a passed drill uploads
 # <archive>.validated.json next to the snapshot (retention then protects that snapshot), and a
 # FAILED drill removes an existing one.
@@ -104,6 +114,11 @@ VALIDATOR_QUEUE_TIMEOUT=$(cfg VALIDATOR_QUEUE_TIMEOUT 43200)
 VALIDATOR_GIT_TIMEOUT=$(cfg VALIDATOR_GIT_TIMEOUT 300)
 VALIDATOR_GIT_ALLOW_PROTOCOL=$(cfg VALIDATOR_GIT_ALLOW_PROTOCOL "https:ssh")
 VALIDATOR_PULL_POLICY=$(cfg VALIDATOR_PULL_POLICY always)
+VALIDATOR_BOOT=$(cfg VALIDATOR_BOOT true)
+VALIDATOR_BOOT_STRICT=$(cfg VALIDATOR_BOOT_STRICT false)
+VALIDATOR_BOOT_TIMEOUT=$(cfg VALIDATOR_BOOT_TIMEOUT 900)
+VALIDATOR_BUILD_TIMEOUT=$(cfg VALIDATOR_BUILD_TIMEOUT 3600)
+VALIDATOR_ODOO_MEMORY=$(cfg VALIDATOR_ODOO_MEMORY 2g)
 GDRIVE_ACCESS_TOKEN=$(cfg GDRIVE_ACCESS_TOKEN "")
 GDRIVE_SERVICE_ACCOUNT_KEY=$(cfg GDRIVE_SERVICE_ACCOUNT_KEY "")
 GDRIVE_FOLDER_ID=$(cfg GDRIVE_FOLDER_ID "")
@@ -139,7 +154,8 @@ Options:
                            (Drive/GCS) or write it next to a local --file; on fail, remove it
   --report <PATH>          Where to write the JSON report (default: $VALIDATOR_DIR/reports/)
   --keep-workdir           Keep the work folder for inspection (containers are always removed)
-  --no-git-check           Skip the git repository check
+  --no-git-check           Skip the git repository check (the boot check needs it, so it is skipped too)
+  --no-boot                Stop after the filestore stage: do not start Odoo (VALIDATOR_BOOT=false)
   --local                  Drill on this host even when SNAPSHOT_REMOTE_HOST is set
   --folder-id <ID>         Google Drive folder ID (default: GDRIVE_FOLDER_ID)
   --sa-key <PATH>          Google Drive service account key (default: GDRIVE_SERVICE_ACCOUNT_KEY)
@@ -149,7 +165,8 @@ Options:
 Settings (environment or .env): VALIDATOR_WORK_DIR, VALIDATOR_DISK_RESERVE_GB,
 VALIDATOR_WATCHDOG_INTERVAL, VALIDATOR_POSTGRES_IMAGE, VALIDATOR_PG_CPUS, VALIDATOR_PG_MEMORY,
 VALIDATOR_FILESTORE_MAX_MISSING_PCT, VALIDATOR_QUEUE_TIMEOUT, VALIDATOR_GIT_TIMEOUT,
-VALIDATOR_GIT_ALLOW_PROTOCOL, VALIDATOR_PULL_POLICY, VALIDATOR_REMOTE_WORK_DIR.
+VALIDATOR_GIT_ALLOW_PROTOCOL, VALIDATOR_PULL_POLICY, VALIDATOR_REMOTE_WORK_DIR, VALIDATOR_BOOT,
+VALIDATOR_BOOT_STRICT, VALIDATOR_BOOT_TIMEOUT, VALIDATOR_BUILD_TIMEOUT, VALIDATOR_ODOO_MEMORY.
 Prefer GDRIVE_SERVICE_ACCOUNT_KEY in .env over --token: command-line arguments are visible to
 other users of this host.
 
@@ -169,6 +186,7 @@ while [ $# -gt 0 ]; do
     --report) need_value "$1" "${2:-}"; REPORT_PATH="$2"; shift 2 ;;
     --keep-workdir) KEEP_WORKDIR=true; shift ;;
     --no-git-check) GIT_CHECK=false; shift ;;
+    --no-boot) VALIDATOR_BOOT=false; shift ;;
     --local) LOCAL_ONLY=true; shift ;;
     --folder-id) need_value "$1" "${2:-}"; GDRIVE_FOLDER_ID="$2"; shift 2 ;;
     --sa-key) need_value "$1" "${2:-}"; GDRIVE_SERVICE_ACCOUNT_KEY="$2"; shift 2 ;;
@@ -205,6 +223,11 @@ bad_settings=()
 [[ "$VALIDATOR_QUEUE_TIMEOUT" =~ ^[0-9]+$ ]] || bad_settings+=("VALIDATOR_QUEUE_TIMEOUT='$VALIDATOR_QUEUE_TIMEOUT' (seconds)")
 [[ "$VALIDATOR_GIT_TIMEOUT" =~ ^[1-9][0-9]*$ ]] || bad_settings+=("VALIDATOR_GIT_TIMEOUT='$VALIDATOR_GIT_TIMEOUT' (seconds)")
 [[ "$VALIDATOR_GIT_ALLOW_PROTOCOL" =~ ^[a-z0-9+]+(:[a-z0-9+]+)*$ ]] || bad_settings+=("VALIDATOR_GIT_ALLOW_PROTOCOL='$VALIDATOR_GIT_ALLOW_PROTOCOL' (e.g. https:ssh)")
+[[ "$VALIDATOR_BOOT" =~ ^(true|false)$ ]] || bad_settings+=("VALIDATOR_BOOT='$VALIDATOR_BOOT' (true or false)")
+[[ "$VALIDATOR_BOOT_STRICT" =~ ^(true|false)$ ]] || bad_settings+=("VALIDATOR_BOOT_STRICT='$VALIDATOR_BOOT_STRICT' (true or false)")
+[[ "$VALIDATOR_BOOT_TIMEOUT" =~ ^[1-9][0-9]*$ ]] || bad_settings+=("VALIDATOR_BOOT_TIMEOUT='$VALIDATOR_BOOT_TIMEOUT' (seconds)")
+[[ "$VALIDATOR_BUILD_TIMEOUT" =~ ^[1-9][0-9]*$ ]] || bad_settings+=("VALIDATOR_BUILD_TIMEOUT='$VALIDATOR_BUILD_TIMEOUT' (seconds)")
+[[ "$VALIDATOR_ODOO_MEMORY" =~ ^[0-9]+[bkmgBKMG]?$ ]] || bad_settings+=("VALIDATOR_ODOO_MEMORY='$VALIDATOR_ODOO_MEMORY' (e.g. 2g)")
 if [ ${#bad_settings[@]} -gt 0 ]; then
   for b in "${bad_settings[@]}"; do log_error "Invalid setting: $b"; done
   exit 3
@@ -301,12 +324,14 @@ run_remote_drill() {
   [ "$PUBLISH" = true ] && fwd+=(--publish)
   [ "$KEEP_WORKDIR" = true ] && fwd+=(--keep-workdir)
   [ "$GIT_CHECK" = true ] || fwd+=(--no-git-check)
+  [ "$VALIDATOR_BOOT" = true ] || fwd+=(--no-boot)
 
   local exports="" v
   # Settings as configured here (auto values such as VALIDATOR_PG_CPUS are worked out on the Secondary VPS)
   for v in VALIDATOR_DISK_RESERVE_GB VALIDATOR_WATCHDOG_INTERVAL VALIDATOR_POSTGRES_IMAGE VALIDATOR_PG_CPUS \
            VALIDATOR_PG_MEMORY VALIDATOR_FILESTORE_MAX_MISSING_PCT VALIDATOR_QUEUE_TIMEOUT VALIDATOR_GIT_TIMEOUT \
-           VALIDATOR_GIT_ALLOW_PROTOCOL VALIDATOR_PULL_POLICY GDRIVE_FOLDER_ID; do
+           VALIDATOR_GIT_ALLOW_PROTOCOL VALIDATOR_PULL_POLICY VALIDATOR_BOOT_STRICT VALIDATOR_BOOT_TIMEOUT \
+           VALIDATOR_BUILD_TIMEOUT VALIDATOR_ODOO_MEMORY GDRIVE_FOLDER_ID; do
     exports+="export $v=$(printf '%q' "${!v}")"$'\n'
   done
   for v in QUEUE_LOCK_STALE_AFTER QUEUE_LOCK_POLL_INTERVAL GDS_API_BASE; do
@@ -314,7 +339,12 @@ run_remote_drill() {
   done
 
   local payload bootf bfd out rc
-  payload=$(tar -C "$CURRENT_DIR" -cf - validate-snapshot.sh lib/queue_lock.sh lib/snapshot_storage.sh | base64 -w0) \
+  # dockerfile.example travels as lib/dockerfile.example: the boot check builds the drill's Odoo image from it
+  local dockerfile_src="$PATH_TO_ODOO/dockerfile.example"
+  [ -f "$dockerfile_src" ] || dockerfile_src="$CURRENT_DIR/lib/dockerfile.example"
+  local tar_args=(-C "$CURRENT_DIR" -cf - validate-snapshot.sh lib/queue_lock.sh lib/snapshot_storage.sh)
+  [ -f "$dockerfile_src" ] && tar_args+=(-C "$(dirname "$dockerfile_src")" '--transform=s|^dockerfile\.example$|lib/dockerfile.example|' dockerfile.example)
+  payload=$(tar "${tar_args[@]}" | base64 -w0) \
     || { log_error "Cannot package the validator."; exit 3; }
   bootf=$(mktemp) && out=$(mktemp) || { log_error "Cannot create temporary files."; exit 3; }
   chmod 600 "$bootf" "$out"
@@ -511,6 +541,11 @@ RUN_ID="$(date +"%Y%m%d-%H%M%S")-$$"
 WORK="$VALIDATOR_DIR/runs/$RUN_ID"
 DRILL_NAME="odoo-drill-$RUN_ID"
 PG_CONTAINER="$DRILL_NAME-pg"
+ODOO_CONTAINER="$DRILL_NAME-odoo"
+NEUTRALIZE_CONTAINER="$DRILL_NAME-neutralize"
+BOOT_DIR="$WORK/boot"
+DRILL_LEVEL="database"   # "boot" once Odoo itself started on the restored copy
+BOOT_IMAGE=""
 DRILL_NET="$DRILL_NAME-net"
 STAGES_FILE="$WORK/stages.jsonl"
 STARTED_AT=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
@@ -594,6 +629,7 @@ cleanup() {
   trap - EXIT INT TERM
   [ -n "$WATCHDOG_PID" ] && kill "$WATCHDOG_PID" 2>/dev/null
   kill_child
+  docker rm -fv "$ODOO_CONTAINER" "$NEUTRALIZE_CONTAINER" >/dev/null 2>&1
   docker rm -fv "$PG_CONTAINER" >/dev/null 2>&1
   docker network rm "$DRILL_NET" >/dev/null 2>&1
   [ -n "$ARCHIVE_FD" ] && exec {ARCHIVE_FD}<&- 2>/dev/null
@@ -623,23 +659,24 @@ write_report() {
   python3 -c '
 import json, sys
 (stages_file, out, result, service, archive, source_kind, source_ref, sha, started, finished,
- duration, odoo_version, pg_image, db_stats, gcs_gen, published) = sys.argv[1:17]
+ duration, odoo_version, pg_image, db_stats, gcs_gen, published, level, odoo_image) = sys.argv[1:19]
 stages = [json.loads(l) for l in open(stages_file) if l.strip()]
 try:
     db = json.loads(db_stats or "{}")
 except Exception:
     db = {}
-report = {"schema": 1, "level": "database", "result": result, "service": service,
+report = {"schema": 1, "level": level, "result": result, "service": service,
           "archive": archive, "source": {"kind": source_kind, "ref": source_ref, "gcs_generation": gcs_gen or None},
           "sha256": sha or None, "started_at": started, "finished_at": finished,
           "duration_seconds": int(float(duration)), "odoo_version": odoo_version or None,
-          "postgres_image": pg_image or None, "database": db, "record_published": published or None,
+          "postgres_image": pg_image or None, "odoo_image": odoo_image or None, "database": db,
+          "record_published": published or None,
           "stages": stages}
 with open(out, "w") as f:
     json.dump(report, f, indent=2); f.write("\n")
 ' "$STAGES_FILE" "$REPORT_PATH" "$RESULT" "$SERVICE" "$ARCHIVE_NAME" "$SOURCE_KIND" "$(redact "$SOURCE_REF")" \
     "$ARCHIVE_SHA" "$STARTED_AT" "$finished" "$(( $(date +%s) - START_EPOCH ))" "$ODOO_VERSION" "$PG_IMAGE" "$DB_STATS" \
-    "$GCS_GENERATION" "$PUBLISHED"
+    "$GCS_GENERATION" "$PUBLISHED" "$DRILL_LEVEL" "$BOOT_IMAGE"
   chmod 600 "$REPORT_PATH" 2>/dev/null || true
   ln -sf "$REPORT_PATH" "$VALIDATOR_DIR/reports/latest-${SERVICE:-unknown}.json" 2>/dev/null || true
   own_path "$REPORT_PATH" "$VALIDATOR_DIR/reports/latest-${SERVICE:-unknown}.json"
@@ -727,6 +764,7 @@ start_watchdog() {
         f=$(free_bytes "$p")
         if [ -n "$f" ] && [ "$f" -lt "$RESERVE_BYTES" ]; then
           touch "$WORK/abort_low_disk" 2>/dev/null
+          docker rm -fv "$ODOO_CONTAINER" "$NEUTRALIZE_CONTAINER" >/dev/null 2>&1
           docker rm -fv "$PG_CONTAINER" >/dev/null 2>&1
           kill -TERM "$main_pid" 2>/dev/null
           exit 0
@@ -1425,7 +1463,7 @@ print(json.dumps({s["name"]: s["status"] for s in map(json.loads, filter(str.str
     return
   fi
   if ! snap_write_validation_record "$rec" "$ARCHIVE_NAME" "$ARCHIVE_SHA" \
-      "{\"level\": \"database\", \"run_id\": \"$RUN_ID\", \"checks\": $checks, \"odoo_version\": $(jstr "$ODOO_VERSION"), \"postgres_image\": $(jstr "$PG_IMAGE"), \"drill_seconds\": $(( $(date +%s) - START_EPOCH ))$([ -n "$GCS_GENERATION" ] && echo ", \"gcs_generation\": \"$GCS_GENERATION\""), \"database\": $DB_STATS}"; then
+      "{\"level\": \"$DRILL_LEVEL\", \"run_id\": \"$RUN_ID\", \"checks\": $checks, \"odoo_version\": $(jstr "$ODOO_VERSION"), \"postgres_image\": $(jstr "$PG_IMAGE"), \"drill_seconds\": $(( $(date +%s) - START_EPOCH ))$([ -n "$GCS_GENERATION" ] && echo ", \"gcs_generation\": \"$GCS_GENERATION\""), \"database\": $DB_STATS}"; then
     record_stage "publish" "error" "$(since "$t0")" "Could not write the validation record"
     return
   fi
@@ -1458,6 +1496,485 @@ print(json.dumps({s["name"]: s["status"] for s in map(json.loads, filter(str.str
   esac
 }
 
+# --- Phase 2: Odoo boots on the restored copy (image, code, boot) ---
+# Odoo's code is not in the image (deployments mount odoo-base/ and git/), so the drill checks the
+# code out at the snapshot's commits and runs it in the deployment's own image, on the drill's
+# internal network: nothing it does can reach production or the internet.
+
+snap_member_exact() {
+  # Args: relative path. Prints the archive member for it (as stored: "x" or "./x"), regular files only
+  awk -F'\t' -v a="$1" -v b="./$1" '$3 == "-" && ($2 == a || $2 == b) {print $2; exit}' "$WORK/members.tsv"
+}
+snap_file() {
+  # Args: relative path, destination. Copies that file out of the snapshot; fails when it is not there
+  local m
+  m=$(snap_member_exact "$1")
+  [ -n "$m" ] && tar -xOf "$AR" -I zstd --occurrence=1 "$m" > "$2" 2>/dev/null
+}
+envfile_get() {
+  # Args: file key. A value from a .env file, the way the deployment scripts read it
+  [ -f "$1" ] || return 0
+  grep "^$2=" "$1" 2>/dev/null | tail -n1 | cut -d '=' -f2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//'
+}
+registry_of() {
+  # The registry host of an image name (empty: Docker Hub)
+  local first="${1%%/*}"
+  if [[ "$1" == */* ]] && { [[ "$first" == *.* ]] || [[ "$first" == *:* ]] || [ "$first" = localhost ]; }; then
+    echo "$first"
+  fi
+}
+image_exists() { docker image inspect "$1" >/dev/null 2>&1; }
+
+BOOT_SNAP_ENV_KEYS=(ODOO_IMAGE_NAME CURRENT_IMAGE_VERSION DOCKER_BUILD_MODE DOCKER_PUSHPULL_USERNAME DOCKER_PULL_KEY
+  PYTHON_VERSION APT_ADDITIONAL_PACKAGES PIP_ADDITIONAL_PACKAGES POSTGRESQL_VERSION APT_RESOURCE_URL
+  POSTGRESQL_CUSTOM_REPO_URL ADDONS_PATH)
+declare -A SNAP_ENV=()
+
+boot_prepare() {
+  # Reads what the boot check needs from the snapshot's .env, then deletes the copy (it holds secrets)
+  mkdir -p "$BOOT_DIR" && chmod 700 "$BOOT_DIR" || return 1
+  local k
+  if snap_file .env "$BOOT_DIR/snapshot.env"; then
+    for k in "${BOOT_SNAP_ENV_KEYS[@]}"; do SNAP_ENV[$k]=$(envfile_get "$BOOT_DIR/snapshot.env" "$k"); done
+  fi
+  rm -f "$BOOT_DIR/snapshot.env"
+  return 0
+}
+
+image_repo() {
+  local r
+  r=$(tr 'A-Z' 'a-z' <<< "${SERVICE:-unknown}" | tr -c 'a-z0-9._\n-' '-' | sed 's/^[-._]*//' | cut -c1-60)
+  echo "odoo-drill/${r:-unknown}"
+}
+
+drill_dockerfile() {
+  # Args: source dockerfile.example, output. The dependency part of the deployment's dockerfile (system
+  # packages, the odoo user, pip requirements); entrypoint, utilities and fonts are left out (the drill
+  # runs odoo-bin itself and renders no PDF). Fails when the expected layout is not there.
+  python3 - "$1" "$2" <<'PY'
+import sys
+lines = open(sys.argv[1], encoding="utf-8").read().split("\n")
+out, seen_pip = [], False
+for line in lines:
+    s = line.strip()
+    if s.startswith("# Switch back to root for further setup") or (seen_pip and s == "USER root"):
+        break
+    if s.startswith("COPY fonts/") or s.startswith("RUN fc-cache"):
+        continue
+    if "pip install -r ./requirements.txt" in s:
+        seen_pip = True
+    out.append(line)
+if not seen_pip or not any(l.strip().startswith("FROM ") for l in out):
+    sys.exit(1)
+out += ["USER odoo", "WORKDIR /opt/odoo", ""]
+open(sys.argv[2], "w", encoding="utf-8").write("\n".join(out))
+PY
+}
+
+stage_image() {
+  local t0 repo name ver mode ref tag key reg how="" note="" dockerfile ctx args=() a prev
+  t0=$(now_s)
+  repo=$(image_repo)
+  name="${SNAP_ENV[ODOO_IMAGE_NAME]:-}"; ver="${SNAP_ENV[CURRENT_IMAGE_VERSION]:-}"; mode="${SNAP_ENV[DOCKER_BUILD_MODE]:-}"
+
+  # 1. The deployment's own image, when it is pushed to a registry (builder / production mode)
+  if [ -n "$name" ] && { [ "$mode" = 2 ] || [ "$mode" = 3 ]; }; then
+    ref="$name${ver:+:$ver}"
+    tag="$repo:pull-$(printf '%s' "$ref" | sha256sum | cut -c1-12)"
+    if [ "$VALIDATOR_PULL_POLICY" = missing ] && image_exists "$tag"; then
+      BOOT_IMAGE="$tag"; how="cached (pulled earlier from $ref)"
+    else
+      log_info "[image] Pulling $ref (the deployment's image)..."
+      reg=$(registry_of "$name")
+      if (
+           # Credentials from the snapshot's .env go to a throwaway Docker config, on stdin only
+           export DOCKER_CONFIG="$BOOT_DIR/docker-config"
+           mkdir -p "$DOCKER_CONFIG" && chmod 700 "$DOCKER_CONFIG" || exit 1
+           if [ -n "${SNAP_ENV[DOCKER_PULL_KEY]:-}" ]; then
+             printf '%s' "${SNAP_ENV[DOCKER_PULL_KEY]}" | docker login --username "${SNAP_ENV[DOCKER_PUSHPULL_USERNAME]:-}" --password-stdin $reg >/dev/null 2>"$BOOT_DIR/login.err" || exit 2
+           fi
+           timeout "$VALIDATOR_BUILD_TIMEOUT" docker pull -q "$ref" >/dev/null 2>"$BOOT_DIR/pull.err" || exit 3
+         ); then
+        docker tag "$ref" "$tag" >/dev/null 2>&1 && docker rmi "$ref" >/dev/null 2>&1
+        image_exists "$tag" && { BOOT_IMAGE="$tag"; how="pulled $ref"; }
+      else
+        case $? in
+          2) note="could not log in to ${reg:-Docker Hub} with the snapshot's DOCKER_PULL_KEY: $(head -c 300 "$BOOT_DIR/login.err" | tr '\n' ' ')" ;;
+          *) note="could not pull $ref: $(head -c 300 "$BOOT_DIR/pull.err" 2>/dev/null | tr '\n' ' ')" ;;
+        esac
+        log_warn "[image] ${note}; building the image instead."
+      fi
+      rm -rf "$BOOT_DIR/docker-config" "$BOOT_DIR/login.err"
+    fi
+  fi
+
+  # 2. Built here from dockerfile.example and the snapshot's requirements.txt, cached by their hash
+  if [ -z "$BOOT_IMAGE" ]; then
+    dockerfile="$PATH_TO_ODOO/dockerfile.example"
+    [ -f "$dockerfile" ] || dockerfile="$CURRENT_DIR/lib/dockerfile.example"
+    ctx="$BOOT_DIR/build"
+    mkdir -p "$ctx" || { record_stage "image" "error" "$(since "$t0")" "Cannot create $ctx"; return 1; }
+    if [ ! -f "$dockerfile" ] || ! drill_dockerfile "$dockerfile" "$ctx/Dockerfile"; then
+      record_stage "image" "error" "$(since "$t0")" "${note:+$note; }cannot build the Odoo image: dockerfile.example is missing or no longer has the expected layout (update docker-odoo)"
+      return 1
+    fi
+    if ! snap_file requirements.txt "$ctx/requirements.txt"; then
+      # Like setup.sh: the deployment's requirements.txt is a copy of odoo-base's
+      local base_req
+      base_req=$(ls "$BOOT_DIR"/code/odoo-base/*/requirements.txt "$BOOT_DIR"/code/odoo-base/requirements.txt 2>/dev/null | head -n 1)
+      if [ -n "$base_req" ] && cp "$base_req" "$ctx/requirements.txt"; then
+        note="${note:+$note; }the snapshot has no requirements.txt: built with odoo-base's ${base_req#"$BOOT_DIR"/code/}"
+      else
+        : > "$ctx/requirements.txt"
+        note="${note:+$note; }neither the snapshot nor its odoo-base has a requirements.txt: the image has no Python packages for Odoo"
+      fi
+    fi
+    args=(--build-arg "PYTHON_VERSION=${SNAP_ENV[PYTHON_VERSION]:-3.11-bookworm}")
+    for a in APT_ADDITIONAL_PACKAGES PIP_ADDITIONAL_PACKAGES POSTGRESQL_VERSION APT_RESOURCE_URL POSTGRESQL_CUSTOM_REPO_URL; do
+      args+=(--build-arg "$a=${SNAP_ENV[$a]:-}")
+    done
+    key=$( { cat "$ctx/Dockerfile" "$ctx/requirements.txt"; printf '%s\n' "${args[@]}"; } | sha256sum | cut -c1-16)
+    tag="$repo:build-$key"
+    if image_exists "$tag"; then
+      BOOT_IMAGE="$tag"; how="cached build"
+    else
+      log_info "[image] Building the drill's Odoo image (first drill with these dependencies: this takes a few minutes)..."
+      if run_bg timeout "$VALIDATOR_BUILD_TIMEOUT" docker build --label "odoo-drill-image=$repo" -t "$tag" "${args[@]}" "$ctx" > "$BOOT_DIR/build.log" 2>&1 \
+         && image_exists "$tag"; then
+        BOOT_IMAGE="$tag"; how="built"
+      else
+        record_stage "image" "error" "$(since "$t0")" "{\"message\": $(jstr "${note:+$note; }the Odoo image could not be built (network, a package that no longer installs, or VALIDATOR_BUILD_TIMEOUT=${VALIDATOR_BUILD_TIMEOUT}s)"), \"build_log_tail\": $(jstr "$(tail -n 15 "$BOOT_DIR/build.log" 2>/dev/null | cut -c1-300)")}"
+        return 1
+      fi
+    fi
+  fi
+
+  # Keep this image and the one the previous drill of this deployment used; remove older ones
+  mkdir -p "$VALIDATOR_DIR/cache" 2>/dev/null
+  local last_file="$VALIDATOR_DIR/cache/image-$(basename "$repo")"
+  prev=$(cat "$last_file" 2>/dev/null)
+  if [ "$prev" != "$BOOT_IMAGE" ]; then
+    while read -r a; do
+      [ -n "$a" ] && [ "$a" != "$BOOT_IMAGE" ] && [ "$a" != "$prev" ] && docker rmi "$a" >/dev/null 2>&1
+    done < <(docker image ls "$repo" --format '{{.Repository}}:{{.Tag}}' 2>/dev/null)
+    printf '%s\n' "$BOOT_IMAGE" > "$last_file"
+  fi
+  record_stage "image" "$([ -n "$note" ] && echo warn || echo pass)" "$(since "$t0")" \
+    "{\"image\": $(jstr "$BOOT_IMAGE"), \"source\": $(jstr "$how")$([ -n "$note" ] && echo ", \"message\": $(jstr "$note")")}"
+}
+
+safe_rel() { [[ "$1" =~ ^[A-Za-z0-9_][A-Za-z0-9._/-]*$ ]] && [[ "$1" != *..* ]] && [[ "$1" != */ ]]; }
+
+stage_code() {
+  # Every repository at its recorded commit (a cache of fetched objects per remote keeps later drills
+  # small), every bundled folder from the archive; all readable by the container's odoo user.
+  local t0 kind rel remote commit cache n=0 dest problems=() done_list=()
+  t0=$(now_s)
+  dest="$BOOT_DIR/code"
+  ( umask 022; mkdir -p "$dest" ) || { record_stage "code" "error" "$(since "$t0")" "Cannot create $dest"; return 1; }
+  chmod 755 "$dest"
+  mkdir -p "$VALIDATOR_DIR/cache/git" && chmod 700 "$VALIDATOR_DIR/cache" "$VALIDATOR_DIR/cache/git" 2>/dev/null
+  while IFS=$'\t' read -r kind rel remote commit; do
+    [ -n "$rel" ] || continue
+    if ! safe_rel "$rel"; then problems+=("$rel: not a safe relative path, skipped"); continue; fi
+    n=$((n + 1))
+    if [ "$kind" = bundled ]; then
+      awk -F'\t' -v p="$rel/" -v q="./$rel/" 'index($2, p) == 1 || index($2, q) == 1 {print $2}' "$WORK/members.tsv" > "$BOOT_DIR/members.$n"
+      if [ -s "$BOOT_DIR/members.$n" ] && ( umask 022; tar -xf "$AR" -I zstd -C "$dest" --no-same-owner --no-same-permissions -T "$BOOT_DIR/members.$n" ) 2>/dev/null; then
+        done_list+=("$rel: from the archive")
+      else
+        problems+=("$rel: could not be taken out of the archive")
+      fi
+      continue
+    fi
+    valid_remote "$remote" && valid_commit "$commit" || { problems+=("$rel: no usable remote or commit"); continue; }
+    cache="$VALIDATOR_DIR/cache/git/$(printf '%s' "$remote" | sha256sum | cut -c1-24).git"
+    [ -d "$cache" ] || git init -q --bare "$cache" >/dev/null 2>&1
+    log_info "[code] $rel: checking out ${commit:0:8}..."
+    if ! git -C "$cache" cat-file -e "$commit^{tree}" 2>/dev/null \
+       && ! run_bg git_safe -C "$cache" fetch -q --depth=1 -- "$remote" "$commit" >/dev/null 2>"$BOOT_DIR/fetch.err"; then
+      problems+=("$rel: could not fetch ${commit:0:8} from $(redact "$remote"): $(head -c 200 "$BOOT_DIR/fetch.err" | tr '\n' ' ')")
+      continue
+    fi
+    git -C "$cache" update-ref "refs/drill/$(printf '%s' "$rel" | tr '/' '_')" "$commit" 2>/dev/null
+    if ( umask 022; mkdir -p "$dest/$rel" && GIT_INDEX_FILE="$BOOT_DIR/index.$n" git --git-dir="$cache" --work-tree="$dest/$rel" read-tree "$commit" \
+         && GIT_INDEX_FILE="$BOOT_DIR/index.$n" git --git-dir="$cache" --work-tree="$dest/$rel" checkout-index -a -f ) >/dev/null 2>"$BOOT_DIR/checkout.err"; then
+      done_list+=("$rel: ${commit:0:8}")
+    else
+      problems+=("$rel: checkout of ${commit:0:8} failed: $(head -c 200 "$BOOT_DIR/checkout.err" | tr '\n' ' ')")
+    fi
+    rm -f "$BOOT_DIR/index.$n"
+    git -C "$cache" gc --auto -q >/dev/null 2>&1
+  done < "$WORK/repos.tsv"
+  chmod -R a+rX "$dest" 2>/dev/null
+  local details
+  details=$(python3 -c 'import json,sys; p=[x for x in sys.argv[2].split("\n") if x]; print(json.dumps({"message": "; ".join(p) if p else "code ready", "checked_out": [x for x in sys.argv[1].split("\n") if x], "problems": p}))' \
+    "$(printf '%s\n' "${done_list[@]}")" "$(printf '%s\n' "${problems[@]}")")
+  if [ ${#problems[@]} -gt 0 ]; then
+    record_stage "code" "error" "$(since "$t0")" "$details"
+    return 1
+  fi
+  record_stage "code" "pass" "$(since "$t0")" "$details"
+}
+
+boot_layout() {
+  # Sets ODOO_BIN (path in the container), ADDONS (addons_path in the container), MOUNTS (docker args)
+  # and LAYOUT_NOTES. Containers see the snapshot's folders where production has them (/opt/odoo/...).
+  local dest="$BOOT_DIR/code" d top p conf_addons="" kept=() dropped=()
+  ODOO_BIN="" ADDONS="" MOUNTS=() LAYOUT_NOTES=()
+  for d in "$dest"/odoo-base/*/; do
+    [ -f "$d/odoo-bin" ] && { ODOO_BIN="/opt/odoo/odoo-base/$(basename "$d")/odoo-bin"; break; }
+  done
+  [ -n "$ODOO_BIN" ] || { [ -f "$dest/odoo-base/odoo-bin" ] && ODOO_BIN="/opt/odoo/odoo-base/odoo-bin"; }
+  for top in "$dest"/*; do
+    [ -d "$top" ] && MOUNTS+=(--mount "type=bind,src=$top,dst=/opt/odoo/$(basename "$top"),readonly")
+  done
+  # addons_path as production has it: conf/odoo.conf, then ADDONS_PATH in .env, then the usual layout
+  if snap_file conf/odoo.conf "$BOOT_DIR/prod.conf"; then
+    conf_addons=$(python3 -c 'import configparser,sys
+c = configparser.ConfigParser(strict=False, interpolation=None)
+try:
+    c.read(sys.argv[1]); print(c.get("options", "addons_path", fallback="").strip())
+except Exception:
+    pass' "$BOOT_DIR/prod.conf" 2>/dev/null)
+    rm -f "$BOOT_DIR/prod.conf"
+  fi
+  case "$conf_addons" in enter_*) conf_addons="" ;; esac
+  ADDONS="${conf_addons:-${SNAP_ENV[ADDONS_PATH]:-}}"
+  if [ -z "$ADDONS" ] && [ -n "$ODOO_BIN" ]; then
+    ADDONS="$(dirname "$ODOO_BIN")/odoo/addons,$(dirname "$ODOO_BIN")/addons"
+    for d in "$dest"/git/*/; do [ -d "$d" ] && ADDONS+=",/opt/odoo/git/$(basename "$d")"; done
+    LAYOUT_NOTES+=("no addons_path in the snapshot's conf/odoo.conf or .env: used odoo-base and every folder under git/")
+  fi
+  IFS=',' read -ra p <<< "$ADDONS"
+  for d in "${p[@]}"; do
+    d=$(sed 's/^[[:space:]]*//;s/[[:space:]]*$//' <<< "$d"); d="${d%/}"
+    [ -n "$d" ] || continue
+    if [[ "$d" == /opt/odoo/* ]] && [ -d "$dest/${d#/opt/odoo/}" ]; then kept+=("$d"); else dropped+=("$d"); fi
+  done
+  ADDONS=$(IFS=,; echo "${kept[*]}")
+  [ ${#dropped[@]} -gt 0 ] && LAYOUT_NOTES+=("addons_path entries not in the snapshot, left out: ${dropped[*]}")
+  return 0
+}
+
+boot_classify() {
+  # Args: log_file strict(true|false) http_status final_path registry(loaded|failed|timeout|exited)
+  # Prints the status (pass|warn|fail) on the first line and the details JSON on the second.
+  python3 - "$@" <<'PY'
+import json, re, sys
+log_file, strict, http, path, registry = sys.argv[1:6]
+strict = strict == "true"
+LINE = re.compile(r"^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d,\d+ \d+ (DEBUG|INFO|WARNING|ERROR|CRITICAL) (\S+) ([\w.]+): (.*)$")
+FATAL = [
+    (re.compile(r"Failed to initialize database|Failed to load registry"), "the registry did not load"),
+    (re.compile(r"Some modules are not loaded, some dependencies or manifest may be missing"), "installed modules are missing their code"),
+    (re.compile(r"Couldn't load module"), "a module's Python code does not import"),
+    (re.compile(r"(?i)module \S+: not installable, skipped"), "an installed module is not installable"),
+]
+try:
+    raw = open(log_file, errors="replace").read().splitlines()
+except OSError:
+    raw = []
+fatal, errors, entry = [], [], None
+for i, line in enumerate(raw):
+    m = LINE.match(line)
+    if not m:
+        if entry is not None and len(entry["detail"]) < 6:
+            entry["detail"].append(line[:300])
+        continue
+    entry = None
+    level, logger, msg = m.group(1), m.group(3), m.group(4)
+    reason = next((r for rx, r in FATAL if rx.search(msg)), None)
+    if reason or level in ("ERROR", "CRITICAL"):
+        entry = {"level": level, "logger": logger, "message": msg[:500], "detail": []}
+        if reason:
+            entry["reason"] = reason
+            fatal.append(entry)
+        else:
+            errors.append(entry)
+problems = sorted({e["reason"] for e in fatal})
+if registry == "neutralize":
+    for e in fatal + errors:
+        e["detail"] = "\n".join(e["detail"])[:1500]
+    print("fail" if problems else "error")
+    print(json.dumps({"message": "odoo-bin neutralize failed: " + ("; ".join(problems) if problems else "see the log"),
+                      "fatal": fatal[:20], "errors": errors[:20]}))
+    sys.exit(0)
+if registry != "loaded":
+    problems.insert(0, {"failed": "the registry did not load", "timeout": "Odoo did not finish loading in time",
+                        "exited": "Odoo stopped before it was ready"}.get(registry, "the registry did not load"))
+if http != "200" or path != "/web/login":
+    problems.append("/web/login answered %s%s" % (http, "" if path in ("", "/web/login") else " (ended at %s)" % path))
+if strict and errors:
+    problems.append("%d other ERROR/CRITICAL line(s) (VALIDATOR_BOOT_STRICT=true)" % len(errors))
+status = "fail" if problems else ("warn" if errors else "pass")
+if problems:
+    msg = "Odoo does not run on this snapshot: " + "; ".join(problems)
+elif errors:
+    msg = "Odoo runs on this snapshot; %d ERROR/CRITICAL line(s) in its log (warnings; VALIDATOR_BOOT_STRICT=true makes them failures)" % len(errors)
+else:
+    msg = "Odoo runs on this snapshot: registry loaded, every installed module loaded, /web/login answers 200"
+for e in fatal + errors:
+    e["detail"] = "\n".join(e["detail"])[:1500]
+print(status)
+print(json.dumps({"message": msg, "registry": registry, "http_status": http, "strict": strict,
+                  "fatal": fatal[:20], "errors": errors[:20], "error_lines": len(errors) + len(fatal)}))
+PY
+}
+
+boot_run() {
+  # Args: container name, then odoo-bin's arguments. Starts a drill Odoo container (detached).
+  local name="$1"; shift
+  docker run -d --name "$name" --label odoo-drill="$RUN_ID" --network "$DRILL_NET" \
+    --cpus "$VALIDATOR_PG_CPUS" --memory "$VALIDATOR_ODOO_MEMORY" --memory-swap "$VALIDATOR_ODOO_MEMORY" \
+    --oom-score-adj 1000 --pids-limit 512 \
+    --tmpfs /var/lib/odoo-drill:rw,size=2g,mode=1777 --tmpfs /tmp:rw,size=512m,mode=1777 \
+    --mount "type=bind,src=$BOOT_DIR/drill.conf,dst=/etc/odoo-drill/drill.conf,readonly" "${MOUNTS[@]}" \
+    --entrypoint python3 "$BOOT_IMAGE" "$ODOO_BIN" "$@" >/dev/null 2>"$BOOT_DIR/run.err"
+}
+container_running() { [ "$(docker inspect -f '{{.State.Running}}' "$1" 2>/dev/null)" = true ]; }
+
+stage_boot() {
+  local t0 dbname major pass role_sql i registry=timeout http="" path="" result status details neutralized=""
+  t0=$(now_s)
+  dbname=$(cat "$WORK/dbname")
+  boot_layout
+  if [ -z "$ODOO_BIN" ]; then
+    record_stage "boot" "fail" "$(since "$t0")" "No odoo-bin in the snapshot's odoo-base (the code checked out at its commit has no Odoo)"
+    return 0
+  fi
+
+  # The drill's own login role (Odoo refuses to run as postgres) and its own configuration: no
+  # production settings (mail, database host, admin password, proxy) are used
+  pass=$(head -c 24 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | head -c 24)
+  if ! pg_exec -q -d postgres -c "CREATE ROLE odoo_drill LOGIN SUPERUSER PASSWORD '$pass';" >/dev/null 2>"$BOOT_DIR/role.err"; then
+    record_stage "boot" "error" "$(since "$t0")" "Could not create the drill's database role: $(tr '\n' ' ' < "$BOOT_DIR/role.err")"
+    return 1
+  fi
+  ( umask 022; cat > "$BOOT_DIR/drill.conf" <<EOF
+[options]
+addons_path = $ADDONS
+data_dir = /var/lib/odoo-drill
+db_host = $PG_CONTAINER
+db_port = 5432
+db_user = odoo_drill
+db_password = $pass
+db_name = $dbname
+dbfilter = ^$dbname\$
+list_db = False
+admin_passwd = $(head -c 24 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | head -c 24)
+http_interface = 0.0.0.0
+http_port = 8069
+workers = 0
+max_cron_threads = 0
+server_wide_modules = base,web
+proxy_mode = False
+without_demo = all
+smtp_server = localhost
+limit_time_real = $VALIDATOR_BOOT_TIMEOUT
+limit_time_cpu = $VALIDATOR_BOOT_TIMEOUT
+log_level = info
+EOF
+  ) || { record_stage "boot" "error" "$(since "$t0")" "Cannot write the drill's Odoo configuration"; return 1; }
+
+  # Neutralize first: crons, mail servers, payment providers... off (odoo-bin neutralize, Odoo 16+)
+  major="${ODOO_VERSION%%.*}"
+  if [[ "$major" =~ ^[0-9]+$ ]] && [ "$major" -ge 16 ]; then
+    log_info "[boot] Neutralizing the restored database (odoo-bin neutralize)..."
+    if boot_run "$NEUTRALIZE_CONTAINER" neutralize -c /etc/odoo-drill/drill.conf -d "$dbname"; then
+      for i in $(seq "$VALIDATOR_BOOT_TIMEOUT"); do container_running "$NEUTRALIZE_CONTAINER" || break; sleep 1; done
+      docker logs "$NEUTRALIZE_CONTAINER" > "$BOOT_DIR/neutralize.log" 2>&1
+      if [ "$(docker inspect -f '{{.State.ExitCode}}' "$NEUTRALIZE_CONTAINER" 2>/dev/null)" = 0 ] && ! container_running "$NEUTRALIZE_CONTAINER"; then
+        neutralized="odoo-bin neutralize"
+      fi
+      docker rm -fv "$NEUTRALIZE_CONTAINER" >/dev/null 2>&1
+    fi
+    if [ -z "$neutralized" ]; then
+      result=$(boot_classify "$BOOT_DIR/neutralize.log" "$VALIDATOR_BOOT_STRICT" "-" "" "neutralize")
+      if [ "$(head -n 1 <<< "$result")" = fail ]; then
+        record_stage "boot" "fail" "$(since "$t0")" "$(tail -n +2 <<< "$result")"
+        return 0
+      fi
+      record_stage "boot" "error" "$(since "$t0")" "{\"message\": \"odoo-bin neutralize did not finish, so Odoo was not started on the restored copy\", \"log_tail\": $(jstr "$(tail -n 15 "$BOOT_DIR/neutralize.log" 2>/dev/null; cat "$BOOT_DIR/run.err" 2>/dev/null)")}"
+      return 1
+    fi
+  else
+    log_info "[boot] Neutralizing the restored database (Odoo ${ODOO_VERSION:-?}: crons and mail servers off)..."
+    if pg_exec -q -d "$dbname" >/dev/null 2>"$BOOT_DIR/neutralize.err" <<'SQL'
+DO $do$ BEGIN
+  IF to_regclass('public.ir_cron') IS NOT NULL THEN UPDATE ir_cron SET active = false; END IF;
+  IF to_regclass('public.ir_mail_server') IS NOT NULL THEN UPDATE ir_mail_server SET active = false; END IF;
+  IF to_regclass('public.fetchmail_server') IS NOT NULL THEN UPDATE fetchmail_server SET active = false; END IF;
+END $do$;
+SQL
+    then neutralized="SQL (crons, outgoing and incoming mail servers off)"
+    else
+      record_stage "boot" "error" "$(since "$t0")" "Could not neutralize the restored database: $(tr '\n' ' ' < "$BOOT_DIR/neutralize.err")"
+      return 1
+    fi
+  fi
+
+  log_info "[boot] Starting Odoo on the restored copy (no cron, no workers, no outbound network)..."
+  if ! boot_run "$ODOO_CONTAINER" -c /etc/odoo-drill/drill.conf -d "$dbname"; then
+    record_stage "boot" "error" "$(since "$t0")" "Could not start the Odoo container: $(head -c 400 "$BOOT_DIR/run.err" | tr '\n' ' ')"
+    return 1
+  fi
+  for i in $(seq "$VALIDATOR_BOOT_TIMEOUT"); do
+    docker logs "$ODOO_CONTAINER" > "$BOOT_DIR/odoo.log" 2>&1
+    if grep -qE 'Failed to initialize database|Failed to load registry' "$BOOT_DIR/odoo.log"; then registry=failed; break; fi
+    if grep -q 'Registry loaded in' "$BOOT_DIR/odoo.log"; then registry=loaded; break; fi
+    container_running "$ODOO_CONTAINER" || { registry=exited; break; }
+    sleep 1
+  done
+  if [ "$registry" = loaded ] || [ "$registry" = failed ]; then
+    # From inside the container, so nothing has to be published on the host
+    result=$(docker exec "$ODOO_CONTAINER" python3 -c '
+import configparser, sys, urllib.parse, urllib.request, urllib.error
+c = configparser.ConfigParser(interpolation=None); c.read(sys.argv[1])
+port = c.get("options", "http_port", fallback="8069")
+try:
+    r = urllib.request.urlopen("http://127.0.0.1:%s/web/login" % port, timeout=float(sys.argv[2]))
+    print(r.status, urllib.parse.urlparse(r.geturl()).path)
+except urllib.error.HTTPError as e:
+    print(e.code, urllib.parse.urlparse(e.geturl() or "").path)
+except Exception as e:
+    print("no-answer", "")
+' /etc/odoo-drill/drill.conf "$VALIDATOR_BOOT_TIMEOUT" 2>/dev/null | tail -n 1)
+    http="${result%% *}"; path="${result#* }"; [ "$path" = "$result" ] && path=""
+    sleep 1
+    docker logs "$ODOO_CONTAINER" > "$BOOT_DIR/odoo.log" 2>&1
+  fi
+  docker rm -fv "$ODOO_CONTAINER" >/dev/null 2>&1
+  result=$(boot_classify "$BOOT_DIR/odoo.log" "$VALIDATOR_BOOT_STRICT" "${http:-none}" "$path" "$registry")
+  status=$(head -n 1 <<< "$result")
+  details=$(python3 -c 'import json,sys
+d = json.loads(sys.argv[1]); d.update({"odoo_bin": sys.argv[2], "addons_path": sys.argv[3].split(",") if sys.argv[3] else [],
+  "neutralized": sys.argv[4], "image": sys.argv[5]})
+notes = [n for n in sys.argv[6].split("\n") if n]
+if notes: d["notes"] = notes
+print(json.dumps(d))' "$(tail -n +2 <<< "$result")" "$ODOO_BIN" "$ADDONS" "$neutralized" "$BOOT_IMAGE" "$(printf '%s\n' "${LAYOUT_NOTES[@]}")")
+  record_stage "boot" "$status" "$(since "$t0")" "$details"
+  case "$status" in pass|warn) DRILL_LEVEL="boot" ;; esac
+  return 0
+}
+
+phase2() {
+  local t0
+  t0=$(now_s)
+  if [ "$VALIDATOR_BOOT" != true ]; then
+    record_stage "boot" "skip" 0 "Disabled with --no-boot (VALIDATOR_BOOT=false): the drill stopped at the database level"
+    return
+  fi
+  if [ "$(python3 -c 'import json,sys; print(next((s["status"] for s in map(json.loads, filter(str.strip, open(sys.argv[1]))) if s["name"] == "git"), ""))' "$STAGES_FILE")" != pass ]; then
+    record_stage "boot" "skip" 0 "Needs the git check to pass (the code is checked out at the commits it proved), so Odoo was not started"
+    return
+  fi
+  boot_prepare || { record_stage "boot" "error" "$(since "$t0")" "Cannot create $BOOT_DIR"; return; }
+  stage_code || return
+  stage_image || return
+  stage_boot
+}
+
 # --- Drill ---
 fetch_snapshot
 stage_checksum
@@ -1468,6 +1985,7 @@ stage_git
 check_disk
 stage_database
 stage_filestore
+phase2
 
 if [ "$FAILED" -gt 0 ]; then
   finish fail

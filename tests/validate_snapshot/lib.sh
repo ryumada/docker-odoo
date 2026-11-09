@@ -142,6 +142,7 @@ tvs_setup() {
 
   # The validator runs from a copy of scripts/, outside any git checkout, with an empty .env
   cp -a "$TVS_REPO/scripts" "$T/app/scripts" || exit 3
+  cp "$TVS_REPO/dockerfile.example" "$T/app/" 2>/dev/null   # the boot check builds its Odoo image from it
   : > "$T/app/.env"
   VALIDATOR="$T/app/scripts/validate-snapshot.sh"
   if git -C "$T/app/scripts" rev-parse --show-toplevel >/dev/null 2>&1; then
@@ -151,9 +152,14 @@ tvs_setup() {
 
   # A git remote for the fixtures' recorded commit
   local wt="$T/git/wt"
-  mkdir -p "$wt" && echo "odoo" > "$wt/README"
+  mkdir -p "$wt/addons/base" "$wt/addons/web" && echo "odoo" > "$wt/README"
+  # A stand-in Odoo for the boot check: odoo-bin and the two modules every database has
+  cp "$TVS_DIR/fake_odoo_bin.py" "$wt/odoo-bin"
+  echo "{'name': 'Base', 'version': '17.0.1.3'}" > "$wt/addons/base/__manifest__.py"
+  echo "{'name': 'Web', 'version': '17.0.1.0', 'depends': ['base']}" > "$wt/addons/web/__manifest__.py"
+  printf 'psycopg2==2.9.9\nlxml==5.2.1\n' > "$wt/requirements.txt"
   ( export HOME="$T/home" GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null
-    cd "$wt" && git init -q -b main . && git add README \
+    cd "$wt" && git init -q -b main . && git add README odoo-bin addons requirements.txt \
       && git -c user.name=test -c user.email=test@example.invalid commit -q -m init \
       && git clone -q --bare "$wt" "$T/git/odoo-base.git" ) || { echo "Cannot create the fixture git repository" >&2; exit 3; }
   export FIXTURE_GIT_COMMIT
@@ -211,6 +217,7 @@ tvs_env() {
     "LANG=C.UTF-8" "TERM=dumb" \
     "QUEUE_LOCK_DIR=$T/locks" "QUEUE_LOCK_HEARTBEAT=1" "QUEUE_LOCK_POLL_INTERVAL=1" \
     "VALIDATOR_WORK_DIR=$T/vwork" "VALIDATOR_DISK_RESERVE_GB=1" "VALIDATOR_WATCHDOG_INTERVAL=1" \
+    "VALIDATOR_BOOT=${TVS_BOOT:-false}" "VALIDATOR_BOOT_TIMEOUT=30" \
     "VALIDATOR_GIT_ALLOW_PROTOCOL=file" "VALIDATOR_GIT_TIMEOUT=30" "VALIDATOR_QUEUE_TIMEOUT=120" \
     "FAKE_DOCKER_STATE=$T/dl" "FAKE_GCS_ROOT=$T/gcs" "PG_BIN=$TVS_PG_BIN" "FAKE_PG_USER=$TVS_PG_USER" \
     "NO_PROXY=127.0.0.1,localhost" "no_proxy=127.0.0.1,localhost"

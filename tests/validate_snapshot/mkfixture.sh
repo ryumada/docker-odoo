@@ -28,6 +28,15 @@ set -o pipefail
 #   buggyversion   what the snapshot tool wrote before the version fix: version 16.0, version_info right
 #   wrongversion   the old 16.0 default in every field (release.py not found), so only the database knows
 #   noversion      no version in the manifest at all
+# Boot check (Phase 2): .env, conf/odoo.conf and requirements.txt as a deployment has them, plus
+#   bootgood      Odoo starts: base and web installed, their code in odoo-base (built image: DOCKER_BUILD_MODE=1)
+#   bootpull      bootgood, but the image is pulled: DOCKER_BUILD_MODE=3, ODOO_IMAGE_NAME + DOCKER_PULL_KEY in .env
+#   bootmissing   an installed module (hr_custom) has no code anywhere in addons_path
+#   bootimport    an installed module's Python does not import (CRITICAL "Couldn't load module")
+#   bootnoisy     an installed module logs an ERROR line while Odoo runs (a warning; a failure when strict)
+#   boothttp      /web/login answers 500            bootcrash   Odoo stops before the registry is ready
+#   bootaddons    addons_path names a folder the snapshot does not have (left out, with a note)
+#   bootnoconf    no conf/odoo.conf: addons_path comes from ADDONS_PATH in .env
 
 OUT="$1"; VARIANT="$2"; SERVICE="${3:-svc}"; TS="${4:-20260101-000000}"
 [ -n "$OUT" ] && [ -n "$VARIANT" ] || { echo "usage: mkfixture.sh OUT_DIR VARIANT [SERVICE] [TIMESTAMP]" >&2; exit 2; }
@@ -105,6 +114,13 @@ INSERT INTO public.ir_module_module (id, name, state, latest_version) VALUES
   (1, 'base', 'installed', '17.0.1.3'), (2, 'web', 'installed', '17.0.1.0'), (3, 'sale', 'uninstalled', NULL);
 INSERT INTO public.ir_model (id, model) VALUES (1, 'res.partner'), (2, 'res.users');
 EOF
+  case "$VARIANT" in
+    bootmissing) echo "INSERT INTO public.ir_module_module (id, name, state, latest_version) VALUES (4, 'hr_custom', 'installed', '17.0.1.0');" ;;
+    bootimport) echo "INSERT INTO public.ir_module_module (id, name, state, latest_version) VALUES (4, 'broken_import', 'installed', '17.0.1.0');" ;;
+    bootnoisy) echo "INSERT INTO public.ir_module_module (id, name, state, latest_version) VALUES (4, 'noisy', 'installed', '17.0.1.0');" ;;
+    boothttp) echo "INSERT INTO public.ir_module_module (id, name, state, latest_version) VALUES (4, 'http500', 'installed', '17.0.1.0');" ;;
+    bootcrash) echo "INSERT INTO public.ir_module_module (id, name, state, latest_version) VALUES (4, 'crash', 'installed', '17.0.1.0');" ;;
+  esac
   [ "$VARIANT" = sqlerror ] && echo "INSERT INTO public.no_such_table (id) VALUES (1);"
   cat "$STAGE/attachments.sql"
   echo "GRANT SELECT ON TABLE public.res_partner TO odoo_svc;"
@@ -132,6 +148,38 @@ fi
 mkdir -p "$STAGE/.secrets" "$STAGE/custom_addons/my_module"
 printf 'odoo_svc\n' > "$STAGE/.secrets/db_user"
 printf "{'name': 'My Module', 'version': '17.0.1.0'}\n" > "$STAGE/custom_addons/my_module/__manifest__.py"
+boot_files=()
+if [[ "$VARIANT" == boot* ]]; then
+  for m in broken_import:import_error noisy:log_error http500:http_500 crash:crash; do
+    mkdir -p "$STAGE/custom_addons/${m%%:*}"
+    printf "{'name': '%s', 'version': '17.0.1.0', 'fake_behavior': '%s'}\n" "${m%%:*}" "${m#*:}" > "$STAGE/custom_addons/${m%%:*}/__manifest__.py"
+  done
+  mkdir -p "$STAGE/conf"
+  addons="/opt/odoo/odoo-base/addons,/opt/odoo/custom_addons"
+  [ "$VARIANT" = bootaddons ] && addons="$addons,/opt/odoo/git/enterprise"
+  {
+    echo "ADMIN_PASSWD=prod-admin-secret"
+    echo "ADDONS_PATH=$addons"
+    echo "PYTHON_VERSION=3.12-bookworm"
+    echo "PIP_ADDITIONAL_PACKAGES=paramiko==3.4.0"
+    echo "APT_ADDITIONAL_PACKAGES=libmagic1"
+    if [ "$VARIANT" = bootpull ]; then
+      echo "DOCKER_BUILD_MODE=3"
+      echo "ODOO_IMAGE_NAME=ghcr.io/acme/odoo-$SERVICE"
+      echo "CURRENT_IMAGE_VERSION=7"
+      echo "DOCKER_PUSHPULL_USERNAME=acme-bot"
+      echo "DOCKER_PULL_KEY=ghp_FixturePullKey0123456789"
+    else
+      echo "DOCKER_BUILD_MODE=1"
+    fi
+  } > "$STAGE/.env"
+  if [ "$VARIANT" != bootnoconf ]; then
+    printf '[options]\nadmin_passwd = prod-admin-secret\naddons_path = %s\ndb_host = prod-db.internal\nsmtp_server = smtp.example.invalid\n' "$addons" > "$STAGE/conf/odoo.conf"
+    boot_files+=(conf)
+  fi
+  printf 'paramiko==3.4.0\n' > "$STAGE/requirements.txt"
+  boot_files+=(.env requirements.txt)
+fi
 
 remote="$FIXTURE_GIT_REMOTE" commit="$FIXTURE_GIT_COMMIT"
 case "$VARIANT" in
@@ -152,7 +200,7 @@ print(json.dumps({"git_repositories": repos,
 PY
 
 ARCHIVE="$OUT/snapshot-$SERVICE-$TS.tar.zst"
-members=(dump.sql manifest.json git_hashes.json .secrets custom_addons)
+members=(dump.sql manifest.json git_hashes.json .secrets custom_addons "${boot_files[@]}")
 [ -d "$STAGE/filestore" ] && members+=(filestore)
 if [[ "$VARIANT" == oldzip* ]]; then
   # Older layout: the Odoo backup zip (dump.sql, manifest.json, filestore/) next to git_hashes.json etc.

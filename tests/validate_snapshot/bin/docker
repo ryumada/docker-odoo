@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -o pipefail
 # Category: Test
-# Description: Fake docker for the validate-snapshot tests: a "container" is a local Postgres server (initdb/pg_ctl).
+# Description: Fake docker for the validate-snapshot tests: a "container" is a local Postgres server (initdb/pg_ctl), or, when run with --entrypoint (the boot check's Odoo), a local process running the image's command with the container's mounts mapped to host paths.
 # Usage: put this folder first on PATH; state in FAKE_DOCKER_STATE (required), Postgres binaries in PG_BIN
 # Dependencies: bash, python3, PostgreSQL server binaries (initdb, pg_ctl, psql, pg_isready, pg_restore), runuser (root)
 #
@@ -16,6 +16,15 @@ set -o pipefail
 #   FAKE_SLOW_RESTORE=N    the restore (psql -o /dev/null / pg_restore) first sleeps N seconds; the sleep's
 #                          PID is written to $FAKE_DOCKER_STATE/slow_restore.pid so a test can kill it
 #   FAKE_PG_USER=user      run Postgres as this user via runuser (set by the tests when running as root)
+#   FAKE_PULL_FAIL_MATCH=s docker pull fails for images whose name contains s
+#   FAKE_LOGIN_FAIL=1      docker login fails          FAKE_BUILD_FAIL=1   docker build fails
+#   FAKE_ODOO_RUN_FAIL=1   docker run --entrypoint ... fails (the Odoo container does not start)
+# Odoo containers (docker run --entrypoint X IMAGE CMD...): the bind mounts (--mount type=bind,src,dst) and
+# --tmpfs folders are mapped to host paths; the file given to "-c" is copied with db_host/db_port pointing
+# at the named Postgres "container", http_port set to a free local port, data_dir and addons_path mapped.
+# Every Odoo run is logged in odoo-runs.log; build in build.log (+ builds/N/), login in login.log (with
+# the password it read on stdin and DOCKER_CONFIG), tag/rmi in tag.log. Image markers in img/ hold the
+# image's name.
 # The Postgres server listens on 127.0.0.1 only (port chosen by the OS), with its socket in the
 # container's own folder (mode 0700); TCP logins need a password nobody has (pg_isready still works).
 
@@ -56,6 +65,108 @@ pg_stop() {
   fi
 }
 
+map_path() {
+  # map_path CONTAINER_DIR PATH: a path inside the container -> the host path (longest mount first)
+  local d="$1" p="$2" dst src best="" bsrc=""
+  while IFS=$'\t' read -r dst src; do
+    if [ "$p" = "$dst" ] || [[ "$p" == "$dst/"* ]]; then
+      [ ${#dst} -ge ${#best} ] && { best="$dst"; bsrc="$src"; }   # later mounts win (the patched -c file)
+    fi
+  done < "$d/mounts"
+  if [ -n "$best" ]; then echo "$bsrc${p#"$best"}"; else echo "$p"; fi
+}
+
+odoo_run() {
+  local name="" label="" image="" entry="" net="" detach=0 mounts=() a d
+  printf '%s\n' "$*" >> "$S/odoo-runs.log"
+  [ "${FAKE_ODOO_RUN_FAIL:-}" = 1 ] && { echo "docker: Error response from daemon: OCI runtime create failed (fake)" >&2; return 125; }
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      -d) detach=1; shift ;;
+      --name) name="$2"; shift 2 ;;
+      --label) label="${2#odoo-drill=}"; shift 2 ;;
+      --network) net="$2"; shift 2 ;;
+      --entrypoint) entry="$2"; shift 2 ;;
+      --mount) mounts+=("mount:$2"); shift 2 ;;
+      --tmpfs) mounts+=("tmpfs:${2%%:*}"); shift 2 ;;
+      --cpus|--memory|--memory-swap|--oom-score-adj|--pids-limit|-e|-v) shift 2 ;;
+      -*) shift ;;
+      *) image="$1"; shift; break ;;
+    esac
+  done
+  [ -n "$name" ] && [ -n "$image" ] && [ -n "$entry" ] || { echo "fake docker run: name, image and entrypoint are required" >&2; return 1; }
+  cdir_of "$name" >/dev/null && { echo "container $name exists" >&2; return 1; }
+  [ -f "$S/img/$(img_key "$image")" ] || { echo "Unable to find image '$image' (fake)" >&2; return 125; }
+  [ -n "$net" ] && [ -f "$S/net/$net" ] || { echo "network $net not found (fake)" >&2; return 1; }
+  d=$(mktemp -d "$S/c/XXXXXX") || return 1
+  chmod 755 "$d"
+  printf '%s' "$name" > "$d/name"; printf '%s' "$label" > "$d/label"; printf '%s' "$image" > "$d/image"; echo odoo > "$d/kind"
+  : > "$d/mounts"
+  local m src dst ro
+  for m in "${mounts[@]}"; do
+    case "$m" in
+      tmpfs:*)
+        dst="${m#tmpfs:}"; src="$d/tmpfs$(printf '%s' "$dst" | tr '/' '_')"
+        mkdir -p "$src" && chmod 1777 "$src"
+        printf '%s\t%s\n' "$dst" "$src" >> "$d/mounts" ;;
+      mount:*)
+        src="" dst="" ro=0
+        IFS=',' read -ra parts <<< "${m#mount:}"
+        for a in "${parts[@]}"; do
+          case "$a" in src=*|source=*) src="${a#*=}" ;; dst=*|target=*|destination=*) dst="${a#*=}" ;; readonly|ro|ro=true) ro=1 ;; esac
+        done
+        [ -e "$src" ] || { echo "invalid mount config: bind source path does not exist: $src (fake)" >&2; rm -rf "$d"; return 125; }
+        printf '%s\t%s\n' "$dst" "$src" >> "$d/mounts"
+        printf '%s %s ro=%s\n' "$name" "$dst" "$ro" >> "$S/mounts.log" ;;
+    esac
+  done
+  # The command: map its paths; the configuration file given to -c gets the local Postgres and a free port
+  local cmd=("$entry") prev="" conf_host="" pgd
+  for a in "$@"; do
+    if [ "$prev" = "-c" ]; then
+      conf_host=$(map_path "$d" "$a")
+      python3 - "$conf_host" "$d/odoo.conf" "$S" "$d" "$(free_port)" <<'PY' || { echo "fake docker: bad Odoo configuration" >&2; rm -rf "$d"; exit 1; }
+import configparser, os, sys
+src, out, state, cdir, port = sys.argv[1:6]
+mounts = [l.rstrip("\n").split("\t") for l in open(os.path.join(cdir, "mounts")) if "\t" in l]
+def mp(p):
+    best = max((m for m in mounts if p == m[0] or p.startswith(m[0] + "/")), key=lambda m: len(m[0]), default=None)
+    return best[1] + p[len(best[0]):] if best else p
+c = configparser.ConfigParser(interpolation=None); c.read(src)
+o = c["options"]
+pg = None
+for d in os.listdir(os.path.join(state, "c")):
+    f = os.path.join(state, "c", d)
+    try:
+        if open(os.path.join(f, "name")).read() == o.get("db_host") and os.path.exists(os.path.join(f, "port")):
+            pg = (f, open(os.path.join(f, "port")).read().strip())
+    except OSError:
+        pass
+if pg:
+    o["db_host"], o["db_port"] = pg
+o["http_port"] = port
+o["data_dir"] = mp(o.get("data_dir", "/var/lib/odoo"))
+o["addons_path"] = ",".join(mp(p.strip()) for p in o.get("addons_path", "").split(",") if p.strip())
+with open(out, "w") as f:
+    c.write(f)
+PY
+      printf '%s\t%s\n' "$a" "$d/odoo.conf" >> "$d/mounts"
+      cmd+=("$d/odoo.conf")
+    else
+      cmd+=("$(map_path "$d" "$a")")
+    fi
+    prev="$a"
+  done
+  printf '%s\n' "${cmd[*]}" > "$d/cmd"
+  ( cd "$d" && exec setsid bash -c '"$@" > odoo.log 2>&1; echo $? > exitcode' _ "${cmd[@]}" ) </dev/null >/dev/null 2>&1 &
+  echo $! > "$d/pid"
+  if [ "$detach" = 0 ]; then
+    wait "$(cat "$d/pid")" 2>/dev/null
+    cat "$d/odoo.log"; return "$(cat "$d/exitcode" 2>/dev/null || echo 1)"
+  fi
+  printf 'fake%s\n' "${d##*/}"
+}
+
 if [ -n "${FAKE_DOCKER_HOST_ONLY:-}" ] && [ "${DOCKER_HOST:-}" != "$FAKE_DOCKER_HOST_ONLY" ]; then
   echo "Cannot connect to the Docker daemon at ${DOCKER_HOST:-unix:///var/run/docker.sock} (fake)" >&2; exit 1
 fi
@@ -76,16 +187,95 @@ case "$cmd" in
     exit 0 ;;
 
   image)
-    [ "${1:-}" = inspect ] || exit 1
-    [ "${FAKE_NO_IMAGE:-}" = 1 ] && exit 1
-    [ -f "$S/img/$(img_key "${2:-}")" ] ;;
+    case "${1:-}" in
+      inspect)
+        [ "${FAKE_NO_IMAGE:-}" = 1 ] && exit 1
+        [ -f "$S/img/$(img_key "${2:-}")" ] ;;
+      ls)
+        # image ls REPO --format '{{.Repository}}:{{.Tag}}'
+        repo="${2:-}"
+        for f in "$S"/img/*; do
+          [ -f "$f" ] || continue
+          n=$(cat "$f"); [ -n "$n" ] || continue
+          [ -z "$repo" ] || [ "${n%:*}" = "$repo" ] && echo "$n"
+        done
+        exit 0 ;;
+      *) exit 1 ;;
+    esac ;;
 
   pull)
     [ "${1:-}" = "-q" ] && shift
     echo "$1" >> "$S/pull.log"
     [ "${FAKE_PULL_FAIL:-}" = 1 ] && { echo "pull failed (fake)" >&2; exit 1; }
-    : > "$S/img/$(img_key "$1")"
+    [ -n "${FAKE_PULL_FAIL_MATCH:-}" ] && [[ "$1" == *"$FAKE_PULL_FAIL_MATCH"* ]] && { echo "pull access denied for $1 (fake)" >&2; exit 1; }
+    printf '%s' "$1" > "$S/img/$(img_key "$1")"
     echo "$1" ;;
+
+  login)
+    user="" server="" stdin=0
+    while [ $# -gt 0 ]; do
+      case "$1" in
+        --username|-u) user="$2"; shift 2 ;;
+        --password-stdin) stdin=1; shift ;;
+        -*) shift ;;
+        *) server="$1"; shift ;;
+      esac
+    done
+    pw=""; [ "$stdin" = 1 ] && pw=$(cat)
+    printf 'server=%s user=%s password=%s config=%s\n' "${server:-docker.io}" "$user" "$pw" "${DOCKER_CONFIG:-}" >> "$S/login.log"
+    [ "${FAKE_LOGIN_FAIL:-}" = 1 ] && { echo "unauthorized: incorrect username or password (fake)" >&2; exit 1; }
+    [ -n "${DOCKER_CONFIG:-}" ] && mkdir -p "$DOCKER_CONFIG" && printf '{"auths": {"%s": {}}}' "${server:-docker.io}" > "$DOCKER_CONFIG/config.json"
+    echo "Login Succeeded" ;;
+
+  build)
+    tag="" ctx="" bargs=()
+    while [ $# -gt 0 ]; do
+      case "$1" in
+        -t) tag="$2"; shift 2 ;;
+        --label|-f) shift 2 ;;
+        --build-arg) bargs+=("$2"); shift 2 ;;
+        -*) shift ;;
+        *) ctx="$1"; shift ;;
+      esac
+    done
+    mkdir -p "$S/builds"
+    n=$(( $(ls "$S/builds" | wc -l) + 1 ))
+    mkdir -p "$S/builds/$n" && cp -a "$ctx/." "$S/builds/$n/" 2>/dev/null
+    printf '%s\n' "${bargs[@]}" > "$S/builds/$n/args"
+    printf '%s %s\n' "$tag" "$ctx" >> "$S/build.log"
+    echo "Step 1/1 : FROM python (fake)"
+    [ "${FAKE_BUILD_FAIL:-}" = 1 ] && { echo "ERROR: Could not find a version that satisfies the requirement nosuchpkg==9 (fake)" >&2; exit 1; }
+    printf '%s' "$tag" > "$S/img/$(img_key "$tag")"
+    echo "Successfully tagged $tag" ;;
+
+  tag)
+    [ -f "$S/img/$(img_key "$1")" ] || { echo "No such image: $1" >&2; exit 1; }
+    printf '%s' "$2" > "$S/img/$(img_key "$2")"
+    printf 'tag %s %s\n' "$1" "$2" >> "$S/tag.log" ;;
+
+  rmi)
+    while [[ "${1:-}" == -* ]]; do shift; done
+    rc=1
+    for n in "$@"; do
+      [ -f "$S/img/$(img_key "$n")" ] && rm -f "$S/img/$(img_key "$n")" && rc=0 && printf 'rmi %s\n' "$n" >> "$S/tag.log"
+    done
+    exit $rc ;;
+
+  logs)
+    d=$(cdir_of "${*: -1}") || { echo "No such container: ${*: -1}" >&2; exit 1; }
+    cat "$d/odoo.log" 2>/dev/null ;;
+
+  inspect)
+    fmt="" name=""
+    while [ $# -gt 0 ]; do case "$1" in -f) fmt="$2"; shift 2 ;; *) name="$1"; shift ;; esac; done
+    d=$(cdir_of "$name") || { echo "No such object: $name" >&2; exit 1; }
+    running=false
+    if [ -f "$d/pid" ]; then kill -0 "$(cat "$d/pid")" 2>/dev/null && [ ! -f "$d/exitcode" ] && running=true; else running=true; fi
+    case "$fmt" in
+      *State.Running*) echo "$running" ;;
+      *State.ExitCode*) cat "$d/exitcode" 2>/dev/null || echo 0 ;;
+      *) echo "{}" ;;
+    esac ;;
 
   network)
     sub="$1"; shift
@@ -123,13 +313,20 @@ case "$cmd" in
     rc=1
     for n in "$@"; do
       d=$(cdir_of "$n") || continue
-      pg_stop "$d"
+      if [ -f "$d/kind" ]; then
+        [ -f "$d/pid" ] && kill -TERM -- "-$(cat "$d/pid")" 2>/dev/null
+        for _ in $(seq 50); do [ -f "$d/pid" ] && kill -0 "$(cat "$d/pid")" 2>/dev/null || break; sleep 0.1; done
+        [ -f "$d/pid" ] && kill -KILL -- "-$(cat "$d/pid")" 2>/dev/null
+      else
+        pg_stop "$d"
+      fi
       rm -rf "$d" && rc=0
     done
     exit $rc ;;
 
   run)
     printf '%s\n' "$*" >> "$S/run.log"
+    case " $* " in *" --entrypoint "*) odoo_run "$@"; exit $? ;; esac
     name="" label="" image="" pgargs=()
     while [ $# -gt 0 ]; do
       case "$1" in
@@ -176,6 +373,13 @@ case "$cmd" in
     while [[ "${1:-}" == -* ]]; do [ "$1" = "-i" ] && interactive=1; shift; done
     name="$1"; shift
     d=$(cdir_of "$name") || { echo "No such container: $name" >&2; exit 1; }
+    if [ -f "$d/kind" ]; then
+      # Odoo container: run the command here with its paths mapped
+      mapped=()
+      for a in "$@"; do mapped+=("$(map_path "$d" "$a")"); done
+      [ "$interactive" = 1 ] || exec </dev/null
+      exec "${mapped[@]}"
+    fi
     port=$(cat "$d/port" 2>/dev/null)
     tool="$1"; shift
     case "$tool" in
