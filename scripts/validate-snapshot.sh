@@ -2,7 +2,7 @@
 set -o pipefail
 # Category: Utility
 # Description: Restore drill for an Odoo snapshot in throwaway containers, proving it can be recovered (checksum, archive, manifest, git, database restore, filestore, then Odoo itself boots on the restored copy).
-# Usage: ./scripts/validate-snapshot.sh (--file PATH | --drive SERVICE [--name FILE] | --gcs gs://BUCKET/OBJECT) [--publish] [options]
+# Usage: ./scripts/validate-snapshot.sh (--file PATH | --drive SERVICE [--name FILE] | --gcs gs://BUCKET/OBJECT | --inbox SERVICE) [--publish] [options]
 # Dependencies: docker (rootless recommended on the drill host), zstd, tar, git, python3, curl, flock, sha256sum, openssl (Drive service account), gcloud (--gcs)
 #
 # What a drill does (nothing touches the production server or its database):
@@ -28,6 +28,10 @@ set -o pipefail
 # The result is written as a JSON report. With --publish, a passed drill uploads
 # <archive>.validated.json next to the snapshot (retention then protects that snapshot), and a
 # FAILED drill removes an existing one.
+# --inbox drills the snapshot the snapshot tool handed to the validator inbox on the drill host
+# (SNAPSHOT_VALIDATOR_INBOX), without downloading it, and records the result next to its uploaded
+# copy. The drill worker (validate-snapshot-worker.sh) uses it, and --unless-checksum to skip a
+# snapshot the last drill already proved.
 #
 # Where it runs: on the Secondary VPS when SNAPSHOT_REMOTE_HOST is set (over SSH, like the snapshot
 # tool; nothing is installed there), otherwise on this host. --local forces this host.
@@ -39,6 +43,8 @@ set -o pipefail
 #              Drive/GCS, unreachable git remote, not enough disk, interrupted). Nothing proven.
 #   3          usage or configuration error
 #   4 pass     the snapshot is recoverable, but --publish could not write the record
+#   5          nothing to drill: no snapshot waiting in the inbox (--inbox), or the snapshot is the
+#              one --unless-checksum names. No report is written.
 
 CURRENT_DIR=$(dirname "$(readlink -f "$0")")
 PATH_TO_ODOO=$(git -C "$CURRENT_DIR" rev-parse --show-toplevel 2>/dev/null || dirname "$CURRENT_DIR")
@@ -131,6 +137,7 @@ KEEP_WORKDIR=false
 GIT_CHECK=true
 LOCAL_ONLY=false
 REPORT_PATH=""
+UNLESS_SHA=""
 
 show_help() {
   cat << EOF
@@ -148,6 +155,9 @@ Source (one of):
   --drive <SERVICE>        Newest snapshot of SERVICE on Google Drive (with its .sha256)
     --name <FILE>          ...or this exact snapshot file name on Google Drive
   --gcs <gs://BUCKET/OBJ>  A snapshot object in Google Cloud Storage (with its .sha256)
+  --inbox <SERVICE>        The snapshot of SERVICE waiting in the validator inbox on the drill
+                           host (~/.odoo-validator/inbox, SNAPSHOT_VALIDATOR_INBOX); --publish
+                           records the result next to its copy on Drive, GCS or the drill host
 
 Options:
   --publish                On pass, upload <archive>.validated.json next to the snapshot
@@ -156,6 +166,9 @@ Options:
   --keep-workdir           Keep the work folder for inspection (containers are always removed)
   --no-git-check           Skip the git repository check (the boot check needs it, so it is skipped too)
   --no-boot                Stop after the filestore stage: do not start Odoo (VALIDATOR_BOOT=false)
+  --unless-checksum <SHA>  Do nothing (exit 5) when the snapshot's .sha256 file names this sha256,
+                           i.e. it is the snapshot an earlier drill already proved (read before
+                           anything is downloaded; not with --inbox)
   --local                  Drill on this host even when SNAPSHOT_REMOTE_HOST is set
   --folder-id <ID>         Google Drive folder ID (default: GDRIVE_FOLDER_ID)
   --sa-key <PATH>          Google Drive service account key (default: GDRIVE_SERVICE_ACCOUNT_KEY)
@@ -171,7 +184,8 @@ Prefer GDRIVE_SERVICE_ACCOUNT_KEY in .env over --token: command-line arguments a
 other users of this host.
 
 Exit codes: 0 passed, 1 snapshot broken, 2 could not finish (nothing proven),
-3 usage or configuration error, 4 passed but the --publish record could not be written.
+3 usage or configuration error, 4 passed but the --publish record could not be written,
+5 nothing to drill (empty inbox, or --unless-checksum matched; no report).
 EOF
 }
 
@@ -182,6 +196,8 @@ while [ $# -gt 0 ]; do
     --drive) need_value "$1" "${2:-}"; SOURCE_KIND=drive; SOURCE_REF="$2"; shift 2 ;;
     --name) need_value "$1" "${2:-}"; DRIVE_NAME="$2"; shift 2 ;;
     --gcs) need_value "$1" "${2:-}"; SOURCE_KIND=gcs; SOURCE_REF="$2"; shift 2 ;;
+    --inbox) need_value "$1" "${2:-}"; SOURCE_KIND=inbox; SOURCE_REF="$2"; shift 2 ;;
+    --unless-checksum) need_value "$1" "${2:-}"; UNLESS_SHA="$2"; shift 2 ;;
     --publish) PUBLISH=true; shift ;;
     --report) need_value "$1" "${2:-}"; REPORT_PATH="$2"; shift 2 ;;
     --keep-workdir) KEEP_WORKDIR=true; shift ;;
@@ -197,13 +213,27 @@ while [ $# -gt 0 ]; do
 done
 
 if [ -z "$SOURCE_KIND" ] || [ -z "$SOURCE_REF" ]; then
-  log_error "Choose a snapshot with --file, --drive or --gcs."
+  log_error "Choose a snapshot with --file, --drive, --gcs or --inbox."
   show_help
   exit 3
 fi
 if [ "$SOURCE_KIND" = gcs ] && [[ "$SOURCE_REF" != gs://* ]]; then
   log_error "--gcs needs a gs://BUCKET/OBJECT URL."
   exit 3
+fi
+if [ "$SOURCE_KIND" = inbox ] && ! [[ "$SOURCE_REF" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
+  log_error "--inbox needs a service name (letters, digits, '.', '_' and '-')."
+  exit 3
+fi
+if [ -n "$UNLESS_SHA" ]; then
+  if ! [[ "$UNLESS_SHA" =~ ^[0-9a-f]{64}$ ]]; then
+    log_error "--unless-checksum needs a sha256 (64 lowercase hex characters)."
+    exit 3
+  fi
+  if [ "$SOURCE_KIND" = inbox ]; then
+    log_error "--unless-checksum does not apply to --inbox (an inbox snapshot is always a new one)."
+    exit 3
+  fi
 fi
 if [ -n "$REPORT_PATH" ]; then
   REPORT_PATH=$(readlink -m "$REPORT_PATH")
@@ -246,7 +276,7 @@ remote_fail() {
   # Args: exit_code message. Writes a report on this host for a drill that never got a result.
   local code="$1" msg="$2" svc
   svc="$SOURCE_REF"
-  [ "$SOURCE_KIND" = drive ] || svc=$(sed -E 's/^snapshot-(.+)-[0-9]{8}-[0-9]{6}\.tar\.zst$/\1/; s/^snapshot-(.+)\.tar\.zst$/\1/' <<< "${SOURCE_REF##*/}")
+  [ "$SOURCE_KIND" = drive ] || [ "$SOURCE_KIND" = inbox ] || svc=$(sed -E 's/^snapshot-(.+)-[0-9]{8}-[0-9]{6}\.tar\.zst$/\1/; s/^snapshot-(.+)\.tar\.zst$/\1/' <<< "${SOURCE_REF##*/}")
   [ -n "$REPORT_PATH" ] || REPORT_PATH="$VALIDATOR_DIR/reports/${svc:-unknown}-$(date +%Y%m%d-%H%M%S)-$$.json"
   python3 -c '
 import json, sys
@@ -299,7 +329,8 @@ run_remote_drill() {
 
   # Storage credentials go over SSH stdin and into 0600 files there, never onto a command line
   local sa_b64="" tok_b64=""
-  if [ "$SOURCE_KIND" = drive ]; then
+  # An inbox snapshot uploaded to Drive gets its record there too
+  if [ "$SOURCE_KIND" = drive ] || { [ "$SOURCE_KIND" = inbox ] && [ "$PUBLISH" = true ]; }; then
     if [ -n "$GDRIVE_SERVICE_ACCOUNT_KEY" ]; then
       if [ -f "$GDRIVE_SERVICE_ACCOUNT_KEY" ]; then
         sa_b64=$(base64 -w0 < "$GDRIVE_SERVICE_ACCOUNT_KEY") || { log_error "Cannot read GDRIVE_SERVICE_ACCOUNT_KEY."; exit 3; }
@@ -320,7 +351,9 @@ run_remote_drill() {
     file) fwd+=(--file "$SOURCE_REF") ;;
     drive) fwd+=(--drive "$SOURCE_REF"); [ -n "$DRIVE_NAME" ] && fwd+=(--name "$DRIVE_NAME") ;;
     gcs) fwd+=(--gcs "$SOURCE_REF") ;;
+    inbox) fwd+=(--inbox "$SOURCE_REF") ;;
   esac
+  [ -n "$UNLESS_SHA" ] && fwd+=(--unless-checksum "$UNLESS_SHA")
   [ "$PUBLISH" = true ] && fwd+=(--publish)
   [ "$KEEP_WORKDIR" = true ] && fwd+=(--keep-workdir)
   [ "$GIT_CHECK" = true ] || fwd+=(--no-git-check)
@@ -441,6 +474,7 @@ json.dump(r, open(sys.argv[1], "w"), indent=2)
   fi
   rm -f "$VALIDATOR_DIR/reports/.incoming.$$" "$VALIDATOR_DIR/reports/.svc.$$"
   case "$rc" in
+    5) exit 5 ;;   # nothing to drill (the reason is in the log above); not a drill, so no report
     3) remote_fail 3 "The Secondary VPS cannot run the drill (missing tools, Docker access or settings: see the log above)." ;;
     255) remote_fail 2 "The SSH connection to the Secondary VPS failed or was lost during the drill. Nothing was proven." ;;
     92) remote_fail 2 "Could not prepare the drill on the Secondary VPS (see the log above). Nothing was proven." ;;
@@ -632,7 +666,9 @@ cleanup() {
   docker rm -fv "$ODOO_CONTAINER" "$NEUTRALIZE_CONTAINER" >/dev/null 2>&1
   docker rm -fv "$PG_CONTAINER" >/dev/null 2>&1
   docker network rm "$DRILL_NET" >/dev/null 2>&1
-  [ -n "$ARCHIVE_FD" ] && exec {ARCHIVE_FD}<&- 2>/dev/null
+  # (a plain "exec ... 2>/dev/null" would send every later line of the log to /dev/null)
+  [ -n "$ARCHIVE_FD" ] && { exec {ARCHIVE_FD}<&-; } 2>/dev/null
+  declare -f inbox_dispose >/dev/null && inbox_dispose
   if [ "$KEEP_WORKDIR" = true ]; then
     touch "$WORK/.keep" 2>/dev/null
     log_info "Work folder kept: $WORK"
@@ -702,6 +738,25 @@ revoke_record() {
       fi ;;
     file)
       [ -f "$ARCHIVE.validated.json" ] && rm -f "$ARCHIVE.validated.json" && ids="yes" ;;
+    inbox)
+      # Only records that belong to this very snapshot: never those of a newer one that replaced a copy
+      if [ -n "$JOB_DRIVE_ID" ]; then
+        DRIVE_TOKEN=$(gds_get_token "$GDRIVE_ACCESS_TOKEN" "$GDRIVE_SERVICE_ACCOUNT_KEY")
+        while id=$(gds_find_by_name "$DRIVE_TOKEN" "$GDRIVE_FOLDER_ID" "${JOB_DRIVE_NAME:-$ARCHIVE_NAME}.validated.json") && [ -n "$id" ]; do
+          gds_delete_file "$DRIVE_TOKEN" "$id" "$GDRIVE_FOLDER_ID" >/dev/null || { record_stage "revoke" "error" "$(since "$t0")" "Could not remove the old ${JOB_DRIVE_NAME:-$ARCHIVE_NAME}.validated.json from Google Drive. Delete it by hand."; return; }
+          ids="yes"
+        done
+      fi
+      if [ -n "$JOB_GCS_OBJECT" ] && [ -n "$JOB_GCS_GEN" ] \
+         && [ "$(gcloud storage objects describe "$JOB_GCS_OBJECT" --format='value(generation)' 2>/dev/null)" = "$JOB_GCS_GEN" ] \
+         && gcloud storage ls "$JOB_GCS_OBJECT.validated.json" >/dev/null 2>&1; then
+        gcloud storage rm "$JOB_GCS_OBJECT.validated.json" >/dev/null 2>&1 && ids="yes" \
+          || { record_stage "revoke" "error" "$(since "$t0")" "Could not remove the old $(redact "$JOB_GCS_OBJECT").validated.json. Delete it by hand."; return; }
+      fi
+      if [ -n "$JOB_KEPT" ] && [ -f "$JOB_KEPT.validated.json" ] \
+         && [ "$(stat -L -c '%d:%i' "$JOB_KEPT" 2>/dev/null)" = "$(stat -L -c '%d:%i' "$AR" 2>/dev/null)" ]; then
+        rm -f "$JOB_KEPT.validated.json" && ids="yes"
+      fi ;;
   esac
   [ -n "${ids:-}" ] && record_stage "revoke" "pass" "$(since "$t0")" "Removed the old validation record: this snapshot no longer counts as proven"
 }
@@ -774,6 +829,120 @@ start_watchdog() {
   ) </dev/null >/dev/null 2>&1 &
   WATCHDOG_PID=$!
 }
+
+# --- Validator inbox (--inbox): the snapshot the snapshot tool left for a drill on this host ---
+# Layout and hand-off: snap_inbox_handoff in scripts/lib/snapshot_storage.sh. A drill takes a job by renaming
+# its folder to .taken-<archive>-<pid> in the same folder (one rename on the same disk; the snapshot tool never
+# touches a folder starting with "."). After a pass or a fail the job is deleted. After an error it goes back
+# to the inbox for the next try, unless a newer snapshot is waiting by then. A job whose drill was killed is
+# handled the same way by the next drill of that service.
+INBOX_DIR="" INBOX_TAKEN="" INBOX_NAME="" INBOX_BROKEN=""
+JOB_DRIVE_NAME="" JOB_DRIVE_ID="" JOB_GCS_OBJECT="" JOB_GCS_GEN="" JOB_KEPT=""
+[ "$SOURCE_KIND" = inbox ] && INBOX_DIR="$HOME/.odoo-validator/inbox/$SOURCE_REF"
+
+inbox_jobs() {
+  # Pending jobs of this service, newest first (archive names end in -YYYYMMDD-HHMMSS.tar.zst)
+  local d n
+  for d in "$INBOX_DIR"/*/; do
+    d="${d%/}"; n="${d##*/}"
+    [[ "$n" =~ ^snapshot-.+-[0-9]{8}-[0-9]{6}\.tar\.zst$ ]] && [ ! -L "$d" ] && [ -f "$d/job.json" ] && echo "$n"
+  done | sort -r
+}
+
+inbox_sweep() {
+  # Jobs taken by drills that are gone (killed, out of memory, reboot): back to the inbox when nothing
+  # newer is waiting, otherwise removed
+  local d n pid orig
+  for d in "$INBOX_DIR"/.taken-*; do
+    [ -d "$d" ] || continue
+    n="${d##*/}"; pid="${n##*-}"; orig="${n#.taken-}"; orig="${orig%-*}"
+    [[ "$pid" =~ ^[0-9]+$ ]] && [ "$pid" != $$ ] && [ -d "/proc/$pid" ] && continue
+    if [ -z "$(inbox_jobs)" ] && [[ "$orig" =~ ^snapshot-.+-[0-9]{8}-[0-9]{6}\.tar\.zst$ ]] && mv "$d" "$INBOX_DIR/$orig" 2>/dev/null; then
+      log_info "Validator inbox: $orig was taken by a drill that did not finish; it is waiting again."
+    elif rm -rf "$d"; then
+      log_info "Validator inbox: removed $orig, left by a drill that did not finish (a newer snapshot is waiting)."
+    fi
+  done
+  return 0
+}
+
+inbox_take() {
+  # Takes the newest pending job and removes older ones. Returns 1 when there is none.
+  local n older tries=0
+  inbox_sweep
+  while n=$(inbox_jobs | head -n 1) && [ -n "$n" ] && [ "$tries" -lt 5 ]; do
+    if mv "$INBOX_DIR/$n" "$INBOX_DIR/.taken-$n-$$" 2>/dev/null; then
+      INBOX_TAKEN="$INBOX_DIR/.taken-$n-$$"; INBOX_NAME="$n"
+      for older in $(inbox_jobs); do
+        if mv "$INBOX_DIR/$older" "$INBOX_DIR/.removing-$older-$$" 2>/dev/null; then
+          rm -rf "$INBOX_DIR/.removing-$older-$$"
+          log_info "Validator inbox: removed the older pending snapshot $older."
+        fi
+      done
+      return 0
+    fi
+    tries=$((tries + 1)); sleep 1   # another drill took it at the same moment, or it was just replaced
+  done
+  return 1
+}
+
+inbox_dispose() {
+  # Called on exit: pass/fail -> the job is done; error (or a job that cannot be used) -> see above
+  [ -n "$INBOX_TAKEN" ] && [ -d "$INBOX_TAKEN" ] || return 0
+  case "$RESULT" in
+    pass|fail) rm -rf "$INBOX_TAKEN" ;;
+    *)
+      if [ -z "$INBOX_BROKEN" ] && [ -z "$(inbox_jobs)" ] && mv "$INBOX_TAKEN" "$INBOX_DIR/$INBOX_NAME" 2>/dev/null; then
+        log_info "Validator inbox: $INBOX_NAME is waiting again, for the next try."
+      else
+        rm -rf "$INBOX_TAKEN"
+        if [ -n "$INBOX_BROKEN" ]; then log_warn "Validator inbox: removed $INBOX_NAME (the job cannot be drilled: $INBOX_BROKEN)."
+        else log_info "Validator inbox: a newer snapshot is waiting, so $INBOX_NAME was removed."; fi
+      fi ;;
+  esac
+  INBOX_TAKEN=""
+}
+
+pre_check() {
+  # Before waiting in the queue: is there anything to drill? Exit 5 (no report) when there is not.
+  if [ "$SOURCE_KIND" = inbox ]; then
+    inbox_sweep
+    if [ -z "$(inbox_jobs)" ]; then
+      log_info "No snapshot of $SOURCE_REF is waiting in the validator inbox ($INBOX_DIR); nothing to drill."
+      exit 5
+    fi
+    return 0
+  fi
+  [ -n "$UNLESS_SHA" ] || return 0
+  local f="$WORK/precheck.sha256" name="" row sid hash
+  case "$SOURCE_KIND" in
+    file)
+      name=$(basename "$SOURCE_REF")
+      [ -f "$SOURCE_REF.sha256" ] && cp "$SOURCE_REF.sha256" "$f" 2>/dev/null ;;
+    drive)
+      DRIVE_TOKEN=$(gds_get_token "$GDRIVE_ACCESS_TOKEN" "$GDRIVE_SERVICE_ACCOUNT_KEY")
+      if [ -n "$DRIVE_TOKEN" ]; then
+        if [ -n "$DRIVE_NAME" ]; then name="$DRIVE_NAME"
+        else row=$(gds_list_archives "$DRIVE_TOKEN" "$GDRIVE_FOLDER_ID" "$SOURCE_REF" 1); name=$(cut -f4 <<< "$row"); fi
+        if [ -n "$name" ]; then
+          sid=$(gds_find_by_name "$DRIVE_TOKEN" "$GDRIVE_FOLDER_ID" "$name.sha256")
+          [ -n "$sid" ] && gds_download "$DRIVE_TOKEN" "$sid" "$f"
+        fi
+      fi ;;
+    gcs)
+      name=$(basename "$SOURCE_REF")
+      gcloud storage cp "$SOURCE_REF.sha256" "$f" >/dev/null 2>&1 ;;
+  esac
+  hash=$(snap_sidecar_hash "$f")
+  rm -f "$f"
+  if [ -n "$hash" ] && [ "$hash" = "$UNLESS_SHA" ]; then
+    log_info "${name:-The snapshot} is the snapshot the last drill already proved (sha256 ${hash:0:12}...); nothing new to drill."
+    exit 5
+  fi
+  [ -n "$hash" ] || log_info "The .sha256 of ${name:-the snapshot} cannot be read beforehand; drilling it to find out."
+  return 0
+}
+pre_check
 
 # --- Queue: one drill at a time on this host (snapshots use their own queue) ---
 QUEUE_LOCK_LEGACY_STALE_AFTER="$VALIDATOR_QUEUE_TIMEOUT"
@@ -848,6 +1017,31 @@ fetch_snapshot() {
       sid=$(gds_find_by_name "$DRIVE_TOKEN" "$GDRIVE_FOLDER_ID" "$ARCHIVE_NAME.sha256")
       if [ -n "$sid" ] && gds_download "$DRIVE_TOKEN" "$sid" "$ARCHIVE.sha256"; then SIDECAR="$ARCHIVE.sha256"; fi
       ;;
+    inbox)
+      inbox_take || { log_info "No snapshot of $SOURCE_REF is waiting in the validator inbox ($INBOX_DIR) any more; nothing to drill."; exit 5; }
+      ARCHIVE="$INBOX_TAKEN/$INBOX_NAME"; ARCHIVE_NAME="$INBOX_NAME"
+      local job
+      job=$(python3 - "$INBOX_TAKEN/job.json" "$SOURCE_REF" "$INBOX_NAME" <<'PY'
+import json, sys
+j = json.load(open(sys.argv[1]))
+if j.get("schema") != 1 or j.get("service") != sys.argv[2] or j.get("archive") != sys.argv[3]:
+    sys.exit(1)
+d, g, k = j.get("drive") or {}, j.get("gcs") or {}, j.get("kept_copy") or ""
+if k and not k.startswith("/"):
+    sys.exit(1)
+gen = str(g.get("generation") or "")
+print("\x1f".join([d.get("name") or "", d.get("file_id") or "", g.get("object") or "", gen if gen.isdigit() else "", k]))
+PY
+) || { INBOX_BROKEN="its job.json is missing, unreadable or names another snapshot"; record_stage "fetch" "error" "$(since "$t0")" "Validator inbox: $INBOX_NAME cannot be drilled ($INBOX_BROKEN)"; finish error; }
+      IFS=$'\x1f' read -r JOB_DRIVE_NAME JOB_DRIVE_ID JOB_GCS_OBJECT JOB_GCS_GEN JOB_KEPT <<< "$job"
+      if [ ! -f "$ARCHIVE" ] || [ -L "$ARCHIVE" ]; then
+        INBOX_BROKEN="its archive is missing"
+        record_stage "fetch" "error" "$(since "$t0")" "Validator inbox: $INBOX_NAME cannot be drilled ($INBOX_BROKEN)"; finish error
+      fi
+      [ -f "$ARCHIVE.sha256" ] && SIDECAR="$ARCHIVE.sha256"
+      GCS_GENERATION="$JOB_GCS_GEN"
+      log_info "Drilling $INBOX_NAME from the validator inbox (no download)."
+      ;;
     gcs)
       # Pin the object generation: the GCS snapshot object is overwritten on every run, and the
       # record must only ever describe the exact bytes that were drilled.
@@ -874,7 +1068,7 @@ fetch_snapshot() {
   fi
   AR="/proc/$$/fd/$ARCHIVE_FD"
   SERVICE=$(sed -E 's/^snapshot-(.+)-[0-9]{8}-[0-9]{6}\.tar\.zst$/\1/; s/^snapshot-(.+)\.tar\.zst$/\1/' <<< "$ARCHIVE_NAME")
-  [ "$SOURCE_KIND" = drive ] && SERVICE="$SOURCE_REF"
+  { [ "$SOURCE_KIND" = drive ] || [ "$SOURCE_KIND" = inbox ]; } && SERVICE="$SOURCE_REF"
   record_stage "fetch" "pass" "$(since "$t0")" "{\"archive\": $(jstr "$ARCHIVE_NAME"), \"bytes\": $(stat -L -c %s "$AR"), \"sha256_file\": $([ -n "$SIDECAR" ] && echo true || echo false)$([ -n "$GCS_GENERATION" ] && echo ", \"gcs_generation\": \"$GCS_GENERATION\"")}"
 }
 
@@ -1462,12 +1656,17 @@ print(json.dumps({s["name"]: s["status"] for s in map(json.loads, filter(str.str
     record_stage "publish" "error" "$(since "$t0")" "Not publishing: the git check did not run (status '${git_status:-none}'), so this drill does not prove the snapshot's code can be restored"
     return
   fi
-  if ! snap_write_validation_record "$rec" "$ARCHIVE_NAME" "$ARCHIVE_SHA" \
-      "{\"level\": \"$DRILL_LEVEL\", \"run_id\": \"$RUN_ID\", \"checks\": $checks, \"odoo_version\": $(jstr "$ODOO_VERSION"), \"postgres_image\": $(jstr "$PG_IMAGE"), \"drill_seconds\": $(( $(date +%s) - START_EPOCH ))$([ -n "$GCS_GENERATION" ] && echo ", \"gcs_generation\": \"$GCS_GENERATION\""), \"database\": $DB_STATS}"; then
+  # mkrec OUT NAME: the record for the archive called NAME where it is stored (an inbox snapshot's copies
+  # can have other names: the GCS object, the copy kept on the drill host)
+  mkrec() {
+    snap_write_validation_record "$1" "$2" "$ARCHIVE_SHA" \
+      "{\"level\": \"$DRILL_LEVEL\", \"run_id\": \"$RUN_ID\", \"checks\": $checks, \"odoo_version\": $(jstr "$ODOO_VERSION"), \"postgres_image\": $(jstr "$PG_IMAGE"), \"drill_seconds\": $(( $(date +%s) - START_EPOCH ))$([ -n "$GCS_GENERATION" ] && echo ", \"gcs_generation\": \"$GCS_GENERATION\""), \"database\": $DB_STATS}" \
+      && chmod 644 "$1" 2>/dev/null
+  }
+  if ! mkrec "$rec" "$ARCHIVE_NAME"; then
     record_stage "publish" "error" "$(since "$t0")" "Could not write the validation record"
     return
   fi
-  chmod 644 "$rec" 2>/dev/null
   case "$SOURCE_KIND" in
     drive)
       DRIVE_TOKEN=$(gds_get_token "$GDRIVE_ACCESS_TOKEN" "$GDRIVE_SERVICE_ACCOUNT_KEY")
@@ -1493,7 +1692,55 @@ print(json.dumps({s["name"]: s["status"] for s in map(json.loads, filter(str.str
       else
         record_stage "publish" "error" "$(since "$t0")" "Could not write $ARCHIVE.validated.json"
       fi ;;
+    inbox) publish_inbox "$t0" "$rec" ;;
   esac
+}
+
+publish_inbox() {
+  # Args: t0 record. Records the result next to every copy the snapshot tool uploaded (job.json), or next
+  # to the copy it kept on this host when there is no upload. Never next to a copy that was replaced since.
+  local t0="$1" rec="$2" ok=() bad=() cur name obj
+  if [ -n "$JOB_DRIVE_ID" ]; then
+    name="${JOB_DRIVE_NAME:-$ARCHIVE_NAME}"
+    DRIVE_TOKEN=$(gds_get_token "$GDRIVE_ACCESS_TOKEN" "$GDRIVE_SERVICE_ACCOUNT_KEY")
+    if [ -z "$DRIVE_TOKEN" ]; then
+      bad+=("no Google Drive token for $name.validated.json (set GDRIVE_SERVICE_ACCOUNT_KEY or GDRIVE_ACCESS_TOKEN)")
+    elif mkrec "$WORK/validated-drive.json" "$name" && gds_publish_validation "$DRIVE_TOKEN" "$GDRIVE_FOLDER_ID" "$name" "$WORK/validated-drive.json" >/dev/null; then
+      ok+=("Google Drive ($name.validated.json)")
+    else
+      bad+=("$name.validated.json could not be uploaded to Google Drive")
+    fi
+  fi
+  if [ -n "$JOB_GCS_OBJECT" ]; then
+    obj=$(redact "$JOB_GCS_OBJECT")
+    cur=$(gcloud storage objects describe "$JOB_GCS_OBJECT" --format='value(generation)' 2>/dev/null)
+    if [ -z "$JOB_GCS_GEN" ]; then
+      bad+=("$obj: the hand-off did not record its generation, so it cannot be told whether it still holds this snapshot")
+    elif [ "$cur" != "$JOB_GCS_GEN" ]; then
+      bad+=("$obj now holds a newer snapshot (generation $JOB_GCS_GEN -> ${cur:-gone}); no record for it")
+    elif mkrec "$WORK/validated-gcs.json" "$(basename "$JOB_GCS_OBJECT")" && gcs_publish_validation "$JOB_GCS_OBJECT" "$WORK/validated-gcs.json"; then
+      ok+=("$obj.validated.json (generation $JOB_GCS_GEN)")
+    else
+      bad+=("$obj.validated.json could not be uploaded")
+    fi
+  fi
+  if [ -z "$JOB_DRIVE_ID" ] && [ -z "$JOB_GCS_OBJECT" ]; then
+    if [ -z "$JOB_KEPT" ]; then
+      bad+=("the snapshot tool recorded no uploaded or kept copy of $ARCHIVE_NAME to put the record next to")
+    elif [ "$(stat -L -c '%d:%i' "$JOB_KEPT" 2>/dev/null)" != "$(stat -L -c '%d:%i' "$AR" 2>/dev/null)" ]; then
+      bad+=("$JOB_KEPT is no longer this snapshot (a newer one replaced it); no record for it")
+    elif mkrec "$WORK/validated-kept.json" "$(basename "$JOB_KEPT")" && cp "$WORK/validated-kept.json" "$JOB_KEPT.validated.json" 2>/dev/null; then
+      ok+=("$JOB_KEPT.validated.json")
+    else
+      bad+=("could not write $JOB_KEPT.validated.json")
+    fi
+  fi
+  if [ ${#bad[@]} -eq 0 ]; then
+    PUBLISHED=yes
+    record_stage "publish" "pass" "$(since "$t0")" "Recorded the drill next to: $(printf '%s; ' "${ok[@]}" | sed 's/; $//')"
+  else
+    record_stage "publish" "error" "$(since "$t0")" "Drill passed, but $(printf '%s; ' "${bad[@]}" | sed 's/; $//')$([ ${#ok[@]} -gt 0 ] && printf ' (recorded: %s)' "$(printf '%s; ' "${ok[@]}" | sed 's/; $//')")"
+  fi
 }
 
 # --- Phase 2: Odoo boots on the restored copy (image, code, boot) ---

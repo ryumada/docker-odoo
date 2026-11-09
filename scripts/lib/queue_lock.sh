@@ -213,7 +213,8 @@ queue_lock_release_local() {
   fi
   __ql_release "$QUEUE_LOCK_LOCAL_QUEUE" "$QUEUE_LOCK_LOCAL_HOLDER" "$QUEUE_LOCK_LOCAL_TOKEN"
   if [ -n "$QUEUE_LOCK_HELD_FD" ]; then
-    exec {QUEUE_LOCK_HELD_FD}<&- 2>/dev/null || true
+    # In braces: "exec ... 2>/dev/null" alone would send the rest of the caller's log to /dev/null
+    { exec {QUEUE_LOCK_HELD_FD}<&-; } 2>/dev/null || true
   fi
   QUEUE_LOCK_LOCAL_QUEUE="" QUEUE_LOCK_LOCAL_HOLDER="" QUEUE_LOCK_LOCAL_TOKEN="" QUEUE_LOCK_LOCAL_HB_PID="" QUEUE_LOCK_HELD_FD=""
 }

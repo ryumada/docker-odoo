@@ -113,6 +113,74 @@ EOF
   sudo systemctl restart cron
 }
 
+function installValidatorWorker() {
+  # The drill worker: every hour, validate-snapshot-worker.sh drills the newest snapshot when a drill is
+  # due (VALIDATOR_MIN_INTERVAL_HOURS). Installed when VALIDATOR_WORKER=true, removed otherwise.
+  local enabled="$1"
+  local cron_target="/etc/cron.d/validate-snapshot-$SERVICE_NAME"
+  local logrotate_target="/etc/logrotate.d/validate-snapshot-$SERVICE_NAME"
+  local link="/usr/local/sbin/validate-snapshot-worker-$SERVICE_NAME"
+  local worker="$PATH_TO_ODOO/scripts/validate-snapshot-worker.sh"
+  local log_dir="/var/log/odoo/_utilities"
+
+  if [ "$enabled" != true ]; then
+    if [ -f "$cron_target" ]; then
+      log_info "VALIDATOR_WORKER is not true: removing the drill worker cron job $cron_target"
+      rm -f "$cron_target"
+      systemctl restart cron || true
+    fi
+    log_info "Drill worker is off (set VALIDATOR_WORKER=true in .env and re-run ./setup.sh to drill snapshots automatically)."
+    return 0
+  fi
+  if [ ! -f "$worker" ]; then
+    log_warn "scripts/validate-snapshot-worker.sh not found; the drill worker is not installed."
+    return 0
+  fi
+
+  chmod 755 "$worker" "$PATH_TO_ODOO/scripts/validate-snapshot.sh"
+  ln -sf "$worker" "$link"
+  ln -sf "$PATH_TO_ODOO/scripts/validate-snapshot.sh" "/usr/local/sbin/validate-snapshot-$SERVICE_NAME"
+  mkdir -p "$log_dir"
+
+  log_info "Creating the drill worker cron job (every hour; a drill only runs when one is due)..."
+  cat << EOF > "$HOME/validate-snapshot-$SERVICE_NAME"
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
+
+# Restore drill of the newest snapshot when one is due (VALIDATOR_WORKER, VALIDATOR_MIN_INTERVAL_HOURS in .env)
+47 * * * * root ionice -c2 -n7 nice -n 19 "$link" >> "$log_dir/validate-snapshot-$SERVICE_NAME.log" 2>&1
+
+EOF
+  mv "$HOME/validate-snapshot-$SERVICE_NAME" "$cron_target"
+  chown root:root "$cron_target"
+  chmod 644 "$cron_target"
+
+  cat << EOF > "$HOME/validate-snapshot-$SERVICE_NAME.logrotate"
+$log_dir/validate-snapshot-$SERVICE_NAME.log {
+    rotate 4
+    su root syslog
+    olddir $log_dir/validate-snapshot-$SERVICE_NAME.log-old
+    weekly
+    missingok
+    nocreate
+    createolddir 775 odoo root
+    renamecopy
+    compress
+    compresscmd /usr/bin/zstd
+    compressoptions -7T0
+    delaycompress
+    dateext
+    dateformat -%Y%m%d-%H%M%S
+}
+
+EOF
+  mv "$HOME/validate-snapshot-$SERVICE_NAME.logrotate" "$logrotate_target"
+  chown root:root "$logrotate_target"
+  chmod 644 "$logrotate_target"
+  systemctl restart cron || true
+  log_success "Drill worker installed: $cron_target (log: $log_dir/validate-snapshot-$SERVICE_NAME.log; status: $link --status)"
+}
+
 validateSnapshotTimeList() {
   local snapshot_times="$1"
 
@@ -158,6 +226,7 @@ function main() {
   SNAPSHOT_REMOTE_USER=$(grep "^SNAPSHOT_REMOTE_USER=" "$PATH_TO_ODOO/.env" 2>/dev/null | cut -d "=" -f 2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//')
   SNAPSHOT_REMOTE_PORT=$(grep "^SNAPSHOT_REMOTE_PORT=" "$PATH_TO_ODOO/.env" 2>/dev/null | cut -d "=" -f 2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//')
   SNAPSHOT_REMOTE_KEY=$(grep "^SNAPSHOT_REMOTE_KEY=" "$PATH_TO_ODOO/.env" 2>/dev/null | cut -d "=" -f 2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//')
+  VALIDATOR_WORKER=$(grep "^VALIDATOR_WORKER=" "$PATH_TO_ODOO/.env" 2>/dev/null | tail -n 1 | cut -d "=" -f 2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//')
   [ -z "$SNAPSHOT_REMOTE_PORT" ] && SNAPSHOT_REMOTE_PORT="22"
 
   validateSnapshotTimeList "$SNAPSHOT_TIME_LIST" || {
@@ -337,6 +406,7 @@ function main() {
   fi
 
   installCronJob "$GCS_BUCKET_NAME" "$SNAPSHOT_TIME_LIST" "$GDRIVE_ACCESS_TOKEN" "$GDRIVE_SERVICE_ACCOUNT_KEY" "$SNAPSHOT_REMOTE_HOST" "$ENABLE_SNAPSHOT"
+  installValidatorWorker "$VALIDATOR_WORKER"
 
   # Ensure local prerequisites
   if zstd --version > /dev/null 2>&1; then

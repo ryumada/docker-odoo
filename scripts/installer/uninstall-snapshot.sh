@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -e
 # Category: Installer
-# Description: Uninstalls the snapshot utility, removing script, symlink, cron, and logrotate configs.
+# Description: Uninstalls the snapshot utility, removing script, symlink, cron, and logrotate configs (the drill worker's too).
 # Usage: ./scripts/installer/uninstall-snapshot.sh
 # Dependencies: sudo, git, systemctl
 
@@ -82,6 +82,14 @@ function main() {
   fi
 
   rm -f -- "/usr/local/sbin/list-snapshot-$SERVICE_NAME" "/usr/local/sbin/download-snapshot-$SERVICE_NAME" "/usr/local/sbin/upload-snapshot-$SERVICE_NAME" "/usr/local/sbin/upload-temp-snapshots-$SERVICE_NAME"
+
+  # The drill worker (validate-snapshot-worker.sh) goes with the snapshot utility
+  if [ -f "/etc/cron.d/validate-snapshot-$SERVICE_NAME" ]; then
+    log_info "Removing the drill worker cron job: /etc/cron.d/validate-snapshot-$SERVICE_NAME"
+    rm -f -- "/etc/cron.d/validate-snapshot-$SERVICE_NAME"
+    systemctl restart cron || true
+  fi
+  rm -f -- "/etc/logrotate.d/validate-snapshot-$SERVICE_NAME" "/usr/local/sbin/validate-snapshot-worker-$SERVICE_NAME" "/usr/local/sbin/validate-snapshot-$SERVICE_NAME"
 
   if [ -f "$SCRIPT_FILE" ]; then
     log_info "Removing snapshot script file: $SCRIPT_FILE"

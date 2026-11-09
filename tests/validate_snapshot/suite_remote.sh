@@ -302,5 +302,32 @@ suite_remote() {
   check "GCS record uploaded" test -s "$T/gcs/tvs-remote/snapshot-rgcs.tar.zst.validated.json/live"
   check "clean after the storage drills" wait_until 15 remote_clean
 
+  tvs_section "remote: the drill worker and the validator inbox on the Secondary VPS"
+  local rinbox="$T/rhome/.odoo-validator/inbox" rkept="$T/rhome/.odoo-snapshots/app/archives/snapshot-app.tar.zst" n
+  mkdir -p "$(dirname "$rkept")"
+  a=$(fx good app 20261201-000000)
+  mv "$a" "$rkept" && mv "$a.sha256" "$rkept.sha256"
+  # As the snapshot tool does on the Secondary VPS when there is no upload: kept there, linked into the inbox
+  inbox_put "$rinbox" "$rkept" link "" "" "" "$rkept"
+  check_eq "a job waits in the inbox on the Secondary VPS" 1 "$(inbox_jobs_of "$rinbox")"
+  # shellcheck disable=SC2046
+  wk remote-inbox VALIDATOR_WORKER=true SNAPSHOT_VALIDATOR_INBOX=true VALIDATOR_WORK_DIR="$T/wwork-r" $(remote_env)
+  check_wk "worker drills the inbox snapshot on the Secondary VPS" 0
+  r=$(wlatest "$T/wwork-r")
+  check_eq "report on the main VPS: inbox, from the Secondary VPS" "inbox app $RUSER@127.0.0.1" \
+    "$(rj "$r" 'r["source"]["kind"]') $(rj "$r" 'r["source"]["ref"]') $(rj "$r" 'r["remote"]["host"]')"
+  check_eq "record next to the copy kept on the Secondary VPS" pass "$(rj "$rkept.validated.json" 'r["result"]')"
+  check_eq "the inbox on the Secondary VPS is empty" "0 0" "$(inbox_jobs_of "$rinbox") $(inbox_taken_of "$rinbox")"
+  check "clean on the Secondary VPS" wait_until 15 remote_clean
+  age_reports 25 "$T/wwork-r"
+  n=$(wreports "$T/wwork-r")
+  # shellcheck disable=SC2046
+  wk remote-same VALIDATOR_WORKER=true SNAPSHOT_VALIDATOR_INBOX=true VALIDATOR_WORK_DIR="$T/wwork-r" $(remote_env)
+  check_wk "next day, empty inbox and the kept copy already proved: nothing to do" 0
+  check_grep "the inbox is looked at first" "$WK_LOG" "No snapshot of app is waiting in the validator inbox"
+  check_grep "then the kept copy, skipped as already proved" "$WK_LOG" "already proved"
+  check_eq "no new report (nothing to drill is not a drill)" "$n" "$(wreports "$T/wwork-r")"
+  check "clean after nothing to do" wait_until 15 remote_clean
+
   kill "$TVS_SSHD_PID" 2>/dev/null; wait "$TVS_SSHD_PID" 2>/dev/null
 }
