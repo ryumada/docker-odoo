@@ -37,7 +37,7 @@ Details live in `scripts/README.md` (snapshot tool, validator, Secondary VPS set
 1. [x] `restore-snapshot.sh` hides `psql` / `pg_restore` errors, so a half-failed restore can report success. Fixed: errors shown and fatal (known-harmless ones warn), cut-short dumps refused before anything is touched, open sessions no longer block the drop, Odoo modules checked after the restore (`tests/test_restore_snapshot.sh`).
 2. [x] Data-only restore doesn't extract bundled repository folders. Fixed: members chosen from the archive's listing, bundled directories extracted whole, configuration and custom directories left out; both restore modes refuse a snapshot missing a bundled directory before changing anything (`tests/test_restore_snapshot.sh`).
 3. [x] The addon's access-control findings from the earlier review. Done in `sudodevops_odoo_utilities` (A01-A04, tracked in its own `TODO.md`); A01 checked against the code: no self-grant, migration no longer re-grants, listing methods check access, stop and `.env` need a Manager, name and path unique per server, `requeue` restricted, `with_user` tests present.
-14. [ ] Block `/queue_job/` at the reverse proxy in the nginx templates (`nginx-configurations/`): queue_job's `runjob` route runs a job as superuser, without login, for anyone who knows its UUID ("Fix first" item 7 of the addon review). First check how the job runner reaches Odoo, so blocking the path does not stop the runner.
+14. [x] Block `/queue_job/` at the reverse proxy ("Fix first" item 7 of the addon review). Done: the job runner calls Odoo directly on its own port (`http_interface` or `localhost`), not through the proxy, so blocking is safe; every Odoo nginx template answers 404 for `/queue_job/...` except `/queue_job/static/`; `setup.sh` adds a Traefik router that does the same (also for paths starting with `//`, which Odoo reads as `/`); tested with nginx and Traefik v2 and v3 (`tests/test_reverse_proxy.sh`).
 
 ### Snapshot side
 4. [x] `sudodevops` block in `manifest.json` (database size, filestore size, attachment count) via a shared `scripts/lib/odoo_sizes.sh`; `disk_free_monitor.sh` uses it too (records `null`, not `0`, on failure). The drill's disk estimate then uses real sizes. Done: also the PostgreSQL version; works for a database on another host; `disk_free_monitor.sh` now supports one too (`tests/test_odoo_sizes.sh`).
@@ -56,6 +56,8 @@ Details live in `scripts/README.md` (snapshot tool, validator, Secondary VPS set
 13. [ ] Alerts by email, Google Chat / Slack webhook and Telegram.
 
 ## For the owner (not code)
+- [ ] On every nginx VPS: add the `/queue_job/` block to each Odoo site in `/etc/nginx/sites-available/` (see README, "`/queue_job/` is closed at the proxy"), then `sudo nginx -t && sudo systemctl reload nginx`. Traefik deployments: re-run `./setup.sh`.
+- [ ] Check that Odoo's `PORT` and `GEVENT_PORT` are closed to the internet in the firewall (host network: Odoo listens on every interface, and `/queue_job/runjob` is open on those ports without the proxy).
 - [ ] On every deployment: update docker-odoo and re-run `./setup.sh` (installs the fixed snapshot, backup and restore tools). AFI still runs the old snapshot tool.
 - [ ] Test the master-password paths (backup, restore, clone, release-candidate deploy) and the PostgreSQL password through Docker (e.g. `./scripts/list-databases.sh` against a remote database).
 - [ ] If a deployment uses Enterprise: private GitLab mirror for its `odoo-base`.

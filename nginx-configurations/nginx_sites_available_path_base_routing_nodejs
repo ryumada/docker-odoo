@@ -62,6 +62,14 @@ server {
     # 2. ODOO APP (Root /)
     # ==========================================
 
+    # queue_job: /queue_job/runjob runs a job as superuser, without login, for anyone who knows the
+    # job's UUID. Its job runner calls Odoo directly on Odoo's own port (http_interface or localhost),
+    # never through this proxy, so nothing legitimate arrives here. The module's static files (its app
+    # icon) stay reachable. Matched on the normalized path, so %-encoding, "//" and "/../" do not get past.
+    location ~ ^/queue_job/(?!static/) {
+        return 404;
+    }
+
     location /web/login {
         proxy_redirect  off;
         limit_except    GET POST { deny all; }

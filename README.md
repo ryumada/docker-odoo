@@ -347,6 +347,16 @@ DOCKER_NETWORK_MODE=proxy
 4. Simply run `sudo ./setup.sh`!
 5. The `docker-compose.yml` file is immediately generated with fully baked isolation routing for `odoo.yourdomain.com` targeting both Standard HTTP traffic and `PathPrefix(\`/websocket\`)` longpolling traffic concurrently!
 
+### `/queue_job/` is closed at the proxy
+OCA `queue_job`'s `/queue_job/runjob` route runs a job as superuser, without login, for anyone who knows the job's UUID. Its job runner calls Odoo directly on Odoo's own port (`http_interface`, or `localhost`, and `PORT`), never through the reverse proxy, so the proxy closes the path for everyone else:
+
+- **NGINX:** every Odoo template in `nginx-configurations/` (`nginx_sites_available`, `-with_API`, `-localhost`, `_path_base_routing_nodejs`) answers `404` for `/queue_job/...`, except `/queue_job/static/...` (the module's app icon). The templates are copied by hand, so a site set up before this change needs the same `location ~ ^/queue_job/(?!static/) { return 404; }` block added to its file in `/etc/nginx/sites-available/`, then `sudo nginx -t && sudo systemctl reload nginx`.
+- **Traefik:** `setup.sh` adds a router (`odoo-qj-<service>`) that sends those paths, and any path starting with `//`, to a non-existent path, so Odoo answers `404`. Re-run `sudo ./setup.sh` to get it.
+- Do not point the job runner at the public domain (`[queue_job] host` or `ODOO_QUEUE_JOB_HOST`); it would be blocked too.
+- The proxy only protects traffic that goes through it: with the host network, Odoo listens on `PORT` and `GEVENT_PORT` on every interface, so keep those ports closed to the internet in the firewall.
+
+Tested by `./tests/test_reverse_proxy.sh` (each template in a throwaway nginx on 127.0.0.1, and the generated Traefik labels in Traefik v2 and v3 with `TRAEFIK_V2_BIN` / `TRAEFIK_BIN`), including `%`-encoded, `//` and `/../` variants.
+
 ---
 
 Copyright © 2024 ryumada. All Rights Reserved.

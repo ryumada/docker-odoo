@@ -402,7 +402,19 @@ EOF
     traefik_labels+="      - 'traefik.http.routers.odoo-ws-${SERVICE_NAME}.entrypoints=websecure'\n"
     traefik_labels+="      - 'traefik.http.routers.odoo-ws-${SERVICE_NAME}.tls=true'\n"
     traefik_labels+="      - 'traefik.http.routers.odoo-ws-${SERVICE_NAME}.service=odoo-ws-service-${SERVICE_NAME}'\n"
-    traefik_labels+="      - 'traefik.http.services.odoo-ws-service-${SERVICE_NAME}.loadbalancer.server.port=${TARGET_GEVENT_PORT}'"
+    traefik_labels+="      - 'traefik.http.services.odoo-ws-service-${SERVICE_NAME}.loadbalancer.server.port=${TARGET_GEVENT_PORT}'\n"
+    # queue_job: /queue_job/runjob runs a job as superuser without login for anyone who knows its UUID. The job
+    # runner calls Odoo inside the container, never through Traefik, so these requests are turned into a 404
+    # (the path is replaced before Odoo sees it). The module's static files (its app icon) stay reachable.
+    # Paths starting with "//" are closed too: Traefik matches them as they are, but Odoo reads "//queue_job/..."
+    # as "/queue_job/...", and nothing in Odoo uses such a path. ("\&" and "\|" keep the sed below literal.)
+    traefik_labels+="      - 'traefik.http.routers.odoo-qj-${SERVICE_NAME}.rule=Host(\"${TRAEFIK_DOMAIN}\") \&\& ((PathPrefix(\"/queue_job/\") \&\& !PathPrefix(\"/queue_job/static/\")) \|\| PathPrefix(\"//\"))'\n"
+    traefik_labels+="      - 'traefik.http.routers.odoo-qj-${SERVICE_NAME}.priority=1000'\n"
+    traefik_labels+="      - 'traefik.http.routers.odoo-qj-${SERVICE_NAME}.entrypoints=websecure'\n"
+    traefik_labels+="      - 'traefik.http.routers.odoo-qj-${SERVICE_NAME}.tls=true'\n"
+    traefik_labels+="      - 'traefik.http.routers.odoo-qj-${SERVICE_NAME}.middlewares=odoo-qj-block-${SERVICE_NAME}'\n"
+    traefik_labels+="      - 'traefik.http.routers.odoo-qj-${SERVICE_NAME}.service=odoo-service-${SERVICE_NAME}'\n"
+    traefik_labels+="      - 'traefik.http.middlewares.odoo-qj-block-${SERVICE_NAME}.replacepath.path=/queue_job_blocked'"
 
     sed -i "s|.*# <<TRAEFIK_LABELS_PLACEHOLDER>>.*|${traefik_labels}|" "$DOCKER_COMPOSE_FILE"
   else
