@@ -658,3 +658,100 @@ gcs_invalidate_validation() {
   fi
   return 0
 }
+
+# --- Validator inbox (Secondary VPS) -------------------------------------------
+# A remote snapshot can be handed to the snapshot validator instead of being deleted, so the
+# drill restores the archive already on the Secondary VPS instead of downloading it again.
+#   <inbox>/<service>/<archive name>/            one pending job; the folder appears complete,
+#     <archive name>                             by rename from .incoming-*, never half-written
+#     <archive name>.sha256
+#     job.json                                   what the drill needs to record its result next
+#                                                to the uploaded copy (Drive name and id, GCS object)
+# Only the newest job per service stays pending. A worker takes a job by renaming its folder
+# out of the inbox; a job already taken is never touched here. Folders starting with "." are
+# not jobs.
+
+snap_inbox_handoff() {
+  # Args: archive mode(move|link) inbox_root service reserve_gb source_host drive_result_file gcs_object kept_copy
+  #   archive            the archive on this host (its .sha256 next to it)
+  #   mode               move: the archive leaves its place (only used when it would be deleted
+  #                      otherwise, so a failed hand-off loses nothing that was going to be kept);
+  #                      link: a hard link (the archive is also kept where it is); never a copy
+  #   reserve_gb         free space that must remain on the inbox's disk afterwards, or no hand-off
+  #   drive_result_file  "<name>\t<file id>" written by upload_to_gdrive (empty: not on Drive)
+  #   gcs_object         gs://bucket/object the archive was uploaded to (empty: not on GCS)
+  #   kept_copy          path of the copy kept on this host besides the inbox (empty: none)
+  # Returns 0 when handed off, 2 when skipped (disk below the reserve, nothing changed), 1 on error.
+  local archive="$1" mode="$2" inbox="$3" service="$4" reserve_gb="${5:-5}" source_host="$6"
+  local drive_result="$7" gcs_object="$8" kept="$9"
+  local dir="$inbox/$service" name="" drive_name="" drive_id="" hash free need incoming target old trash generation=""
+  [ -f "$archive" ] || { _ss_log error "Validator inbox: $archive not found."; return 1; }
+  [[ "$reserve_gb" =~ ^[0-9]+$ ]] || reserve_gb=5
+  mkdir -p "$dir" && chmod 700 "$inbox" "$dir" 2>/dev/null || { _ss_log error "Validator inbox: cannot create $dir."; return 1; }
+
+  # Moving frees nothing and linking takes no space, but either keeps the archive on this disk
+  free=$(df -PB1 "$dir" 2>/dev/null | awk 'NR == 2 {print $4}')
+  need=$(( reserve_gb * 1024 * 1024 * 1024 ))
+  if ! [[ "$free" =~ ^[0-9]+$ ]] || [ "$free" -lt "$need" ]; then
+    _ss_log warn "Validator inbox: only ${free:-unknown} bytes free on $dir (reserve ${reserve_gb} GB); this snapshot is not kept for a drill."
+    return 2
+  fi
+
+  if [ -n "$drive_result" ] && [ -s "$drive_result" ]; then
+    IFS=$'\t' read -r drive_name drive_id < "$drive_result" || true
+  fi
+  if [[ "$drive_name" =~ ^snapshot-.+-[0-9]{8}-[0-9]{6}\.tar\.zst$ ]]; then
+    name="$drive_name"
+  else
+    name="snapshot-$service-$(date -u +%Y%m%d-%H%M%S).tar.zst"
+  fi
+  hash=$(snap_sidecar_hash "$archive.sha256")
+  [ -n "$hash" ] || hash=$(snap_sha256_of "$archive") || { _ss_log error "Validator inbox: cannot read $archive."; return 1; }
+  if [ -n "$gcs_object" ] && command -v gcloud >/dev/null 2>&1; then
+    generation=$(gcloud storage objects describe "$gcs_object" --format='value(generation)' 2>/dev/null | head -n 1 || true)
+  fi
+
+  incoming="$dir/.incoming-$name-$$"
+  rm -rf "$incoming"; mkdir -p "$incoming" || return 1
+  if [ "$mode" = move ]; then
+    mv "$archive" "$incoming/$name" || { rm -rf "$incoming"; _ss_log error "Validator inbox: could not move $archive."; return 1; }
+  elif ! ln "$archive" "$incoming/$name" 2>/dev/null; then
+    rm -rf "$incoming"
+    _ss_log warn "Validator inbox: $archive cannot be hard-linked into $dir (another disk); not copying it, so this snapshot is not kept for a drill."
+    return 2
+  fi
+  snap_write_sidecar "$hash" "$incoming/$name.sha256" "$name"
+  [ "$mode" = move ] && rm -f "$archive.sha256"
+  python3 - "$incoming/job.json" "$service" "$name" "$hash" "$source_host" "$drive_name" "$drive_id" "$gcs_object" "$generation" "$kept" <<'PY' || { rm -rf "$incoming"; _ss_log error "Validator inbox: could not write job.json."; return 1; }
+import datetime, json, sys
+out, service, name, sha, host, drive_name, drive_id, gcs, generation, kept = sys.argv[1:11]
+json.dump({
+    "schema": 1,
+    "service": service,
+    "archive": name,
+    "sha256": sha,
+    "handed_off_at": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+    "source_host": host or None,
+    "drive": {"name": drive_name, "file_id": drive_id} if drive_id else None,
+    "gcs": {"object": gcs, "generation": generation or None} if gcs else None,
+    "kept_copy": kept or None,
+}, open(out, "w"), indent=2)
+PY
+
+  # Older pending jobs of this service go; a job a worker already took is no longer here
+  for old in "$dir"/*/; do
+    old="${old%/}"
+    [ -d "$old" ] || continue
+    trash="$dir/.removing-$(basename "$old")-$$"
+    if mv "$old" "$trash" 2>/dev/null; then
+      rm -rf "$trash"
+      _ss_log info "Validator inbox: replaced the older pending snapshot $(basename "$old")."
+    fi
+  done
+  target="$dir/$name"
+  if ! mv "$incoming" "$target"; then
+    rm -rf "$incoming"; _ss_log error "Validator inbox: could not publish $target."; return 1
+  fi
+  _ss_log success "Validator inbox: $name is waiting for a drill in $target."
+  return 0
+}

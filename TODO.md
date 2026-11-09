@@ -41,7 +41,7 @@ Details live in `scripts/README.md` (snapshot tool, validator, Secondary VPS set
 
 ### Snapshot side
 4. [x] `sudodevops` block in `manifest.json` (database size, filestore size, attachment count) via a shared `scripts/lib/odoo_sizes.sh`; `disk_free_monitor.sh` uses it too (records `null`, not `0`, on failure). The drill's disk estimate then uses real sizes. Done: also the PostgreSQL version; works for a database on another host; `disk_free_monitor.sh` now supports one too (`tests/test_odoo_sizes.sh`).
-5. [ ] Remote mode: hand the archive to the validator inbox on the Secondary VPS instead of deleting it; keep only the newest pending snapshot per deployment.
+5. [x] Remote mode: hand the archive to the validator inbox on the Secondary VPS instead of deleting it; keep only the newest pending snapshot per deployment. Done: `SNAPSHOT_VALIDATOR_INBOX` (default off); moved after the upload, hard-linked when the archive is kept there anyway, never copied; skipped below `VALIDATOR_DISK_RESERVE_GB`; `job.json` records the Drive name and id and the GCS object and generation for the worker (#10); layout in `scripts/README.md` (`tests/test_validator_inbox.sh`).
 6. [ ] Write `stats.json` on the Secondary VPS after each remote snapshot, for the disk reserve.
 7. [ ] Optional: dated snapshots in GCS instead of one overwritten object.
 8. [ ] Optional: retention for local archive folders.

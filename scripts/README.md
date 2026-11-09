@@ -243,6 +243,22 @@ It reads `SNAPSHOT_REMOTE_HOST`, `SNAPSHOT_REMOTE_USER` and `SNAPSHOT_REMOTE_POR
 
 Its images, containers and the drill's database live in `~odoo-backupper/.local/share/docker`, so that disk needs room for the restored database (the disk reserve check watches it automatically).
 
+**Validator inbox (Secondary VPS).** With `SNAPSHOT_VALIDATOR_INBOX=true` in `.env`, a remote snapshot is not deleted from the Secondary VPS after its upload: it is handed to `~/.odoo-validator/inbox/<service>/` there (the home of `SNAPSHOT_REMOTE_USER`), so a drill can restore it without downloading it again. The archive is **moved**, never copied; a snapshot that is kept on the Secondary VPS anyway (its upload failed, or there is no cloud upload) is hard-linked into the inbox instead, so it takes no extra disk, and it is skipped if the inbox is on another disk. Only the newest pending snapshot per deployment stays: a new one replaces the older pending job. Nothing is handed off when the inbox's disk has less free space than `VALIDATOR_DISK_RESERVE_GB` (default 5); the snapshot is then cleaned up as before. Default off: turn it on together with the drill worker, or the inbox only ever holds one snapshot per deployment that nobody drills. Layout, for the worker (`snap_inbox_handoff` in `scripts/lib/snapshot_storage.sh`):
+
+```text
+~/.odoo-validator/inbox/            0700
+  <service>/                        0700
+    <archive>/                      one pending job; appears complete (renamed from .incoming-*)
+      <archive>                     snapshot-<service>-YYYYMMDD-HHMMSS.tar.zst (the Drive name when uploaded there)
+      <archive>.sha256              names <archive>
+      job.json                      {"schema": 1, "service", "archive", "sha256", "handed_off_at" (UTC),
+                                     "source_host", "drive": {"name", "file_id"} | null,
+                                     "gcs": {"object", "generation"} | null, "kept_copy": path | null}
+    .incoming-* / .removing-*       work in progress, not jobs
+```
+
+A worker takes a job by renaming its folder out of the inbox (one `mv` on the same disk); a job already taken is never touched by the snapshot tool, so a running drill is safe from a new snapshot. `drive` and `gcs` say where the uploaded copy is, so the drill can record its result next to it (`--publish`). Tested by `./tests/test_validator_inbox.sh`.
+
 Checks, in order: checksum (`.sha256`), the whole archive decompresses, required files are present, the Odoo version in `manifest.json` (read from `version_info`, then compared with the restored database's `base` module: a mismatch is a warning, and the report's `odoo_version` is the database's), every git repository can be re-cloned at its recorded commit (or is bundled; only the commit itself is fetched, and the report says per repository whether it was found by id or in the history and how long it took), `dump.sql` restores completely (end-of-dump marker, zero SQL errors) into a matching Postgres version and looks like a usable Odoo database (core tables, users, keys and indexes), and every stored attachment exists in the filestore with the right size. Older snapshots (before the October 2026 snapshot refactor), which keep `dump.sql`, `manifest.json` and the filestore in `backupdata-<service>.zip` inside the archive, are checked the same way: the zip is taken out, every file in it is checked against its CRC, and the report says `"format": "older: backupdata-<service>.zip inside the archive"`.
 
 ```bash

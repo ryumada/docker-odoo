@@ -507,6 +507,11 @@ except Exception: print("")')
     log_warn "No .sha256 file next to $file_path; uploaded without a checksum file."
   fi
 
+  # The validator inbox records the name and id the snapshot got on Drive
+  if [ -n "${SNAP_UPLOAD_RESULT:-}" ] && [ -n "$uploaded_id" ]; then
+    printf '%s\t%s\n' "$file_name" "$uploaded_id" > "$SNAP_UPLOAD_RESULT"
+  fi
+
   if [ -n "$max_backups_cfg" ]; then
     cleanup_gdrive_old_snapshots "$access_token" "$folder_id" "$service_name" "$max_backups_cfg" "$raw_access_token" "$sa_key_path"
   fi
@@ -783,6 +788,25 @@ release_secondary_vps_queue_token() {
   queue_lock_release_remote
 }
 
+function remote_inbox_handoff() {
+  # Args: mode(move|link) archive_on_secondary kept_copy gcs_object. Called from run_remote_snapshot
+  # (uses its remote_exec, remote_home and remote_staging). Hands the archive to the validator inbox
+  # on the Secondary VPS (~/.odoo-validator/inbox/<service>/, see snap_inbox_handoff), where the
+  # drill worker takes it. Returns 0 when handed off; otherwise the caller does what it did before.
+  local mode="$1" src="$2" kept="$3" gcs_object="$4" funcs source_host
+  source_host=$(hostname -f 2>/dev/null || hostname 2>/dev/null || echo unknown)
+  funcs=$(declare -f log log_info log_success log_warn log_error _ss_log snap_sha256_of snap_sidecar_hash snap_write_sidecar snap_inbox_handoff)
+  remote_exec "bash -s" << REMOTE_INBOX_EOF
+COLOR_RESET='$COLOR_RESET'
+COLOR_INFO='$COLOR_INFO'
+COLOR_SUCCESS='$COLOR_SUCCESS'
+COLOR_WARN='$COLOR_WARN'
+COLOR_ERROR='$COLOR_ERROR'
+$funcs
+snap_inbox_handoff '$src' '$mode' '$remote_home/.odoo-validator/inbox' '$SERVICE_NAME' '$VALIDATOR_DISK_RESERVE_GB' '$source_host' '$remote_staging/.drive-upload' '$gcs_object' '$kept'
+REMOTE_INBOX_EOF
+}
+
 function run_remote_snapshot() {
   local host="$1"
   local user="$2"
@@ -1037,6 +1061,7 @@ MANIFEST_EOF"
 
   local remote_upload_attempted=false
   local remote_upload_success=false
+  local remote_gcs_object=""
 
   if [ -n "$GDRIVE_ACCESS_TOKEN" ] || [ -n "$GDRIVE_SERVICE_ACCOUNT_KEY" ]; then
     remote_upload_attempted=true
@@ -1060,6 +1085,8 @@ COLOR_SUCCESS='$COLOR_SUCCESS'
 COLOR_WARN='$COLOR_WARN'
 COLOR_ERROR='$COLOR_ERROR'
 SERVICE_NAME='$SERVICE_NAME'
+SNAP_UPLOAD_RESULT='$remote_staging/.drive-upload'
+rm -f "\$SNAP_UPLOAD_RESULT"
 $upload_funcs
 upload_to_gdrive '$remote_staging/snapshot-$SERVICE_NAME.tar.zst' '$GDRIVE_ACCESS_TOKEN' '$remote_sa_content' '$GDRIVE_FOLDER_ID' '$GDRIVE_CHUNK_SIZE' '$GDRIVE_MAX_BACKUPS' '$SERVICE_NAME'
 REMOTE_EOF
@@ -1091,6 +1118,7 @@ REMOTE_GCS_EOF
         log_error "The copy in gs://$GCS_BUCKET_NAME/snapshot-$SERVICE_NAME.tar.zst is broken. Keeping the archive on the Secondary VPS."
       else
         remote_upload_success=true
+        remote_gcs_object="gs://$GCS_BUCKET_NAME/snapshot-$SERVICE_NAME.tar.zst"
         if remote_exec "gcloud storage cp '$remote_staging/snapshot-$SERVICE_NAME.tar.zst.sha256' 'gs://$GCS_BUCKET_NAME/snapshot-$SERVICE_NAME.tar.zst.sha256'"; then
           log_success "Uploaded checksum file gs://$GCS_BUCKET_NAME/snapshot-$SERVICE_NAME.tar.zst.sha256"
         else
@@ -1105,16 +1133,28 @@ REMOTE_GCS_EOF
 
   if [ "$remote_upload_attempted" = true ]; then
     if [ "$remote_upload_success" = true ]; then
-      log_info "Remote cloud upload succeeded. Cleaning up temporary archive on Secondary VPS..."
+      # Uploaded: the archive is no longer needed here, unless the validator drills it (moved, no copy)
+      if [ "$SNAPSHOT_VALIDATOR_INBOX" = true ] \
+         && remote_inbox_handoff move "$remote_staging/snapshot-$SERVICE_NAME.tar.zst" "" "$remote_gcs_object"; then
+        log_info "Remote cloud upload succeeded. The archive stays on the Secondary VPS for the validator's drill."
+      else
+        log_info "Remote cloud upload succeeded. Cleaning up temporary archive on Secondary VPS..."
+      fi
       remote_exec "rm -f '$remote_staging/snapshot-$SERVICE_NAME.tar.zst' '$remote_staging/snapshot-$SERVICE_NAME.tar.zst.sha256'"
     else
       log_warn "Remote cloud upload failed. Preserving fallback archive on Secondary VPS at $remote_archives/snapshot-$SERVICE_NAME.tar.zst."
       remote_exec "mv '$remote_staging/snapshot-$SERVICE_NAME.tar.zst' '$remote_archives/snapshot-$SERVICE_NAME.tar.zst' && { [ ! -f '$remote_staging/snapshot-$SERVICE_NAME.tar.zst.sha256' ] || mv '$remote_staging/snapshot-$SERVICE_NAME.tar.zst.sha256' '$remote_archives/snapshot-$SERVICE_NAME.tar.zst.sha256'; }"
+      if [ "$SNAPSHOT_VALIDATOR_INBOX" = true ]; then
+        remote_inbox_handoff link "$remote_archives/snapshot-$SERVICE_NAME.tar.zst" "$remote_archives/snapshot-$SERVICE_NAME.tar.zst" "$remote_gcs_object" || true
+      fi
     fi
   else
     log_info "Storing snapshot archive locally on Secondary VPS..."
     remote_exec "mv '$remote_staging/snapshot-$SERVICE_NAME.tar.zst' '$remote_archives/snapshot-$SERVICE_NAME.tar.zst' && { [ ! -f '$remote_staging/snapshot-$SERVICE_NAME.tar.zst.sha256' ] || mv '$remote_staging/snapshot-$SERVICE_NAME.tar.zst.sha256' '$remote_archives/snapshot-$SERVICE_NAME.tar.zst.sha256'; }"
     log_success "Remote snapshot successfully created and stored on Secondary VPS at $remote_archives/snapshot-$SERVICE_NAME.tar.zst."
+    if [ "$SNAPSHOT_VALIDATOR_INBOX" = true ]; then
+      remote_inbox_handoff link "$remote_archives/snapshot-$SERVICE_NAME.tar.zst" "$remote_archives/snapshot-$SERVICE_NAME.tar.zst" "" || true
+    fi
   fi
 
   log_info "Cleaning staging directory on Secondary VPS..."
@@ -1264,6 +1304,11 @@ function main() {
   SNAPSHOT_REMOTE_USER=$(grep "^SNAPSHOT_REMOTE_USER=" "$PATH_TO_ODOO/.env" 2>/dev/null | cut -d '=' -f2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//')
   SNAPSHOT_REMOTE_PORT=$(grep "^SNAPSHOT_REMOTE_PORT=" "$PATH_TO_ODOO/.env" 2>/dev/null | cut -d '=' -f2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//')
   SNAPSHOT_REMOTE_KEY=$(grep "^SNAPSHOT_REMOTE_KEY=" "$PATH_TO_ODOO/.env" 2>/dev/null | cut -d '=' -f2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//')
+  # Keep each remote snapshot on the Secondary VPS for the validator's drill (see run_remote_snapshot)
+  SNAPSHOT_VALIDATOR_INBOX=$(grep "^SNAPSHOT_VALIDATOR_INBOX=" "$PATH_TO_ODOO/.env" 2>/dev/null | cut -d '=' -f2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//')
+  VALIDATOR_DISK_RESERVE_GB=$(grep "^VALIDATOR_DISK_RESERVE_GB=" "$PATH_TO_ODOO/.env" 2>/dev/null | cut -d '=' -f2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//')
+  [ "$SNAPSHOT_VALIDATOR_INBOX" = true ] || SNAPSHOT_VALIDATOR_INBOX=false
+  [[ "$VALIDATOR_DISK_RESERVE_GB" =~ ^[0-9]+$ ]] || VALIDATOR_DISK_RESERVE_GB=5
   [ -z "$SNAPSHOT_REMOTE_PORT" ] && SNAPSHOT_REMOTE_PORT="22"
 
   # Extract Odoo version metadata
