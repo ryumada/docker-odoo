@@ -102,6 +102,15 @@ __ql_try() {
     fi
     age=$((now - ts))
     if [ "$age" -lt "$limit" ]; then
+      case "$f" in
+        "$base.active.$holder"|"$base.active.$holder."*)
+          # Leftover marker from a previous killed or crashed run for this exact holder.
+          # The caller is the sole legitimate runner for this holder; reclaim it immediately.
+          echo "[WARN] Clearing orphaned queue marker from previous killed run for $holder ($f, age ${age}s)." >&2
+          rm -f "$f" 2>/dev/null || true
+          continue
+          ;;
+      esac
       exec {fd}<&-
       echo "BUSY $who"
       return 1

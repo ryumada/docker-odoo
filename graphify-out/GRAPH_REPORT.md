@@ -1,16 +1,16 @@
-# Graph Report - docker-odoo  (2026-11-05)
+# Graph Report - docker-odoo  (2026-11-11)
 
 ## Corpus Check
-- 82 files · ~69,443 words
+- 119 files · ~136,048 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 978 nodes · 1689 edges · 71 communities (57 shown, 14 thin omitted)
-- Extraction: 99% EXTRACTED · 1% INFERRED · 0% AMBIGUOUS · INFERRED: 10 edges (avg confidence: 0.5)
+- 1499 nodes · 2542 edges · 109 communities (82 shown, 27 thin omitted)
+- Extraction: 100% EXTRACTED · 0% INFERRED · 0% AMBIGUOUS · INFERRED: 11 edges (avg confidence: 0.5)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `b2420fe2`
+- Built from commit: `14bb303e`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -66,6 +66,7 @@
 - update-deployment-tool.sh
 - get-code-server-env.sh
 - list-databases.sh
+- validate-snapshot.sh
 - validate-agent-config.sh
 - Phased Execution
 - knowledge/README.md
@@ -73,6 +74,7 @@
 - ponytail-ref.md
 - conf/README.md
 - git/README.md
+- lib.sh
 - create-deployment-dir.sh
 - generate-deploy-rc-ssh-key.sh
 - git-helper.sh
@@ -82,18 +84,52 @@
 - save-config-file.sh
 - bash-script-template.sh
 - utilities/README.md
+- test_restore_snapshot.sh
+- test_secret_args.sh
+- test_validator_inbox.sh
+- test_local_retention.sh
+- test_odoo_sizes.sh
+- test_snapshot_stats.sh
+- upload-snapshot.sh
+- test_reverse_proxy.sh
+- Handler
+- upload-temp-snapshots.sh
+- setup-validator-docker.sh
+- validate-snapshot-worker.sh
+- test_read_drill_reports.sh
+- suite_worker.sh
+- Done
+- docker
+- suite_remote.sh
+- suite_version.sh
+- Handler
+- suite_storage.sh
+- odoo_version.sh
+- Handler
+- fake_odoo_bin.py
+- gcloud
+- mkfixture.sh
+- suite_credentials.sh
+- suite_boot.sh
+- suite_setup.sh
+- suite_formats.sh
+- suite_local.sh
+- suite_rootless.sh
+- read-drill-reports.sh
+- test_validate_snapshot.sh
+- df
 
 ## God Nodes (most connected - your core abstractions)
-1. `main()` - 26 edges
-2. `log_info()` - 19 edges
-3. `log_error()` - 18 edges
-4. `restoreSnapshotFull()` - 17 edges
-5. `log_error()` - 16 edges
-6. `log_success()` - 15 edges
-7. `restoreSnapshotDataOnly()` - 14 edges
-8. `main()` - 12 edges
-9. `log_info()` - 12 edges
-10. `main()` - 11 edges
+1. `main()` - 27 edges
+2. `validate-snapshot.sh script` - 23 edges
+3. `record_stage()` - 22 edges
+4. `log_info()` - 21 edges
+5. `log_error()` - 19 edges
+6. `log_info()` - 19 edges
+7. `restoreSnapshotFull()` - 18 edges
+8. `log_error()` - 18 edges
+9. `finish()` - 17 edges
+10. `log_success()` - 16 edges
 
 ## Surprising Connections (you probably didn't know these)
 - `verifySnapshotChecksum()` --calls--> `snap_verify_file()`  [EXTRACTED]
@@ -102,31 +138,31 @@
   scripts/download-snapshot.sh → scripts/lib/snapshot_storage.sh
 - `download-snapshot.sh script` --calls--> `snap_write_sidecar()`  [EXTRACTED]
   scripts/download-snapshot.sh → scripts/lib/snapshot_storage.sh
-- `generate-snapshot-ssh-key.sh script` --calls--> `install_pubkey_via_admin()`  [EXTRACTED]
-  scripts/generate-snapshot-ssh-key.sh → scripts/lib/ssh_utils.sh
-- `restoreSnapshotDataOnly()` --calls--> `trigger_registry_reload()`  [EXTRACTED]
-  scripts/restore-snapshot.sh → scripts/lib/odoo_utils.sh
+- `upload_snapshot()` --calls--> `snap_check_or_create_sidecar()`  [EXTRACTED]
+  scripts/upload-snapshot.sh → scripts/lib/snapshot_storage.sh
+- `upload-temp-snapshots.sh script` --calls--> `snap_check_or_create_sidecar()`  [EXTRACTED]
+  scripts/upload-temp-snapshots.sh → scripts/lib/snapshot_storage.sh
 
 ## Import Cycles
 - None detected.
 
-## Communities (71 total, 14 thin omitted)
+## Communities (109 total, 27 thin omitted)
 
 ### Community 0 - "snapshot_storage.sh"
-Cohesion: 0.06
-Nodes (54): gcs_invalidate_validation(), gcs_publish_validation(), gcs_verify_upload(), gds_apply_plan(), gds_delete_file(), gds_download(), gds_find_protected(), gds_list_archives() (+46 more)
+Cohesion: 0.09
+Nodes (27): gcs_invalidate_validation(), gcs_publish_validation(), gcs_verify_upload(), gds_apply_plan(), gds_curl(), gds_delete_file(), gds_download(), gds_find_by_name() (+19 more)
 
 ### Community 1 - "setup.sh"
 Cohesion: 0.10
-Nodes (51): detect_os_family(), os_detect.sh script, checkAddonsPathOnOdooConfFile(), checkGitRepositories(), checkImportantEnvVariable(), checkRegistryConnection(), COLOR_ERROR, COLOR_INFO (+43 more)
+Nodes (52): detect_os_family(), os_detect.sh script, checkAddonsPathOnOdooConfFile(), checkGitRepositories(), checkImportantEnvVariable(), checkRegistryConnection(), COLOR_ERROR, COLOR_INFO (+44 more)
 
 ### Community 2 - "Critical Workflows"
 Cohesion: 0.05
 Nodes (37): Agent Instructions, Agent Personas (Routing), Core Checklist, Example, Required Protocol, Agent Personas — Full Reference, Behavior, @flash — Precise Execution Agent (+29 more)
 
 ### Community 3 - "restore-snapshot.sh"
-Cohesion: 0.16
-Nodes (33): odoo_utils.sh script, trigger_registry_reload(), areYouReallySure(), check_git_ssh_access(), COLOR_ERROR, COLOR_INFO, COLOR_RESET, COLOR_SUCCESS (+25 more)
+Cohesion: 0.15
+Nodes (37): odoo_utils.sh script, trigger_registry_reload(), areYouReallySure(), check_bundled_directories_present(), check_git_ssh_access(), check_restore_errors(), COLOR_ERROR, COLOR_INFO (+29 more)
 
 ### Community 4 - "ssh_utils.sh"
 Cohesion: 0.10
@@ -141,8 +177,8 @@ Cohesion: 0.21
 Nodes (21): build_classification_cte(), cmd_clean_assets(), cmd_clean_missing(), cmd_clean_orphans(), cmd_list(), cmd_summary(), COLOR_ERROR, COLOR_INFO (+13 more)
 
 ### Community 7 - "scripts/README.md"
-Cohesion: 0.09
-Nodes (22): Backup Data, Database Cloner, Delete snapshots keeping the latest 10, Download Snapshot, Dry-run deletion simulation, Dry-run preview without uploading or deleting, Filestore Manager, Generate key interactively or using .env PRD_SSH_HOST (+14 more)
+Cohesion: 0.08
+Nodes (24): Backup Data, Database Cloner, Delete snapshots keeping the latest 10, Download Snapshot, Dry-run deletion simulation, Dry-run preview without uploading or deleting, Filestore Manager, Generate key interactively or using .env PRD_SSH_HOST (+16 more)
 
 ### Community 8 - "git_addons_updater.sh"
 Cohesion: 0.20
@@ -158,11 +194,11 @@ Nodes (18): areYouReallySure(), COLOR_ERROR, COLOR_INFO, COLOR_RESET, COLOR_SUCC
 
 ### Community 11 - "Maintenance"
 Cohesion: 0.11
-Nodes (17): 1. Enable Multi-Deployment, 2. Create Deployment Profiles, 3. Switch Between Deployments, Automatic Credential Generation, Check the git repository for custom addons used by Docker Image, Check the version of Odoo base, Configuration, Configuration (+9 more)
+Nodes (18): 1. Enable Multi-Deployment, 2. Create Deployment Profiles, 3. Switch Between Deployments, Automatic Credential Generation, Check the git repository for custom addons used by Docker Image, Check the version of Odoo base, Configuration, Configuration (+10 more)
 
 ### Community 12 - "install-snapshot.sh"
 Cohesion: 0.22
-Nodes (17): COLOR_BOLD, COLOR_CYAN, COLOR_ERROR, COLOR_INFO, COLOR_RESET, COLOR_SUCCESS, COLOR_WARN, error_handler() (+9 more)
+Nodes (18): COLOR_BOLD, COLOR_CYAN, COLOR_ERROR, COLOR_INFO, COLOR_RESET, COLOR_SUCCESS, COLOR_WARN, error_handler() (+10 more)
 
 ### Community 13 - "long-process-mode.sh"
 Cohesion: 0.22
@@ -193,8 +229,8 @@ Cohesion: 0.27
 Nodes (16): check_dependencies(), COLOR_ERROR, COLOR_INFO, COLOR_RESET, COLOR_SUCCESS, COLOR_WARN, error_handler(), get_filename() (+8 more)
 
 ### Community 20 - "cleanup-snapshot.sh"
-Cohesion: 0.23
-Nodes (15): COLOR_ERROR, COLOR_INFO, COLOR_RESET, COLOR_SUCCESS, COLOR_WARN, get_gdrive_access_token_from_sa(), is_gdrive_token_valid(), log() (+7 more)
+Cohesion: 0.21
+Nodes (16): COLOR_ERROR, COLOR_INFO, COLOR_RESET, COLOR_SUCCESS, COLOR_WARN, get_gdrive_access_token_from_sa(), is_gdrive_token_valid(), log() (+8 more)
 
 ### Community 21 - "install-docker_logs_rotator.sh"
 Cohesion: 0.23
@@ -301,8 +337,8 @@ Cohesion: 0.33
 Nodes (9): COLOR_ERROR, COLOR_INFO, COLOR_RESET, COLOR_SUCCESS, log(), log_error(), log_info(), log_success() (+1 more)
 
 ### Community 47 - "disk_free_monitor.sh"
-Cohesion: 0.33
-Nodes (9): COLOR_ERROR, COLOR_INFO, COLOR_RESET, COLOR_SUCCESS, log(), log_error(), log_info(), log_success() (+1 more)
+Cohesion: 0.18
+Nodes (11): COLOR_ERROR, COLOR_INFO, COLOR_RESET, COLOR_SUCCESS, log(), log_error(), log_info(), log_success() (+3 more)
 
 ### Community 48 - "update-deployment-tool.sh"
 Cohesion: 0.33
@@ -316,6 +352,10 @@ Nodes (7): COLOR_ERROR, COLOR_INFO, COLOR_RESET, log(), log_error(), log_info(),
 Cohesion: 0.33
 Nodes (7): COLOR_ERROR, COLOR_INFO, COLOR_RESET, log(), log_error(), log_info(), list-databases.sh script
 
+### Community 51 - "validate-snapshot.sh"
+Cohesion: 0.05
+Nodes (68): boot_layout(), boot_prepare(), boot_run(), cat_member(), check_disk(), cleanup(), COLOR_ERROR, COLOR_INFO (+60 more)
+
 ### Community 52 - "validate-agent-config.sh"
 Cohesion: 0.60
 Nodes (5): fail(), log(), ok(), validate-agent-config.sh script, warn()
@@ -324,25 +364,113 @@ Nodes (5): fail(), log(), ok(), validate-agent-config.sh script, warn()
 Cohesion: 0.40
 Nodes (4): builder — Edit mode, investigator — Locate mode, Phased Execution, reviewer — Review mode
 
+### Community 59 - "lib.sh"
+Cohesion: 0.06
+Nodes (27): check(), check_eq(), check_grep(), check_no_grep(), check_not(), check_rc(), drive_start(), drive_stop() (+19 more)
+
+### Community 73 - "test_restore_snapshot.sh"
+Cohesion: 0.11
+Nodes (19): as_pg(), C_FAIL, C_INFO, C_PASS, C_RESET, check_eq(), check_grep(), cleanup() (+11 more)
+
+### Community 74 - "test_secret_args.sh"
+Cohesion: 0.12
+Nodes (15): C_FAIL, C_INFO, C_PASS, C_RESET, C_SKIP, check(), check_eq(), fail() (+7 more)
+
+### Community 75 - "test_validator_inbox.sh"
+Cohesion: 0.15
+Nodes (19): C_FAIL, C_INFO, C_PASS, C_RESET, C_SKIP, check_eq(), fail(), handoff() (+11 more)
+
+### Community 76 - "test_local_retention.sh"
+Cohesion: 0.13
+Nodes (14): C_FAIL, C_INFO, C_PASS, C_RESET, C_SKIP, check_eq(), cleanup(), fail() (+6 more)
+
+### Community 77 - "test_odoo_sizes.sh"
+Cohesion: 0.15
+Nodes (17): as_pg(), C_FAIL, C_INFO, C_PASS, C_RESET, C_SKIP, check_eq(), check_grep() (+9 more)
+
+### Community 78 - "test_snapshot_stats.sh"
+Cohesion: 0.15
+Nodes (16): C_FAIL, C_INFO, C_PASS, C_RESET, C_SKIP, check_eq(), fail(), lib() (+8 more)
+
+### Community 79 - "upload-snapshot.sh"
+Cohesion: 0.18
+Nodes (19): gds_retention(), cleanup_gdrive_old_snapshots(), COLOR_ERROR, COLOR_INFO, COLOR_RESET, COLOR_SUCCESS, COLOR_WARN, get_gdrive_access_token_from_sa() (+11 more)
+
+### Community 80 - "test_reverse_proxy.sh"
+Cohesion: 0.20
+Nodes (16): C_FAIL, C_INFO, C_PASS, C_RESET, C_SKIP, check_proxy(), fail(), odoo_would_run_queue_job() (+8 more)
+
+### Community 81 - "Handler"
+Cohesion: 0.27
+Nodes (8): BaseHTTPRequestHandler, files_dir(), Handler, load_all(), main(), parse_q(), Supports the clauses the scripts send, joined by ' and '., save_file()
+
+### Community 82 - "upload-temp-snapshots.sh"
+Cohesion: 0.23
+Nodes (17): COLOR_ERROR, COLOR_INFO, COLOR_RESET, COLOR_SUCCESS, COLOR_WARN, get_gdrive_access_token_from_sa(), is_gdrive_token_valid(), log() (+9 more)
+
+### Community 83 - "setup-validator-docker.sh"
+Cohesion: 0.22
+Nodes (14): COLOR_CYAN, COLOR_ERROR, COLOR_INFO, COLOR_RESET, COLOR_SUCCESS, COLOR_WARN, log(), log_error() (+6 more)
+
+### Community 84 - "validate-snapshot-worker.sh"
+Cohesion: 0.20
+Nodes (12): COLOR_ERROR, COLOR_INFO, COLOR_RESET, COLOR_SUCCESS, COLOR_WARN, log(), log_error(), log_info() (+4 more)
+
+### Community 85 - "test_read_drill_reports.sh"
+Cohesion: 0.23
+Nodes (12): C_FAIL, C_INFO, C_PASS, C_RESET, C_SKIP, check_eq(), fail(), pass() (+4 more)
+
+### Community 86 - "suite_worker.sh"
+Cohesion: 0.22
+Nodes (7): age_reports(), check_wk(), inbox_put(), local_put(), suite_worker.sh script, suite_worker(), wk()
+
+### Community 87 - "Done"
+Cohesion: 0.15
+Nodes (12): Done, For the owner (not code), Odoo addon, Open, Problems that already existed, Security, Snapshot side, Snapshot side (+4 more)
+
+### Community 88 - "docker"
+Cohesion: 0.31
+Nodes (5): docker script, as_pg(), cdir_of(), odoo_run(), pg_stop()
+
+### Community 89 - "suite_remote.sh"
+Cohesion: 0.33
+Nodes (7): ps_sampler(), remote_bundles_gone(), remote_clean(), remote_setup(), remote_validator_gone(), suite_remote.sh script, suite_remote()
+
+### Community 90 - "suite_version.sh"
+Cohesion: 0.31
+Nodes (7): backup_fallback_manifest(), log_info(), log_warn(), suite_version.sh script, snap_version(), suite_version(), ver_release_py()
+
+### Community 92 - "suite_storage.sh"
+Cohesion: 0.33
+Nodes (3): gcs(), suite_storage.sh script, suite_storage()
+
+### Community 93 - "odoo_version.sh"
+Cohesion: 0.40
+Nodes (3): odoo_version_detect(), _odoo_version_log(), odoo_version.sh script
+
+### Community 98 - "suite_credentials.sh"
+Cohesion: 0.50
+Nodes (3): make_curl_spy(), suite_credentials.sh script, suite_credentials()
+
 ## Knowledge Gaps
-- **330 isolated node(s):** `COLOR_RESET`, `COLOR_INFO`, `COLOR_SUCCESS`, `COLOR_WARN`, `COLOR_ERROR` (+325 more)
+- **422 isolated node(s):** `COLOR_RESET`, `COLOR_INFO`, `COLOR_SUCCESS`, `COLOR_WARN`, `COLOR_ERROR` (+417 more)
   These have ≤1 connection - possible missing edges or undocumented components.
-- **14 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **27 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
+- **Why does `snap_local_retention()` connect `cleanup-snapshot.sh` to `snapshot_storage.sh`?**
+  _High betweenness centrality (0.001) - this node is a cross-community bridge._
+- **Why does `snap_verify_file()` connect `snapshot_storage.sh` to `restore-snapshot.sh`?**
+  _High betweenness centrality (0.000) - this node is a cross-community bridge._
 - **What connects `COLOR_RESET`, `COLOR_INFO`, `COLOR_SUCCESS` to the rest of the system?**
-  _330 weakly-connected nodes found - possible documentation gaps or missing edges._
+  _422 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `snapshot_storage.sh` be split into smaller, more focused modules?**
-  _Cohesion score 0.05827505827505827 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.08677098150782361 - nodes in this community are weakly interconnected._
 - **Should `setup.sh` be split into smaller, more focused modules?**
-  _Cohesion score 0.103424178895877 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.10235690235690235 - nodes in this community are weakly interconnected._
 - **Should `Critical Workflows` be split into smaller, more focused modules?**
   _Cohesion score 0.047619047619047616 - nodes in this community are weakly interconnected._
-- **Should `ssh_utils.sh` be split into smaller, more focused modules?**
-  _Cohesion score 0.10416666666666667 - nodes in this community are weakly interconnected._
-- **Should `scripts/README.md` be split into smaller, more focused modules?**
-  _Cohesion score 0.08695652173913043 - nodes in this community are weakly interconnected._
-- **Should `Maintenance` be split into smaller, more focused modules?**
-  _Cohesion score 0.1111111111111111 - nodes in this community are weakly interconnected._
+- **Should `restore-snapshot.sh` be split into smaller, more focused modules?**
+  _Cohesion score 0.14750290360046459 - nodes in this community are weakly interconnected._

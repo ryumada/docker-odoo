@@ -932,7 +932,7 @@ function run_remote_snapshot() {
   local remote_archives="$remote_base/archives"
 
   log_info "Preparing directory structure on Secondary VPS under $remote_base/..."
-  remote_exec "mkdir -p '$remote_mirror' '$remote_cache' '$remote_staging/tmp' '$remote_archives' && chmod 700 '$remote_home/.odoo-snapshots' && if [ -L '$remote_mirror/filestore' ]; then rm -f '$remote_mirror/filestore'; fi"
+  remote_exec "mkdir -p '$remote_mirror' '$remote_cache' '$remote_staging/tmp' '$remote_archives' && chmod 700 '$remote_home/.odoo-snapshots' && rm -rf '$remote_staging/tmp'/* '$remote_staging'/dump.sql '$remote_staging'/manifest.json 2>/dev/null || true; if [ -L '$remote_mirror/filestore' ]; then rm -f '$remote_mirror/filestore'; fi"
   # Free space on the Secondary VPS before anything is staged, for stats.json (the room this snapshot takes)
   local remote_free_before
   remote_free_before=$(remote_exec "df -PB1 '$remote_base' 2>/dev/null | awk 'NR == 2 {print \$4}'" 2>/dev/null | tr -d '\r\n')
@@ -1210,6 +1210,44 @@ function main() {
       exit 1
   fi
 
+  LOCK_FILE=""
+  DATA_STAGING_DIR=""
+  GIT_HASHES_FILE=""
+  GIT_HASHES_JSON_FILE=""
+  TAR_FILE_PATH=""
+
+  cleanup_temp_files() {
+      local sig="${1:-0}"
+      local exit_code=$?
+      trap - EXIT INT TERM HUP
+      if [[ -n "$LOCK_FILE" && -f "$LOCK_FILE" ]]; then
+          rm -f "$LOCK_FILE"
+      fi
+      if [[ -n "$DATA_STAGING_DIR" && -d "$DATA_STAGING_DIR" ]]; then
+          rm -rf "$DATA_STAGING_DIR"
+      fi
+      if [[ -n "$GIT_HASHES_FILE" && -f "$GIT_HASHES_FILE" ]]; then
+          rm -f "$GIT_HASHES_FILE"
+      fi
+      if [[ -n "$GIT_HASHES_JSON_FILE" && -f "$GIT_HASHES_JSON_FILE" ]]; then
+          rm -f "$GIT_HASHES_JSON_FILE"
+      fi
+      if [ "$sig" != "0" ] || [ "$exit_code" -ne 0 ]; then
+          if [[ -n "$TAR_FILE_PATH" && -f "$TAR_FILE_PATH" ]]; then
+              rm -f "$TAR_FILE_PATH"
+          fi
+          [ -n "$TAR_FILE_PATH" ] && rm -f "$TAR_FILE_PATH.sha256" "$TAR_FILE_PATH.sha256.tmp"
+      fi
+      queue_lock_release_all
+      if [ "$sig" != "0" ]; then
+          kill -s "$sig" $$ 2>/dev/null || exit 1
+      fi
+  }
+  trap 'cleanup_temp_files 0' EXIT
+  trap 'cleanup_temp_files INT' INT
+  trap 'cleanup_temp_files TERM' TERM
+  trap 'cleanup_temp_files HUP' HUP
+
   # Prevent multiple snapshot instances from running simultaneously
   LOCK_FILE="/var/run/snapshot-$SERVICE_NAME.lock"
   touch "$LOCK_FILE"
@@ -1263,29 +1301,7 @@ function main() {
   GIT_HASHES_FILE=""
   GIT_HASHES_JSON_FILE=""
 
-  cleanup_temp_files() {
-      local exit_code=$?
-      if [[ -n "$LOCK_FILE" && -f "$LOCK_FILE" ]]; then
-          rm -f "$LOCK_FILE"
-      fi
-      if [[ -n "$DATA_STAGING_DIR" && -d "$DATA_STAGING_DIR" ]]; then
-          rm -rf "$DATA_STAGING_DIR"
-      fi
-      if [[ -n "$GIT_HASHES_FILE" && -f "$GIT_HASHES_FILE" ]]; then
-          rm -f "$GIT_HASHES_FILE"
-      fi
-      if [[ -n "$GIT_HASHES_JSON_FILE" && -f "$GIT_HASHES_JSON_FILE" ]]; then
-          rm -f "$GIT_HASHES_JSON_FILE"
-      fi
-      if [ $exit_code -ne 0 ]; then
-          if [[ -n "$TAR_FILE_PATH" && -f "$TAR_FILE_PATH" ]]; then
-              rm -f "$TAR_FILE_PATH"
-          fi
-          [ -n "$TAR_FILE_PATH" ] && rm -f "$TAR_FILE_PATH.sha256" "$TAR_FILE_PATH.sha256.tmp"
-      fi
-      queue_lock_release_all
-  }
-  trap cleanup_temp_files EXIT
+
 
   echo "-------------------------------------------------------------------------------"
   echo " DAILY SNAPSHOT FOR $SERVICE_NAME @ $(date +"%A, %d %B %Y %H:%M %Z")"
