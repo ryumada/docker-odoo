@@ -2151,7 +2151,7 @@ stage_boot() {
   # The drill's own login role (Odoo refuses to run as postgres) and its own configuration: no
   # production settings (mail, database host, admin password, proxy) are used
   pass=$(head -c 24 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | head -c 24)
-  if ! pg_exec -q -d postgres -c "CREATE ROLE odoo_drill LOGIN SUPERUSER PASSWORD '$pass';" >/dev/null 2>"$BOOT_DIR/role.err"; then
+  if ! pg_exec -q -d postgres -c "CREATE ROLE odoo_drill LOGIN SUPERUSER PASSWORD '$pass'; ALTER DATABASE \"$dbname\" OWNER TO odoo_drill;" >/dev/null 2>"$BOOT_DIR/role.err"; then
     record_stage "boot" "error" "$(since "$t0")" "Could not create the drill's database role: $(tr '\n' ' ' < "$BOOT_DIR/role.err")"
     return 1
   fi
