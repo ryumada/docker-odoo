@@ -1483,8 +1483,15 @@ function main() {
         fi
       else
         if [ -x "$REPOSITORY_DIRPATH/scripts/setup-validator-docker.sh" ]; then
-          if ! "$REPOSITORY_DIRPATH/scripts/setup-validator-docker.sh" --local --check-git; then
-            TODO+=("Snapshot drills (local): git access failed as $(id -un). Add a passwordless deploy key / credentials and verify with sudo ./scripts/setup-validator-docker.sh --local --check-git")
+          remote_user=$(grep "^SNAPSHOT_REMOTE_USER=" "$REPOSITORY_DIRPATH/.env" 2>/dev/null | cut -d "=" -f 2- | sed 's/[[:space:]]*#.*//;s/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//')
+          local git_check_args=(--local --check-git)
+          local git_check_user="$(id -un)"
+          if [ -n "$remote_user" ] && id "$remote_user" >/dev/null 2>&1; then
+            git_check_args+=(-u "$remote_user")
+            git_check_user="$remote_user"
+          fi
+          if ! "$REPOSITORY_DIRPATH/scripts/setup-validator-docker.sh" "${git_check_args[@]}"; then
+            TODO+=("Snapshot drills (local): git access failed as $git_check_user. Add a passwordless deploy key / credentials and verify with sudo ./scripts/setup-validator-docker.sh ${git_check_args[*]}")
           fi
         fi
       fi

@@ -16376,10 +16376,10 @@
       "source_file": "README.md",
       "source_location": "L1",
       "_origin": "ast",
-      "id": "readme",
       "community": 7,
       "community_name": "scripts/README.md",
-      "norm_label": "readme.md"
+      "norm_label": "readme.md",
+      "id": "readme"
     },
     {
       "label": "1. Enable Multi-Deployment",
@@ -16387,10 +16387,10 @@
       "source_file": "README.md",
       "source_location": "L139",
       "_origin": "ast",
-      "id": "readme_1_enable_multi_deployment",
       "community": 7,
       "community_name": "scripts/README.md",
-      "norm_label": "1. enable multi-deployment"
+      "norm_label": "1. enable multi-deployment",
+      "id": "readme_1_enable_multi_deployment"
     },
     {
       "label": "2. Create Deployment Profiles",
@@ -16398,10 +16398,10 @@
       "source_file": "README.md",
       "source_location": "L147",
       "_origin": "ast",
-      "id": "readme_2_create_deployment_profiles",
       "community": 7,
       "community_name": "scripts/README.md",
-      "norm_label": "2. create deployment profiles"
+      "norm_label": "2. create deployment profiles",
+      "id": "readme_2_create_deployment_profiles"
     },
     {
       "label": "3. Switch Between Deployments",
@@ -16409,10 +16409,10 @@
       "source_file": "README.md",
       "source_location": "L162",
       "_origin": "ast",
-      "id": "readme_3_switch_between_deployments",
       "community": 7,
       "community_name": "scripts/README.md",
-      "norm_label": "3. switch between deployments"
+      "norm_label": "3. switch between deployments",
+      "id": "readme_3_switch_between_deployments"
     },
     {
       "label": "Automatic Credential Generation",
@@ -16420,10 +16420,10 @@
       "source_file": "README.md",
       "source_location": "L315",
       "_origin": "ast",
-      "id": "readme_automatic_credential_generation",
       "community": 7,
       "community_name": "scripts/README.md",
-      "norm_label": "automatic credential generation"
+      "norm_label": "automatic credential generation",
+      "id": "readme_automatic_credential_generation"
     },
     {
       "label": "Automatic Validation & Worker Cron",
@@ -16431,10 +16431,10 @@
       "source_file": "README.md",
       "source_location": "L372",
       "_origin": "ast",
-      "id": "readme_automatic_validation_worker_cron",
       "community": 7,
       "community_name": "scripts/README.md",
-      "norm_label": "automatic validation & worker cron"
+      "norm_label": "automatic validation & worker cron",
+      "id": "readme_automatic_validation_worker_cron"
     },
     {
       "label": "Check the git repository for custom addons used by Docker Image",
@@ -16442,10 +16442,10 @@
       "source_file": "README.md",
       "source_location": "L198",
       "_origin": "ast",
-      "id": "readme_check_the_git_repository_for_custom_addons_used_by_docker_image",
       "community": 7,
       "community_name": "scripts/README.md",
-      "norm_label": "check the git repository for custom addons used by docker image"
+      "norm_label": "check the git repository for custom addons used by docker image",
+      "id": "readme_check_the_git_repository_for_custom_addons_used_by_docker_image"
     },
     {
       "label": "Check the version of Odoo base",
@@ -16453,10 +16453,10 @@
       "source_file": "README.md",
       "source_location": "L178",
       "_origin": "ast",
-      "id": "readme_check_the_version_of_odoo_base",
       "community": 7,
       "community_name": "scripts/README.md",
-      "norm_label": "check the version of odoo base"
+      "norm_label": "check the version of odoo base",
+      "id": "readme_check_the_version_of_odoo_base"
     },
     {
       "label": "Configuration",
@@ -16464,10 +16464,10 @@
       "source_file": "README.md",
       "source_location": "L310",
       "_origin": "ast",
-      "id": "readme_configuration",
       "community": 7,
       "community_name": "scripts/README.md",
-      "norm_label": "configuration"
+      "norm_label": "configuration",
+      "id": "readme_configuration"
     },
     {
       "label": "Configuration",
@@ -16475,10 +16475,10 @@
       "source_file": "README.md",
       "source_location": "L327",
       "_origin": "ast",
-      "id": "readme_configuration_327",
       "community": 7,
       "community_name": "scripts/README.md",
-      "norm_label": "configuration"
+      "norm_label": "configuration",
+      "id": "readme_configuration_327"
     },
     {
       "label": "Host OS Prerequisites",
@@ -16486,10 +16486,10 @@
       "source_file": "README.md",
       "source_location": "L24",
       "_origin": "ast",
-      "id": "readme_host_os_prerequisites",
       "community": 7,
       "community_name": "scripts/README.md",
-      "norm_label": "host os prerequisites"
+      "norm_label": "host os prerequisites",
+      "id": "readme_host_os_prerequisites"
     },
     {
       "label": "How `validate-snapshot.sh` Works",
@@ -16497,10 +16497,10 @@
       "source_file": "README.md",
       "source_location": "L364",
       "_origin": "ast",
-      "id": "readme_how_validate_snapshot_sh_works",
       "community": 7,
       "community_name": "scripts/README.md",
-      "norm_label": "how `validate-snapshot.sh` works"
+      "norm_label": "how `validate-snapshot.sh` works",
+      "id": "readme_how_validate_snapshot_sh_works"
     },
     {
       "label": "Maintenance",
@@ -16508,10 +16508,10 @@
       "source_file": "README.md",
       "source_location": "L175",
       "_origin": "ast",
-      "id": "readme_maintenance",
       "community": 7,
       "community_name": "scripts/README.md",
-      "norm_label": "maintenance"
+      "norm_label": "maintenance",
+      "id": "readme_maintenance"
     },
     {
       "label": "Multi-Deployment Setup (Folder-Based)",
@@ -16519,10 +16519,10 @@
       "source_file": "README.md",
       "source_location": "L135",
       "_origin": "ast",
-      "id": "readme_multi_deployment_setup_folder_based",
       "community": 7,
       "community_name": "scripts/README.md",
-      "norm_label": "multi-deployment setup (folder-based)"
+      "norm_label": "multi-deployment setup (folder-based)",
+      "id": "readme_multi_deployment_setup_folder_based"
     },
     {
       "label": "Odoo Docker Image",
@@ -16530,10 +16530,10 @@
       "source_file": "README.md",
       "source_location": "L9",
       "_origin": "ast",
-      "id": "readme_odoo_docker_image",
       "community": 7,
       "community_name": "scripts/README.md",
-      "norm_label": "odoo docker image"
+      "norm_label": "odoo docker image",
+      "id": "readme_odoo_docker_image"
     },
     {
       "label": "`/queue_job/` is closed at the proxy",
@@ -16541,10 +16541,10 @@
       "source_file": "README.md",
       "source_location": "L350",
       "_origin": "ast",
-      "id": "readme_queue_job_is_closed_at_the_proxy",
       "community": 7,
       "community_name": "scripts/README.md",
-      "norm_label": "`/queue_job/` is closed at the proxy"
+      "norm_label": "`/queue_job/` is closed at the proxy",
+      "id": "readme_queue_job_is_closed_at_the_proxy"
     },
     {
       "label": "Remote or Containerized PostgreSQL",
@@ -16552,10 +16552,10 @@
       "source_file": "README.md",
       "source_location": "L307",
       "_origin": "ast",
-      "id": "readme_remote_or_containerized_postgresql",
       "community": 7,
       "community_name": "scripts/README.md",
-      "norm_label": "remote or containerized postgresql"
+      "norm_label": "remote or containerized postgresql",
+      "id": "readme_remote_or_containerized_postgresql"
     },
     {
       "label": "Reverse Proxy (Traefik Support)",
@@ -16563,10 +16563,10 @@
       "source_file": "README.md",
       "source_location": "L322",
       "_origin": "ast",
-      "id": "readme_reverse_proxy_traefik_support",
       "community": 7,
       "community_name": "scripts/README.md",
-      "norm_label": "reverse proxy (traefik support)"
+      "norm_label": "reverse proxy (traefik support)",
+      "id": "readme_reverse_proxy_traefik_support"
     },
     {
       "label": "Run Odoo Module Upgrade tool",
@@ -16574,10 +16574,10 @@
       "source_file": "README.md",
       "source_location": "L242",
       "_origin": "ast",
-      "id": "readme_run_odoo_module_upgrade_tool",
       "community": 7,
       "community_name": "scripts/README.md",
-      "norm_label": "run odoo module upgrade tool"
+      "norm_label": "run odoo module upgrade tool",
+      "id": "readme_run_odoo_module_upgrade_tool"
     },
     {
       "label": "Run Odoo shell",
@@ -16585,10 +16585,10 @@
       "source_file": "README.md",
       "source_location": "L218",
       "_origin": "ast",
-      "id": "readme_run_odoo_shell",
       "community": 7,
       "community_name": "scripts/README.md",
-      "norm_label": "run odoo shell"
+      "norm_label": "run odoo shell",
+      "id": "readme_run_odoo_shell"
     },
     {
       "label": "Snapshot Restore Drill & Automatic Validation",
@@ -16596,10 +16596,10 @@
       "source_file": "README.md",
       "source_location": "L360",
       "_origin": "ast",
-      "id": "readme_snapshot_restore_drill_automatic_validation",
       "community": 7,
       "community_name": "scripts/README.md",
-      "norm_label": "snapshot restore drill & automatic validation"
+      "norm_label": "snapshot restore drill & automatic validation",
+      "id": "readme_snapshot_restore_drill_automatic_validation"
     },
     {
       "label": "Triggering the Cron / Drill Manually",
@@ -16607,10 +16607,10 @@
       "source_file": "README.md",
       "source_location": "L378",
       "_origin": "ast",
-      "id": "readme_triggering_the_cron_drill_manually",
       "community": 7,
       "community_name": "scripts/README.md",
-      "norm_label": "triggering the cron / drill manually"
+      "norm_label": "triggering the cron / drill manually",
+      "id": "readme_triggering_the_cron_drill_manually"
     },
     {
       "label": "VSCode Server for Odoo Debugging (Host Server)",
@@ -16618,10 +16618,10 @@
       "source_file": "README.md",
       "source_location": "L271",
       "_origin": "ast",
-      "id": "readme_vscode_server_for_odoo_debugging_host_server",
       "community": 7,
       "community_name": "scripts/README.md",
-      "norm_label": "vscode server for odoo debugging (host server)"
+      "norm_label": "vscode server for odoo debugging (host server)",
+      "id": "readme_vscode_server_for_odoo_debugging_host_server"
     },
     {
       "label": "scripts/README.md",
@@ -19689,10 +19689,10 @@
         "kind": "file"
       },
       "_origin": "ast",
-      "id": "scripts_setup_validator_docker",
       "community": 83,
       "community_name": "setup-validator-docker.sh",
-      "norm_label": "setup-validator-docker.sh"
+      "norm_label": "setup-validator-docker.sh",
+      "id": "scripts_setup_validator_docker"
     },
     {
       "label": "add_repo_remote()",
@@ -19704,10 +19704,10 @@
         "kind": "bash_function"
       },
       "_origin": "ast",
-      "id": "scripts_setup_validator_docker_add_repo_remote",
       "community": 83,
       "community_name": "setup-validator-docker.sh",
-      "norm_label": "add_repo_remote()"
+      "norm_label": "add_repo_remote()",
+      "id": "scripts_setup_validator_docker_add_repo_remote"
     },
     {
       "label": "COLOR_CYAN",
@@ -19719,10 +19719,10 @@
         "kind": "code"
       },
       "_origin": "ast",
-      "id": "scripts_setup_validator_docker_color_cyan",
       "community": 83,
       "community_name": "setup-validator-docker.sh",
-      "norm_label": "color_cyan"
+      "norm_label": "color_cyan",
+      "id": "scripts_setup_validator_docker_color_cyan"
     },
     {
       "label": "COLOR_ERROR",
@@ -19734,10 +19734,10 @@
         "kind": "code"
       },
       "_origin": "ast",
-      "id": "scripts_setup_validator_docker_color_error",
       "community": 83,
       "community_name": "setup-validator-docker.sh",
-      "norm_label": "color_error"
+      "norm_label": "color_error",
+      "id": "scripts_setup_validator_docker_color_error"
     },
     {
       "label": "COLOR_INFO",
@@ -19749,10 +19749,10 @@
         "kind": "code"
       },
       "_origin": "ast",
-      "id": "scripts_setup_validator_docker_color_info",
       "community": 83,
       "community_name": "setup-validator-docker.sh",
-      "norm_label": "color_info"
+      "norm_label": "color_info",
+      "id": "scripts_setup_validator_docker_color_info"
     },
     {
       "label": "COLOR_RESET",
@@ -19764,10 +19764,10 @@
         "kind": "code"
       },
       "_origin": "ast",
-      "id": "scripts_setup_validator_docker_color_reset",
       "community": 83,
       "community_name": "setup-validator-docker.sh",
-      "norm_label": "color_reset"
+      "norm_label": "color_reset",
+      "id": "scripts_setup_validator_docker_color_reset"
     },
     {
       "label": "COLOR_SUCCESS",
@@ -19779,10 +19779,10 @@
         "kind": "code"
       },
       "_origin": "ast",
-      "id": "scripts_setup_validator_docker_color_success",
       "community": 83,
       "community_name": "setup-validator-docker.sh",
-      "norm_label": "color_success"
+      "norm_label": "color_success",
+      "id": "scripts_setup_validator_docker_color_success"
     },
     {
       "label": "COLOR_WARN",
@@ -19794,10 +19794,10 @@
         "kind": "code"
       },
       "_origin": "ast",
-      "id": "scripts_setup_validator_docker_color_warn",
       "community": 83,
       "community_name": "setup-validator-docker.sh",
-      "norm_label": "color_warn"
+      "norm_label": "color_warn",
+      "id": "scripts_setup_validator_docker_color_warn"
     },
     {
       "label": "env_get()",
@@ -19809,10 +19809,10 @@
         "kind": "bash_function"
       },
       "_origin": "ast",
-      "id": "scripts_setup_validator_docker_env_get",
       "community": 83,
       "community_name": "setup-validator-docker.sh",
-      "norm_label": "env_get()"
+      "norm_label": "env_get()",
+      "id": "scripts_setup_validator_docker_env_get"
     },
     {
       "label": "git_redact()",
@@ -19824,10 +19824,10 @@
         "kind": "bash_function"
       },
       "_origin": "ast",
-      "id": "scripts_setup_validator_docker_git_redact",
       "community": 83,
       "community_name": "setup-validator-docker.sh",
-      "norm_label": "git_redact()"
+      "norm_label": "git_redact()",
+      "id": "scripts_setup_validator_docker_git_redact"
     },
     {
       "label": "git_valid_remote()",
@@ -19839,10 +19839,10 @@
         "kind": "bash_function"
       },
       "_origin": "ast",
-      "id": "scripts_setup_validator_docker_git_valid_remote",
       "community": 83,
       "community_name": "setup-validator-docker.sh",
-      "norm_label": "git_valid_remote()"
+      "norm_label": "git_valid_remote()",
+      "id": "scripts_setup_validator_docker_git_valid_remote"
     },
     {
       "label": "log()",
@@ -19854,10 +19854,10 @@
         "kind": "bash_function"
       },
       "_origin": "ast",
-      "id": "scripts_setup_validator_docker_log",
       "community": 83,
       "community_name": "setup-validator-docker.sh",
-      "norm_label": "log()"
+      "norm_label": "log()",
+      "id": "scripts_setup_validator_docker_log"
     },
     {
       "label": "log_error()",
@@ -19869,10 +19869,10 @@
         "kind": "bash_function"
       },
       "_origin": "ast",
-      "id": "scripts_setup_validator_docker_log_error",
       "community": 83,
       "community_name": "setup-validator-docker.sh",
-      "norm_label": "log_error()"
+      "norm_label": "log_error()",
+      "id": "scripts_setup_validator_docker_log_error"
     },
     {
       "label": "log_info()",
@@ -19884,10 +19884,10 @@
         "kind": "bash_function"
       },
       "_origin": "ast",
-      "id": "scripts_setup_validator_docker_log_info",
       "community": 83,
       "community_name": "setup-validator-docker.sh",
-      "norm_label": "log_info()"
+      "norm_label": "log_info()",
+      "id": "scripts_setup_validator_docker_log_info"
     },
     {
       "label": "log_success()",
@@ -19899,10 +19899,10 @@
         "kind": "bash_function"
       },
       "_origin": "ast",
-      "id": "scripts_setup_validator_docker_log_success",
       "community": 83,
       "community_name": "setup-validator-docker.sh",
-      "norm_label": "log_success()"
+      "norm_label": "log_success()",
+      "id": "scripts_setup_validator_docker_log_success"
     },
     {
       "label": "log_warn()",
@@ -19914,10 +19914,10 @@
         "kind": "bash_function"
       },
       "_origin": "ast",
-      "id": "scripts_setup_validator_docker_log_warn",
       "community": 83,
       "community_name": "setup-validator-docker.sh",
-      "norm_label": "log_warn()"
+      "norm_label": "log_warn()",
+      "id": "scripts_setup_validator_docker_log_warn"
     },
     {
       "label": "need_value()",
@@ -19929,10 +19929,10 @@
         "kind": "bash_function"
       },
       "_origin": "ast",
-      "id": "scripts_setup_validator_docker_need_value",
       "community": 83,
       "community_name": "setup-validator-docker.sh",
-      "norm_label": "need_value()"
+      "norm_label": "need_value()",
+      "id": "scripts_setup_validator_docker_need_value"
     },
     {
       "label": "run_git_check()",
@@ -19944,10 +19944,10 @@
         "kind": "bash_function"
       },
       "_origin": "ast",
-      "id": "scripts_setup_validator_docker_run_git_check",
       "community": 83,
       "community_name": "setup-validator-docker.sh",
-      "norm_label": "run_git_check()"
+      "norm_label": "run_git_check()",
+      "id": "scripts_setup_validator_docker_run_git_check"
     },
     {
       "label": "setup-validator-docker.sh script",
@@ -19959,10 +19959,10 @@
         "kind": "bash_entrypoint"
       },
       "_origin": "ast",
-      "id": "scripts_setup_validator_docker_sh__entry",
       "community": 83,
       "community_name": "setup-validator-docker.sh",
-      "norm_label": "setup-validator-docker.sh script"
+      "norm_label": "setup-validator-docker.sh script",
+      "id": "scripts_setup_validator_docker_sh__entry"
     },
     {
       "label": "show_help()",
@@ -19974,10 +19974,10 @@
         "kind": "bash_function"
       },
       "_origin": "ast",
-      "id": "scripts_setup_validator_docker_show_help",
       "community": 83,
       "community_name": "setup-validator-docker.sh",
-      "norm_label": "show_help()"
+      "norm_label": "show_help()",
+      "id": "scripts_setup_validator_docker_show_help"
     },
     {
       "label": "validate-snapshot-worker.sh",
@@ -28871,9 +28871,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "scripts_setup_validator_docker_log_error",
-      "target": "scripts_setup_validator_docker_log",
-      "confidence_score": 1.0
+      "target": "scripts_setup_validator_docker_log"
     },
     {
       "relation": "calls",
@@ -28883,9 +28883,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "scripts_setup_validator_docker_log_info",
-      "target": "scripts_setup_validator_docker_log",
-      "confidence_score": 1.0
+      "target": "scripts_setup_validator_docker_log"
     },
     {
       "relation": "calls",
@@ -28895,9 +28895,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "scripts_setup_validator_docker_log_success",
-      "target": "scripts_setup_validator_docker_log",
-      "confidence_score": 1.0
+      "target": "scripts_setup_validator_docker_log"
     },
     {
       "relation": "calls",
@@ -28907,9 +28907,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "scripts_setup_validator_docker_log_warn",
-      "target": "scripts_setup_validator_docker_log",
-      "confidence_score": 1.0
+      "target": "scripts_setup_validator_docker_log"
     },
     {
       "relation": "calls",
@@ -28919,9 +28919,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "scripts_setup_validator_docker_need_value",
-      "target": "scripts_setup_validator_docker_log_error",
-      "confidence_score": 1.0
+      "target": "scripts_setup_validator_docker_log_error"
     },
     {
       "relation": "calls",
@@ -28931,9 +28931,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "scripts_setup_validator_docker_run_git_check",
-      "target": "scripts_setup_validator_docker_log_error",
-      "confidence_score": 1.0
+      "target": "scripts_setup_validator_docker_log_error"
     },
     {
       "relation": "calls",
@@ -28943,9 +28943,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "scripts_setup_validator_docker_run_git_check",
-      "target": "scripts_setup_validator_docker_log_info",
-      "confidence_score": 1.0
+      "target": "scripts_setup_validator_docker_log_info"
     },
     {
       "relation": "calls",
@@ -28955,9 +28955,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "scripts_setup_validator_docker_run_git_check",
-      "target": "scripts_setup_validator_docker_git_valid_remote",
-      "confidence_score": 1.0
+      "target": "scripts_setup_validator_docker_git_valid_remote"
     },
     {
       "relation": "calls",
@@ -28967,9 +28967,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "scripts_setup_validator_docker_run_git_check",
-      "target": "scripts_setup_validator_docker_log_success",
-      "confidence_score": 1.0
+      "target": "scripts_setup_validator_docker_log_success"
     },
     {
       "relation": "calls",
@@ -28979,9 +28979,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "scripts_setup_validator_docker_sh__entry",
-      "target": "scripts_setup_validator_docker_show_help",
-      "confidence_score": 1.0
+      "target": "scripts_setup_validator_docker_show_help"
     },
     {
       "relation": "calls",
@@ -28991,9 +28991,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "scripts_setup_validator_docker_sh__entry",
-      "target": "scripts_setup_validator_docker_log_error",
-      "confidence_score": 1.0
+      "target": "scripts_setup_validator_docker_log_error"
     },
     {
       "relation": "calls",
@@ -29003,9 +29003,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "scripts_setup_validator_docker_sh__entry",
-      "target": "scripts_setup_validator_docker_run_git_check",
-      "confidence_score": 1.0
+      "target": "scripts_setup_validator_docker_run_git_check"
     },
     {
       "relation": "calls",
@@ -29015,9 +29015,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "scripts_setup_validator_docker_sh__entry",
-      "target": "scripts_setup_validator_docker_log_info",
-      "confidence_score": 1.0
+      "target": "scripts_setup_validator_docker_log_info"
     },
     {
       "relation": "calls",
@@ -29027,9 +29027,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "scripts_setup_validator_docker_sh__entry",
-      "target": "scripts_setup_validator_docker_log_success",
-      "confidence_score": 1.0
+      "target": "scripts_setup_validator_docker_log_success"
     },
     {
       "relation": "calls",
@@ -29039,9 +29039,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "scripts_setup_validator_docker_sh__entry",
-      "target": "scripts_setup_validator_docker_log_warn",
-      "confidence_score": 1.0
+      "target": "scripts_setup_validator_docker_log_warn"
     },
     {
       "relation": "calls",
@@ -29051,9 +29051,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "scripts_setup_validator_docker_sh__entry",
-      "target": "scripts_setup_validator_docker_need_value",
-      "confidence_score": 1.0
+      "target": "scripts_setup_validator_docker_need_value"
     },
     {
       "relation": "calls",
@@ -33139,7 +33139,7 @@
       "relation": "calls",
       "confidence": "EXTRACTED",
       "source_file": "setup.sh",
-      "source_location": "L1536",
+      "source_location": "L1543",
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
@@ -33307,7 +33307,7 @@
       "relation": "calls",
       "confidence": "EXTRACTED",
       "source_file": "setup.sh",
-      "source_location": "L1672",
+      "source_location": "L1679",
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
@@ -35699,9 +35699,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "scripts_setup_validator_docker_run_git_check",
-      "target": "scripts_setup_validator_docker_add_repo_remote",
-      "confidence_score": 1.0
+      "target": "scripts_setup_validator_docker_add_repo_remote"
     },
     {
       "relation": "defines",
@@ -36141,9 +36141,9 @@
       "source_location": "L175",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "readme",
-      "target": "readme_maintenance",
-      "confidence_score": 1.0
+      "target": "readme_maintenance"
     },
     {
       "relation": "contains",
@@ -36152,9 +36152,9 @@
       "source_location": "L9",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "readme",
-      "target": "readme_odoo_docker_image",
-      "confidence_score": 1.0
+      "target": "readme_odoo_docker_image"
     },
     {
       "relation": "contains",
@@ -36295,9 +36295,9 @@
       "source_location": "L178",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "readme_maintenance",
-      "target": "readme_check_the_version_of_odoo_base",
-      "confidence_score": 1.0
+      "target": "readme_check_the_version_of_odoo_base"
     },
     {
       "relation": "contains",
@@ -36306,9 +36306,9 @@
       "source_location": "L198",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "readme_maintenance",
-      "target": "readme_check_the_git_repository_for_custom_addons_used_by_docker_image",
-      "confidence_score": 1.0
+      "target": "readme_check_the_git_repository_for_custom_addons_used_by_docker_image"
     },
     {
       "relation": "contains",
@@ -36317,9 +36317,9 @@
       "source_location": "L218",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "readme_maintenance",
-      "target": "readme_run_odoo_shell",
-      "confidence_score": 1.0
+      "target": "readme_run_odoo_shell"
     },
     {
       "relation": "contains",
@@ -36328,9 +36328,9 @@
       "source_location": "L242",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "readme_maintenance",
-      "target": "readme_run_odoo_module_upgrade_tool",
-      "confidence_score": 1.0
+      "target": "readme_run_odoo_module_upgrade_tool"
     },
     {
       "relation": "contains",
@@ -36339,9 +36339,9 @@
       "source_location": "L271",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "readme_maintenance",
-      "target": "readme_vscode_server_for_odoo_debugging_host_server",
-      "confidence_score": 1.0
+      "target": "readme_vscode_server_for_odoo_debugging_host_server"
     },
     {
       "relation": "contains",
@@ -36350,9 +36350,9 @@
       "source_location": "L307",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "readme_maintenance",
-      "target": "readme_remote_or_containerized_postgresql",
-      "confidence_score": 1.0
+      "target": "readme_remote_or_containerized_postgresql"
     },
     {
       "relation": "contains",
@@ -36361,9 +36361,9 @@
       "source_location": "L322",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "readme_maintenance",
-      "target": "readme_reverse_proxy_traefik_support",
-      "confidence_score": 1.0
+      "target": "readme_reverse_proxy_traefik_support"
     },
     {
       "relation": "contains",
@@ -36372,9 +36372,9 @@
       "source_location": "L360",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "readme_maintenance",
-      "target": "readme_snapshot_restore_drill_automatic_validation",
-      "confidence_score": 1.0
+      "target": "readme_snapshot_restore_drill_automatic_validation"
     },
     {
       "relation": "contains",
@@ -36383,9 +36383,9 @@
       "source_location": "L139",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "readme_multi_deployment_setup_folder_based",
-      "target": "readme_1_enable_multi_deployment",
-      "confidence_score": 1.0
+      "target": "readme_1_enable_multi_deployment"
     },
     {
       "relation": "contains",
@@ -36394,9 +36394,9 @@
       "source_location": "L147",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "readme_multi_deployment_setup_folder_based",
-      "target": "readme_2_create_deployment_profiles",
-      "confidence_score": 1.0
+      "target": "readme_2_create_deployment_profiles"
     },
     {
       "relation": "contains",
@@ -36405,9 +36405,9 @@
       "source_location": "L162",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "readme_multi_deployment_setup_folder_based",
-      "target": "readme_3_switch_between_deployments",
-      "confidence_score": 1.0
+      "target": "readme_3_switch_between_deployments"
     },
     {
       "relation": "contains",
@@ -36416,9 +36416,9 @@
       "source_location": "L135",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "readme_odoo_docker_image",
-      "target": "readme_multi_deployment_setup_folder_based",
-      "confidence_score": 1.0
+      "target": "readme_multi_deployment_setup_folder_based"
     },
     {
       "relation": "contains",
@@ -36427,9 +36427,9 @@
       "source_location": "L24",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "readme_odoo_docker_image",
-      "target": "readme_host_os_prerequisites",
-      "confidence_score": 1.0
+      "target": "readme_host_os_prerequisites"
     },
     {
       "relation": "contains",
@@ -36438,9 +36438,9 @@
       "source_location": "L310",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "readme_remote_or_containerized_postgresql",
-      "target": "readme_configuration",
-      "confidence_score": 1.0
+      "target": "readme_configuration"
     },
     {
       "relation": "contains",
@@ -36449,9 +36449,9 @@
       "source_location": "L315",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "readme_remote_or_containerized_postgresql",
-      "target": "readme_automatic_credential_generation",
-      "confidence_score": 1.0
+      "target": "readme_automatic_credential_generation"
     },
     {
       "relation": "contains",
@@ -36460,9 +36460,9 @@
       "source_location": "L327",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "readme_reverse_proxy_traefik_support",
-      "target": "readme_configuration_327",
-      "confidence_score": 1.0
+      "target": "readme_configuration_327"
     },
     {
       "relation": "contains",
@@ -36471,9 +36471,9 @@
       "source_location": "L350",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "readme_reverse_proxy_traefik_support",
-      "target": "readme_queue_job_is_closed_at_the_proxy",
-      "confidence_score": 1.0
+      "target": "readme_queue_job_is_closed_at_the_proxy"
     },
     {
       "relation": "contains",
@@ -36482,9 +36482,9 @@
       "source_location": "L364",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "readme_snapshot_restore_drill_automatic_validation",
-      "target": "readme_how_validate_snapshot_sh_works",
-      "confidence_score": 1.0
+      "target": "readme_how_validate_snapshot_sh_works"
     },
     {
       "relation": "contains",
@@ -36493,9 +36493,9 @@
       "source_location": "L372",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "readme_snapshot_restore_drill_automatic_validation",
-      "target": "readme_automatic_validation_worker_cron",
-      "confidence_score": 1.0
+      "target": "readme_automatic_validation_worker_cron"
     },
     {
       "relation": "contains",
@@ -36504,9 +36504,9 @@
       "source_location": "L378",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "readme_snapshot_restore_drill_automatic_validation",
-      "target": "readme_triggering_the_cron_drill_manually",
-      "confidence_score": 1.0
+      "target": "readme_triggering_the_cron_drill_manually"
     },
     {
       "relation": "contains",
@@ -37318,9 +37318,9 @@
       "source_location": "L1",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "scripts_setup_validator_docker",
-      "target": "scripts_setup_validator_docker_sh__entry",
-      "confidence_score": 1.0
+      "target": "scripts_setup_validator_docker_sh__entry"
     },
     {
       "relation": "contains",
@@ -44523,9 +44523,9 @@
       "source_location": "L106",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "scripts_setup_validator_docker",
-      "target": "scripts_setup_validator_docker_git_redact",
-      "confidence_score": 1.0
+      "target": "scripts_setup_validator_docker_git_redact"
     },
     {
       "relation": "defines",
@@ -44534,9 +44534,9 @@
       "source_location": "L107",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "scripts_setup_validator_docker",
-      "target": "scripts_setup_validator_docker_git_valid_remote",
-      "confidence_score": 1.0
+      "target": "scripts_setup_validator_docker_git_valid_remote"
     },
     {
       "relation": "defines",
@@ -44545,9 +44545,9 @@
       "source_location": "L109",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "scripts_setup_validator_docker",
-      "target": "scripts_setup_validator_docker_run_git_check",
-      "confidence_score": 1.0
+      "target": "scripts_setup_validator_docker_run_git_check"
     },
     {
       "relation": "defines",
@@ -44556,9 +44556,9 @@
       "source_location": "L12",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "scripts_setup_validator_docker",
-      "target": "scripts_setup_validator_docker_color_reset",
-      "confidence_score": 1.0
+      "target": "scripts_setup_validator_docker_color_reset"
     },
     {
       "relation": "defines",
@@ -44567,9 +44567,9 @@
       "source_location": "L13",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "scripts_setup_validator_docker",
-      "target": "scripts_setup_validator_docker_color_info",
-      "confidence_score": 1.0
+      "target": "scripts_setup_validator_docker_color_info"
     },
     {
       "relation": "defines",
@@ -44578,9 +44578,9 @@
       "source_location": "L14",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "scripts_setup_validator_docker",
-      "target": "scripts_setup_validator_docker_color_success",
-      "confidence_score": 1.0
+      "target": "scripts_setup_validator_docker_color_success"
     },
     {
       "relation": "defines",
@@ -44589,9 +44589,9 @@
       "source_location": "L15",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "scripts_setup_validator_docker",
-      "target": "scripts_setup_validator_docker_color_warn",
-      "confidence_score": 1.0
+      "target": "scripts_setup_validator_docker_color_warn"
     },
     {
       "relation": "defines",
@@ -44600,9 +44600,9 @@
       "source_location": "L16",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "scripts_setup_validator_docker",
-      "target": "scripts_setup_validator_docker_color_error",
-      "confidence_score": 1.0
+      "target": "scripts_setup_validator_docker_color_error"
     },
     {
       "relation": "defines",
@@ -44611,9 +44611,9 @@
       "source_location": "L17",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "scripts_setup_validator_docker",
-      "target": "scripts_setup_validator_docker_color_cyan",
-      "confidence_score": 1.0
+      "target": "scripts_setup_validator_docker_color_cyan"
     },
     {
       "relation": "defines",
@@ -44622,9 +44622,9 @@
       "source_location": "L19",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "scripts_setup_validator_docker",
-      "target": "scripts_setup_validator_docker_log",
-      "confidence_score": 1.0
+      "target": "scripts_setup_validator_docker_log"
     },
     {
       "relation": "defines",
@@ -44633,9 +44633,9 @@
       "source_location": "L20",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "scripts_setup_validator_docker",
-      "target": "scripts_setup_validator_docker_log_info",
-      "confidence_score": 1.0
+      "target": "scripts_setup_validator_docker_log_info"
     },
     {
       "relation": "defines",
@@ -44644,9 +44644,9 @@
       "source_location": "L21",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "scripts_setup_validator_docker",
-      "target": "scripts_setup_validator_docker_log_success",
-      "confidence_score": 1.0
+      "target": "scripts_setup_validator_docker_log_success"
     },
     {
       "relation": "defines",
@@ -44655,9 +44655,9 @@
       "source_location": "L22",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "scripts_setup_validator_docker",
-      "target": "scripts_setup_validator_docker_log_warn",
-      "confidence_score": 1.0
+      "target": "scripts_setup_validator_docker_log_warn"
     },
     {
       "relation": "defines",
@@ -44666,9 +44666,9 @@
       "source_location": "L23",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "scripts_setup_validator_docker",
-      "target": "scripts_setup_validator_docker_log_error",
-      "confidence_score": 1.0
+      "target": "scripts_setup_validator_docker_log_error"
     },
     {
       "relation": "defines",
@@ -44677,9 +44677,9 @@
       "source_location": "L25",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "scripts_setup_validator_docker",
-      "target": "scripts_setup_validator_docker_env_get",
-      "confidence_score": 1.0
+      "target": "scripts_setup_validator_docker_env_get"
     },
     {
       "relation": "defines",
@@ -44688,9 +44688,9 @@
       "source_location": "L34",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "scripts_setup_validator_docker",
-      "target": "scripts_setup_validator_docker_show_help",
-      "confidence_score": 1.0
+      "target": "scripts_setup_validator_docker_show_help"
     },
     {
       "relation": "defines",
@@ -44699,9 +44699,9 @@
       "source_location": "L80",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "scripts_setup_validator_docker",
-      "target": "scripts_setup_validator_docker_need_value",
-      "confidence_score": 1.0
+      "target": "scripts_setup_validator_docker_need_value"
     },
     {
       "relation": "defines",
@@ -51090,9 +51090,9 @@
       "source_location": "L400",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "readme",
-      "target": "scripts_readme",
-      "confidence_score": 1.0
+      "target": "scripts_readme"
     },
     {
       "relation": "references",
@@ -51261,5 +51261,5 @@
     }
   ],
   "hyperedges": [],
-  "built_at_commit": "76daf4fa18c9ad50058af78c83fbaab0e772fa78"
+  "built_at_commit": "38863363286d03c9fd33e011ff7ce927e59ccbb5"
 }
