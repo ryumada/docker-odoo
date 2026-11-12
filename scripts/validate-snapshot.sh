@@ -1311,17 +1311,24 @@ git_check_commit() {
   else
     git init -q --bare "$tmp" >/dev/null 2>&1
   fi
+  git_cat() {
+    if [ -n "$VALIDATOR_GIT_USER" ]; then
+      sudo -u "$VALIDATOR_GIT_USER" -H git -C "$tmp" cat-file -e "$1" 2>/dev/null
+    else
+      git -C "$tmp" cat-file -e "$1" 2>/dev/null
+    fi
+  }
   if ! git_safe ls-remote -q --heads -- "$remote" >/dev/null 2>&1 \
      && ! git_safe ls-remote -q -- "$remote" >/dev/null 2>&1; then
     echo unreachable
   # Fast path: fetch just that commit object, no trees or files (GitHub/GitLab allow fetching
   # reachable commits by id; a server without partial clone ignores the filter and sends the files)
   elif git_safe -C "$tmp" fetch -q --depth=1 --filter=tree:0 -- "$remote" "$commit" >/dev/null 2>&1 \
-       && git -C "$tmp" cat-file -e "$commit^{commit}" 2>/dev/null; then
+       && git_cat "$commit^{commit}"; then
     echo found:by-id
   # Slow path: history without file contents, then look for the commit
   elif git_safe -C "$tmp" fetch -q --filter=tree:0 -- "$remote" "+refs/heads/*:refs/heads/*" "+refs/tags/*:refs/tags/*" >/dev/null 2>&1 \
-       && git -C "$tmp" cat-file -e "$commit^{commit}" 2>/dev/null; then
+       && git_cat "$commit^{commit}"; then
     echo found:history
   else
     echo missing
@@ -1965,7 +1972,7 @@ stage_code() {
         chmod 700 "$fetch_tmp" && chown -R "$VALIDATOR_GIT_USER": "$fetch_tmp"
         sudo -u "$VALIDATOR_GIT_USER" -H git init -q --bare "$fetch_tmp" >/dev/null 2>&1
         if ! run_bg git_safe -C "$fetch_tmp" fetch -q --depth=1 -- "$remote" "$commit" >/dev/null 2>"$BOOT_DIR/fetch.err" \
-           || ! git -C "$cache" fetch -q "$fetch_tmp" "$commit" >/dev/null 2>>"$BOOT_DIR/fetch.err"; then
+           || ! git -c safe.directory="$fetch_tmp" -C "$cache" fetch -q "$fetch_tmp" "$commit" >/dev/null 2>>"$BOOT_DIR/fetch.err"; then
           rm -rf "$fetch_tmp"
           problems+=("$rel: could not fetch ${commit:0:8} from $(redact "$remote"): $(head -c 200 "$BOOT_DIR/fetch.err" | tr '\n' ' ')")
           continue

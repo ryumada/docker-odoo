@@ -689,21 +689,6 @@
       "id": "scripts_lib_snapshot_storage_gds_remote_sha256"
     },
     {
-      "label": "gds_retention()",
-      "file_type": "code",
-      "source_file": "scripts/lib/snapshot_storage.sh",
-      "source_location": "L447",
-      "metadata": {
-        "language": "bash",
-        "kind": "bash_function"
-      },
-      "_origin": "ast",
-      "community": 0,
-      "community_name": "snapshot_storage.sh",
-      "norm_label": "gds_retention()",
-      "id": "scripts_lib_snapshot_storage_gds_retention"
-    },
-    {
       "label": "gds_token_from_sa()",
       "file_type": "code",
       "source_file": "scripts/lib/snapshot_storage.sh",
@@ -987,561 +972,6 @@
       "community_name": "snapshot_storage.sh",
       "norm_label": "_ss_log()",
       "id": "scripts_lib_snapshot_storage_ss_log"
-    },
-    {
-      "label": "upload-snapshot.sh",
-      "file_type": "code",
-      "source_file": "scripts/upload-snapshot.sh",
-      "source_location": "L1",
-      "metadata": {
-        "language": "bash",
-        "kind": "file"
-      },
-      "_origin": "ast",
-      "community": 0,
-      "community_name": "snapshot_storage.sh",
-      "norm_label": "upload-snapshot.sh",
-      "id": "scripts_upload_snapshot"
-    },
-    {
-      "label": "cleanup_gdrive_old_snapshots()",
-      "file_type": "code",
-      "source_file": "scripts/upload-snapshot.sh",
-      "source_location": "L310",
-      "metadata": {
-        "language": "bash",
-        "kind": "bash_function"
-      },
-      "_origin": "ast",
-      "community": 0,
-      "community_name": "snapshot_storage.sh",
-      "norm_label": "cleanup_gdrive_old_snapshots()",
-      "id": "scripts_upload_snapshot_cleanup_gdrive_old_snapshots"
-    },
-    {
-      "label": "COLOR_ERROR",
-      "file_type": "code",
-      "source_file": "scripts/upload-snapshot.sh",
-      "source_location": "L20",
-      "metadata": {
-        "language": "bash",
-        "kind": "code"
-      },
-      "_origin": "ast",
-      "community": 0,
-      "community_name": "snapshot_storage.sh",
-      "norm_label": "color_error",
-      "id": "scripts_upload_snapshot_color_error"
-    },
-    {
-      "label": "COLOR_INFO",
-      "file_type": "code",
-      "source_file": "scripts/upload-snapshot.sh",
-      "source_location": "L17",
-      "metadata": {
-        "language": "bash",
-        "kind": "code"
-      },
-      "_origin": "ast",
-      "community": 0,
-      "community_name": "snapshot_storage.sh",
-      "norm_label": "color_info",
-      "id": "scripts_upload_snapshot_color_info"
-    },
-    {
-      "label": "COLOR_RESET",
-      "file_type": "code",
-      "source_file": "scripts/upload-snapshot.sh",
-      "source_location": "L16",
-      "metadata": {
-        "language": "bash",
-        "kind": "code"
-      },
-      "_origin": "ast",
-      "community": 0,
-      "community_name": "snapshot_storage.sh",
-      "norm_label": "color_reset",
-      "id": "scripts_upload_snapshot_color_reset"
-    },
-    {
-      "label": "COLOR_SUCCESS",
-      "file_type": "code",
-      "source_file": "scripts/upload-snapshot.sh",
-      "source_location": "L18",
-      "metadata": {
-        "language": "bash",
-        "kind": "code"
-      },
-      "_origin": "ast",
-      "community": 0,
-      "community_name": "snapshot_storage.sh",
-      "norm_label": "color_success",
-      "id": "scripts_upload_snapshot_color_success"
-    },
-    {
-      "label": "COLOR_WARN",
-      "file_type": "code",
-      "source_file": "scripts/upload-snapshot.sh",
-      "source_location": "L19",
-      "metadata": {
-        "language": "bash",
-        "kind": "code"
-      },
-      "_origin": "ast",
-      "community": 0,
-      "community_name": "snapshot_storage.sh",
-      "norm_label": "color_warn",
-      "id": "scripts_upload_snapshot_color_warn"
-    },
-    {
-      "label": "get_gdrive_access_token_from_sa()",
-      "file_type": "code",
-      "source_file": "scripts/upload-snapshot.sh",
-      "source_location": "L201",
-      "metadata": {
-        "language": "bash",
-        "kind": "bash_function"
-      },
-      "_origin": "ast",
-      "community": 0,
-      "community_name": "snapshot_storage.sh",
-      "norm_label": "get_gdrive_access_token_from_sa()",
-      "id": "scripts_upload_snapshot_get_gdrive_access_token_from_sa"
-    },
-    {
-      "label": "is_gdrive_token_valid()",
-      "file_type": "code",
-      "source_file": "scripts/upload-snapshot.sh",
-      "source_location": "L254",
-      "metadata": {
-        "language": "bash",
-        "kind": "bash_function"
-      },
-      "_origin": "ast",
-      "community": 0,
-      "community_name": "snapshot_storage.sh",
-      "norm_label": "is_gdrive_token_valid()",
-      "id": "scripts_upload_snapshot_is_gdrive_token_valid"
-    },
-    {
-      "label": "log()",
-      "file_type": "code",
-      "source_file": "scripts/upload-snapshot.sh",
-      "source_location": "L22",
-      "metadata": {
-        "language": "bash",
-        "kind": "bash_function"
-      },
-      "_origin": "ast",
-      "community": 0,
-      "community_name": "snapshot_storage.sh",
-      "norm_label": "log()",
-      "id": "scripts_upload_snapshot_log"
-    },
-    {
-      "label": "log_error()",
-      "file_type": "code",
-      "source_file": "scripts/upload-snapshot.sh",
-      "source_location": "L32",
-      "metadata": {
-        "language": "bash",
-        "kind": "bash_function"
-      },
-      "_origin": "ast",
-      "community": 0,
-      "community_name": "snapshot_storage.sh",
-      "norm_label": "log_error()",
-      "id": "scripts_upload_snapshot_log_error"
-    },
-    {
-      "label": "log_info()",
-      "file_type": "code",
-      "source_file": "scripts/upload-snapshot.sh",
-      "source_location": "L29",
-      "metadata": {
-        "language": "bash",
-        "kind": "bash_function"
-      },
-      "_origin": "ast",
-      "community": 0,
-      "community_name": "snapshot_storage.sh",
-      "norm_label": "log_info()",
-      "id": "scripts_upload_snapshot_log_info"
-    },
-    {
-      "label": "log_success()",
-      "file_type": "code",
-      "source_file": "scripts/upload-snapshot.sh",
-      "source_location": "L30",
-      "metadata": {
-        "language": "bash",
-        "kind": "bash_function"
-      },
-      "_origin": "ast",
-      "community": 0,
-      "community_name": "snapshot_storage.sh",
-      "norm_label": "log_success()",
-      "id": "scripts_upload_snapshot_log_success"
-    },
-    {
-      "label": "log_warn()",
-      "file_type": "code",
-      "source_file": "scripts/upload-snapshot.sh",
-      "source_location": "L31",
-      "metadata": {
-        "language": "bash",
-        "kind": "bash_function"
-      },
-      "_origin": "ast",
-      "community": 0,
-      "community_name": "snapshot_storage.sh",
-      "norm_label": "log_warn()",
-      "id": "scripts_upload_snapshot_log_warn"
-    },
-    {
-      "label": "resolve_access_token()",
-      "file_type": "code",
-      "source_file": "scripts/upload-snapshot.sh",
-      "source_location": "L272",
-      "metadata": {
-        "language": "bash",
-        "kind": "bash_function"
-      },
-      "_origin": "ast",
-      "community": 0,
-      "community_name": "snapshot_storage.sh",
-      "norm_label": "resolve_access_token()",
-      "id": "scripts_upload_snapshot_resolve_access_token"
-    },
-    {
-      "label": "upload-snapshot.sh script",
-      "file_type": "code",
-      "source_file": "scripts/upload-snapshot.sh",
-      "source_location": "L1",
-      "metadata": {
-        "language": "bash",
-        "kind": "bash_entrypoint"
-      },
-      "_origin": "ast",
-      "community": 0,
-      "community_name": "snapshot_storage.sh",
-      "norm_label": "upload-snapshot.sh script",
-      "id": "scripts_upload_snapshot_sh__entry"
-    },
-    {
-      "label": "show_help()",
-      "file_type": "code",
-      "source_file": "scripts/upload-snapshot.sh",
-      "source_location": "L58",
-      "metadata": {
-        "language": "bash",
-        "kind": "bash_function"
-      },
-      "_origin": "ast",
-      "community": 0,
-      "community_name": "snapshot_storage.sh",
-      "norm_label": "show_help()",
-      "id": "scripts_upload_snapshot_show_help"
-    },
-    {
-      "label": "upload_snapshot()",
-      "file_type": "code",
-      "source_file": "scripts/upload-snapshot.sh",
-      "source_location": "L328",
-      "metadata": {
-        "language": "bash",
-        "kind": "bash_function"
-      },
-      "_origin": "ast",
-      "community": 0,
-      "community_name": "snapshot_storage.sh",
-      "norm_label": "upload_snapshot()",
-      "id": "scripts_upload_snapshot_upload_snapshot"
-    },
-    {
-      "label": "upload-temp-snapshots.sh",
-      "file_type": "code",
-      "source_file": "scripts/upload-temp-snapshots.sh",
-      "source_location": "L1",
-      "metadata": {
-        "language": "bash",
-        "kind": "file"
-      },
-      "_origin": "ast",
-      "community": 0,
-      "community_name": "snapshot_storage.sh",
-      "norm_label": "upload-temp-snapshots.sh",
-      "id": "scripts_upload_temp_snapshots"
-    },
-    {
-      "label": "cleanup_gdrive_old_snapshots()",
-      "file_type": "code",
-      "source_file": "scripts/upload-temp-snapshots.sh",
-      "source_location": "L332",
-      "metadata": {
-        "language": "bash",
-        "kind": "bash_function"
-      },
-      "_origin": "ast",
-      "community": 0,
-      "community_name": "snapshot_storage.sh",
-      "norm_label": "cleanup_gdrive_old_snapshots()",
-      "id": "scripts_upload_temp_snapshots_cleanup_gdrive_old_snapshots"
-    },
-    {
-      "label": "COLOR_ERROR",
-      "file_type": "code",
-      "source_file": "scripts/upload-temp-snapshots.sh",
-      "source_location": "L20",
-      "metadata": {
-        "language": "bash",
-        "kind": "code"
-      },
-      "_origin": "ast",
-      "community": 0,
-      "community_name": "snapshot_storage.sh",
-      "norm_label": "color_error",
-      "id": "scripts_upload_temp_snapshots_color_error"
-    },
-    {
-      "label": "COLOR_INFO",
-      "file_type": "code",
-      "source_file": "scripts/upload-temp-snapshots.sh",
-      "source_location": "L17",
-      "metadata": {
-        "language": "bash",
-        "kind": "code"
-      },
-      "_origin": "ast",
-      "community": 0,
-      "community_name": "snapshot_storage.sh",
-      "norm_label": "color_info",
-      "id": "scripts_upload_temp_snapshots_color_info"
-    },
-    {
-      "label": "COLOR_RESET",
-      "file_type": "code",
-      "source_file": "scripts/upload-temp-snapshots.sh",
-      "source_location": "L16",
-      "metadata": {
-        "language": "bash",
-        "kind": "code"
-      },
-      "_origin": "ast",
-      "community": 0,
-      "community_name": "snapshot_storage.sh",
-      "norm_label": "color_reset",
-      "id": "scripts_upload_temp_snapshots_color_reset"
-    },
-    {
-      "label": "COLOR_SUCCESS",
-      "file_type": "code",
-      "source_file": "scripts/upload-temp-snapshots.sh",
-      "source_location": "L18",
-      "metadata": {
-        "language": "bash",
-        "kind": "code"
-      },
-      "_origin": "ast",
-      "community": 0,
-      "community_name": "snapshot_storage.sh",
-      "norm_label": "color_success",
-      "id": "scripts_upload_temp_snapshots_color_success"
-    },
-    {
-      "label": "COLOR_WARN",
-      "file_type": "code",
-      "source_file": "scripts/upload-temp-snapshots.sh",
-      "source_location": "L19",
-      "metadata": {
-        "language": "bash",
-        "kind": "code"
-      },
-      "_origin": "ast",
-      "community": 0,
-      "community_name": "snapshot_storage.sh",
-      "norm_label": "color_warn",
-      "id": "scripts_upload_temp_snapshots_color_warn"
-    },
-    {
-      "label": "get_gdrive_access_token_from_sa()",
-      "file_type": "code",
-      "source_file": "scripts/upload-temp-snapshots.sh",
-      "source_location": "L226",
-      "metadata": {
-        "language": "bash",
-        "kind": "bash_function"
-      },
-      "_origin": "ast",
-      "community": 0,
-      "community_name": "snapshot_storage.sh",
-      "norm_label": "get_gdrive_access_token_from_sa()",
-      "id": "scripts_upload_temp_snapshots_get_gdrive_access_token_from_sa"
-    },
-    {
-      "label": "is_gdrive_token_valid()",
-      "file_type": "code",
-      "source_file": "scripts/upload-temp-snapshots.sh",
-      "source_location": "L279",
-      "metadata": {
-        "language": "bash",
-        "kind": "bash_function"
-      },
-      "_origin": "ast",
-      "community": 0,
-      "community_name": "snapshot_storage.sh",
-      "norm_label": "is_gdrive_token_valid()",
-      "id": "scripts_upload_temp_snapshots_is_gdrive_token_valid"
-    },
-    {
-      "label": "log()",
-      "file_type": "code",
-      "source_file": "scripts/upload-temp-snapshots.sh",
-      "source_location": "L22",
-      "metadata": {
-        "language": "bash",
-        "kind": "bash_function"
-      },
-      "_origin": "ast",
-      "community": 0,
-      "community_name": "snapshot_storage.sh",
-      "norm_label": "log()",
-      "id": "scripts_upload_temp_snapshots_log"
-    },
-    {
-      "label": "log_error()",
-      "file_type": "code",
-      "source_file": "scripts/upload-temp-snapshots.sh",
-      "source_location": "L32",
-      "metadata": {
-        "language": "bash",
-        "kind": "bash_function"
-      },
-      "_origin": "ast",
-      "community": 0,
-      "community_name": "snapshot_storage.sh",
-      "norm_label": "log_error()",
-      "id": "scripts_upload_temp_snapshots_log_error"
-    },
-    {
-      "label": "log_info()",
-      "file_type": "code",
-      "source_file": "scripts/upload-temp-snapshots.sh",
-      "source_location": "L29",
-      "metadata": {
-        "language": "bash",
-        "kind": "bash_function"
-      },
-      "_origin": "ast",
-      "community": 0,
-      "community_name": "snapshot_storage.sh",
-      "norm_label": "log_info()",
-      "id": "scripts_upload_temp_snapshots_log_info"
-    },
-    {
-      "label": "log_success()",
-      "file_type": "code",
-      "source_file": "scripts/upload-temp-snapshots.sh",
-      "source_location": "L30",
-      "metadata": {
-        "language": "bash",
-        "kind": "bash_function"
-      },
-      "_origin": "ast",
-      "community": 0,
-      "community_name": "snapshot_storage.sh",
-      "norm_label": "log_success()",
-      "id": "scripts_upload_temp_snapshots_log_success"
-    },
-    {
-      "label": "log_warn()",
-      "file_type": "code",
-      "source_file": "scripts/upload-temp-snapshots.sh",
-      "source_location": "L31",
-      "metadata": {
-        "language": "bash",
-        "kind": "bash_function"
-      },
-      "_origin": "ast",
-      "community": 0,
-      "community_name": "snapshot_storage.sh",
-      "norm_label": "log_warn()",
-      "id": "scripts_upload_temp_snapshots_log_warn"
-    },
-    {
-      "label": "resolve_gdrive_access_token()",
-      "file_type": "code",
-      "source_file": "scripts/upload-temp-snapshots.sh",
-      "source_location": "L297",
-      "metadata": {
-        "language": "bash",
-        "kind": "bash_function"
-      },
-      "_origin": "ast",
-      "community": 0,
-      "community_name": "snapshot_storage.sh",
-      "norm_label": "resolve_gdrive_access_token()",
-      "id": "scripts_upload_temp_snapshots_resolve_gdrive_access_token"
-    },
-    {
-      "label": "run_gcloud()",
-      "file_type": "code",
-      "source_file": "scripts/upload-temp-snapshots.sh",
-      "source_location": "L217",
-      "metadata": {
-        "language": "bash",
-        "kind": "bash_function"
-      },
-      "_origin": "ast",
-      "community": 0,
-      "community_name": "snapshot_storage.sh",
-      "norm_label": "run_gcloud()",
-      "id": "scripts_upload_temp_snapshots_run_gcloud"
-    },
-    {
-      "label": "upload-temp-snapshots.sh script",
-      "file_type": "code",
-      "source_file": "scripts/upload-temp-snapshots.sh",
-      "source_location": "L1",
-      "metadata": {
-        "language": "bash",
-        "kind": "bash_entrypoint"
-      },
-      "_origin": "ast",
-      "community": 0,
-      "community_name": "snapshot_storage.sh",
-      "norm_label": "upload-temp-snapshots.sh script",
-      "id": "scripts_upload_temp_snapshots_sh__entry"
-    },
-    {
-      "label": "show_help()",
-      "file_type": "code",
-      "source_file": "scripts/upload-temp-snapshots.sh",
-      "source_location": "L67",
-      "metadata": {
-        "language": "bash",
-        "kind": "bash_function"
-      },
-      "_origin": "ast",
-      "community": 0,
-      "community_name": "snapshot_storage.sh",
-      "norm_label": "show_help()",
-      "id": "scripts_upload_temp_snapshots_show_help"
-    },
-    {
-      "label": "upload_to_gdrive_file()",
-      "file_type": "code",
-      "source_file": "scripts/upload-temp-snapshots.sh",
-      "source_location": "L352",
-      "metadata": {
-        "language": "bash",
-        "kind": "bash_function"
-      },
-      "_origin": "ast",
-      "community": 0,
-      "community_name": "snapshot_storage.sh",
-      "norm_label": "upload_to_gdrive_file()",
-      "id": "scripts_upload_temp_snapshots_upload_to_gdrive_file"
     },
     {
       "label": "os_detect.sh",
@@ -2959,6 +2389,306 @@
       "community_name": "launch.py",
       "norm_label": "launch.py",
       "id": "tests_validate_snapshot_launch"
+    },
+    {
+      "label": "gds_retention()",
+      "file_type": "code",
+      "source_file": "scripts/lib/snapshot_storage.sh",
+      "source_location": "L447",
+      "metadata": {
+        "language": "bash",
+        "kind": "bash_function"
+      },
+      "_origin": "ast",
+      "community": 11,
+      "community_name": "upload-snapshot.sh",
+      "norm_label": "gds_retention()",
+      "id": "scripts_lib_snapshot_storage_gds_retention"
+    },
+    {
+      "label": "upload-snapshot.sh",
+      "file_type": "code",
+      "source_file": "scripts/upload-snapshot.sh",
+      "source_location": "L1",
+      "metadata": {
+        "language": "bash",
+        "kind": "file"
+      },
+      "_origin": "ast",
+      "community": 11,
+      "community_name": "upload-snapshot.sh",
+      "norm_label": "upload-snapshot.sh",
+      "id": "scripts_upload_snapshot"
+    },
+    {
+      "label": "cleanup_gdrive_old_snapshots()",
+      "file_type": "code",
+      "source_file": "scripts/upload-snapshot.sh",
+      "source_location": "L310",
+      "metadata": {
+        "language": "bash",
+        "kind": "bash_function"
+      },
+      "_origin": "ast",
+      "community": 11,
+      "community_name": "upload-snapshot.sh",
+      "norm_label": "cleanup_gdrive_old_snapshots()",
+      "id": "scripts_upload_snapshot_cleanup_gdrive_old_snapshots"
+    },
+    {
+      "label": "COLOR_ERROR",
+      "file_type": "code",
+      "source_file": "scripts/upload-snapshot.sh",
+      "source_location": "L20",
+      "metadata": {
+        "language": "bash",
+        "kind": "code"
+      },
+      "_origin": "ast",
+      "community": 11,
+      "community_name": "upload-snapshot.sh",
+      "norm_label": "color_error",
+      "id": "scripts_upload_snapshot_color_error"
+    },
+    {
+      "label": "COLOR_INFO",
+      "file_type": "code",
+      "source_file": "scripts/upload-snapshot.sh",
+      "source_location": "L17",
+      "metadata": {
+        "language": "bash",
+        "kind": "code"
+      },
+      "_origin": "ast",
+      "community": 11,
+      "community_name": "upload-snapshot.sh",
+      "norm_label": "color_info",
+      "id": "scripts_upload_snapshot_color_info"
+    },
+    {
+      "label": "COLOR_RESET",
+      "file_type": "code",
+      "source_file": "scripts/upload-snapshot.sh",
+      "source_location": "L16",
+      "metadata": {
+        "language": "bash",
+        "kind": "code"
+      },
+      "_origin": "ast",
+      "community": 11,
+      "community_name": "upload-snapshot.sh",
+      "norm_label": "color_reset",
+      "id": "scripts_upload_snapshot_color_reset"
+    },
+    {
+      "label": "COLOR_SUCCESS",
+      "file_type": "code",
+      "source_file": "scripts/upload-snapshot.sh",
+      "source_location": "L18",
+      "metadata": {
+        "language": "bash",
+        "kind": "code"
+      },
+      "_origin": "ast",
+      "community": 11,
+      "community_name": "upload-snapshot.sh",
+      "norm_label": "color_success",
+      "id": "scripts_upload_snapshot_color_success"
+    },
+    {
+      "label": "COLOR_WARN",
+      "file_type": "code",
+      "source_file": "scripts/upload-snapshot.sh",
+      "source_location": "L19",
+      "metadata": {
+        "language": "bash",
+        "kind": "code"
+      },
+      "_origin": "ast",
+      "community": 11,
+      "community_name": "upload-snapshot.sh",
+      "norm_label": "color_warn",
+      "id": "scripts_upload_snapshot_color_warn"
+    },
+    {
+      "label": "get_gdrive_access_token_from_sa()",
+      "file_type": "code",
+      "source_file": "scripts/upload-snapshot.sh",
+      "source_location": "L201",
+      "metadata": {
+        "language": "bash",
+        "kind": "bash_function"
+      },
+      "_origin": "ast",
+      "community": 11,
+      "community_name": "upload-snapshot.sh",
+      "norm_label": "get_gdrive_access_token_from_sa()",
+      "id": "scripts_upload_snapshot_get_gdrive_access_token_from_sa"
+    },
+    {
+      "label": "is_gdrive_token_valid()",
+      "file_type": "code",
+      "source_file": "scripts/upload-snapshot.sh",
+      "source_location": "L254",
+      "metadata": {
+        "language": "bash",
+        "kind": "bash_function"
+      },
+      "_origin": "ast",
+      "community": 11,
+      "community_name": "upload-snapshot.sh",
+      "norm_label": "is_gdrive_token_valid()",
+      "id": "scripts_upload_snapshot_is_gdrive_token_valid"
+    },
+    {
+      "label": "log()",
+      "file_type": "code",
+      "source_file": "scripts/upload-snapshot.sh",
+      "source_location": "L22",
+      "metadata": {
+        "language": "bash",
+        "kind": "bash_function"
+      },
+      "_origin": "ast",
+      "community": 11,
+      "community_name": "upload-snapshot.sh",
+      "norm_label": "log()",
+      "id": "scripts_upload_snapshot_log"
+    },
+    {
+      "label": "log_error()",
+      "file_type": "code",
+      "source_file": "scripts/upload-snapshot.sh",
+      "source_location": "L32",
+      "metadata": {
+        "language": "bash",
+        "kind": "bash_function"
+      },
+      "_origin": "ast",
+      "community": 11,
+      "community_name": "upload-snapshot.sh",
+      "norm_label": "log_error()",
+      "id": "scripts_upload_snapshot_log_error"
+    },
+    {
+      "label": "log_info()",
+      "file_type": "code",
+      "source_file": "scripts/upload-snapshot.sh",
+      "source_location": "L29",
+      "metadata": {
+        "language": "bash",
+        "kind": "bash_function"
+      },
+      "_origin": "ast",
+      "community": 11,
+      "community_name": "upload-snapshot.sh",
+      "norm_label": "log_info()",
+      "id": "scripts_upload_snapshot_log_info"
+    },
+    {
+      "label": "log_success()",
+      "file_type": "code",
+      "source_file": "scripts/upload-snapshot.sh",
+      "source_location": "L30",
+      "metadata": {
+        "language": "bash",
+        "kind": "bash_function"
+      },
+      "_origin": "ast",
+      "community": 11,
+      "community_name": "upload-snapshot.sh",
+      "norm_label": "log_success()",
+      "id": "scripts_upload_snapshot_log_success"
+    },
+    {
+      "label": "log_warn()",
+      "file_type": "code",
+      "source_file": "scripts/upload-snapshot.sh",
+      "source_location": "L31",
+      "metadata": {
+        "language": "bash",
+        "kind": "bash_function"
+      },
+      "_origin": "ast",
+      "community": 11,
+      "community_name": "upload-snapshot.sh",
+      "norm_label": "log_warn()",
+      "id": "scripts_upload_snapshot_log_warn"
+    },
+    {
+      "label": "resolve_access_token()",
+      "file_type": "code",
+      "source_file": "scripts/upload-snapshot.sh",
+      "source_location": "L272",
+      "metadata": {
+        "language": "bash",
+        "kind": "bash_function"
+      },
+      "_origin": "ast",
+      "community": 11,
+      "community_name": "upload-snapshot.sh",
+      "norm_label": "resolve_access_token()",
+      "id": "scripts_upload_snapshot_resolve_access_token"
+    },
+    {
+      "label": "upload-snapshot.sh script",
+      "file_type": "code",
+      "source_file": "scripts/upload-snapshot.sh",
+      "source_location": "L1",
+      "metadata": {
+        "language": "bash",
+        "kind": "bash_entrypoint"
+      },
+      "_origin": "ast",
+      "community": 11,
+      "community_name": "upload-snapshot.sh",
+      "norm_label": "upload-snapshot.sh script",
+      "id": "scripts_upload_snapshot_sh__entry"
+    },
+    {
+      "label": "show_help()",
+      "file_type": "code",
+      "source_file": "scripts/upload-snapshot.sh",
+      "source_location": "L58",
+      "metadata": {
+        "language": "bash",
+        "kind": "bash_function"
+      },
+      "_origin": "ast",
+      "community": 11,
+      "community_name": "upload-snapshot.sh",
+      "norm_label": "show_help()",
+      "id": "scripts_upload_snapshot_show_help"
+    },
+    {
+      "label": "upload_snapshot()",
+      "file_type": "code",
+      "source_file": "scripts/upload-snapshot.sh",
+      "source_location": "L328",
+      "metadata": {
+        "language": "bash",
+        "kind": "bash_function"
+      },
+      "_origin": "ast",
+      "community": 11,
+      "community_name": "upload-snapshot.sh",
+      "norm_label": "upload_snapshot()",
+      "id": "scripts_upload_snapshot_upload_snapshot"
+    },
+    {
+      "label": "cleanup_gdrive_old_snapshots()",
+      "file_type": "code",
+      "source_file": "scripts/upload-temp-snapshots.sh",
+      "source_location": "L332",
+      "metadata": {
+        "language": "bash",
+        "kind": "bash_function"
+      },
+      "_origin": "ast",
+      "community": 11,
+      "community_name": "upload-snapshot.sh",
+      "norm_label": "cleanup_gdrive_old_snapshots()",
+      "id": "scripts_upload_temp_snapshots_cleanup_gdrive_old_snapshots"
     },
     {
       "label": "install-snapshot.sh",
@@ -13416,7 +13146,7 @@
       "label": "boot_classify()",
       "file_type": "code",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L2040",
+      "source_location": "L2047",
       "metadata": {
         "language": "bash",
         "kind": "bash_function"
@@ -13431,7 +13161,7 @@
       "label": "boot_layout()",
       "file_type": "code",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L2000",
+      "source_location": "L2007",
       "metadata": {
         "language": "bash",
         "kind": "bash_function"
@@ -13446,7 +13176,7 @@
       "label": "boot_prepare()",
       "file_type": "code",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1800",
+      "source_location": "L1807",
       "metadata": {
         "language": "bash",
         "kind": "bash_function"
@@ -13461,7 +13191,7 @@
       "label": "boot_run()",
       "file_type": "code",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L2105",
+      "source_location": "L2112",
       "metadata": {
         "language": "bash",
         "kind": "bash_function"
@@ -13506,7 +13236,7 @@
       "label": "check_disk()",
       "file_type": "code",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1395",
+      "source_location": "L1402",
       "metadata": {
         "language": "bash",
         "kind": "bash_function"
@@ -13626,7 +13356,7 @@
       "label": "container_running()",
       "file_type": "code",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L2115",
+      "source_location": "L2122",
       "metadata": {
         "language": "bash",
         "kind": "bash_function"
@@ -13686,7 +13416,7 @@
       "label": "drill_dockerfile()",
       "file_type": "code",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1817",
+      "source_location": "L1824",
       "metadata": {
         "language": "bash",
         "kind": "bash_function"
@@ -13716,7 +13446,7 @@
       "label": "envfile_get()",
       "file_type": "code",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1781",
+      "source_location": "L1788",
       "metadata": {
         "language": "bash",
         "kind": "bash_function"
@@ -13771,6 +13501,21 @@
       "community": 51,
       "community_name": "validate-snapshot.sh",
       "norm_label": "free_bytes()"
+    },
+    {
+      "label": "git_cat()",
+      "file_type": "code",
+      "source_file": "scripts/validate-snapshot.sh",
+      "source_location": "L1314",
+      "metadata": {
+        "language": "bash",
+        "kind": "bash_function"
+      },
+      "_origin": "ast",
+      "id": "scripts_validate_snapshot_git_cat",
+      "community": 51,
+      "community_name": "validate-snapshot.sh",
+      "norm_label": "git_cat()"
     },
     {
       "label": "git_check_commit()",
@@ -13836,7 +13581,7 @@
       "label": "image_exists()",
       "file_type": "code",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1793",
+      "source_location": "L1800",
       "metadata": {
         "language": "bash",
         "kind": "bash_function"
@@ -13851,7 +13596,7 @@
       "label": "image_repo()",
       "file_type": "code",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1811",
+      "source_location": "L1818",
       "metadata": {
         "language": "bash",
         "kind": "bash_function"
@@ -14061,7 +13806,7 @@
       "label": "mkrec()",
       "file_type": "code",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1681",
+      "source_location": "L1688",
       "metadata": {
         "language": "bash",
         "kind": "bash_function"
@@ -14181,7 +13926,7 @@
       "label": "pg_alive()",
       "file_type": "code",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1450",
+      "source_location": "L1457",
       "metadata": {
         "language": "bash",
         "kind": "bash_function"
@@ -14196,7 +13941,7 @@
       "label": "pg_exec()",
       "file_type": "code",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1446",
+      "source_location": "L1453",
       "metadata": {
         "language": "bash",
         "kind": "bash_function"
@@ -14211,7 +13956,7 @@
       "label": "pg_major_of_dump()",
       "file_type": "code",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1426",
+      "source_location": "L1433",
       "metadata": {
         "language": "bash",
         "kind": "bash_function"
@@ -14226,7 +13971,7 @@
       "label": "pg_query()",
       "file_type": "code",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1447",
+      "source_location": "L1454",
       "metadata": {
         "language": "bash",
         "kind": "bash_function"
@@ -14241,7 +13986,7 @@
       "label": "phase2()",
       "file_type": "code",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L2241",
+      "source_location": "L2248",
       "metadata": {
         "language": "bash",
         "kind": "bash_function"
@@ -14286,7 +14031,7 @@
       "label": "publish_inbox()",
       "file_type": "code",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1719",
+      "source_location": "L1726",
       "metadata": {
         "language": "bash",
         "kind": "bash_function"
@@ -14301,7 +14046,7 @@
       "label": "publish_result()",
       "file_type": "code",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1664",
+      "source_location": "L1671",
       "metadata": {
         "language": "bash",
         "kind": "bash_function"
@@ -14346,7 +14091,7 @@
       "label": "registry_of()",
       "file_type": "code",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1786",
+      "source_location": "L1793",
       "metadata": {
         "language": "bash",
         "kind": "bash_function"
@@ -14376,7 +14121,7 @@
       "label": "restore_custom()",
       "file_type": "code",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1462",
+      "source_location": "L1469",
       "metadata": {
         "language": "bash",
         "kind": "bash_function"
@@ -14391,7 +14136,7 @@
       "label": "restore_plain()",
       "file_type": "code",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1452",
+      "source_location": "L1459",
       "metadata": {
         "language": "bash",
         "kind": "bash_function"
@@ -14451,7 +14196,7 @@
       "label": "safe_rel()",
       "file_type": "code",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1933",
+      "source_location": "L1940",
       "metadata": {
         "language": "bash",
         "kind": "bash_function"
@@ -14511,7 +14256,7 @@
       "label": "SNAP_ENV",
       "file_type": "code",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1798",
+      "source_location": "L1805",
       "metadata": {
         "language": "bash",
         "kind": "code"
@@ -14526,7 +14271,7 @@
       "label": "snap_file()",
       "file_type": "code",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1775",
+      "source_location": "L1782",
       "metadata": {
         "language": "bash",
         "kind": "bash_function"
@@ -14541,7 +14286,7 @@
       "label": "snap_member_exact()",
       "file_type": "code",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1771",
+      "source_location": "L1778",
       "metadata": {
         "language": "bash",
         "kind": "bash_function"
@@ -14571,7 +14316,7 @@
       "label": "stage_boot()",
       "file_type": "code",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L2117",
+      "source_location": "L2124",
       "metadata": {
         "language": "bash",
         "kind": "bash_function"
@@ -14601,7 +14346,7 @@
       "label": "stage_code()",
       "file_type": "code",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1935",
+      "source_location": "L1942",
       "metadata": {
         "language": "bash",
         "kind": "bash_function"
@@ -14616,7 +14361,7 @@
       "label": "stage_database()",
       "file_type": "code",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1467",
+      "source_location": "L1474",
       "metadata": {
         "language": "bash",
         "kind": "bash_function"
@@ -14631,7 +14376,7 @@
       "label": "stage_filestore()",
       "file_type": "code",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1613",
+      "source_location": "L1620",
       "metadata": {
         "language": "bash",
         "kind": "bash_function"
@@ -14646,7 +14391,7 @@
       "label": "stage_git()",
       "file_type": "code",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1332",
+      "source_location": "L1339",
       "metadata": {
         "language": "bash",
         "kind": "bash_function"
@@ -14661,7 +14406,7 @@
       "label": "stage_image()",
       "file_type": "code",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1841",
+      "source_location": "L1848",
       "metadata": {
         "language": "bash",
         "kind": "bash_function"
@@ -19062,6 +18807,276 @@
       "id": "tests_test_snapshot_stats_stats"
     },
     {
+      "label": "upload-temp-snapshots.sh",
+      "file_type": "code",
+      "source_file": "scripts/upload-temp-snapshots.sh",
+      "source_location": "L1",
+      "metadata": {
+        "language": "bash",
+        "kind": "file"
+      },
+      "_origin": "ast",
+      "community": 79,
+      "community_name": "upload-temp-snapshots.sh",
+      "norm_label": "upload-temp-snapshots.sh",
+      "id": "scripts_upload_temp_snapshots"
+    },
+    {
+      "label": "COLOR_ERROR",
+      "file_type": "code",
+      "source_file": "scripts/upload-temp-snapshots.sh",
+      "source_location": "L20",
+      "metadata": {
+        "language": "bash",
+        "kind": "code"
+      },
+      "_origin": "ast",
+      "community": 79,
+      "community_name": "upload-temp-snapshots.sh",
+      "norm_label": "color_error",
+      "id": "scripts_upload_temp_snapshots_color_error"
+    },
+    {
+      "label": "COLOR_INFO",
+      "file_type": "code",
+      "source_file": "scripts/upload-temp-snapshots.sh",
+      "source_location": "L17",
+      "metadata": {
+        "language": "bash",
+        "kind": "code"
+      },
+      "_origin": "ast",
+      "community": 79,
+      "community_name": "upload-temp-snapshots.sh",
+      "norm_label": "color_info",
+      "id": "scripts_upload_temp_snapshots_color_info"
+    },
+    {
+      "label": "COLOR_RESET",
+      "file_type": "code",
+      "source_file": "scripts/upload-temp-snapshots.sh",
+      "source_location": "L16",
+      "metadata": {
+        "language": "bash",
+        "kind": "code"
+      },
+      "_origin": "ast",
+      "community": 79,
+      "community_name": "upload-temp-snapshots.sh",
+      "norm_label": "color_reset",
+      "id": "scripts_upload_temp_snapshots_color_reset"
+    },
+    {
+      "label": "COLOR_SUCCESS",
+      "file_type": "code",
+      "source_file": "scripts/upload-temp-snapshots.sh",
+      "source_location": "L18",
+      "metadata": {
+        "language": "bash",
+        "kind": "code"
+      },
+      "_origin": "ast",
+      "community": 79,
+      "community_name": "upload-temp-snapshots.sh",
+      "norm_label": "color_success",
+      "id": "scripts_upload_temp_snapshots_color_success"
+    },
+    {
+      "label": "COLOR_WARN",
+      "file_type": "code",
+      "source_file": "scripts/upload-temp-snapshots.sh",
+      "source_location": "L19",
+      "metadata": {
+        "language": "bash",
+        "kind": "code"
+      },
+      "_origin": "ast",
+      "community": 79,
+      "community_name": "upload-temp-snapshots.sh",
+      "norm_label": "color_warn",
+      "id": "scripts_upload_temp_snapshots_color_warn"
+    },
+    {
+      "label": "get_gdrive_access_token_from_sa()",
+      "file_type": "code",
+      "source_file": "scripts/upload-temp-snapshots.sh",
+      "source_location": "L226",
+      "metadata": {
+        "language": "bash",
+        "kind": "bash_function"
+      },
+      "_origin": "ast",
+      "community": 79,
+      "community_name": "upload-temp-snapshots.sh",
+      "norm_label": "get_gdrive_access_token_from_sa()",
+      "id": "scripts_upload_temp_snapshots_get_gdrive_access_token_from_sa"
+    },
+    {
+      "label": "is_gdrive_token_valid()",
+      "file_type": "code",
+      "source_file": "scripts/upload-temp-snapshots.sh",
+      "source_location": "L279",
+      "metadata": {
+        "language": "bash",
+        "kind": "bash_function"
+      },
+      "_origin": "ast",
+      "community": 79,
+      "community_name": "upload-temp-snapshots.sh",
+      "norm_label": "is_gdrive_token_valid()",
+      "id": "scripts_upload_temp_snapshots_is_gdrive_token_valid"
+    },
+    {
+      "label": "log()",
+      "file_type": "code",
+      "source_file": "scripts/upload-temp-snapshots.sh",
+      "source_location": "L22",
+      "metadata": {
+        "language": "bash",
+        "kind": "bash_function"
+      },
+      "_origin": "ast",
+      "community": 79,
+      "community_name": "upload-temp-snapshots.sh",
+      "norm_label": "log()",
+      "id": "scripts_upload_temp_snapshots_log"
+    },
+    {
+      "label": "log_error()",
+      "file_type": "code",
+      "source_file": "scripts/upload-temp-snapshots.sh",
+      "source_location": "L32",
+      "metadata": {
+        "language": "bash",
+        "kind": "bash_function"
+      },
+      "_origin": "ast",
+      "community": 79,
+      "community_name": "upload-temp-snapshots.sh",
+      "norm_label": "log_error()",
+      "id": "scripts_upload_temp_snapshots_log_error"
+    },
+    {
+      "label": "log_info()",
+      "file_type": "code",
+      "source_file": "scripts/upload-temp-snapshots.sh",
+      "source_location": "L29",
+      "metadata": {
+        "language": "bash",
+        "kind": "bash_function"
+      },
+      "_origin": "ast",
+      "community": 79,
+      "community_name": "upload-temp-snapshots.sh",
+      "norm_label": "log_info()",
+      "id": "scripts_upload_temp_snapshots_log_info"
+    },
+    {
+      "label": "log_success()",
+      "file_type": "code",
+      "source_file": "scripts/upload-temp-snapshots.sh",
+      "source_location": "L30",
+      "metadata": {
+        "language": "bash",
+        "kind": "bash_function"
+      },
+      "_origin": "ast",
+      "community": 79,
+      "community_name": "upload-temp-snapshots.sh",
+      "norm_label": "log_success()",
+      "id": "scripts_upload_temp_snapshots_log_success"
+    },
+    {
+      "label": "log_warn()",
+      "file_type": "code",
+      "source_file": "scripts/upload-temp-snapshots.sh",
+      "source_location": "L31",
+      "metadata": {
+        "language": "bash",
+        "kind": "bash_function"
+      },
+      "_origin": "ast",
+      "community": 79,
+      "community_name": "upload-temp-snapshots.sh",
+      "norm_label": "log_warn()",
+      "id": "scripts_upload_temp_snapshots_log_warn"
+    },
+    {
+      "label": "resolve_gdrive_access_token()",
+      "file_type": "code",
+      "source_file": "scripts/upload-temp-snapshots.sh",
+      "source_location": "L297",
+      "metadata": {
+        "language": "bash",
+        "kind": "bash_function"
+      },
+      "_origin": "ast",
+      "community": 79,
+      "community_name": "upload-temp-snapshots.sh",
+      "norm_label": "resolve_gdrive_access_token()",
+      "id": "scripts_upload_temp_snapshots_resolve_gdrive_access_token"
+    },
+    {
+      "label": "run_gcloud()",
+      "file_type": "code",
+      "source_file": "scripts/upload-temp-snapshots.sh",
+      "source_location": "L217",
+      "metadata": {
+        "language": "bash",
+        "kind": "bash_function"
+      },
+      "_origin": "ast",
+      "community": 79,
+      "community_name": "upload-temp-snapshots.sh",
+      "norm_label": "run_gcloud()",
+      "id": "scripts_upload_temp_snapshots_run_gcloud"
+    },
+    {
+      "label": "upload-temp-snapshots.sh script",
+      "file_type": "code",
+      "source_file": "scripts/upload-temp-snapshots.sh",
+      "source_location": "L1",
+      "metadata": {
+        "language": "bash",
+        "kind": "bash_entrypoint"
+      },
+      "_origin": "ast",
+      "community": 79,
+      "community_name": "upload-temp-snapshots.sh",
+      "norm_label": "upload-temp-snapshots.sh script",
+      "id": "scripts_upload_temp_snapshots_sh__entry"
+    },
+    {
+      "label": "show_help()",
+      "file_type": "code",
+      "source_file": "scripts/upload-temp-snapshots.sh",
+      "source_location": "L67",
+      "metadata": {
+        "language": "bash",
+        "kind": "bash_function"
+      },
+      "_origin": "ast",
+      "community": 79,
+      "community_name": "upload-temp-snapshots.sh",
+      "norm_label": "show_help()",
+      "id": "scripts_upload_temp_snapshots_show_help"
+    },
+    {
+      "label": "upload_to_gdrive_file()",
+      "file_type": "code",
+      "source_file": "scripts/upload-temp-snapshots.sh",
+      "source_location": "L352",
+      "metadata": {
+        "language": "bash",
+        "kind": "bash_function"
+      },
+      "_origin": "ast",
+      "community": 79,
+      "community_name": "upload-temp-snapshots.sh",
+      "norm_label": "upload_to_gdrive_file()",
+      "id": "scripts_upload_temp_snapshots_upload_to_gdrive_file"
+    },
+    {
       "label": "git_addons_updater.sh",
       "file_type": "code",
       "source_file": "scripts/git_addons_updater.sh",
@@ -19989,10 +20004,10 @@
         "kind": "file"
       },
       "_origin": "ast",
-      "id": "scripts_validate_snapshot_worker",
       "community": 84,
       "community_name": "validate-snapshot-worker.sh",
-      "norm_label": "validate-snapshot-worker.sh"
+      "norm_label": "validate-snapshot-worker.sh",
+      "id": "scripts_validate_snapshot_worker"
     },
     {
       "label": "cfg()",
@@ -20004,10 +20019,10 @@
         "kind": "bash_function"
       },
       "_origin": "ast",
-      "id": "scripts_validate_snapshot_worker_cfg",
       "community": 84,
       "community_name": "validate-snapshot-worker.sh",
-      "norm_label": "cfg()"
+      "norm_label": "cfg()",
+      "id": "scripts_validate_snapshot_worker_cfg"
     },
     {
       "label": "COLOR_ERROR",
@@ -20019,10 +20034,10 @@
         "kind": "code"
       },
       "_origin": "ast",
-      "id": "scripts_validate_snapshot_worker_color_error",
       "community": 84,
       "community_name": "validate-snapshot-worker.sh",
-      "norm_label": "color_error"
+      "norm_label": "color_error",
+      "id": "scripts_validate_snapshot_worker_color_error"
     },
     {
       "label": "COLOR_INFO",
@@ -20034,10 +20049,10 @@
         "kind": "code"
       },
       "_origin": "ast",
-      "id": "scripts_validate_snapshot_worker_color_info",
       "community": 84,
       "community_name": "validate-snapshot-worker.sh",
-      "norm_label": "color_info"
+      "norm_label": "color_info",
+      "id": "scripts_validate_snapshot_worker_color_info"
     },
     {
       "label": "COLOR_RESET",
@@ -20049,10 +20064,10 @@
         "kind": "code"
       },
       "_origin": "ast",
-      "id": "scripts_validate_snapshot_worker_color_reset",
       "community": 84,
       "community_name": "validate-snapshot-worker.sh",
-      "norm_label": "color_reset"
+      "norm_label": "color_reset",
+      "id": "scripts_validate_snapshot_worker_color_reset"
     },
     {
       "label": "COLOR_SUCCESS",
@@ -20064,10 +20079,10 @@
         "kind": "code"
       },
       "_origin": "ast",
-      "id": "scripts_validate_snapshot_worker_color_success",
       "community": 84,
       "community_name": "validate-snapshot-worker.sh",
-      "norm_label": "color_success"
+      "norm_label": "color_success",
+      "id": "scripts_validate_snapshot_worker_color_success"
     },
     {
       "label": "COLOR_WARN",
@@ -20079,10 +20094,10 @@
         "kind": "code"
       },
       "_origin": "ast",
-      "id": "scripts_validate_snapshot_worker_color_warn",
       "community": 84,
       "community_name": "validate-snapshot-worker.sh",
-      "norm_label": "color_warn"
+      "norm_label": "color_warn",
+      "id": "scripts_validate_snapshot_worker_color_warn"
     },
     {
       "label": "env_get()",
@@ -20094,10 +20109,10 @@
         "kind": "bash_function"
       },
       "_origin": "ast",
-      "id": "scripts_validate_snapshot_worker_env_get",
       "community": 84,
       "community_name": "validate-snapshot-worker.sh",
-      "norm_label": "env_get()"
+      "norm_label": "env_get()",
+      "id": "scripts_validate_snapshot_worker_env_get"
     },
     {
       "label": "log()",
@@ -20109,10 +20124,10 @@
         "kind": "bash_function"
       },
       "_origin": "ast",
-      "id": "scripts_validate_snapshot_worker_log",
       "community": 84,
       "community_name": "validate-snapshot-worker.sh",
-      "norm_label": "log()"
+      "norm_label": "log()",
+      "id": "scripts_validate_snapshot_worker_log"
     },
     {
       "label": "log_error()",
@@ -20124,10 +20139,10 @@
         "kind": "bash_function"
       },
       "_origin": "ast",
-      "id": "scripts_validate_snapshot_worker_log_error",
       "community": 84,
       "community_name": "validate-snapshot-worker.sh",
-      "norm_label": "log_error()"
+      "norm_label": "log_error()",
+      "id": "scripts_validate_snapshot_worker_log_error"
     },
     {
       "label": "log_info()",
@@ -20139,10 +20154,10 @@
         "kind": "bash_function"
       },
       "_origin": "ast",
-      "id": "scripts_validate_snapshot_worker_log_info",
       "community": 84,
       "community_name": "validate-snapshot-worker.sh",
-      "norm_label": "log_info()"
+      "norm_label": "log_info()",
+      "id": "scripts_validate_snapshot_worker_log_info"
     },
     {
       "label": "log_success()",
@@ -20154,10 +20169,10 @@
         "kind": "bash_function"
       },
       "_origin": "ast",
-      "id": "scripts_validate_snapshot_worker_log_success",
       "community": 84,
       "community_name": "validate-snapshot-worker.sh",
-      "norm_label": "log_success()"
+      "norm_label": "log_success()",
+      "id": "scripts_validate_snapshot_worker_log_success"
     },
     {
       "label": "log_warn()",
@@ -20169,10 +20184,10 @@
         "kind": "bash_function"
       },
       "_origin": "ast",
-      "id": "scripts_validate_snapshot_worker_log_warn",
       "community": 84,
       "community_name": "validate-snapshot-worker.sh",
-      "norm_label": "log_warn()"
+      "norm_label": "log_warn()",
+      "id": "scripts_validate_snapshot_worker_log_warn"
     },
     {
       "label": "validate-snapshot-worker.sh script",
@@ -20184,10 +20199,10 @@
         "kind": "bash_entrypoint"
       },
       "_origin": "ast",
-      "id": "scripts_validate_snapshot_worker_sh__entry",
       "community": 84,
       "community_name": "validate-snapshot-worker.sh",
-      "norm_label": "validate-snapshot-worker.sh script"
+      "norm_label": "validate-snapshot-worker.sh script",
+      "id": "scripts_validate_snapshot_worker_sh__entry"
     },
     {
       "label": "show_help()",
@@ -20199,10 +20214,10 @@
         "kind": "bash_function"
       },
       "_origin": "ast",
-      "id": "scripts_validate_snapshot_worker_show_help",
       "community": 84,
       "community_name": "validate-snapshot-worker.sh",
-      "norm_label": "show_help()"
+      "norm_label": "show_help()",
+      "id": "scripts_validate_snapshot_worker_show_help"
     },
     {
       "label": "when()",
@@ -20214,10 +20229,10 @@
         "kind": "bash_function"
       },
       "_origin": "ast",
-      "id": "scripts_validate_snapshot_worker_when",
       "community": 84,
       "community_name": "validate-snapshot-worker.sh",
-      "norm_label": "when()"
+      "norm_label": "when()",
+      "id": "scripts_validate_snapshot_worker_when"
     },
     {
       "label": "test_read_drill_reports.sh",
@@ -30439,7 +30454,7 @@
       "relation": "calls",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L2013",
+      "source_location": "L2020",
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
@@ -30451,7 +30466,7 @@
       "relation": "calls",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1804",
+      "source_location": "L1811",
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
@@ -30463,7 +30478,7 @@
       "relation": "calls",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1420",
+      "source_location": "L1427",
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
@@ -30475,7 +30490,7 @@
       "relation": "calls",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1421",
+      "source_location": "L1428",
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
@@ -30679,7 +30694,7 @@
       "relation": "calls",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1314",
+      "source_location": "L1321",
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
@@ -30895,7 +30910,7 @@
       "relation": "calls",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L2245",
+      "source_location": "L2252",
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
@@ -30907,7 +30922,7 @@
       "relation": "calls",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L2252",
+      "source_location": "L2259",
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
@@ -30919,7 +30934,7 @@
       "relation": "calls",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L2253",
+      "source_location": "L2260",
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
@@ -30931,7 +30946,7 @@
       "relation": "calls",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L2254",
+      "source_location": "L2261",
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
@@ -30943,7 +30958,7 @@
       "relation": "calls",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L2255",
+      "source_location": "L2262",
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
@@ -31003,7 +31018,7 @@
       "relation": "calls",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1728",
+      "source_location": "L1735",
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
@@ -31015,7 +31030,7 @@
       "relation": "calls",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1760",
+      "source_location": "L1767",
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
@@ -31027,7 +31042,7 @@
       "relation": "calls",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1676",
+      "source_location": "L1683",
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
@@ -31039,7 +31054,7 @@
       "relation": "calls",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1715",
+      "source_location": "L1722",
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
@@ -31123,7 +31138,7 @@
       "relation": "calls",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1463",
+      "source_location": "L1470",
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
@@ -31135,7 +31150,7 @@
       "relation": "calls",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1455",
+      "source_location": "L1462",
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
@@ -31255,7 +31270,7 @@
       "relation": "calls",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L2259",
+      "source_location": "L2266",
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
@@ -31267,7 +31282,7 @@
       "relation": "calls",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L2260",
+      "source_location": "L2267",
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
@@ -31279,7 +31294,7 @@
       "relation": "calls",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L2261",
+      "source_location": "L2268",
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
@@ -31291,7 +31306,7 @@
       "relation": "calls",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L2262",
+      "source_location": "L2269",
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
@@ -31303,7 +31318,7 @@
       "relation": "calls",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L2263",
+      "source_location": "L2270",
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
@@ -31315,7 +31330,7 @@
       "relation": "calls",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L2264",
+      "source_location": "L2271",
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
@@ -31327,7 +31342,7 @@
       "relation": "calls",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L2265",
+      "source_location": "L2272",
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
@@ -31339,7 +31354,7 @@
       "relation": "calls",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L2266",
+      "source_location": "L2273",
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
@@ -31351,7 +31366,7 @@
       "relation": "calls",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L2267",
+      "source_location": "L2274",
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
@@ -31363,7 +31378,7 @@
       "relation": "calls",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L2268",
+      "source_location": "L2275",
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
@@ -31375,7 +31390,7 @@
       "relation": "calls",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L2271",
+      "source_location": "L2278",
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
@@ -31387,7 +31402,7 @@
       "relation": "calls",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L2277",
+      "source_location": "L2284",
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
@@ -31543,7 +31558,7 @@
       "relation": "calls",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L2121",
+      "source_location": "L2128",
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
@@ -31555,7 +31570,7 @@
       "relation": "calls",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L2123",
+      "source_location": "L2130",
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
@@ -31567,7 +31582,7 @@
       "relation": "calls",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L2130",
+      "source_location": "L2137",
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
@@ -31579,7 +31594,7 @@
       "relation": "calls",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L2163",
+      "source_location": "L2170",
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
@@ -31591,7 +31606,7 @@
       "relation": "calls",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L2164",
+      "source_location": "L2171",
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
@@ -31603,7 +31618,7 @@
       "relation": "calls",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L2165",
+      "source_location": "L2172",
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
@@ -31663,7 +31678,7 @@
       "relation": "calls",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1941",
+      "source_location": "L1948",
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
@@ -31675,7 +31690,7 @@
       "relation": "calls",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1946",
+      "source_location": "L1953",
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
@@ -31687,7 +31702,7 @@
       "relation": "calls",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1957",
+      "source_location": "L1964",
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
@@ -31699,24 +31714,12 @@
       "relation": "calls",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1957",
+      "source_location": "L1964",
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
       "source": "scripts_validate_snapshot_stage_code",
       "target": "scripts_validate_snapshot_valid_remote",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "calls",
-      "confidence": "EXTRACTED",
-      "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1960",
-      "weight": 1.0,
-      "context": "call",
-      "_origin": "ast",
-      "source": "scripts_validate_snapshot_stage_code",
-      "target": "scripts_validate_snapshot_log_info",
       "confidence_score": 1.0
     },
     {
@@ -31728,18 +31731,6 @@
       "context": "call",
       "_origin": "ast",
       "source": "scripts_validate_snapshot_stage_code",
-      "target": "scripts_validate_snapshot_run_bg",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "calls",
-      "confidence": "EXTRACTED",
-      "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1474",
-      "weight": 1.0,
-      "context": "call",
-      "_origin": "ast",
-      "source": "scripts_validate_snapshot_stage_database",
       "target": "scripts_validate_snapshot_log_info",
       "confidence_score": 1.0
     },
@@ -31747,36 +31738,12 @@
       "relation": "calls",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1475",
+      "source_location": "L1974",
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
-      "source": "scripts_validate_snapshot_stage_database",
+      "source": "scripts_validate_snapshot_stage_code",
       "target": "scripts_validate_snapshot_run_bg",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "calls",
-      "confidence": "EXTRACTED",
-      "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1477",
-      "weight": 1.0,
-      "context": "call",
-      "_origin": "ast",
-      "source": "scripts_validate_snapshot_stage_database",
-      "target": "scripts_validate_snapshot_log_warn",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "calls",
-      "confidence": "EXTRACTED",
-      "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1480",
-      "weight": 1.0,
-      "context": "call",
-      "_origin": "ast",
-      "source": "scripts_validate_snapshot_stage_database",
-      "target": "scripts_validate_snapshot_record_stage",
       "confidence_score": 1.0
     },
     {
@@ -31788,6 +31755,54 @@
       "context": "call",
       "_origin": "ast",
       "source": "scripts_validate_snapshot_stage_database",
+      "target": "scripts_validate_snapshot_log_info",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "scripts/validate-snapshot.sh",
+      "source_location": "L1482",
+      "weight": 1.0,
+      "context": "call",
+      "_origin": "ast",
+      "source": "scripts_validate_snapshot_stage_database",
+      "target": "scripts_validate_snapshot_run_bg",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "scripts/validate-snapshot.sh",
+      "source_location": "L1484",
+      "weight": 1.0,
+      "context": "call",
+      "_origin": "ast",
+      "source": "scripts_validate_snapshot_stage_database",
+      "target": "scripts_validate_snapshot_log_warn",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "scripts/validate-snapshot.sh",
+      "source_location": "L1487",
+      "weight": 1.0,
+      "context": "call",
+      "_origin": "ast",
+      "source": "scripts_validate_snapshot_stage_database",
+      "target": "scripts_validate_snapshot_record_stage",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "scripts/validate-snapshot.sh",
+      "source_location": "L1488",
+      "weight": 1.0,
+      "context": "call",
+      "_origin": "ast",
+      "source": "scripts_validate_snapshot_stage_database",
       "target": "scripts_validate_snapshot_finish",
       "confidence_score": 1.0
     },
@@ -31795,7 +31810,7 @@
       "relation": "calls",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1505",
+      "source_location": "L1512",
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
@@ -31807,7 +31822,7 @@
       "relation": "calls",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1521",
+      "source_location": "L1528",
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
@@ -31819,7 +31834,7 @@
       "relation": "calls",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1620",
+      "source_location": "L1627",
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
@@ -31831,7 +31846,7 @@
       "relation": "calls",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1621",
+      "source_location": "L1628",
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
@@ -31843,7 +31858,7 @@
       "relation": "calls",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1335",
+      "source_location": "L1342",
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
@@ -31855,7 +31870,7 @@
       "relation": "calls",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1369",
+      "source_location": "L1376",
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
@@ -31867,7 +31882,7 @@
       "relation": "calls",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1372",
+      "source_location": "L1379",
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
@@ -31879,7 +31894,7 @@
       "relation": "calls",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1375",
+      "source_location": "L1382",
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
@@ -31891,7 +31906,7 @@
       "relation": "calls",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1377",
+      "source_location": "L1384",
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
@@ -31903,7 +31918,7 @@
       "relation": "calls",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1851",
+      "source_location": "L1858",
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
@@ -31915,7 +31930,7 @@
       "relation": "calls",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1854",
+      "source_location": "L1861",
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
@@ -31927,7 +31942,7 @@
       "relation": "calls",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1872",
+      "source_location": "L1879",
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
@@ -31939,7 +31954,7 @@
       "relation": "calls",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1883",
+      "source_location": "L1890",
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
@@ -31951,7 +31966,7 @@
       "relation": "calls",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1884",
+      "source_location": "L1891",
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
@@ -31963,7 +31978,7 @@
       "relation": "calls",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1888",
+      "source_location": "L1895",
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
@@ -31975,7 +31990,7 @@
       "relation": "calls",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1909",
+      "source_location": "L1916",
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
@@ -32075,9 +32090,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot_worker_log_error",
-      "target": "scripts_validate_snapshot_worker_log",
-      "confidence_score": 1.0
+      "target": "scripts_validate_snapshot_worker_log"
     },
     {
       "relation": "calls",
@@ -32087,9 +32102,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot_worker_log_info",
-      "target": "scripts_validate_snapshot_worker_log",
-      "confidence_score": 1.0
+      "target": "scripts_validate_snapshot_worker_log"
     },
     {
       "relation": "calls",
@@ -32099,9 +32114,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot_worker_log_success",
-      "target": "scripts_validate_snapshot_worker_log",
-      "confidence_score": 1.0
+      "target": "scripts_validate_snapshot_worker_log"
     },
     {
       "relation": "calls",
@@ -32111,9 +32126,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot_worker_log_warn",
-      "target": "scripts_validate_snapshot_worker_log",
-      "confidence_score": 1.0
+      "target": "scripts_validate_snapshot_worker_log"
     },
     {
       "relation": "calls",
@@ -32123,9 +32138,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot_worker_sh__entry",
-      "target": "scripts_validate_snapshot_worker_log_info",
-      "confidence_score": 1.0
+      "target": "scripts_validate_snapshot_worker_log_info"
     },
     {
       "relation": "calls",
@@ -32135,9 +32150,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot_worker_sh__entry",
-      "target": "scripts_validate_snapshot_worker_log_warn",
-      "confidence_score": 1.0
+      "target": "scripts_validate_snapshot_worker_log_warn"
     },
     {
       "relation": "calls",
@@ -32147,9 +32162,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot_worker_sh__entry",
-      "target": "scripts_validate_snapshot_worker_log_success",
-      "confidence_score": 1.0
+      "target": "scripts_validate_snapshot_worker_log_success"
     },
     {
       "relation": "calls",
@@ -32159,9 +32174,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot_worker_sh__entry",
-      "target": "scripts_validate_snapshot_worker_show_help",
-      "confidence_score": 1.0
+      "target": "scripts_validate_snapshot_worker_show_help"
     },
     {
       "relation": "calls",
@@ -32171,9 +32186,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot_worker_sh__entry",
-      "target": "scripts_validate_snapshot_worker_log_error",
-      "confidence_score": 1.0
+      "target": "scripts_validate_snapshot_worker_log_error"
     },
     {
       "relation": "calls",
@@ -35707,7 +35722,19 @@
       "relation": "defines",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1681",
+      "source_location": "L1314",
+      "weight": 1.0,
+      "context": "call",
+      "_origin": "ast",
+      "source": "scripts_validate_snapshot_git_check_commit",
+      "target": "scripts_validate_snapshot_git_cat",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "source_file": "scripts/validate-snapshot.sh",
+      "source_location": "L1688",
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
@@ -37450,9 +37477,9 @@
       "source_location": "L1",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot_worker",
-      "target": "scripts_validate_snapshot_worker_sh__entry",
-      "confidence_score": 1.0
+      "target": "scripts_validate_snapshot_worker_sh__entry"
     },
     {
       "relation": "contains",
@@ -46038,7 +46065,7 @@
       "relation": "defines",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1332",
+      "source_location": "L1339",
       "weight": 1.0,
       "_origin": "ast",
       "source": "scripts_validate_snapshot",
@@ -46049,7 +46076,7 @@
       "relation": "defines",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1395",
+      "source_location": "L1402",
       "weight": 1.0,
       "_origin": "ast",
       "source": "scripts_validate_snapshot",
@@ -46071,7 +46098,7 @@
       "relation": "defines",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1426",
+      "source_location": "L1433",
       "weight": 1.0,
       "_origin": "ast",
       "source": "scripts_validate_snapshot",
@@ -46082,7 +46109,7 @@
       "relation": "defines",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1446",
+      "source_location": "L1453",
       "weight": 1.0,
       "_origin": "ast",
       "source": "scripts_validate_snapshot",
@@ -46093,7 +46120,7 @@
       "relation": "defines",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1447",
+      "source_location": "L1454",
       "weight": 1.0,
       "_origin": "ast",
       "source": "scripts_validate_snapshot",
@@ -46104,7 +46131,7 @@
       "relation": "defines",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1450",
+      "source_location": "L1457",
       "weight": 1.0,
       "_origin": "ast",
       "source": "scripts_validate_snapshot",
@@ -46115,7 +46142,7 @@
       "relation": "defines",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1452",
+      "source_location": "L1459",
       "weight": 1.0,
       "_origin": "ast",
       "source": "scripts_validate_snapshot",
@@ -46126,7 +46153,7 @@
       "relation": "defines",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1462",
+      "source_location": "L1469",
       "weight": 1.0,
       "_origin": "ast",
       "source": "scripts_validate_snapshot",
@@ -46137,7 +46164,7 @@
       "relation": "defines",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1467",
+      "source_location": "L1474",
       "weight": 1.0,
       "_origin": "ast",
       "source": "scripts_validate_snapshot",
@@ -46148,7 +46175,7 @@
       "relation": "defines",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1613",
+      "source_location": "L1620",
       "weight": 1.0,
       "_origin": "ast",
       "source": "scripts_validate_snapshot",
@@ -46159,7 +46186,7 @@
       "relation": "defines",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1664",
+      "source_location": "L1671",
       "weight": 1.0,
       "_origin": "ast",
       "source": "scripts_validate_snapshot",
@@ -46170,7 +46197,7 @@
       "relation": "defines",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1719",
+      "source_location": "L1726",
       "weight": 1.0,
       "_origin": "ast",
       "source": "scripts_validate_snapshot",
@@ -46181,7 +46208,7 @@
       "relation": "defines",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1771",
+      "source_location": "L1778",
       "weight": 1.0,
       "_origin": "ast",
       "source": "scripts_validate_snapshot",
@@ -46192,7 +46219,7 @@
       "relation": "defines",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1775",
+      "source_location": "L1782",
       "weight": 1.0,
       "_origin": "ast",
       "source": "scripts_validate_snapshot",
@@ -46203,7 +46230,7 @@
       "relation": "defines",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1781",
+      "source_location": "L1788",
       "weight": 1.0,
       "_origin": "ast",
       "source": "scripts_validate_snapshot",
@@ -46214,7 +46241,7 @@
       "relation": "defines",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1786",
+      "source_location": "L1793",
       "weight": 1.0,
       "_origin": "ast",
       "source": "scripts_validate_snapshot",
@@ -46225,7 +46252,7 @@
       "relation": "defines",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1793",
+      "source_location": "L1800",
       "weight": 1.0,
       "_origin": "ast",
       "source": "scripts_validate_snapshot",
@@ -46236,7 +46263,7 @@
       "relation": "defines",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1798",
+      "source_location": "L1805",
       "weight": 1.0,
       "_origin": "ast",
       "source": "scripts_validate_snapshot",
@@ -46247,7 +46274,7 @@
       "relation": "defines",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1800",
+      "source_location": "L1807",
       "weight": 1.0,
       "_origin": "ast",
       "source": "scripts_validate_snapshot",
@@ -46258,7 +46285,7 @@
       "relation": "defines",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1811",
+      "source_location": "L1818",
       "weight": 1.0,
       "_origin": "ast",
       "source": "scripts_validate_snapshot",
@@ -46269,7 +46296,7 @@
       "relation": "defines",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1817",
+      "source_location": "L1824",
       "weight": 1.0,
       "_origin": "ast",
       "source": "scripts_validate_snapshot",
@@ -46280,7 +46307,7 @@
       "relation": "defines",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1841",
+      "source_location": "L1848",
       "weight": 1.0,
       "_origin": "ast",
       "source": "scripts_validate_snapshot",
@@ -46302,7 +46329,7 @@
       "relation": "defines",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1933",
+      "source_location": "L1940",
       "weight": 1.0,
       "_origin": "ast",
       "source": "scripts_validate_snapshot",
@@ -46313,7 +46340,7 @@
       "relation": "defines",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1935",
+      "source_location": "L1942",
       "weight": 1.0,
       "_origin": "ast",
       "source": "scripts_validate_snapshot",
@@ -46324,7 +46351,7 @@
       "relation": "defines",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L2000",
+      "source_location": "L2007",
       "weight": 1.0,
       "_origin": "ast",
       "source": "scripts_validate_snapshot",
@@ -46335,7 +46362,7 @@
       "relation": "defines",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L2040",
+      "source_location": "L2047",
       "weight": 1.0,
       "_origin": "ast",
       "source": "scripts_validate_snapshot",
@@ -46346,7 +46373,7 @@
       "relation": "defines",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L2105",
+      "source_location": "L2112",
       "weight": 1.0,
       "_origin": "ast",
       "source": "scripts_validate_snapshot",
@@ -46357,7 +46384,7 @@
       "relation": "defines",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L2115",
+      "source_location": "L2122",
       "weight": 1.0,
       "_origin": "ast",
       "source": "scripts_validate_snapshot",
@@ -46368,7 +46395,7 @@
       "relation": "defines",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L2117",
+      "source_location": "L2124",
       "weight": 1.0,
       "_origin": "ast",
       "source": "scripts_validate_snapshot",
@@ -46379,7 +46406,7 @@
       "relation": "defines",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L2241",
+      "source_location": "L2248",
       "weight": 1.0,
       "_origin": "ast",
       "source": "scripts_validate_snapshot",
@@ -46877,9 +46904,9 @@
       "source_location": "L177",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot_worker",
-      "target": "scripts_validate_snapshot_worker_when",
-      "confidence_score": 1.0
+      "target": "scripts_validate_snapshot_worker_when"
     },
     {
       "relation": "defines",
@@ -46888,9 +46915,9 @@
       "source_location": "L38",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot_worker",
-      "target": "scripts_validate_snapshot_worker_color_reset",
-      "confidence_score": 1.0
+      "target": "scripts_validate_snapshot_worker_color_reset"
     },
     {
       "relation": "defines",
@@ -46899,9 +46926,9 @@
       "source_location": "L39",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot_worker",
-      "target": "scripts_validate_snapshot_worker_color_info",
-      "confidence_score": 1.0
+      "target": "scripts_validate_snapshot_worker_color_info"
     },
     {
       "relation": "defines",
@@ -46910,9 +46937,9 @@
       "source_location": "L40",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot_worker",
-      "target": "scripts_validate_snapshot_worker_color_success",
-      "confidence_score": 1.0
+      "target": "scripts_validate_snapshot_worker_color_success"
     },
     {
       "relation": "defines",
@@ -46921,9 +46948,9 @@
       "source_location": "L41",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot_worker",
-      "target": "scripts_validate_snapshot_worker_color_warn",
-      "confidence_score": 1.0
+      "target": "scripts_validate_snapshot_worker_color_warn"
     },
     {
       "relation": "defines",
@@ -46932,9 +46959,9 @@
       "source_location": "L42",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot_worker",
-      "target": "scripts_validate_snapshot_worker_color_error",
-      "confidence_score": 1.0
+      "target": "scripts_validate_snapshot_worker_color_error"
     },
     {
       "relation": "defines",
@@ -46943,9 +46970,9 @@
       "source_location": "L43",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot_worker",
-      "target": "scripts_validate_snapshot_worker_log",
-      "confidence_score": 1.0
+      "target": "scripts_validate_snapshot_worker_log"
     },
     {
       "relation": "defines",
@@ -46954,9 +46981,9 @@
       "source_location": "L44",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot_worker",
-      "target": "scripts_validate_snapshot_worker_log_info",
-      "confidence_score": 1.0
+      "target": "scripts_validate_snapshot_worker_log_info"
     },
     {
       "relation": "defines",
@@ -46965,9 +46992,9 @@
       "source_location": "L45",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot_worker",
-      "target": "scripts_validate_snapshot_worker_log_success",
-      "confidence_score": 1.0
+      "target": "scripts_validate_snapshot_worker_log_success"
     },
     {
       "relation": "defines",
@@ -46976,9 +47003,9 @@
       "source_location": "L46",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot_worker",
-      "target": "scripts_validate_snapshot_worker_log_warn",
-      "confidence_score": 1.0
+      "target": "scripts_validate_snapshot_worker_log_warn"
     },
     {
       "relation": "defines",
@@ -46987,9 +47014,9 @@
       "source_location": "L47",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot_worker",
-      "target": "scripts_validate_snapshot_worker_log_error",
-      "confidence_score": 1.0
+      "target": "scripts_validate_snapshot_worker_log_error"
     },
     {
       "relation": "defines",
@@ -46998,9 +47025,9 @@
       "source_location": "L49",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot_worker",
-      "target": "scripts_validate_snapshot_worker_show_help",
-      "confidence_score": 1.0
+      "target": "scripts_validate_snapshot_worker_show_help"
     },
     {
       "relation": "defines",
@@ -47009,9 +47036,9 @@
       "source_location": "L79",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot_worker",
-      "target": "scripts_validate_snapshot_worker_env_get",
-      "confidence_score": 1.0
+      "target": "scripts_validate_snapshot_worker_env_get"
     },
     {
       "relation": "defines",
@@ -47020,9 +47047,9 @@
       "source_location": "L83",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot_worker",
-      "target": "scripts_validate_snapshot_worker_cfg",
-      "confidence_score": 1.0
+      "target": "scripts_validate_snapshot_worker_cfg"
     },
     {
       "relation": "defines",
@@ -51261,5 +51288,5 @@
     }
   ],
   "hyperedges": [],
-  "built_at_commit": "0128653362337155bd00fb41d36d480c2a27987c"
+  "built_at_commit": "76a539963df13631a85e08951dd2b0182a672275"
 }
