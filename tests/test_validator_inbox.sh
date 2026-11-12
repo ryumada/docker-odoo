@@ -160,7 +160,8 @@ check_eq "the uploaded archive is handed off (moved) when the upload succeeded" 
 check_eq "the kept archive is handed off (linked) when it stays on the Secondary VPS" 2 "$(grep -c 'remote_inbox_handoff link "$remote_archives/snapshot-$SERVICE_NAME.tar.zst"' "$SNAP")"
 check_eq "only when SNAPSHOT_VALIDATOR_INBOX is true" 3 "$(grep -cF 'if [ "$SNAPSHOT_VALIDATOR_INBOX" = true ]' "$SNAP")"
 check_eq "the Drive upload records the name and id it used" 1 "$(grep -cF "printf '%s\\t%s\\n' \"\$file_name\" \"\$uploaded_id\" > \"\$SNAP_UPLOAD_RESULT\"" "$SNAP")"
-check_eq ".env.example: off by default" "SNAPSHOT_VALIDATOR_INBOX=false" "$(grep '^SNAPSHOT_VALIDATOR_INBOX=' "$REPO/.env.example")"
+check_eq ".env.example: empty (automatic: on with a Secondary VPS)" "SNAPSHOT_VALIDATOR_INBOX=" "$(grep '^SNAPSHOT_VALIDATOR_INBOX=' "$REPO/.env.example")"
+check_eq "the snapshot tool decides an empty value like the worker (drill_resolve_inbox)" 1 "$(grep -c 'drill_resolve_inbox "$SNAPSHOT_VALIDATOR_INBOX" "$SNAPSHOT_REMOTE_HOST"' "$SNAP")"
 
 echo
 echo -e "Results: ${C_PASS}$passed passed${C_RESET}, ${C_FAIL}$failed failed${C_RESET}, ${C_SKIP}$skipped skipped${C_RESET}"

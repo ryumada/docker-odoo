@@ -4,8 +4,9 @@ set -euo pipefail
 # Description: Prints this deployment's snapshot drill reports and drill settings as one JSON document, for
 #              Deployment Control (sudodevops_deployment_control), which runs it over SSH every hour. Read-only.
 #              Only the drill keys of the .env leave the server (VALIDATOR_*, SNAPSHOT_VALIDATOR_INBOX,
-#              SNAPSHOT_REMOTE_HOST), plus a summary of each report in ~/.odoo-validator/reports (or
-#              VALIDATOR_WORK_DIR/reports) of the deployment owner.
+#              SNAPSHOT_REMOTE_HOST, ENABLE_SNAPSHOT), what is in effect for the two that may be left empty
+#              ("effective", from scripts/lib/drill_defaults.sh), and a summary of each report in
+#              ~/.odoo-validator/reports (or VALIDATOR_WORK_DIR/reports) of the deployment owner.
 #              The automation user may run it with sudo without a password (Deployment Control's setup.sh adds
 #              it to /etc/sudoers.d/99-odoo-deployment, with no arguments allowed); it then reads everything as
 #              the deployment owner, never as root.
@@ -25,10 +26,10 @@ OWNER=$(stat -c '%U' "$DEPLOYMENT_DIR")
 ME=$(id -un)
 
 IFS= read -r -d '' COLLECTOR <<'PY' || true
-import glob, json, os, re, sys
+import glob, json, os, re, subprocess, sys
 dep = sys.argv[1].rstrip('/') or '/'
 svc = os.path.basename(dep)
-KEYS = ('VALIDATOR_WORKER', 'VALIDATOR_MIN_INTERVAL_HOURS', 'VALIDATOR_BOOT_STRICT', 'SNAPSHOT_VALIDATOR_INBOX', 'SNAPSHOT_REMOTE_HOST', 'VALIDATOR_WORK_DIR')
+KEYS = ('VALIDATOR_WORKER', 'VALIDATOR_MIN_INTERVAL_HOURS', 'VALIDATOR_BOOT_STRICT', 'SNAPSHOT_VALIDATOR_INBOX', 'SNAPSHOT_REMOTE_HOST', 'VALIDATOR_WORK_DIR', 'ENABLE_SNAPSHOT')
 LIMIT = 50
 
 def clean(v):
@@ -102,6 +103,33 @@ for p in glob.glob(os.path.join(rdir, '*.json')):
         'warnings': ['%s: %s' % (s.get('name'), message(s)[:300]) for s in warns[:5]],
     })
 runs.sort(key=lambda x: (str(x.get('started_at') or ''), x['name']))
+
+def effective():
+    # What is in effect for VALIDATOR_WORKER and SNAPSHOT_VALIDATOR_INBOX, decided by this deployment's
+    # docker-odoo (scripts/lib/drill_defaults.sh: an empty value is automatic), so it matches what setup,
+    # the worker and the snapshot tool do. None when that docker-odoo is older.
+    lib = os.path.join(dep, 'scripts', 'lib', 'drill_defaults.sh')
+    if not os.path.isfile(lib):
+        return None
+    # each setting twice: as it is in .env, and as it would be if left empty (automatic)
+    sh = ('source "$1" || exit 3; out() { printf "%s\\t%s\\t%s\\n" "$DRILL_VALUE" "$DRILL_AUTO" "$DRILL_REASON"; }; '
+          'drill_resolve_worker "$2" "$3" "$4"; out; drill_resolve_worker "" "$3" "$4"; out; '
+          'drill_resolve_inbox "$5" "$4"; out; drill_resolve_inbox "" "$4"; out')
+    args = [settings.get(k, '') for k in ('VALIDATOR_WORKER', 'ENABLE_SNAPSHOT', 'SNAPSHOT_REMOTE_HOST', 'SNAPSHOT_VALIDATOR_INBOX')]
+    try:
+        p = subprocess.run(['bash', '-c', sh, 'drill', lib] + args, stdin=subprocess.DEVNULL,
+                           stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, universal_newlines=True, timeout=30)
+    except Exception:
+        return None
+    lines = [line.split('\t', 2) for line in p.stdout.splitlines()]
+    if p.returncode != 0 or len(lines) != 4 or any(len(x) != 3 or x[0] not in ('true', 'false') for x in lines):
+        return None
+    out = {}
+    for key, now, auto in (('VALIDATOR_WORKER', lines[0], lines[1]), ('SNAPSHOT_VALIDATOR_INBOX', lines[2], lines[3])):
+        out[key] = {'value': now[0] == 'true', 'auto': now[1] == 'true', 'reason': now[2][:300],
+                    'auto_value': auto[0] == 'true', 'auto_reason': auto[2][:300]}
+    return out
+
 print(json.dumps({
     'schema': 1,
     'service': svc,
@@ -111,6 +139,7 @@ print(json.dumps({
     'reports_dir_exists': os.path.isdir(rdir),
     'worker_installed': os.path.exists('/etc/cron.d/validate-snapshot-' + svc),
     'worker_script': os.path.exists(os.path.join(dep, 'scripts', 'validate-snapshot-worker.sh')),
+    'effective': effective(),
     'runs': runs[-LIMIT:],
 }))
 PY

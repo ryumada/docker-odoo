@@ -21,6 +21,10 @@ MAX_BACKUPS=3
 if [ -f "$PATH_TO_ODOO/scripts/lib/ssh_utils.sh" ]; then
   source "$PATH_TO_ODOO/scripts/lib/ssh_utils.sh"
 fi
+# Empty VALIDATOR_WORKER / SNAPSHOT_VALIDATOR_INBOX mean "automatic" (see the library)
+if [ -f "$PATH_TO_ODOO/scripts/lib/drill_defaults.sh" ]; then
+  source "$PATH_TO_ODOO/scripts/lib/drill_defaults.sh"
+fi
 
 # --- Logging Functions & Colors ---
 # Define colors for log messages
@@ -113,9 +117,34 @@ EOF
   sudo systemctl restart cron
 }
 
+function resolveDrillDefaults() {
+  # Decides (and says why) whether the drill worker and the validator inbox are on; an empty value is automatic.
+  VALIDATOR_WORKER_EFFECTIVE=false
+  if ! declare -f drill_resolve_worker >/dev/null; then
+    [ "$VALIDATOR_WORKER" = true ] && VALIDATOR_WORKER_EFFECTIVE=true
+    log_warn "scripts/lib/drill_defaults.sh not found: the drill worker follows VALIDATOR_WORKER=true only."
+    return 0
+  fi
+  if drill_resolve_worker "$VALIDATOR_WORKER" "$ENABLE_SNAPSHOT" "$SNAPSHOT_REMOTE_HOST"; then
+    VALIDATOR_WORKER_EFFECTIVE=$DRILL_VALUE
+    log_info "Drill worker: $DRILL_REASON."
+  else
+    log_warn "Drill worker: off. $DRILL_REASON (use true, false, or leave it empty for automatic)."
+  fi
+  if [ "$VALIDATOR_WORKER_EFFECTIVE" = true ] && { [ -z "$SNAPSHOT_REMOTE_HOST" ] || drill_host_is_local "$SNAPSHOT_REMOTE_HOST"; }; then
+    log_warn "Drills of $SERVICE_NAME will run on this host: each one restores the database and boots Odoo here (lowest priority, VALIDATOR_ODOO_MEMORY, disk reserve VALIDATOR_DISK_RESERVE_GB). Set VALIDATOR_WORKER=false in .env to turn them off."
+  fi
+  if drill_resolve_inbox "$SNAPSHOT_VALIDATOR_INBOX" "$SNAPSHOT_REMOTE_HOST"; then
+    log_info "Validator inbox: $DRILL_REASON."
+  else
+    log_warn "Validator inbox: off. $DRILL_REASON (use true, false, or leave it empty for automatic)."
+  fi
+}
+
 function installValidatorWorker() {
   # The drill worker: every hour, validate-snapshot-worker.sh drills the newest snapshot when a drill is
-  # due (VALIDATOR_MIN_INTERVAL_HOURS). Installed when VALIDATOR_WORKER=true, removed otherwise.
+  # due (VALIDATOR_MIN_INTERVAL_HOURS). Installed when the worker is on (VALIDATOR_WORKER=true, or empty while
+  # snapshots are on: see scripts/lib/drill_defaults.sh), removed otherwise.
   local enabled="$1"
   local cron_target="/etc/cron.d/validate-snapshot-$SERVICE_NAME"
   local logrotate_target="/etc/logrotate.d/validate-snapshot-$SERVICE_NAME"
@@ -125,11 +154,11 @@ function installValidatorWorker() {
 
   if [ "$enabled" != true ]; then
     if [ -f "$cron_target" ]; then
-      log_info "VALIDATOR_WORKER is not true: removing the drill worker cron job $cron_target"
+      log_info "The drill worker is off: removing the drill worker cron job $cron_target"
       rm -f "$cron_target"
       systemctl restart cron || true
     fi
-    log_info "Drill worker is off (set VALIDATOR_WORKER=true in .env and re-run ./setup.sh to drill snapshots automatically)."
+    log_info "Drill worker is off (set VALIDATOR_WORKER=true, or leave it empty, in .env and re-run ./setup.sh to drill snapshots automatically)."
     return 0
   fi
   if [ ! -f "$worker" ]; then
@@ -227,6 +256,7 @@ function main() {
   SNAPSHOT_REMOTE_PORT=$(grep "^SNAPSHOT_REMOTE_PORT=" "$PATH_TO_ODOO/.env" 2>/dev/null | cut -d "=" -f 2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//')
   SNAPSHOT_REMOTE_KEY=$(grep "^SNAPSHOT_REMOTE_KEY=" "$PATH_TO_ODOO/.env" 2>/dev/null | cut -d "=" -f 2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//')
   VALIDATOR_WORKER=$(grep "^VALIDATOR_WORKER=" "$PATH_TO_ODOO/.env" 2>/dev/null | tail -n 1 | cut -d "=" -f 2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//')
+  SNAPSHOT_VALIDATOR_INBOX=$(grep "^SNAPSHOT_VALIDATOR_INBOX=" "$PATH_TO_ODOO/.env" 2>/dev/null | tail -n 1 | cut -d "=" -f 2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//')
   [ -z "$SNAPSHOT_REMOTE_PORT" ] && SNAPSHOT_REMOTE_PORT="22"
 
   validateSnapshotTimeList "$SNAPSHOT_TIME_LIST" || {
@@ -406,7 +436,8 @@ function main() {
   fi
 
   installCronJob "$GCS_BUCKET_NAME" "$SNAPSHOT_TIME_LIST" "$GDRIVE_ACCESS_TOKEN" "$GDRIVE_SERVICE_ACCOUNT_KEY" "$SNAPSHOT_REMOTE_HOST" "$ENABLE_SNAPSHOT"
-  installValidatorWorker "$VALIDATOR_WORKER"
+  resolveDrillDefaults
+  installValidatorWorker "$VALIDATOR_WORKER_EFFECTIVE"
 
   # Ensure local prerequisites
   if zstd --version > /dev/null 2>&1; then

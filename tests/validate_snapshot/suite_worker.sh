@@ -79,8 +79,24 @@ suite_worker() {
 
   tvs_section "worker: settings"
   wk off
-  check_wk "worker off by default" 0
-  check_grep "says it is off" "$WK_LOG" "VALIDATOR_WORKER is not true"
+  check_wk "worker off when empty and snapshots are off" 0
+  check_grep "says it is off, and why" "$WK_LOG" "are off: automatic (VALIDATOR_WORKER empty): off, because snapshots are off"
+  wk off-explicit VALIDATOR_WORKER=false ENABLE_SNAPSHOT=Y
+  check_wk "VALIDATOR_WORKER=false wins over snapshots on" 0
+  check_grep "says the .env turned it off" "$WK_LOG" "are off: VALIDATOR_WORKER=false in .env"
+  check_eq "nothing drilled while off" 0 "$(wreports)"
+  wk auto-status ENABLE_SNAPSHOT=Y -- --status
+  check_grep "empty + snapshots on: on, on this host" "$WK_LOG.out" "Worker:            on (automatic (VALIDATOR_WORKER empty): on, because snapshots are on; no Secondary VPS, so drills run on this host)"
+  check_grep "no Secondary VPS: inbox off" "$WK_LOG.out" "Validator inbox:   off (automatic (SNAPSHOT_VALIDATOR_INBOX empty): off, because there is no Secondary VPS"
+  wk auto-status-remote ENABLE_SNAPSHOT=Y SNAPSHOT_REMOTE_HOST=203.0.113.5 -- --status
+  check_grep "Secondary VPS: inbox on automatically" "$WK_LOG.out" "Validator inbox:   on (automatic (SNAPSHOT_VALIDATOR_INBOX empty): on, because SNAPSHOT_REMOTE_HOST=203.0.113.5 is a Secondary VPS)"
+  check_grep "  and drilled first" "$WK_LOG.out" "Drills (in order): the validator inbox on 203.0.113.5, then"
+  wk auto-status-loopback ENABLE_SNAPSHOT=Y SNAPSHOT_REMOTE_HOST=127.0.0.1 -- --status
+  check_grep "SNAPSHOT_REMOTE_HOST=127.0.0.1: inbox off (this machine)" "$WK_LOG.out" "Validator inbox:   off (automatic (SNAPSHOT_VALIDATOR_INBOX empty): off, because SNAPSHOT_REMOTE_HOST=127.0.0.1 is this machine)"
+  wk inbox-explicit-off ENABLE_SNAPSHOT=Y SNAPSHOT_REMOTE_HOST=203.0.113.5 SNAPSHOT_VALIDATOR_INBOX=false -- --status
+  check_grep "SNAPSHOT_VALIDATOR_INBOX=false wins" "$WK_LOG.out" "Validator inbox:   off (SNAPSHOT_VALIDATOR_INBOX=false in .env)"
+  wk badinbox ENABLE_SNAPSHOT=Y SNAPSHOT_VALIDATOR_INBOX=yes
+  check_wk "SNAPSHOT_VALIDATOR_INBOX=yes refused" 3
   check_eq "nothing drilled" 0 "$(wreports)"
   wk badint VALIDATOR_WORKER=true VALIDATOR_MIN_INTERVAL_HOURS=0
   check_wk "VALIDATOR_MIN_INTERVAL_HOURS=0 refused" 3
@@ -89,6 +105,7 @@ suite_worker() {
   check_grep "names the setting" "$WK_LOG" "VALIDATOR_MIN_INTERVAL_HOURS='12h'"
   wk badflag VALIDATOR_WORKER=yes
   check_wk "VALIDATOR_WORKER=yes refused" 3
+  check_grep "says what is allowed" "$WK_LOG" "VALIDATOR_WORKER='yes' (true, false, or empty for automatic)"
   wk status-empty -- --status
   check_wk "--status works with the worker off" 0
   check_grep "never drilled: due now" "$WK_LOG.out" "Due:               yes"

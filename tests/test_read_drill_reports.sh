@@ -3,8 +3,9 @@ set -o pipefail
 # Category: Test
 # Description: scripts/read-drill-reports.sh, the read-only helper Deployment Control runs (with sudo) to collect a
 #              deployment's drill reports: one JSON document (schema 1), only the drill keys of the .env, only
-#              this deployment's reports, no arguments accepted, and (when run as root) read as the deployment
-#              owner, never as root.
+#              this deployment's reports, what is in effect for the settings left empty ("effective", from
+#              scripts/lib/drill_defaults.sh), no arguments accepted, and (when run as root) read as the
+#              deployment owner, never as root.
 # Usage: ./tests/test_read_drill_reports.sh
 # Dependencies: bash, python3
 #
@@ -62,6 +63,25 @@ check_eq "drill settings read like env_get" "{'VALIDATOR_WORKER': 'true', 'VALID
 if grep -q 'top-secret\|DB_NAME\|prod' "$T/out"; then fail "no other .env value in the output"; else pass "no other .env value in the output"; fi
 check_eq "worker script seen" "True" "$(get "d['worker_script']")"
 check_eq "nothing on stderr" "" "$(cat "$T/err")"
+check_eq "older docker-odoo (no drill_defaults.sh): effective is null" "None" "$(get "d['effective']")"
+
+section "what is in effect for the settings left empty (scripts/lib/drill_defaults.sh)"
+mkdir -p "$DEP/scripts/lib"; cp "$REPO/scripts/lib/drill_defaults.sh" "$DEP/scripts/lib/"
+cp "$DEP/.env" "$T/env.saved"
+printf 'ENABLE_SNAPSHOT=Y\nVALIDATOR_WORKER=\nSNAPSHOT_VALIDATOR_INBOX=\nSNAPSHOT_REMOTE_HOST=203.0.113.5\nDB_PASSWORD=top-secret-db\n' > "$DEP/.env"
+HOME="$HOME_DIR" "$DEP/scripts/read-drill-reports.sh" > "$T/out" 2>/dev/null
+check_eq "empty worker + snapshots on: on, automatic" "True True" "$(get "d['effective']['VALIDATOR_WORKER']['value'], d['effective']['VALIDATOR_WORKER']['auto']" | tr -d "(),")"
+check_eq "empty inbox + Secondary VPS: on, automatic" "True True" "$(get "d['effective']['SNAPSHOT_VALIDATOR_INBOX']['value'], d['effective']['SNAPSHOT_VALIDATOR_INBOX']['auto']" | tr -d "(),")"
+check_eq "with the reason" "True" "$(get "'Secondary VPS 203.0.113.5' in d['effective']['VALIDATOR_WORKER']['reason']")"
+check_eq "and what empty would do (same here)" "True" "$(get "d['effective']['VALIDATOR_WORKER']['auto_value']")"
+check_eq "ENABLE_SNAPSHOT is read (not a secret), the rest is not" "Y" "$(get "d['settings']['ENABLE_SNAPSHOT']")"
+if grep -q 'top-secret' "$T/out"; then fail "still no other .env value in the output"; else pass "still no other .env value in the output"; fi
+printf 'ENABLE_SNAPSHOT=Y\nVALIDATOR_WORKER=false\nSNAPSHOT_VALIDATOR_INBOX=\nSNAPSHOT_REMOTE_HOST=localhost\n' > "$DEP/.env"
+HOME="$HOME_DIR" "$DEP/scripts/read-drill-reports.sh" > "$T/out" 2>/dev/null
+check_eq "explicit false: off, not automatic" "False False" "$(get "d['effective']['VALIDATOR_WORKER']['value'], d['effective']['VALIDATOR_WORKER']['auto']" | tr -d "(),")"
+check_eq "  while empty would be on (snapshots on)" "True" "$(get "d['effective']['VALIDATOR_WORKER']['auto_value']")"
+check_eq "SNAPSHOT_REMOTE_HOST=localhost: inbox off" "False True" "$(get "d['effective']['SNAPSHOT_VALIDATOR_INBOX']['value'], d['effective']['SNAPSHOT_VALIDATOR_INBOX']['auto']" | tr -d "(),")"
+cp "$T/env.saved" "$DEP/.env"
 
 section "VALIDATOR_WORK_DIR moves the reports"
 mkdir -p "$T/vwork/reports"
