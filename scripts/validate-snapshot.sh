@@ -1801,7 +1801,7 @@ image_exists() { docker image inspect "$1" >/dev/null 2>&1; }
 
 BOOT_SNAP_ENV_KEYS=(ODOO_IMAGE_NAME CURRENT_IMAGE_VERSION DOCKER_BUILD_MODE DOCKER_PUSHPULL_USERNAME DOCKER_PULL_KEY
   PYTHON_VERSION APT_ADDITIONAL_PACKAGES PIP_ADDITIONAL_PACKAGES POSTGRESQL_VERSION APT_RESOURCE_URL
-  POSTGRESQL_CUSTOM_REPO_URL ADDONS_PATH)
+  POSTGRESQL_CUSTOM_REPO_URL ADDONS_PATH ODOO_ADDITIONAL_CONF DEPCON_ENCRYPTION_SECRET CUSTOM_SECRETS_FILES)
 declare -A SNAP_ENV=()
 
 boot_prepare() {
@@ -2016,6 +2016,26 @@ boot_layout() {
   for top in "$dest"/*; do
     [ -d "$top" ] && MOUNTS+=(--mount "type=bind,src=$top,dst=/opt/odoo/$(basename "$top"),readonly")
   done
+  if [ -n "${SNAP_ENV[CUSTOM_SECRETS_FILES]:-}" ]; then
+    local sec_raw sec_name sec_out
+    mkdir -p "$BOOT_DIR/secrets" && chmod 711 "$BOOT_DIR/secrets"
+    IFS=',' read -ra sec_raw <<< "${SNAP_ENV[CUSTOM_SECRETS_FILES]}"
+    for sec_name in "${sec_raw[@]}"; do
+      sec_name=$(sed 's/^[[:space:]]*//;s/[[:space:]]*$//' <<< "$sec_name")
+      [ -n "$sec_name" ] || continue
+      if ! [[ "$sec_name" =~ ^[A-Za-z0-9._-]+$ ]] || [[ "$sec_name" == *..* ]]; then
+        LAYOUT_NOTES+=("custom secret '$sec_name' skipped (invalid name)"); continue
+      fi
+      sec_out="$BOOT_DIR/secrets/$sec_name"
+      if snap_file ".secrets/$sec_name" "$sec_out" || { [ -f "$PATH_TO_ODOO/.secrets/$sec_name" ] && cp "$PATH_TO_ODOO/.secrets/$sec_name" "$sec_out" 2>/dev/null; }; then
+        chmod 644 "$sec_out"
+        MOUNTS+=(--mount "type=bind,src=$sec_out,dst=/run/secrets/$sec_name,readonly")
+      else
+        rm -f "$sec_out"
+        LAYOUT_NOTES+=("custom secret '.secrets/$sec_name' not found in snapshot or host")
+      fi
+    done
+  fi
   # addons_path as production has it: conf/odoo.conf, then ADDONS_PATH in .env, then the usual layout
   if snap_file conf/odoo.conf "$BOOT_DIR/prod.conf"; then
     conf_addons=$(python3 -c 'import configparser,sys
@@ -2162,6 +2182,35 @@ limit_time_real = $VALIDATOR_BOOT_TIMEOUT
 limit_time_cpu = $VALIDATOR_BOOT_TIMEOUT
 log_level = info
 EOF
+    if [ -n "${SNAP_ENV[ODOO_ADDITIONAL_CONF]:-}" ] || [ -n "${SNAP_ENV[DEPCON_ENCRYPTION_SECRET]:-}" ]; then
+      python3 - "${SNAP_ENV[ODOO_ADDITIONAL_CONF]:-}" "${SNAP_ENV[DEPCON_ENCRYPTION_SECRET]:-}" >> "$BOOT_DIR/drill.conf" <<'PY'
+import re, sys
+add_conf, depcon_secret = sys.argv[1], sys.argv[2]
+PROTECTED = {
+    "addons_path", "data_dir", "db_host", "db_port", "db_user", "db_password",
+    "db_name", "dbfilter", "list_db", "admin_passwd", "http_interface", "http_port",
+    "workers", "max_cron_threads", "server_wide_modules", "proxy_mode", "without_demo",
+    "smtp_server", "limit_time_real", "limit_time_cpu", "log_level",
+}
+seen_depcon = False
+for item in add_conf.split(";"):
+    item = item.strip()
+    if not item or "=" not in item:
+        continue
+    k, v = item.split("=", 1)
+    k = k.strip()
+    v = v.strip().replace("\r", "").replace("\n", "")
+    if not re.match(r"^[A-Za-z_][A-Za-z0-9_.-]*$", k) or k.lower() in PROTECTED:
+        continue
+    if k.lower() == "depcon_encryption_secret":
+        seen_depcon = True
+    print(f"{k} = {v}")
+if depcon_secret and not seen_depcon:
+    depcon_secret = depcon_secret.strip().replace("\r", "").replace("\n", "")
+    if depcon_secret:
+        print(f"depcon_encryption_secret = {depcon_secret}")
+PY
+    fi
   ) || { record_stage "boot" "error" "$(since "$t0")" "Cannot write the drill's Odoo configuration"; return 1; }
 
   # Neutralize first: crons, mail servers, payment providers... off (odoo-bin neutralize, Odoo 16+)

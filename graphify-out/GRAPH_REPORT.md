@@ -1,7 +1,7 @@
 # Graph Report - docker-odoo  (2026-11-12)
 
 ## Corpus Check
-- 122 files · ~140,670 words
+- 122 files · ~140,891 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
@@ -10,7 +10,7 @@
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `76a53996`
+- Built from commit: `cae0a68a`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
