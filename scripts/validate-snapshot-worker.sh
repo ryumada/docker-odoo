@@ -12,7 +12,7 @@ set -o pipefail
 #   - never drilled: now
 # What it drills, in order:
 #   1. --inbox: the snapshot waiting in the validator inbox on the Secondary VPS (SNAPSHOT_REMOTE_HOST
-#      and SNAPSHOT_VALIDATOR_INBOX=true). No download; always a new snapshot.
+#      and the inbox on: SNAPSHOT_VALIDATOR_INBOX=true, or empty with a Secondary VPS). No download.
 #   2. Otherwise the newest snapshot where the snapshot tool stores them: Google Drive (--drive), GCS
 #      (--gcs), the copy kept on the Secondary VPS, or the newest folder in this host's local archives,
 #      skipped (--unless-checksum) when it is the snapshot the last pass or fail already proved.
@@ -26,6 +26,14 @@ PATH_TO_ODOO=$(git -C "$CURRENT_DIR" rev-parse --show-toplevel 2>/dev/null || di
 SERVICE_NAME=$(basename "$PATH_TO_ODOO")
 VALIDATOR="$CURRENT_DIR/validate-snapshot.sh"
 umask 077
+# Empty VALIDATOR_WORKER / SNAPSHOT_VALIDATOR_INBOX mean "automatic" (scripts/lib/drill_defaults.sh)
+if [ -f "$CURRENT_DIR/lib/drill_defaults.sh" ]; then
+  # shellcheck source=/dev/null
+  source "$CURRENT_DIR/lib/drill_defaults.sh"
+else
+  echo "scripts/lib/drill_defaults.sh not found. Update docker-odoo (git pull) and re-run ./setup.sh." >&2
+  exit 3
+fi
 
 readonly COLOR_RESET="\033[0m"
 readonly COLOR_INFO="\033[0;34m"
@@ -43,8 +51,8 @@ show_help() {
 Usage: $(basename "$0") [--status] [--force]
 
 Drill worker for this deployment ($SERVICE_NAME). Run every hour by
-/etc/cron.d/validate-snapshot-$SERVICE_NAME when VALIDATOR_WORKER=true in .env
-(installed by ./setup.sh). Each run drills the newest snapshot with --publish when a
+/etc/cron.d/validate-snapshot-$SERVICE_NAME when the worker is on: VALIDATOR_WORKER=true
+in .env, or empty while snapshots are on (ENABLE_SNAPSHOT); installed by ./setup.sh. Each run drills the newest snapshot with --publish when a
 drill is due, and does nothing otherwise.
 
   --status   Show the last drills, when the next one is due and what it would drill (nothing runs)
@@ -52,7 +60,7 @@ drill is due, and does nothing otherwise.
              (a snapshot the last drill already proved is still skipped)
   -h, --help Show this help
 
-Settings (.env): VALIDATOR_WORKER (true/false, default false), VALIDATOR_MIN_INTERVAL_HOURS
+Settings (.env): VALIDATOR_WORKER (true/false; empty: on when ENABLE_SNAPSHOT is on), VALIDATOR_MIN_INTERVAL_HOURS
 (default 24: after a pass or fail, the next drill waits this long; after an error a quarter of it,
 at least 1 hour). The drill itself uses validate-snapshot.sh's settings.
 EOF
@@ -74,20 +82,25 @@ env_get() {
 }
 cfg() { local v="${!1:-}"; [ -n "$v" ] || v=$(env_get "$1"); [ -n "$v" ] || v="$2"; echo "$v"; }
 
-VALIDATOR_WORKER=$(cfg VALIDATOR_WORKER false)
+VALIDATOR_WORKER=$(cfg VALIDATOR_WORKER "")
+ENABLE_SNAPSHOT=$(cfg ENABLE_SNAPSHOT "")
 VALIDATOR_MIN_INTERVAL_HOURS=$(cfg VALIDATOR_MIN_INTERVAL_HOURS 24)
 SNAPSHOT_REMOTE_HOST=$(cfg SNAPSHOT_REMOTE_HOST "")
-SNAPSHOT_VALIDATOR_INBOX=$(cfg SNAPSHOT_VALIDATOR_INBOX false)
+SNAPSHOT_VALIDATOR_INBOX=$(cfg SNAPSHOT_VALIDATOR_INBOX "")
 GDRIVE_ACCESS_TOKEN=$(cfg GDRIVE_ACCESS_TOKEN "")
 GDRIVE_SERVICE_ACCOUNT_KEY=$(cfg GDRIVE_SERVICE_ACCOUNT_KEY "")
 GCS_BUCKET_NAME=$(cfg GCS_BUCKET_NAME "")
 
 bad=()
-[[ "$VALIDATOR_WORKER" =~ ^(true|false)$ ]] || bad+=("VALIDATOR_WORKER='$VALIDATOR_WORKER' (true or false)")
+drill_resolve_worker "$VALIDATOR_WORKER" "$ENABLE_SNAPSHOT" "$SNAPSHOT_REMOTE_HOST" \
+  || bad+=("VALIDATOR_WORKER='$VALIDATOR_WORKER' (true, false, or empty for automatic)")
+VALIDATOR_WORKER=$DRILL_VALUE WORKER_REASON=$DRILL_REASON
 if ! [[ "$VALIDATOR_MIN_INTERVAL_HOURS" =~ ^[1-9][0-9]{0,3}$ ]] || [ "$VALIDATOR_MIN_INTERVAL_HOURS" -gt 8760 ]; then
   bad+=("VALIDATOR_MIN_INTERVAL_HOURS='$VALIDATOR_MIN_INTERVAL_HOURS' (whole hours, 1 to 8760)")
 fi
-[[ "$SNAPSHOT_VALIDATOR_INBOX" =~ ^(true|false)$ ]] || bad+=("SNAPSHOT_VALIDATOR_INBOX='$SNAPSHOT_VALIDATOR_INBOX' (true or false)")
+drill_resolve_inbox "$SNAPSHOT_VALIDATOR_INBOX" "$SNAPSHOT_REMOTE_HOST" \
+  || bad+=("SNAPSHOT_VALIDATOR_INBOX='$SNAPSHOT_VALIDATOR_INBOX' (true, false, or empty for automatic)")
+SNAPSHOT_VALIDATOR_INBOX=$DRILL_VALUE INBOX_REASON=$DRILL_REASON
 if [ ${#bad[@]} -gt 0 ]; then
   for b in "${bad[@]}"; do log_error "Invalid setting: $b"; done
   exit 3
@@ -95,7 +108,7 @@ fi
 [ -f "$VALIDATOR" ] || { log_error "$VALIDATOR not found. Update docker-odoo (git pull)."; exit 3; }
 
 if [ "$VALIDATOR_WORKER" != true ] && [ "$FORCE" != true ] && [ "$STATUS" != true ]; then
-  log_info "VALIDATOR_WORKER is not true in .env: automatic drills of $SERVICE_NAME are off."
+  log_info "Automatic drills of $SERVICE_NAME are off: $WORKER_REASON."
   exit 0
 fi
 
@@ -187,7 +200,8 @@ USE_INBOX=false
 
 if [ "$STATUS" = true ]; then
   echo "Deployment:        $SERVICE_NAME"
-  echo "Worker:            $([ "$VALIDATOR_WORKER" = true ] && echo on || echo "off (VALIDATOR_WORKER=$VALIDATOR_WORKER)")"
+  echo "Worker:            $([ "$VALIDATOR_WORKER" = true ] && echo on || echo off) ($WORKER_REASON)"
+  echo "Validator inbox:   $([ "$SNAPSHOT_VALIDATOR_INBOX" = true ] && echo on || echo off) ($INBOX_REASON)"
   echo "Interval:          ${VALIDATOR_MIN_INTERVAL_HOURS}h after a pass or fail, $(python3 -c "print('%g' % max(1, $VALIDATOR_MIN_INTERVAL_HOURS / 4))")h after an error"
   echo "Last pass/fail:    $([ "$LAST_PF" = "-" ] && echo never || echo "$LAST_PF, started $(when "$LAST_PF_AT")")"
   echo "Last error since:  $(when "$LAST_ERR_AT")"

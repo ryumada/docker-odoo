@@ -59,6 +59,16 @@ else
   exit 1
 fi
 
+# Effective drill settings: an empty SNAPSHOT_VALIDATOR_INBOX is automatic (scripts/lib/drill_defaults.sh).
+# Optional: without it (older docker-odoo), the inbox follows SNAPSHOT_VALIDATOR_INBOX=true only.
+if [ -f "$CURRENT_DIR/lib/drill_defaults.sh" ]; then
+  # shellcheck source=/dev/null
+  source "$CURRENT_DIR/lib/drill_defaults.sh"
+elif [ -f "$PATH_TO_ODOO/scripts/lib/drill_defaults.sh" ]; then
+  # shellcheck source=/dev/null
+  source "$PATH_TO_ODOO/scripts/lib/drill_defaults.sh"
+fi
+
 # Odoo version reader for manifest.json
 if [ -f "$CURRENT_DIR/lib/odoo_version.sh" ]; then
   # shellcheck source=/dev/null
@@ -1337,7 +1347,14 @@ function main() {
   # Keep each remote snapshot on the Secondary VPS for the validator's drill (see run_remote_snapshot)
   SNAPSHOT_VALIDATOR_INBOX=$(grep "^SNAPSHOT_VALIDATOR_INBOX=" "$PATH_TO_ODOO/.env" 2>/dev/null | cut -d '=' -f2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//')
   VALIDATOR_DISK_RESERVE_GB=$(grep "^VALIDATOR_DISK_RESERVE_GB=" "$PATH_TO_ODOO/.env" 2>/dev/null | cut -d '=' -f2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//')
-  [ "$SNAPSHOT_VALIDATOR_INBOX" = true ] || SNAPSHOT_VALIDATOR_INBOX=false
+  if declare -f drill_resolve_inbox >/dev/null; then
+    drill_resolve_inbox "$SNAPSHOT_VALIDATOR_INBOX" "$SNAPSHOT_REMOTE_HOST" \
+      || log_warn "Validator inbox: off. $DRILL_REASON (use true, false, or leave it empty for automatic)."
+    SNAPSHOT_VALIDATOR_INBOX=$DRILL_VALUE
+    [ "$DRILL_AUTO" = true ] && [ "$DRILL_VALUE" = true ] && log_info "Validator inbox: $DRILL_REASON."
+  else
+    [ "$SNAPSHOT_VALIDATOR_INBOX" = true ] || SNAPSHOT_VALIDATOR_INBOX=false
+  fi
   # How many snapshots kept on this host (not uploaded) to retain; empty keeps all (see snap_local_retention)
   SNAPSHOT_LOCAL_MAX_BACKUPS=$(grep "^SNAPSHOT_LOCAL_MAX_BACKUPS=" "$PATH_TO_ODOO/.env" 2>/dev/null | cut -d '=' -f2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//')
   [[ "$VALIDATOR_DISK_RESERVE_GB" =~ ^[0-9]+$ ]] || VALIDATOR_DISK_RESERVE_GB=5
