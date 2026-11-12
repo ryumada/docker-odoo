@@ -1287,10 +1287,10 @@ valid_commit() { [[ "$1" =~ ^[0-9a-f]{40}([0-9a-f]{24})?$ ]]; }
 valid_remote() { [ -n "$1" ] && [[ "$1" != -* ]] && [[ "$1" != *[[:space:][:cntrl:]]* ]]; }
 git_safe() {
   if [ -n "$VALIDATOR_GIT_USER" ]; then
-    sudo -u "$VALIDATOR_GIT_USER" -H env \
+    ( cd /tmp && sudo -u "$VALIDATOR_GIT_USER" -H env \
       GIT_TERMINAL_PROMPT=0 GIT_ALLOW_PROTOCOL="$VALIDATOR_GIT_ALLOW_PROTOCOL" GIT_CONFIG_NOSYSTEM=1 \
       GIT_SSH_COMMAND="ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=15" \
-      timeout "$VALIDATOR_GIT_TIMEOUT" git "$@"
+      timeout "$VALIDATOR_GIT_TIMEOUT" git "$@" )
   else
     GIT_TERMINAL_PROMPT=0 GIT_ALLOW_PROTOCOL="$VALIDATOR_GIT_ALLOW_PROTOCOL" GIT_CONFIG_NOSYSTEM=1 \
     GIT_SSH_COMMAND="ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=15" \
@@ -1303,17 +1303,14 @@ git_check_commit() {
   if [ -n "$VALIDATOR_GIT_USER" ]; then
     tmp=$(mktemp -d "${TMPDIR:-/tmp}/odoo-drill-git.XXXXXX") || { echo unreachable; return; }
     chmod 700 "$tmp" && chown -R "$VALIDATOR_GIT_USER": "$tmp"
+    ( cd /tmp && sudo -u "$VALIDATOR_GIT_USER" -H git init -q --bare "$tmp" ) >/dev/null 2>&1
   else
     tmp=$(mktemp -d "$WORK/git.XXXXXX") || { echo unreachable; return; }
-  fi
-  if [ -n "$VALIDATOR_GIT_USER" ]; then
-    sudo -u "$VALIDATOR_GIT_USER" -H git init -q --bare "$tmp" >/dev/null 2>&1
-  else
     git init -q --bare "$tmp" >/dev/null 2>&1
   fi
   git_cat() {
     if [ -n "$VALIDATOR_GIT_USER" ]; then
-      sudo -u "$VALIDATOR_GIT_USER" -H git -C "$tmp" cat-file -e "$1" 2>/dev/null
+      ( cd /tmp && sudo -u "$VALIDATOR_GIT_USER" -H git -C "$tmp" cat-file -e "$1" ) 2>/dev/null
     else
       git -C "$tmp" cat-file -e "$1" 2>/dev/null
     fi
@@ -1970,7 +1967,7 @@ stage_code() {
         local fetch_tmp
         fetch_tmp=$(mktemp -d "${TMPDIR:-/tmp}/odoo-drill-fetch.XXXXXX")
         chmod 700 "$fetch_tmp" && chown -R "$VALIDATOR_GIT_USER": "$fetch_tmp"
-        sudo -u "$VALIDATOR_GIT_USER" -H git init -q --bare "$fetch_tmp" >/dev/null 2>&1
+        ( cd /tmp && sudo -u "$VALIDATOR_GIT_USER" -H git init -q --bare "$fetch_tmp" ) >/dev/null 2>&1
         if ! run_bg git_safe -C "$fetch_tmp" fetch -q --depth=1 -- "$remote" "$commit" >/dev/null 2>"$BOOT_DIR/fetch.err" \
            || ! git -c safe.directory="$fetch_tmp" -C "$cache" fetch -q "$fetch_tmp" "$commit" >/dev/null 2>>"$BOOT_DIR/fetch.err"; then
           rm -rf "$fetch_tmp"
