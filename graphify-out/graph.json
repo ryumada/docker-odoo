@@ -13407,70 +13407,70 @@
         "kind": "file"
       },
       "_origin": "ast",
+      "id": "scripts_validate_snapshot",
       "community": 51,
       "community_name": "validate-snapshot.sh",
-      "norm_label": "validate-snapshot.sh",
-      "id": "scripts_validate_snapshot"
+      "norm_label": "validate-snapshot.sh"
     },
     {
       "label": "boot_classify()",
       "file_type": "code",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L2007",
+      "source_location": "L2040",
       "metadata": {
         "language": "bash",
         "kind": "bash_function"
       },
       "_origin": "ast",
+      "id": "scripts_validate_snapshot_boot_classify",
       "community": 51,
       "community_name": "validate-snapshot.sh",
-      "norm_label": "boot_classify()",
-      "id": "scripts_validate_snapshot_boot_classify"
+      "norm_label": "boot_classify()"
     },
     {
       "label": "boot_layout()",
       "file_type": "code",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1967",
+      "source_location": "L2000",
       "metadata": {
         "language": "bash",
         "kind": "bash_function"
       },
       "_origin": "ast",
+      "id": "scripts_validate_snapshot_boot_layout",
       "community": 51,
       "community_name": "validate-snapshot.sh",
-      "norm_label": "boot_layout()",
-      "id": "scripts_validate_snapshot_boot_layout"
+      "norm_label": "boot_layout()"
     },
     {
       "label": "boot_prepare()",
       "file_type": "code",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1780",
+      "source_location": "L1800",
       "metadata": {
         "language": "bash",
         "kind": "bash_function"
       },
       "_origin": "ast",
+      "id": "scripts_validate_snapshot_boot_prepare",
       "community": 51,
       "community_name": "validate-snapshot.sh",
-      "norm_label": "boot_prepare()",
-      "id": "scripts_validate_snapshot_boot_prepare"
+      "norm_label": "boot_prepare()"
     },
     {
       "label": "boot_run()",
       "file_type": "code",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L2072",
+      "source_location": "L2105",
       "metadata": {
         "language": "bash",
         "kind": "bash_function"
       },
       "_origin": "ast",
+      "id": "scripts_validate_snapshot_boot_run",
       "community": 51,
       "community_name": "validate-snapshot.sh",
-      "norm_label": "boot_run()",
-      "id": "scripts_validate_snapshot_boot_run"
+      "norm_label": "boot_run()"
     },
     {
       "label": "cat_member()",
@@ -13482,10 +13482,10 @@
         "kind": "bash_function"
       },
       "_origin": "ast",
+      "id": "scripts_validate_snapshot_cat_member",
       "community": 51,
       "community_name": "validate-snapshot.sh",
-      "norm_label": "cat_member()",
-      "id": "scripts_validate_snapshot_cat_member"
+      "norm_label": "cat_member()"
     },
     {
       "label": "cfg()",
@@ -13497,25 +13497,25 @@
         "kind": "bash_function"
       },
       "_origin": "ast",
+      "id": "scripts_validate_snapshot_cfg",
       "community": 51,
       "community_name": "validate-snapshot.sh",
-      "norm_label": "cfg()",
-      "id": "scripts_validate_snapshot_cfg"
+      "norm_label": "cfg()"
     },
     {
       "label": "check_disk()",
       "file_type": "code",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1375",
+      "source_location": "L1395",
       "metadata": {
         "language": "bash",
         "kind": "bash_function"
       },
       "_origin": "ast",
+      "id": "scripts_validate_snapshot_check_disk",
       "community": 51,
       "community_name": "validate-snapshot.sh",
-      "norm_label": "check_disk()",
-      "id": "scripts_validate_snapshot_check_disk"
+      "norm_label": "check_disk()"
     },
     {
       "label": "check_zip()",
@@ -13527,10 +13527,10 @@
         "kind": "bash_function"
       },
       "_origin": "ast",
+      "id": "scripts_validate_snapshot_check_zip",
       "community": 51,
       "community_name": "validate-snapshot.sh",
-      "norm_label": "check_zip()",
-      "id": "scripts_validate_snapshot_check_zip"
+      "norm_label": "check_zip()"
     },
     {
       "label": "cleanup()",
@@ -13542,10 +13542,10 @@
         "kind": "bash_function"
       },
       "_origin": "ast",
+      "id": "scripts_validate_snapshot_cleanup",
       "community": 51,
       "community_name": "validate-snapshot.sh",
-      "norm_label": "cleanup()",
-      "id": "scripts_validate_snapshot_cleanup"
+      "norm_label": "cleanup()"
     },
     {
       "label": "COLOR_ERROR",
@@ -13557,10 +13557,10 @@
         "kind": "code"
       },
       "_origin": "ast",
+      "id": "scripts_validate_snapshot_color_error",
       "community": 51,
       "community_name": "validate-snapshot.sh",
-      "norm_label": "color_error",
-      "id": "scripts_validate_snapshot_color_error"
+      "norm_label": "color_error"
     },
     {
       "label": "COLOR_INFO",
@@ -13572,10 +13572,10 @@
         "kind": "code"
       },
       "_origin": "ast",
+      "id": "scripts_validate_snapshot_color_info",
       "community": 51,
       "community_name": "validate-snapshot.sh",
-      "norm_label": "color_info",
-      "id": "scripts_validate_snapshot_color_info"
+      "norm_label": "color_info"
     },
     {
       "label": "COLOR_RESET",
@@ -13587,10 +13587,10 @@
         "kind": "code"
       },
       "_origin": "ast",
+      "id": "scripts_validate_snapshot_color_reset",
       "community": 51,
       "community_name": "validate-snapshot.sh",
-      "norm_label": "color_reset",
-      "id": "scripts_validate_snapshot_color_reset"
+      "norm_label": "color_reset"
     },
     {
       "label": "COLOR_SUCCESS",
@@ -13602,10 +13602,10 @@
         "kind": "code"
       },
       "_origin": "ast",
+      "id": "scripts_validate_snapshot_color_success",
       "community": 51,
       "community_name": "validate-snapshot.sh",
-      "norm_label": "color_success",
-      "id": "scripts_validate_snapshot_color_success"
+      "norm_label": "color_success"
     },
     {
       "label": "COLOR_WARN",
@@ -13617,25 +13617,25 @@
         "kind": "code"
       },
       "_origin": "ast",
+      "id": "scripts_validate_snapshot_color_warn",
       "community": 51,
       "community_name": "validate-snapshot.sh",
-      "norm_label": "color_warn",
-      "id": "scripts_validate_snapshot_color_warn"
+      "norm_label": "color_warn"
     },
     {
       "label": "container_running()",
       "file_type": "code",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L2082",
+      "source_location": "L2115",
       "metadata": {
         "language": "bash",
         "kind": "bash_function"
       },
       "_origin": "ast",
+      "id": "scripts_validate_snapshot_container_running",
       "community": 51,
       "community_name": "validate-snapshot.sh",
-      "norm_label": "container_running()",
-      "id": "scripts_validate_snapshot_container_running"
+      "norm_label": "container_running()"
     },
     {
       "label": "copy_zip()",
@@ -13647,10 +13647,10 @@
         "kind": "bash_function"
       },
       "_origin": "ast",
+      "id": "scripts_validate_snapshot_copy_zip",
       "community": 51,
       "community_name": "validate-snapshot.sh",
-      "norm_label": "copy_zip()",
-      "id": "scripts_validate_snapshot_copy_zip"
+      "norm_label": "copy_zip()"
     },
     {
       "label": "docker_preflight()",
@@ -13662,10 +13662,10 @@
         "kind": "bash_function"
       },
       "_origin": "ast",
+      "id": "scripts_validate_snapshot_docker_preflight",
       "community": 51,
       "community_name": "validate-snapshot.sh",
-      "norm_label": "docker_preflight()",
-      "id": "scripts_validate_snapshot_docker_preflight"
+      "norm_label": "docker_preflight()"
     },
     {
       "label": "docker_setup_help()",
@@ -13677,25 +13677,25 @@
         "kind": "bash_function"
       },
       "_origin": "ast",
+      "id": "scripts_validate_snapshot_docker_setup_help",
       "community": 51,
       "community_name": "validate-snapshot.sh",
-      "norm_label": "docker_setup_help()",
-      "id": "scripts_validate_snapshot_docker_setup_help"
+      "norm_label": "docker_setup_help()"
     },
     {
       "label": "drill_dockerfile()",
       "file_type": "code",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1797",
+      "source_location": "L1817",
       "metadata": {
         "language": "bash",
         "kind": "bash_function"
       },
       "_origin": "ast",
+      "id": "scripts_validate_snapshot_drill_dockerfile",
       "community": 51,
       "community_name": "validate-snapshot.sh",
-      "norm_label": "drill_dockerfile()",
-      "id": "scripts_validate_snapshot_drill_dockerfile"
+      "norm_label": "drill_dockerfile()"
     },
     {
       "label": "env_get()",
@@ -13707,25 +13707,25 @@
         "kind": "bash_function"
       },
       "_origin": "ast",
+      "id": "scripts_validate_snapshot_env_get",
       "community": 51,
       "community_name": "validate-snapshot.sh",
-      "norm_label": "env_get()",
-      "id": "scripts_validate_snapshot_env_get"
+      "norm_label": "env_get()"
     },
     {
       "label": "envfile_get()",
       "file_type": "code",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1761",
+      "source_location": "L1781",
       "metadata": {
         "language": "bash",
         "kind": "bash_function"
       },
       "_origin": "ast",
+      "id": "scripts_validate_snapshot_envfile_get",
       "community": 51,
       "community_name": "validate-snapshot.sh",
-      "norm_label": "envfile_get()",
-      "id": "scripts_validate_snapshot_envfile_get"
+      "norm_label": "envfile_get()"
     },
     {
       "label": "fetch_snapshot()",
@@ -13737,10 +13737,10 @@
         "kind": "bash_function"
       },
       "_origin": "ast",
+      "id": "scripts_validate_snapshot_fetch_snapshot",
       "community": 51,
       "community_name": "validate-snapshot.sh",
-      "norm_label": "fetch_snapshot()",
-      "id": "scripts_validate_snapshot_fetch_snapshot"
+      "norm_label": "fetch_snapshot()"
     },
     {
       "label": "finish()",
@@ -13752,10 +13752,10 @@
         "kind": "bash_function"
       },
       "_origin": "ast",
+      "id": "scripts_validate_snapshot_finish",
       "community": 51,
       "community_name": "validate-snapshot.sh",
-      "norm_label": "finish()",
-      "id": "scripts_validate_snapshot_finish"
+      "norm_label": "finish()"
     },
     {
       "label": "free_bytes()",
@@ -13767,40 +13767,40 @@
         "kind": "bash_function"
       },
       "_origin": "ast",
+      "id": "scripts_validate_snapshot_free_bytes",
       "community": 51,
       "community_name": "validate-snapshot.sh",
-      "norm_label": "free_bytes()",
-      "id": "scripts_validate_snapshot_free_bytes"
+      "norm_label": "free_bytes()"
     },
     {
       "label": "git_check_commit()",
       "file_type": "code",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1289",
+      "source_location": "L1300",
       "metadata": {
         "language": "bash",
         "kind": "bash_function"
       },
       "_origin": "ast",
+      "id": "scripts_validate_snapshot_git_check_commit",
       "community": 51,
       "community_name": "validate-snapshot.sh",
-      "norm_label": "git_check_commit()",
-      "id": "scripts_validate_snapshot_git_check_commit"
+      "norm_label": "git_check_commit()"
     },
     {
       "label": "git_safe()",
       "file_type": "code",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1284",
+      "source_location": "L1288",
       "metadata": {
         "language": "bash",
         "kind": "bash_function"
       },
       "_origin": "ast",
+      "id": "scripts_validate_snapshot_git_safe",
       "community": 51,
       "community_name": "validate-snapshot.sh",
-      "norm_label": "git_safe()",
-      "id": "scripts_validate_snapshot_git_safe"
+      "norm_label": "git_safe()"
     },
     {
       "label": "hash_archive()",
@@ -13812,10 +13812,10 @@
         "kind": "bash_function"
       },
       "_origin": "ast",
+      "id": "scripts_validate_snapshot_hash_archive",
       "community": 51,
       "community_name": "validate-snapshot.sh",
-      "norm_label": "hash_archive()",
-      "id": "scripts_validate_snapshot_hash_archive"
+      "norm_label": "hash_archive()"
     },
     {
       "label": "human()",
@@ -13827,40 +13827,40 @@
         "kind": "bash_function"
       },
       "_origin": "ast",
+      "id": "scripts_validate_snapshot_human",
       "community": 51,
       "community_name": "validate-snapshot.sh",
-      "norm_label": "human()",
-      "id": "scripts_validate_snapshot_human"
+      "norm_label": "human()"
     },
     {
       "label": "image_exists()",
       "file_type": "code",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1773",
+      "source_location": "L1793",
       "metadata": {
         "language": "bash",
         "kind": "bash_function"
       },
       "_origin": "ast",
+      "id": "scripts_validate_snapshot_image_exists",
       "community": 51,
       "community_name": "validate-snapshot.sh",
-      "norm_label": "image_exists()",
-      "id": "scripts_validate_snapshot_image_exists"
+      "norm_label": "image_exists()"
     },
     {
       "label": "image_repo()",
       "file_type": "code",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1791",
+      "source_location": "L1811",
       "metadata": {
         "language": "bash",
         "kind": "bash_function"
       },
       "_origin": "ast",
+      "id": "scripts_validate_snapshot_image_repo",
       "community": 51,
       "community_name": "validate-snapshot.sh",
-      "norm_label": "image_repo()",
-      "id": "scripts_validate_snapshot_image_repo"
+      "norm_label": "image_repo()"
     },
     {
       "label": "inbox_dispose()",
@@ -13872,10 +13872,10 @@
         "kind": "bash_function"
       },
       "_origin": "ast",
+      "id": "scripts_validate_snapshot_inbox_dispose",
       "community": 51,
       "community_name": "validate-snapshot.sh",
-      "norm_label": "inbox_dispose()",
-      "id": "scripts_validate_snapshot_inbox_dispose"
+      "norm_label": "inbox_dispose()"
     },
     {
       "label": "inbox_jobs()",
@@ -13887,10 +13887,10 @@
         "kind": "bash_function"
       },
       "_origin": "ast",
+      "id": "scripts_validate_snapshot_inbox_jobs",
       "community": 51,
       "community_name": "validate-snapshot.sh",
-      "norm_label": "inbox_jobs()",
-      "id": "scripts_validate_snapshot_inbox_jobs"
+      "norm_label": "inbox_jobs()"
     },
     {
       "label": "inbox_sweep()",
@@ -13902,10 +13902,10 @@
         "kind": "bash_function"
       },
       "_origin": "ast",
+      "id": "scripts_validate_snapshot_inbox_sweep",
       "community": 51,
       "community_name": "validate-snapshot.sh",
-      "norm_label": "inbox_sweep()",
-      "id": "scripts_validate_snapshot_inbox_sweep"
+      "norm_label": "inbox_sweep()"
     },
     {
       "label": "inbox_take()",
@@ -13917,10 +13917,10 @@
         "kind": "bash_function"
       },
       "_origin": "ast",
+      "id": "scripts_validate_snapshot_inbox_take",
       "community": 51,
       "community_name": "validate-snapshot.sh",
-      "norm_label": "inbox_take()",
-      "id": "scripts_validate_snapshot_inbox_take"
+      "norm_label": "inbox_take()"
     },
     {
       "label": "jstr()",
@@ -13932,10 +13932,10 @@
         "kind": "bash_function"
       },
       "_origin": "ast",
+      "id": "scripts_validate_snapshot_jstr",
       "community": 51,
       "community_name": "validate-snapshot.sh",
-      "norm_label": "jstr()",
-      "id": "scripts_validate_snapshot_jstr"
+      "norm_label": "jstr()"
     },
     {
       "label": "kill_child()",
@@ -13947,10 +13947,10 @@
         "kind": "bash_function"
       },
       "_origin": "ast",
+      "id": "scripts_validate_snapshot_kill_child",
       "community": 51,
       "community_name": "validate-snapshot.sh",
-      "norm_label": "kill_child()",
-      "id": "scripts_validate_snapshot_kill_child"
+      "norm_label": "kill_child()"
     },
     {
       "label": "list_archive()",
@@ -13962,10 +13962,10 @@
         "kind": "bash_function"
       },
       "_origin": "ast",
+      "id": "scripts_validate_snapshot_list_archive",
       "community": 51,
       "community_name": "validate-snapshot.sh",
-      "norm_label": "list_archive()",
-      "id": "scripts_validate_snapshot_list_archive"
+      "norm_label": "list_archive()"
     },
     {
       "label": "log()",
@@ -13977,10 +13977,10 @@
         "kind": "bash_function"
       },
       "_origin": "ast",
+      "id": "scripts_validate_snapshot_log",
       "community": 51,
       "community_name": "validate-snapshot.sh",
-      "norm_label": "log()",
-      "id": "scripts_validate_snapshot_log"
+      "norm_label": "log()"
     },
     {
       "label": "log_error()",
@@ -13992,10 +13992,10 @@
         "kind": "bash_function"
       },
       "_origin": "ast",
+      "id": "scripts_validate_snapshot_log_error",
       "community": 51,
       "community_name": "validate-snapshot.sh",
-      "norm_label": "log_error()",
-      "id": "scripts_validate_snapshot_log_error"
+      "norm_label": "log_error()"
     },
     {
       "label": "log_info()",
@@ -14007,10 +14007,10 @@
         "kind": "bash_function"
       },
       "_origin": "ast",
+      "id": "scripts_validate_snapshot_log_info",
       "community": 51,
       "community_name": "validate-snapshot.sh",
-      "norm_label": "log_info()",
-      "id": "scripts_validate_snapshot_log_info"
+      "norm_label": "log_info()"
     },
     {
       "label": "log_success()",
@@ -14022,10 +14022,10 @@
         "kind": "bash_function"
       },
       "_origin": "ast",
+      "id": "scripts_validate_snapshot_log_success",
       "community": 51,
       "community_name": "validate-snapshot.sh",
-      "norm_label": "log_success()",
-      "id": "scripts_validate_snapshot_log_success"
+      "norm_label": "log_success()"
     },
     {
       "label": "log_warn()",
@@ -14037,10 +14037,10 @@
         "kind": "bash_function"
       },
       "_origin": "ast",
+      "id": "scripts_validate_snapshot_log_warn",
       "community": 51,
       "community_name": "validate-snapshot.sh",
-      "norm_label": "log_warn()",
-      "id": "scripts_validate_snapshot_log_warn"
+      "norm_label": "log_warn()"
     },
     {
       "label": "member()",
@@ -14052,25 +14052,25 @@
         "kind": "bash_function"
       },
       "_origin": "ast",
+      "id": "scripts_validate_snapshot_member",
       "community": 51,
       "community_name": "validate-snapshot.sh",
-      "norm_label": "member()",
-      "id": "scripts_validate_snapshot_member"
+      "norm_label": "member()"
     },
     {
       "label": "mkrec()",
       "file_type": "code",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1661",
+      "source_location": "L1681",
       "metadata": {
         "language": "bash",
         "kind": "bash_function"
       },
       "_origin": "ast",
+      "id": "scripts_validate_snapshot_mkrec",
       "community": 51,
       "community_name": "validate-snapshot.sh",
-      "norm_label": "mkrec()",
-      "id": "scripts_validate_snapshot_mkrec"
+      "norm_label": "mkrec()"
     },
     {
       "label": "msg_of()",
@@ -14082,10 +14082,10 @@
         "kind": "bash_function"
       },
       "_origin": "ast",
+      "id": "scripts_validate_snapshot_msg_of",
       "community": 51,
       "community_name": "validate-snapshot.sh",
-      "norm_label": "msg_of()",
-      "id": "scripts_validate_snapshot_msg_of"
+      "norm_label": "msg_of()"
     },
     {
       "label": "need_value()",
@@ -14097,10 +14097,10 @@
         "kind": "bash_function"
       },
       "_origin": "ast",
+      "id": "scripts_validate_snapshot_need_value",
       "community": 51,
       "community_name": "validate-snapshot.sh",
-      "norm_label": "need_value()",
-      "id": "scripts_validate_snapshot_need_value"
+      "norm_label": "need_value()"
     },
     {
       "label": "now_s()",
@@ -14112,10 +14112,10 @@
         "kind": "bash_function"
       },
       "_origin": "ast",
+      "id": "scripts_validate_snapshot_now_s",
       "community": 51,
       "community_name": "validate-snapshot.sh",
-      "norm_label": "now_s()",
-      "id": "scripts_validate_snapshot_now_s"
+      "norm_label": "now_s()"
     },
     {
       "label": "on_signal()",
@@ -14127,10 +14127,10 @@
         "kind": "bash_function"
       },
       "_origin": "ast",
+      "id": "scripts_validate_snapshot_on_signal",
       "community": 51,
       "community_name": "validate-snapshot.sh",
-      "norm_label": "on_signal()",
-      "id": "scripts_validate_snapshot_on_signal"
+      "norm_label": "on_signal()"
     },
     {
       "label": "open_inner_zip()",
@@ -14142,10 +14142,10 @@
         "kind": "bash_function"
       },
       "_origin": "ast",
+      "id": "scripts_validate_snapshot_open_inner_zip",
       "community": 51,
       "community_name": "validate-snapshot.sh",
-      "norm_label": "open_inner_zip()",
-      "id": "scripts_validate_snapshot_open_inner_zip"
+      "norm_label": "open_inner_zip()"
     },
     {
       "label": "own_path()",
@@ -14157,10 +14157,10 @@
         "kind": "bash_function"
       },
       "_origin": "ast",
+      "id": "scripts_validate_snapshot_own_path",
       "community": 51,
       "community_name": "validate-snapshot.sh",
-      "norm_label": "own_path()",
-      "id": "scripts_validate_snapshot_own_path"
+      "norm_label": "own_path()"
     },
     {
       "label": "owner_alive()",
@@ -14172,28 +14172,43 @@
         "kind": "bash_function"
       },
       "_origin": "ast",
+      "id": "scripts_validate_snapshot_owner_alive",
       "community": 51,
       "community_name": "validate-snapshot.sh",
-      "norm_label": "owner_alive()",
-      "id": "scripts_validate_snapshot_owner_alive"
+      "norm_label": "owner_alive()"
     },
     {
       "label": "pg_alive()",
       "file_type": "code",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1430",
+      "source_location": "L1450",
       "metadata": {
         "language": "bash",
         "kind": "bash_function"
       },
       "_origin": "ast",
+      "id": "scripts_validate_snapshot_pg_alive",
       "community": 51,
       "community_name": "validate-snapshot.sh",
-      "norm_label": "pg_alive()",
-      "id": "scripts_validate_snapshot_pg_alive"
+      "norm_label": "pg_alive()"
     },
     {
       "label": "pg_exec()",
+      "file_type": "code",
+      "source_file": "scripts/validate-snapshot.sh",
+      "source_location": "L1446",
+      "metadata": {
+        "language": "bash",
+        "kind": "bash_function"
+      },
+      "_origin": "ast",
+      "id": "scripts_validate_snapshot_pg_exec",
+      "community": 51,
+      "community_name": "validate-snapshot.sh",
+      "norm_label": "pg_exec()"
+    },
+    {
+      "label": "pg_major_of_dump()",
       "file_type": "code",
       "source_file": "scripts/validate-snapshot.sh",
       "source_location": "L1426",
@@ -14202,55 +14217,40 @@
         "kind": "bash_function"
       },
       "_origin": "ast",
+      "id": "scripts_validate_snapshot_pg_major_of_dump",
       "community": 51,
       "community_name": "validate-snapshot.sh",
-      "norm_label": "pg_exec()",
-      "id": "scripts_validate_snapshot_pg_exec"
-    },
-    {
-      "label": "pg_major_of_dump()",
-      "file_type": "code",
-      "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1406",
-      "metadata": {
-        "language": "bash",
-        "kind": "bash_function"
-      },
-      "_origin": "ast",
-      "community": 51,
-      "community_name": "validate-snapshot.sh",
-      "norm_label": "pg_major_of_dump()",
-      "id": "scripts_validate_snapshot_pg_major_of_dump"
+      "norm_label": "pg_major_of_dump()"
     },
     {
       "label": "pg_query()",
       "file_type": "code",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1427",
+      "source_location": "L1447",
       "metadata": {
         "language": "bash",
         "kind": "bash_function"
       },
       "_origin": "ast",
+      "id": "scripts_validate_snapshot_pg_query",
       "community": 51,
       "community_name": "validate-snapshot.sh",
-      "norm_label": "pg_query()",
-      "id": "scripts_validate_snapshot_pg_query"
+      "norm_label": "pg_query()"
     },
     {
       "label": "phase2()",
       "file_type": "code",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L2208",
+      "source_location": "L2241",
       "metadata": {
         "language": "bash",
         "kind": "bash_function"
       },
       "_origin": "ast",
+      "id": "scripts_validate_snapshot_phase2",
       "community": 51,
       "community_name": "validate-snapshot.sh",
-      "norm_label": "phase2()",
-      "id": "scripts_validate_snapshot_phase2"
+      "norm_label": "phase2()"
     },
     {
       "label": "pre_check()",
@@ -14262,10 +14262,10 @@
         "kind": "bash_function"
       },
       "_origin": "ast",
+      "id": "scripts_validate_snapshot_pre_check",
       "community": 51,
       "community_name": "validate-snapshot.sh",
-      "norm_label": "pre_check()",
-      "id": "scripts_validate_snapshot_pre_check"
+      "norm_label": "pre_check()"
     },
     {
       "label": "prepare_dirs()",
@@ -14277,40 +14277,40 @@
         "kind": "bash_function"
       },
       "_origin": "ast",
+      "id": "scripts_validate_snapshot_prepare_dirs",
       "community": 51,
       "community_name": "validate-snapshot.sh",
-      "norm_label": "prepare_dirs()",
-      "id": "scripts_validate_snapshot_prepare_dirs"
+      "norm_label": "prepare_dirs()"
     },
     {
       "label": "publish_inbox()",
       "file_type": "code",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1699",
+      "source_location": "L1719",
       "metadata": {
         "language": "bash",
         "kind": "bash_function"
       },
       "_origin": "ast",
+      "id": "scripts_validate_snapshot_publish_inbox",
       "community": 51,
       "community_name": "validate-snapshot.sh",
-      "norm_label": "publish_inbox()",
-      "id": "scripts_validate_snapshot_publish_inbox"
+      "norm_label": "publish_inbox()"
     },
     {
       "label": "publish_result()",
       "file_type": "code",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1644",
+      "source_location": "L1664",
       "metadata": {
         "language": "bash",
         "kind": "bash_function"
       },
       "_origin": "ast",
+      "id": "scripts_validate_snapshot_publish_result",
       "community": 51,
       "community_name": "validate-snapshot.sh",
-      "norm_label": "publish_result()",
-      "id": "scripts_validate_snapshot_publish_result"
+      "norm_label": "publish_result()"
     },
     {
       "label": "record_stage()",
@@ -14322,10 +14322,10 @@
         "kind": "bash_function"
       },
       "_origin": "ast",
+      "id": "scripts_validate_snapshot_record_stage",
       "community": 51,
       "community_name": "validate-snapshot.sh",
-      "norm_label": "record_stage()",
-      "id": "scripts_validate_snapshot_record_stage"
+      "norm_label": "record_stage()"
     },
     {
       "label": "redact()",
@@ -14337,25 +14337,25 @@
         "kind": "bash_function"
       },
       "_origin": "ast",
+      "id": "scripts_validate_snapshot_redact",
       "community": 51,
       "community_name": "validate-snapshot.sh",
-      "norm_label": "redact()",
-      "id": "scripts_validate_snapshot_redact"
+      "norm_label": "redact()"
     },
     {
       "label": "registry_of()",
       "file_type": "code",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1766",
+      "source_location": "L1786",
       "metadata": {
         "language": "bash",
         "kind": "bash_function"
       },
       "_origin": "ast",
+      "id": "scripts_validate_snapshot_registry_of",
       "community": 51,
       "community_name": "validate-snapshot.sh",
-      "norm_label": "registry_of()",
-      "id": "scripts_validate_snapshot_registry_of"
+      "norm_label": "registry_of()"
     },
     {
       "label": "remote_fail()",
@@ -14367,40 +14367,40 @@
         "kind": "bash_function"
       },
       "_origin": "ast",
+      "id": "scripts_validate_snapshot_remote_fail",
       "community": 51,
       "community_name": "validate-snapshot.sh",
-      "norm_label": "remote_fail()",
-      "id": "scripts_validate_snapshot_remote_fail"
+      "norm_label": "remote_fail()"
     },
     {
       "label": "restore_custom()",
       "file_type": "code",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1442",
+      "source_location": "L1462",
       "metadata": {
         "language": "bash",
         "kind": "bash_function"
       },
       "_origin": "ast",
+      "id": "scripts_validate_snapshot_restore_custom",
       "community": 51,
       "community_name": "validate-snapshot.sh",
-      "norm_label": "restore_custom()",
-      "id": "scripts_validate_snapshot_restore_custom"
+      "norm_label": "restore_custom()"
     },
     {
       "label": "restore_plain()",
       "file_type": "code",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1432",
+      "source_location": "L1452",
       "metadata": {
         "language": "bash",
         "kind": "bash_function"
       },
       "_origin": "ast",
+      "id": "scripts_validate_snapshot_restore_plain",
       "community": 51,
       "community_name": "validate-snapshot.sh",
-      "norm_label": "restore_plain()",
-      "id": "scripts_validate_snapshot_restore_plain"
+      "norm_label": "restore_plain()"
     },
     {
       "label": "revoke_record()",
@@ -14412,10 +14412,10 @@
         "kind": "bash_function"
       },
       "_origin": "ast",
+      "id": "scripts_validate_snapshot_revoke_record",
       "community": 51,
       "community_name": "validate-snapshot.sh",
-      "norm_label": "revoke_record()",
-      "id": "scripts_validate_snapshot_revoke_record"
+      "norm_label": "revoke_record()"
     },
     {
       "label": "run_bg()",
@@ -14427,10 +14427,10 @@
         "kind": "bash_function"
       },
       "_origin": "ast",
+      "id": "scripts_validate_snapshot_run_bg",
       "community": 51,
       "community_name": "validate-snapshot.sh",
-      "norm_label": "run_bg()",
-      "id": "scripts_validate_snapshot_run_bg"
+      "norm_label": "run_bg()"
     },
     {
       "label": "run_remote_drill()",
@@ -14442,25 +14442,25 @@
         "kind": "bash_function"
       },
       "_origin": "ast",
+      "id": "scripts_validate_snapshot_run_remote_drill",
       "community": 51,
       "community_name": "validate-snapshot.sh",
-      "norm_label": "run_remote_drill()",
-      "id": "scripts_validate_snapshot_run_remote_drill"
+      "norm_label": "run_remote_drill()"
     },
     {
       "label": "safe_rel()",
       "file_type": "code",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1913",
+      "source_location": "L1933",
       "metadata": {
         "language": "bash",
         "kind": "bash_function"
       },
       "_origin": "ast",
+      "id": "scripts_validate_snapshot_safe_rel",
       "community": 51,
       "community_name": "validate-snapshot.sh",
-      "norm_label": "safe_rel()",
-      "id": "scripts_validate_snapshot_safe_rel"
+      "norm_label": "safe_rel()"
     },
     {
       "label": "validate-snapshot.sh script",
@@ -14472,10 +14472,10 @@
         "kind": "bash_entrypoint"
       },
       "_origin": "ast",
+      "id": "scripts_validate_snapshot_sh__entry",
       "community": 51,
       "community_name": "validate-snapshot.sh",
-      "norm_label": "validate-snapshot.sh script",
-      "id": "scripts_validate_snapshot_sh__entry"
+      "norm_label": "validate-snapshot.sh script"
     },
     {
       "label": "show_help()",
@@ -14487,10 +14487,10 @@
         "kind": "bash_function"
       },
       "_origin": "ast",
+      "id": "scripts_validate_snapshot_show_help",
       "community": 51,
       "community_name": "validate-snapshot.sh",
-      "norm_label": "show_help()",
-      "id": "scripts_validate_snapshot_show_help"
+      "norm_label": "show_help()"
     },
     {
       "label": "since()",
@@ -14502,55 +14502,55 @@
         "kind": "bash_function"
       },
       "_origin": "ast",
+      "id": "scripts_validate_snapshot_since",
       "community": 51,
       "community_name": "validate-snapshot.sh",
-      "norm_label": "since()",
-      "id": "scripts_validate_snapshot_since"
+      "norm_label": "since()"
     },
     {
       "label": "SNAP_ENV",
       "file_type": "code",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1778",
+      "source_location": "L1798",
       "metadata": {
         "language": "bash",
         "kind": "code"
       },
       "_origin": "ast",
+      "id": "scripts_validate_snapshot_snap_env",
       "community": 51,
       "community_name": "validate-snapshot.sh",
-      "norm_label": "snap_env",
-      "id": "scripts_validate_snapshot_snap_env"
+      "norm_label": "snap_env"
     },
     {
       "label": "snap_file()",
       "file_type": "code",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1755",
+      "source_location": "L1775",
       "metadata": {
         "language": "bash",
         "kind": "bash_function"
       },
       "_origin": "ast",
+      "id": "scripts_validate_snapshot_snap_file",
       "community": 51,
       "community_name": "validate-snapshot.sh",
-      "norm_label": "snap_file()",
-      "id": "scripts_validate_snapshot_snap_file"
+      "norm_label": "snap_file()"
     },
     {
       "label": "snap_member_exact()",
       "file_type": "code",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1751",
+      "source_location": "L1771",
       "metadata": {
         "language": "bash",
         "kind": "bash_function"
       },
       "_origin": "ast",
+      "id": "scripts_validate_snapshot_snap_member_exact",
       "community": 51,
       "community_name": "validate-snapshot.sh",
-      "norm_label": "snap_member_exact()",
-      "id": "scripts_validate_snapshot_snap_member_exact"
+      "norm_label": "snap_member_exact()"
     },
     {
       "label": "stage_archive()",
@@ -14562,25 +14562,25 @@
         "kind": "bash_function"
       },
       "_origin": "ast",
+      "id": "scripts_validate_snapshot_stage_archive",
       "community": 51,
       "community_name": "validate-snapshot.sh",
-      "norm_label": "stage_archive()",
-      "id": "scripts_validate_snapshot_stage_archive"
+      "norm_label": "stage_archive()"
     },
     {
       "label": "stage_boot()",
       "file_type": "code",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L2084",
+      "source_location": "L2117",
       "metadata": {
         "language": "bash",
         "kind": "bash_function"
       },
       "_origin": "ast",
+      "id": "scripts_validate_snapshot_stage_boot",
       "community": 51,
       "community_name": "validate-snapshot.sh",
-      "norm_label": "stage_boot()",
-      "id": "scripts_validate_snapshot_stage_boot"
+      "norm_label": "stage_boot()"
     },
     {
       "label": "stage_checksum()",
@@ -14592,85 +14592,85 @@
         "kind": "bash_function"
       },
       "_origin": "ast",
+      "id": "scripts_validate_snapshot_stage_checksum",
       "community": 51,
       "community_name": "validate-snapshot.sh",
-      "norm_label": "stage_checksum()",
-      "id": "scripts_validate_snapshot_stage_checksum"
+      "norm_label": "stage_checksum()"
     },
     {
       "label": "stage_code()",
       "file_type": "code",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1915",
+      "source_location": "L1935",
       "metadata": {
         "language": "bash",
         "kind": "bash_function"
       },
       "_origin": "ast",
+      "id": "scripts_validate_snapshot_stage_code",
       "community": 51,
       "community_name": "validate-snapshot.sh",
-      "norm_label": "stage_code()",
-      "id": "scripts_validate_snapshot_stage_code"
+      "norm_label": "stage_code()"
     },
     {
       "label": "stage_database()",
       "file_type": "code",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1447",
+      "source_location": "L1467",
       "metadata": {
         "language": "bash",
         "kind": "bash_function"
       },
       "_origin": "ast",
+      "id": "scripts_validate_snapshot_stage_database",
       "community": 51,
       "community_name": "validate-snapshot.sh",
-      "norm_label": "stage_database()",
-      "id": "scripts_validate_snapshot_stage_database"
+      "norm_label": "stage_database()"
     },
     {
       "label": "stage_filestore()",
       "file_type": "code",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1593",
+      "source_location": "L1613",
       "metadata": {
         "language": "bash",
         "kind": "bash_function"
       },
       "_origin": "ast",
+      "id": "scripts_validate_snapshot_stage_filestore",
       "community": 51,
       "community_name": "validate-snapshot.sh",
-      "norm_label": "stage_filestore()",
-      "id": "scripts_validate_snapshot_stage_filestore"
+      "norm_label": "stage_filestore()"
     },
     {
       "label": "stage_git()",
       "file_type": "code",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1312",
+      "source_location": "L1332",
       "metadata": {
         "language": "bash",
         "kind": "bash_function"
       },
       "_origin": "ast",
+      "id": "scripts_validate_snapshot_stage_git",
       "community": 51,
       "community_name": "validate-snapshot.sh",
-      "norm_label": "stage_git()",
-      "id": "scripts_validate_snapshot_stage_git"
+      "norm_label": "stage_git()"
     },
     {
       "label": "stage_image()",
       "file_type": "code",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1821",
+      "source_location": "L1841",
       "metadata": {
         "language": "bash",
         "kind": "bash_function"
       },
       "_origin": "ast",
+      "id": "scripts_validate_snapshot_stage_image",
       "community": 51,
       "community_name": "validate-snapshot.sh",
-      "norm_label": "stage_image()",
-      "id": "scripts_validate_snapshot_stage_image"
+      "norm_label": "stage_image()"
     },
     {
       "label": "stage_manifest()",
@@ -14682,10 +14682,10 @@
         "kind": "bash_function"
       },
       "_origin": "ast",
+      "id": "scripts_validate_snapshot_stage_manifest",
       "community": 51,
       "community_name": "validate-snapshot.sh",
-      "norm_label": "stage_manifest()",
-      "id": "scripts_validate_snapshot_stage_manifest"
+      "norm_label": "stage_manifest()"
     },
     {
       "label": "stage_structure()",
@@ -14697,10 +14697,10 @@
         "kind": "bash_function"
       },
       "_origin": "ast",
+      "id": "scripts_validate_snapshot_stage_structure",
       "community": 51,
       "community_name": "validate-snapshot.sh",
-      "norm_label": "stage_structure()",
-      "id": "scripts_validate_snapshot_stage_structure"
+      "norm_label": "stage_structure()"
     },
     {
       "label": "start_watchdog()",
@@ -14712,10 +14712,10 @@
         "kind": "bash_function"
       },
       "_origin": "ast",
+      "id": "scripts_validate_snapshot_start_watchdog",
       "community": 51,
       "community_name": "validate-snapshot.sh",
-      "norm_label": "start_watchdog()",
-      "id": "scripts_validate_snapshot_start_watchdog"
+      "norm_label": "start_watchdog()"
     },
     {
       "label": "sweep_leftovers()",
@@ -14727,40 +14727,40 @@
         "kind": "bash_function"
       },
       "_origin": "ast",
+      "id": "scripts_validate_snapshot_sweep_leftovers",
       "community": 51,
       "community_name": "validate-snapshot.sh",
-      "norm_label": "sweep_leftovers()",
-      "id": "scripts_validate_snapshot_sweep_leftovers"
+      "norm_label": "sweep_leftovers()"
     },
     {
       "label": "valid_commit()",
       "file_type": "code",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1282",
+      "source_location": "L1286",
       "metadata": {
         "language": "bash",
         "kind": "bash_function"
       },
       "_origin": "ast",
+      "id": "scripts_validate_snapshot_valid_commit",
       "community": 51,
       "community_name": "validate-snapshot.sh",
-      "norm_label": "valid_commit()",
-      "id": "scripts_validate_snapshot_valid_commit"
+      "norm_label": "valid_commit()"
     },
     {
       "label": "valid_remote()",
       "file_type": "code",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1283",
+      "source_location": "L1287",
       "metadata": {
         "language": "bash",
         "kind": "bash_function"
       },
       "_origin": "ast",
+      "id": "scripts_validate_snapshot_valid_remote",
       "community": 51,
       "community_name": "validate-snapshot.sh",
-      "norm_label": "valid_remote()",
-      "id": "scripts_validate_snapshot_valid_remote"
+      "norm_label": "valid_remote()"
     },
     {
       "label": "write_report()",
@@ -14772,10 +14772,10 @@
         "kind": "bash_function"
       },
       "_origin": "ast",
+      "id": "scripts_validate_snapshot_write_report",
       "community": 51,
       "community_name": "validate-snapshot.sh",
-      "norm_label": "write_report()",
-      "id": "scripts_validate_snapshot_write_report"
+      "norm_label": "write_report()"
     },
     {
       "label": "validate-agent-config.sh",
@@ -20175,21 +20175,6 @@
       "norm_label": "log_warn()"
     },
     {
-      "label": "run_validator()",
-      "file_type": "code",
-      "source_file": "scripts/validate-snapshot-worker.sh",
-      "source_location": "L222",
-      "metadata": {
-        "language": "bash",
-        "kind": "bash_function"
-      },
-      "_origin": "ast",
-      "id": "scripts_validate_snapshot_worker_run_validator",
-      "community": 84,
-      "community_name": "validate-snapshot-worker.sh",
-      "norm_label": "run_validator()"
-    },
-    {
       "label": "validate-snapshot-worker.sh script",
       "file_type": "code",
       "source_file": "scripts/validate-snapshot-worker.sh",
@@ -20223,7 +20208,7 @@
       "label": "when()",
       "file_type": "code",
       "source_file": "scripts/validate-snapshot-worker.sh",
-      "source_location": "L178",
+      "source_location": "L177",
       "metadata": {
         "language": "bash",
         "kind": "bash_function"
@@ -30454,49 +30439,49 @@
       "relation": "calls",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1980",
+      "source_location": "L2013",
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot_boot_layout",
-      "target": "scripts_validate_snapshot_snap_file"
+      "target": "scripts_validate_snapshot_snap_file",
+      "confidence_score": 1.0
     },
     {
       "relation": "calls",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1784",
+      "source_location": "L1804",
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot_boot_prepare",
-      "target": "scripts_validate_snapshot_snap_file"
+      "target": "scripts_validate_snapshot_snap_file",
+      "confidence_score": 1.0
     },
     {
       "relation": "calls",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1400",
+      "source_location": "L1420",
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot_check_disk",
-      "target": "scripts_validate_snapshot_record_stage"
+      "target": "scripts_validate_snapshot_record_stage",
+      "confidence_score": 1.0
     },
     {
       "relation": "calls",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1401",
+      "source_location": "L1421",
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot_check_disk",
-      "target": "scripts_validate_snapshot_finish"
+      "target": "scripts_validate_snapshot_finish",
+      "confidence_score": 1.0
     },
     {
       "relation": "calls",
@@ -30506,9 +30491,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot_cleanup",
-      "target": "scripts_validate_snapshot_kill_child"
+      "target": "scripts_validate_snapshot_kill_child",
+      "confidence_score": 1.0
     },
     {
       "relation": "calls",
@@ -30518,9 +30503,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot_cleanup",
-      "target": "scripts_validate_snapshot_inbox_dispose"
+      "target": "scripts_validate_snapshot_inbox_dispose",
+      "confidence_score": 1.0
     },
     {
       "relation": "calls",
@@ -30530,9 +30515,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot_cleanup",
-      "target": "scripts_validate_snapshot_log_info"
+      "target": "scripts_validate_snapshot_log_info",
+      "confidence_score": 1.0
     },
     {
       "relation": "calls",
@@ -30542,9 +30527,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot_docker_preflight",
-      "target": "scripts_validate_snapshot_log_error"
+      "target": "scripts_validate_snapshot_log_error",
+      "confidence_score": 1.0
     },
     {
       "relation": "calls",
@@ -30554,9 +30539,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot_docker_preflight",
-      "target": "scripts_validate_snapshot_docker_setup_help"
+      "target": "scripts_validate_snapshot_docker_setup_help",
+      "confidence_score": 1.0
     },
     {
       "relation": "calls",
@@ -30566,9 +30551,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot_docker_preflight",
-      "target": "scripts_validate_snapshot_log_warn"
+      "target": "scripts_validate_snapshot_log_warn",
+      "confidence_score": 1.0
     },
     {
       "relation": "calls",
@@ -30578,9 +30563,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot_fetch_snapshot",
-      "target": "scripts_validate_snapshot_log_info"
+      "target": "scripts_validate_snapshot_log_info",
+      "confidence_score": 1.0
     },
     {
       "relation": "calls",
@@ -30590,9 +30575,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot_fetch_snapshot",
-      "target": "scripts_validate_snapshot_run_bg"
+      "target": "scripts_validate_snapshot_run_bg",
+      "confidence_score": 1.0
     },
     {
       "relation": "calls",
@@ -30602,9 +30587,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot_fetch_snapshot",
-      "target": "scripts_validate_snapshot_inbox_take"
+      "target": "scripts_validate_snapshot_inbox_take",
+      "confidence_score": 1.0
     },
     {
       "relation": "calls",
@@ -30614,9 +30599,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot_fetch_snapshot",
-      "target": "scripts_validate_snapshot_finish"
+      "target": "scripts_validate_snapshot_finish",
+      "confidence_score": 1.0
     },
     {
       "relation": "calls",
@@ -30626,9 +30611,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot_fetch_snapshot",
-      "target": "scripts_validate_snapshot_record_stage"
+      "target": "scripts_validate_snapshot_record_stage",
+      "confidence_score": 1.0
     },
     {
       "relation": "calls",
@@ -30638,9 +30623,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot_finish",
-      "target": "scripts_validate_snapshot_revoke_record"
+      "target": "scripts_validate_snapshot_revoke_record",
+      "confidence_score": 1.0
     },
     {
       "relation": "calls",
@@ -30650,9 +30635,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot_finish",
-      "target": "scripts_validate_snapshot_write_report"
+      "target": "scripts_validate_snapshot_write_report",
+      "confidence_score": 1.0
     },
     {
       "relation": "calls",
@@ -30662,9 +30647,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot_finish",
-      "target": "scripts_validate_snapshot_log_warn"
+      "target": "scripts_validate_snapshot_log_warn",
+      "confidence_score": 1.0
     },
     {
       "relation": "calls",
@@ -30674,9 +30659,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot_finish",
-      "target": "scripts_validate_snapshot_log_success"
+      "target": "scripts_validate_snapshot_log_success",
+      "confidence_score": 1.0
     },
     {
       "relation": "calls",
@@ -30686,21 +30671,21 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot_finish",
-      "target": "scripts_validate_snapshot_log_error"
+      "target": "scripts_validate_snapshot_log_error",
+      "confidence_score": 1.0
     },
     {
       "relation": "calls",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1294",
+      "source_location": "L1314",
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot_git_check_commit",
-      "target": "scripts_validate_snapshot_git_safe"
+      "target": "scripts_validate_snapshot_git_safe",
+      "confidence_score": 1.0
     },
     {
       "relation": "calls",
@@ -30710,9 +30695,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot_inbox_dispose",
-      "target": "scripts_validate_snapshot_log_info"
+      "target": "scripts_validate_snapshot_log_info",
+      "confidence_score": 1.0
     },
     {
       "relation": "calls",
@@ -30722,9 +30707,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot_inbox_dispose",
-      "target": "scripts_validate_snapshot_log_warn"
+      "target": "scripts_validate_snapshot_log_warn",
+      "confidence_score": 1.0
     },
     {
       "relation": "calls",
@@ -30734,9 +30719,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot_inbox_sweep",
-      "target": "scripts_validate_snapshot_log_info"
+      "target": "scripts_validate_snapshot_log_info",
+      "confidence_score": 1.0
     },
     {
       "relation": "calls",
@@ -30746,9 +30731,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot_inbox_take",
-      "target": "scripts_validate_snapshot_inbox_sweep"
+      "target": "scripts_validate_snapshot_inbox_sweep",
+      "confidence_score": 1.0
     },
     {
       "relation": "calls",
@@ -30758,9 +30743,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot_inbox_take",
-      "target": "scripts_validate_snapshot_log_info"
+      "target": "scripts_validate_snapshot_log_info",
+      "confidence_score": 1.0
     },
     {
       "relation": "calls",
@@ -30770,9 +30755,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot_log_error",
-      "target": "scripts_validate_snapshot_log"
+      "target": "scripts_validate_snapshot_log",
+      "confidence_score": 1.0
     },
     {
       "relation": "calls",
@@ -30782,9 +30767,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot_log_info",
-      "target": "scripts_validate_snapshot_log"
+      "target": "scripts_validate_snapshot_log",
+      "confidence_score": 1.0
     },
     {
       "relation": "calls",
@@ -30794,9 +30779,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot_log_success",
-      "target": "scripts_validate_snapshot_log"
+      "target": "scripts_validate_snapshot_log",
+      "confidence_score": 1.0
     },
     {
       "relation": "calls",
@@ -30806,9 +30791,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot_log_warn",
-      "target": "scripts_validate_snapshot_log"
+      "target": "scripts_validate_snapshot_log",
+      "confidence_score": 1.0
     },
     {
       "relation": "calls",
@@ -30818,9 +30803,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot_need_value",
-      "target": "scripts_validate_snapshot_log_error"
+      "target": "scripts_validate_snapshot_log_error",
+      "confidence_score": 1.0
     },
     {
       "relation": "calls",
@@ -30830,9 +30815,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot_on_signal",
-      "target": "scripts_validate_snapshot_kill_child"
+      "target": "scripts_validate_snapshot_kill_child",
+      "confidence_score": 1.0
     },
     {
       "relation": "calls",
@@ -30842,9 +30827,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot_on_signal",
-      "target": "scripts_validate_snapshot_record_stage"
+      "target": "scripts_validate_snapshot_record_stage",
+      "confidence_score": 1.0
     },
     {
       "relation": "calls",
@@ -30854,9 +30839,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot_on_signal",
-      "target": "scripts_validate_snapshot_finish"
+      "target": "scripts_validate_snapshot_finish",
+      "confidence_score": 1.0
     },
     {
       "relation": "calls",
@@ -30866,9 +30851,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot_open_inner_zip",
-      "target": "scripts_validate_snapshot_record_stage"
+      "target": "scripts_validate_snapshot_record_stage",
+      "confidence_score": 1.0
     },
     {
       "relation": "calls",
@@ -30878,9 +30863,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot_open_inner_zip",
-      "target": "scripts_validate_snapshot_finish"
+      "target": "scripts_validate_snapshot_finish",
+      "confidence_score": 1.0
     },
     {
       "relation": "calls",
@@ -30890,9 +30875,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot_open_inner_zip",
-      "target": "scripts_validate_snapshot_log_info"
+      "target": "scripts_validate_snapshot_log_info",
+      "confidence_score": 1.0
     },
     {
       "relation": "calls",
@@ -30902,69 +30887,69 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot_open_inner_zip",
-      "target": "scripts_validate_snapshot_run_bg"
+      "target": "scripts_validate_snapshot_run_bg",
+      "confidence_score": 1.0
     },
     {
       "relation": "calls",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L2212",
+      "source_location": "L2245",
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot_phase2",
-      "target": "scripts_validate_snapshot_record_stage"
+      "target": "scripts_validate_snapshot_record_stage",
+      "confidence_score": 1.0
     },
     {
       "relation": "calls",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L2219",
+      "source_location": "L2252",
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot_phase2",
-      "target": "scripts_validate_snapshot_boot_prepare"
+      "target": "scripts_validate_snapshot_boot_prepare",
+      "confidence_score": 1.0
     },
     {
       "relation": "calls",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L2220",
+      "source_location": "L2253",
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot_phase2",
-      "target": "scripts_validate_snapshot_stage_code"
+      "target": "scripts_validate_snapshot_stage_code",
+      "confidence_score": 1.0
     },
     {
       "relation": "calls",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L2221",
+      "source_location": "L2254",
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot_phase2",
-      "target": "scripts_validate_snapshot_stage_image"
+      "target": "scripts_validate_snapshot_stage_image",
+      "confidence_score": 1.0
     },
     {
       "relation": "calls",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L2222",
+      "source_location": "L2255",
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot_phase2",
-      "target": "scripts_validate_snapshot_stage_boot"
+      "target": "scripts_validate_snapshot_stage_boot",
+      "confidence_score": 1.0
     },
     {
       "relation": "calls",
@@ -30974,9 +30959,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot_pre_check",
-      "target": "scripts_validate_snapshot_inbox_sweep"
+      "target": "scripts_validate_snapshot_inbox_sweep",
+      "confidence_score": 1.0
     },
     {
       "relation": "calls",
@@ -30986,9 +30971,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot_pre_check",
-      "target": "scripts_validate_snapshot_log_info"
+      "target": "scripts_validate_snapshot_log_info",
+      "confidence_score": 1.0
     },
     {
       "relation": "calls",
@@ -30998,9 +30983,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot_prepare_dirs",
-      "target": "scripts_validate_snapshot_own_path"
+      "target": "scripts_validate_snapshot_own_path",
+      "confidence_score": 1.0
     },
     {
       "relation": "calls",
@@ -31010,57 +30995,57 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot_prepare_dirs",
-      "target": "scripts_validate_snapshot_log_warn"
+      "target": "scripts_validate_snapshot_log_warn",
+      "confidence_score": 1.0
     },
     {
       "relation": "calls",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1708",
+      "source_location": "L1728",
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot_publish_inbox",
-      "target": "scripts_validate_snapshot_mkrec"
+      "target": "scripts_validate_snapshot_mkrec",
+      "confidence_score": 1.0
     },
     {
       "relation": "calls",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1740",
+      "source_location": "L1760",
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot_publish_inbox",
-      "target": "scripts_validate_snapshot_record_stage"
+      "target": "scripts_validate_snapshot_record_stage",
+      "confidence_score": 1.0
     },
     {
       "relation": "calls",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1656",
+      "source_location": "L1676",
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot_publish_result",
-      "target": "scripts_validate_snapshot_record_stage"
+      "target": "scripts_validate_snapshot_record_stage",
+      "confidence_score": 1.0
     },
     {
       "relation": "calls",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1695",
+      "source_location": "L1715",
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot_publish_result",
-      "target": "scripts_validate_snapshot_publish_inbox"
+      "target": "scripts_validate_snapshot_publish_inbox",
+      "confidence_score": 1.0
     },
     {
       "relation": "calls",
@@ -31070,9 +31055,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot_record_stage",
-      "target": "scripts_validate_snapshot_log_success"
+      "target": "scripts_validate_snapshot_log_success",
+      "confidence_score": 1.0
     },
     {
       "relation": "calls",
@@ -31082,9 +31067,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot_record_stage",
-      "target": "scripts_validate_snapshot_log_warn"
+      "target": "scripts_validate_snapshot_log_warn",
+      "confidence_score": 1.0
     },
     {
       "relation": "calls",
@@ -31094,9 +31079,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot_record_stage",
-      "target": "scripts_validate_snapshot_log_error"
+      "target": "scripts_validate_snapshot_log_error",
+      "confidence_score": 1.0
     },
     {
       "relation": "calls",
@@ -31106,9 +31091,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot_remote_fail",
-      "target": "scripts_validate_snapshot_own_path"
+      "target": "scripts_validate_snapshot_own_path",
+      "confidence_score": 1.0
     },
     {
       "relation": "calls",
@@ -31118,9 +31103,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot_remote_fail",
-      "target": "scripts_validate_snapshot_log_error"
+      "target": "scripts_validate_snapshot_log_error",
+      "confidence_score": 1.0
     },
     {
       "relation": "calls",
@@ -31130,633 +31115,21 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot_remote_fail",
-      "target": "scripts_validate_snapshot_log_info"
+      "target": "scripts_validate_snapshot_log_info",
+      "confidence_score": 1.0
     },
     {
       "relation": "calls",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1443",
+      "source_location": "L1463",
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot_restore_custom",
-      "target": "scripts_validate_snapshot_cat_member"
-    },
-    {
-      "relation": "calls",
-      "confidence": "EXTRACTED",
-      "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1435",
-      "weight": 1.0,
-      "context": "call",
-      "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "scripts_validate_snapshot_restore_plain",
-      "target": "scripts_validate_snapshot_cat_member"
-    },
-    {
-      "relation": "calls",
-      "confidence": "EXTRACTED",
-      "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L731",
-      "weight": 1.0,
-      "context": "call",
-      "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "scripts_validate_snapshot_revoke_record",
-      "target": "scripts_validate_snapshot_record_stage"
-    },
-    {
-      "relation": "calls",
-      "confidence": "EXTRACTED",
-      "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L302",
-      "weight": 1.0,
-      "context": "call",
-      "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "scripts_validate_snapshot_run_remote_drill",
-      "target": "scripts_validate_snapshot_log_error"
-    },
-    {
-      "relation": "calls",
-      "confidence": "EXTRACTED",
-      "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L308",
-      "weight": 1.0,
-      "context": "call",
-      "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "scripts_validate_snapshot_run_remote_drill",
-      "target": "scripts_validate_snapshot_prepare_dirs"
-    },
-    {
-      "relation": "calls",
-      "confidence": "EXTRACTED",
-      "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L325",
-      "weight": 1.0,
-      "context": "call",
-      "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "scripts_validate_snapshot_run_remote_drill",
-      "target": "scripts_validate_snapshot_log_info"
-    },
-    {
-      "relation": "calls",
-      "confidence": "EXTRACTED",
-      "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L327",
-      "weight": 1.0,
-      "context": "call",
-      "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "scripts_validate_snapshot_run_remote_drill",
-      "target": "scripts_validate_snapshot_remote_fail"
-    },
-    {
-      "relation": "calls",
-      "confidence": "EXTRACTED",
-      "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L469",
-      "weight": 1.0,
-      "context": "call",
-      "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "scripts_validate_snapshot_run_remote_drill",
-      "target": "scripts_validate_snapshot_own_path"
-    },
-    {
-      "relation": "calls",
-      "confidence": "EXTRACTED",
-      "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L472",
-      "weight": 1.0,
-      "context": "call",
-      "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "scripts_validate_snapshot_run_remote_drill",
-      "target": "scripts_validate_snapshot_log_warn"
-    },
-    {
-      "relation": "calls",
-      "confidence": "EXTRACTED",
-      "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L195",
-      "weight": 1.0,
-      "context": "call",
-      "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "scripts_validate_snapshot_sh__entry",
-      "target": "scripts_validate_snapshot_need_value"
-    },
-    {
-      "relation": "calls",
-      "confidence": "EXTRACTED",
-      "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L210",
-      "weight": 1.0,
-      "context": "call",
-      "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "scripts_validate_snapshot_sh__entry",
-      "target": "scripts_validate_snapshot_show_help"
-    },
-    {
-      "relation": "calls",
-      "confidence": "EXTRACTED",
-      "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L2226",
-      "weight": 1.0,
-      "context": "call",
-      "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "scripts_validate_snapshot_sh__entry",
-      "target": "scripts_validate_snapshot_fetch_snapshot"
-    },
-    {
-      "relation": "calls",
-      "confidence": "EXTRACTED",
-      "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L2227",
-      "weight": 1.0,
-      "context": "call",
-      "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "scripts_validate_snapshot_sh__entry",
-      "target": "scripts_validate_snapshot_stage_checksum"
-    },
-    {
-      "relation": "calls",
-      "confidence": "EXTRACTED",
-      "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L2228",
-      "weight": 1.0,
-      "context": "call",
-      "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "scripts_validate_snapshot_sh__entry",
-      "target": "scripts_validate_snapshot_stage_archive"
-    },
-    {
-      "relation": "calls",
-      "confidence": "EXTRACTED",
-      "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L2229",
-      "weight": 1.0,
-      "context": "call",
-      "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "scripts_validate_snapshot_sh__entry",
-      "target": "scripts_validate_snapshot_stage_structure"
-    },
-    {
-      "relation": "calls",
-      "confidence": "EXTRACTED",
-      "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L2230",
-      "weight": 1.0,
-      "context": "call",
-      "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "scripts_validate_snapshot_sh__entry",
-      "target": "scripts_validate_snapshot_stage_manifest"
-    },
-    {
-      "relation": "calls",
-      "confidence": "EXTRACTED",
-      "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L2231",
-      "weight": 1.0,
-      "context": "call",
-      "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "scripts_validate_snapshot_sh__entry",
-      "target": "scripts_validate_snapshot_stage_git"
-    },
-    {
-      "relation": "calls",
-      "confidence": "EXTRACTED",
-      "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L2232",
-      "weight": 1.0,
-      "context": "call",
-      "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "scripts_validate_snapshot_sh__entry",
-      "target": "scripts_validate_snapshot_check_disk"
-    },
-    {
-      "relation": "calls",
-      "confidence": "EXTRACTED",
-      "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L2233",
-      "weight": 1.0,
-      "context": "call",
-      "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "scripts_validate_snapshot_sh__entry",
-      "target": "scripts_validate_snapshot_stage_database"
-    },
-    {
-      "relation": "calls",
-      "confidence": "EXTRACTED",
-      "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L2234",
-      "weight": 1.0,
-      "context": "call",
-      "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "scripts_validate_snapshot_sh__entry",
-      "target": "scripts_validate_snapshot_stage_filestore"
-    },
-    {
-      "relation": "calls",
-      "confidence": "EXTRACTED",
-      "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L2235",
-      "weight": 1.0,
-      "context": "call",
-      "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "scripts_validate_snapshot_sh__entry",
-      "target": "scripts_validate_snapshot_phase2"
-    },
-    {
-      "relation": "calls",
-      "confidence": "EXTRACTED",
-      "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L2238",
-      "weight": 1.0,
-      "context": "call",
-      "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "scripts_validate_snapshot_sh__entry",
-      "target": "scripts_validate_snapshot_finish"
-    },
-    {
-      "relation": "calls",
-      "confidence": "EXTRACTED",
-      "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L2244",
-      "weight": 1.0,
-      "context": "call",
-      "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "scripts_validate_snapshot_sh__entry",
-      "target": "scripts_validate_snapshot_publish_result"
-    },
-    {
-      "relation": "calls",
-      "confidence": "EXTRACTED",
-      "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L486",
-      "weight": 1.0,
-      "context": "call",
-      "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "scripts_validate_snapshot_sh__entry",
-      "target": "scripts_validate_snapshot_run_remote_drill"
-    },
-    {
-      "relation": "calls",
-      "confidence": "EXTRACTED",
-      "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L571",
-      "weight": 1.0,
-      "context": "call",
-      "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "scripts_validate_snapshot_sh__entry",
-      "target": "scripts_validate_snapshot_docker_preflight"
-    },
-    {
-      "relation": "calls",
-      "confidence": "EXTRACTED",
-      "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L589",
-      "weight": 1.0,
-      "context": "call",
-      "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "scripts_validate_snapshot_sh__entry",
-      "target": "scripts_validate_snapshot_prepare_dirs"
-    },
-    {
-      "relation": "calls",
-      "confidence": "EXTRACTED",
-      "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L77",
-      "weight": 1.0,
-      "context": "call",
-      "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "scripts_validate_snapshot_sh__entry",
-      "target": "scripts_validate_snapshot_log_error"
-    },
-    {
-      "relation": "calls",
-      "confidence": "EXTRACTED",
-      "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L802",
-      "weight": 1.0,
-      "context": "call",
-      "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "scripts_validate_snapshot_sh__entry",
-      "target": "scripts_validate_snapshot_log_info"
-    },
-    {
-      "relation": "calls",
-      "confidence": "EXTRACTED",
-      "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L945",
-      "weight": 1.0,
-      "context": "call",
-      "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "scripts_validate_snapshot_sh__entry",
-      "target": "scripts_validate_snapshot_pre_check"
-    },
-    {
-      "relation": "calls",
-      "confidence": "EXTRACTED",
-      "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L983",
-      "weight": 1.0,
-      "context": "call",
-      "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "scripts_validate_snapshot_sh__entry",
-      "target": "scripts_validate_snapshot_sweep_leftovers"
-    },
-    {
-      "relation": "calls",
-      "confidence": "EXTRACTED",
-      "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L984",
-      "weight": 1.0,
-      "context": "call",
-      "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "scripts_validate_snapshot_sh__entry",
-      "target": "scripts_validate_snapshot_start_watchdog"
-    },
-    {
-      "relation": "calls",
-      "confidence": "EXTRACTED",
-      "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1102",
-      "weight": 1.0,
-      "context": "call",
-      "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "scripts_validate_snapshot_stage_archive",
-      "target": "scripts_validate_snapshot_log_info"
-    },
-    {
-      "relation": "calls",
-      "confidence": "EXTRACTED",
-      "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1104",
-      "weight": 1.0,
-      "context": "call",
-      "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "scripts_validate_snapshot_stage_archive",
-      "target": "scripts_validate_snapshot_run_bg"
-    },
-    {
-      "relation": "calls",
-      "confidence": "EXTRACTED",
-      "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1106",
-      "weight": 1.0,
-      "context": "call",
-      "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "scripts_validate_snapshot_stage_archive",
-      "target": "scripts_validate_snapshot_record_stage"
-    },
-    {
-      "relation": "calls",
-      "confidence": "EXTRACTED",
-      "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1107",
-      "weight": 1.0,
-      "context": "call",
-      "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "scripts_validate_snapshot_stage_archive",
-      "target": "scripts_validate_snapshot_finish"
-    },
-    {
-      "relation": "calls",
-      "confidence": "EXTRACTED",
-      "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L2088",
-      "weight": 1.0,
-      "context": "call",
-      "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "scripts_validate_snapshot_stage_boot",
-      "target": "scripts_validate_snapshot_boot_layout"
-    },
-    {
-      "relation": "calls",
-      "confidence": "EXTRACTED",
-      "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L2090",
-      "weight": 1.0,
-      "context": "call",
-      "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "scripts_validate_snapshot_stage_boot",
-      "target": "scripts_validate_snapshot_record_stage"
-    },
-    {
-      "relation": "calls",
-      "confidence": "EXTRACTED",
-      "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L2097",
-      "weight": 1.0,
-      "context": "call",
-      "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "scripts_validate_snapshot_stage_boot",
-      "target": "scripts_validate_snapshot_pg_exec"
-    },
-    {
-      "relation": "calls",
-      "confidence": "EXTRACTED",
-      "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L2130",
-      "weight": 1.0,
-      "context": "call",
-      "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "scripts_validate_snapshot_stage_boot",
-      "target": "scripts_validate_snapshot_log_info"
-    },
-    {
-      "relation": "calls",
-      "confidence": "EXTRACTED",
-      "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L2131",
-      "weight": 1.0,
-      "context": "call",
-      "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "scripts_validate_snapshot_stage_boot",
-      "target": "scripts_validate_snapshot_boot_run"
-    },
-    {
-      "relation": "calls",
-      "confidence": "EXTRACTED",
-      "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L2132",
-      "weight": 1.0,
-      "context": "call",
-      "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "scripts_validate_snapshot_stage_boot",
-      "target": "scripts_validate_snapshot_container_running"
-    },
-    {
-      "relation": "calls",
-      "confidence": "EXTRACTED",
-      "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1078",
-      "weight": 1.0,
-      "context": "call",
-      "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "scripts_validate_snapshot_stage_checksum",
-      "target": "scripts_validate_snapshot_log_info"
-    },
-    {
-      "relation": "calls",
-      "confidence": "EXTRACTED",
-      "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1080",
-      "weight": 1.0,
-      "context": "call",
-      "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "scripts_validate_snapshot_stage_checksum",
-      "target": "scripts_validate_snapshot_run_bg"
-    },
-    {
-      "relation": "calls",
-      "confidence": "EXTRACTED",
-      "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1081",
-      "weight": 1.0,
-      "context": "call",
-      "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "scripts_validate_snapshot_stage_checksum",
-      "target": "scripts_validate_snapshot_record_stage"
-    },
-    {
-      "relation": "calls",
-      "confidence": "EXTRACTED",
-      "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1082",
-      "weight": 1.0,
-      "context": "call",
-      "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "scripts_validate_snapshot_stage_checksum",
-      "target": "scripts_validate_snapshot_finish"
-    },
-    {
-      "relation": "calls",
-      "confidence": "EXTRACTED",
-      "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1921",
-      "weight": 1.0,
-      "context": "call",
-      "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "scripts_validate_snapshot_stage_code",
-      "target": "scripts_validate_snapshot_record_stage"
-    },
-    {
-      "relation": "calls",
-      "confidence": "EXTRACTED",
-      "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1926",
-      "weight": 1.0,
-      "context": "call",
-      "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "scripts_validate_snapshot_stage_code",
-      "target": "scripts_validate_snapshot_safe_rel"
-    },
-    {
-      "relation": "calls",
-      "confidence": "EXTRACTED",
-      "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1937",
-      "weight": 1.0,
-      "context": "call",
-      "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "scripts_validate_snapshot_stage_code",
-      "target": "scripts_validate_snapshot_valid_commit"
-    },
-    {
-      "relation": "calls",
-      "confidence": "EXTRACTED",
-      "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1937",
-      "weight": 1.0,
-      "context": "call",
-      "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "scripts_validate_snapshot_stage_code",
-      "target": "scripts_validate_snapshot_valid_remote"
-    },
-    {
-      "relation": "calls",
-      "confidence": "EXTRACTED",
-      "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1940",
-      "weight": 1.0,
-      "context": "call",
-      "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "scripts_validate_snapshot_stage_code",
-      "target": "scripts_validate_snapshot_log_info"
-    },
-    {
-      "relation": "calls",
-      "confidence": "EXTRACTED",
-      "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1942",
-      "weight": 1.0,
-      "context": "call",
-      "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "scripts_validate_snapshot_stage_code",
-      "target": "scripts_validate_snapshot_run_bg"
-    },
-    {
-      "relation": "calls",
-      "confidence": "EXTRACTED",
-      "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1454",
-      "weight": 1.0,
-      "context": "call",
-      "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "scripts_validate_snapshot_stage_database",
-      "target": "scripts_validate_snapshot_log_info"
+      "target": "scripts_validate_snapshot_cat_member",
+      "confidence_score": 1.0
     },
     {
       "relation": "calls",
@@ -31766,237 +31139,849 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "scripts_validate_snapshot_stage_database",
-      "target": "scripts_validate_snapshot_run_bg"
+      "source": "scripts_validate_snapshot_restore_plain",
+      "target": "scripts_validate_snapshot_cat_member",
+      "confidence_score": 1.0
     },
     {
       "relation": "calls",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1457",
+      "source_location": "L731",
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "scripts_validate_snapshot_stage_database",
-      "target": "scripts_validate_snapshot_log_warn"
+      "source": "scripts_validate_snapshot_revoke_record",
+      "target": "scripts_validate_snapshot_record_stage",
+      "confidence_score": 1.0
     },
     {
       "relation": "calls",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1460",
+      "source_location": "L302",
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "scripts_validate_snapshot_stage_database",
-      "target": "scripts_validate_snapshot_record_stage"
+      "source": "scripts_validate_snapshot_run_remote_drill",
+      "target": "scripts_validate_snapshot_log_error",
+      "confidence_score": 1.0
     },
     {
       "relation": "calls",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1461",
+      "source_location": "L308",
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "scripts_validate_snapshot_stage_database",
-      "target": "scripts_validate_snapshot_finish"
+      "source": "scripts_validate_snapshot_run_remote_drill",
+      "target": "scripts_validate_snapshot_prepare_dirs",
+      "confidence_score": 1.0
     },
     {
       "relation": "calls",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1485",
+      "source_location": "L325",
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "scripts_validate_snapshot_stage_database",
-      "target": "scripts_validate_snapshot_pg_alive"
+      "source": "scripts_validate_snapshot_run_remote_drill",
+      "target": "scripts_validate_snapshot_log_info",
+      "confidence_score": 1.0
     },
     {
       "relation": "calls",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1501",
+      "source_location": "L327",
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "scripts_validate_snapshot_stage_database",
-      "target": "scripts_validate_snapshot_pg_exec"
+      "source": "scripts_validate_snapshot_run_remote_drill",
+      "target": "scripts_validate_snapshot_remote_fail",
+      "confidence_score": 1.0
     },
     {
       "relation": "calls",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1600",
+      "source_location": "L469",
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
-      "confidence_score": 1.0,
+      "source": "scripts_validate_snapshot_run_remote_drill",
+      "target": "scripts_validate_snapshot_own_path",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "scripts/validate-snapshot.sh",
+      "source_location": "L472",
+      "weight": 1.0,
+      "context": "call",
+      "_origin": "ast",
+      "source": "scripts_validate_snapshot_run_remote_drill",
+      "target": "scripts_validate_snapshot_log_warn",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "scripts/validate-snapshot.sh",
+      "source_location": "L195",
+      "weight": 1.0,
+      "context": "call",
+      "_origin": "ast",
+      "source": "scripts_validate_snapshot_sh__entry",
+      "target": "scripts_validate_snapshot_need_value",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "scripts/validate-snapshot.sh",
+      "source_location": "L210",
+      "weight": 1.0,
+      "context": "call",
+      "_origin": "ast",
+      "source": "scripts_validate_snapshot_sh__entry",
+      "target": "scripts_validate_snapshot_show_help",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "scripts/validate-snapshot.sh",
+      "source_location": "L2259",
+      "weight": 1.0,
+      "context": "call",
+      "_origin": "ast",
+      "source": "scripts_validate_snapshot_sh__entry",
+      "target": "scripts_validate_snapshot_fetch_snapshot",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "scripts/validate-snapshot.sh",
+      "source_location": "L2260",
+      "weight": 1.0,
+      "context": "call",
+      "_origin": "ast",
+      "source": "scripts_validate_snapshot_sh__entry",
+      "target": "scripts_validate_snapshot_stage_checksum",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "scripts/validate-snapshot.sh",
+      "source_location": "L2261",
+      "weight": 1.0,
+      "context": "call",
+      "_origin": "ast",
+      "source": "scripts_validate_snapshot_sh__entry",
+      "target": "scripts_validate_snapshot_stage_archive",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "scripts/validate-snapshot.sh",
+      "source_location": "L2262",
+      "weight": 1.0,
+      "context": "call",
+      "_origin": "ast",
+      "source": "scripts_validate_snapshot_sh__entry",
+      "target": "scripts_validate_snapshot_stage_structure",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "scripts/validate-snapshot.sh",
+      "source_location": "L2263",
+      "weight": 1.0,
+      "context": "call",
+      "_origin": "ast",
+      "source": "scripts_validate_snapshot_sh__entry",
+      "target": "scripts_validate_snapshot_stage_manifest",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "scripts/validate-snapshot.sh",
+      "source_location": "L2264",
+      "weight": 1.0,
+      "context": "call",
+      "_origin": "ast",
+      "source": "scripts_validate_snapshot_sh__entry",
+      "target": "scripts_validate_snapshot_stage_git",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "scripts/validate-snapshot.sh",
+      "source_location": "L2265",
+      "weight": 1.0,
+      "context": "call",
+      "_origin": "ast",
+      "source": "scripts_validate_snapshot_sh__entry",
+      "target": "scripts_validate_snapshot_check_disk",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "scripts/validate-snapshot.sh",
+      "source_location": "L2266",
+      "weight": 1.0,
+      "context": "call",
+      "_origin": "ast",
+      "source": "scripts_validate_snapshot_sh__entry",
+      "target": "scripts_validate_snapshot_stage_database",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "scripts/validate-snapshot.sh",
+      "source_location": "L2267",
+      "weight": 1.0,
+      "context": "call",
+      "_origin": "ast",
+      "source": "scripts_validate_snapshot_sh__entry",
+      "target": "scripts_validate_snapshot_stage_filestore",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "scripts/validate-snapshot.sh",
+      "source_location": "L2268",
+      "weight": 1.0,
+      "context": "call",
+      "_origin": "ast",
+      "source": "scripts_validate_snapshot_sh__entry",
+      "target": "scripts_validate_snapshot_phase2",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "scripts/validate-snapshot.sh",
+      "source_location": "L2271",
+      "weight": 1.0,
+      "context": "call",
+      "_origin": "ast",
+      "source": "scripts_validate_snapshot_sh__entry",
+      "target": "scripts_validate_snapshot_finish",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "scripts/validate-snapshot.sh",
+      "source_location": "L2277",
+      "weight": 1.0,
+      "context": "call",
+      "_origin": "ast",
+      "source": "scripts_validate_snapshot_sh__entry",
+      "target": "scripts_validate_snapshot_publish_result",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "scripts/validate-snapshot.sh",
+      "source_location": "L486",
+      "weight": 1.0,
+      "context": "call",
+      "_origin": "ast",
+      "source": "scripts_validate_snapshot_sh__entry",
+      "target": "scripts_validate_snapshot_run_remote_drill",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "scripts/validate-snapshot.sh",
+      "source_location": "L571",
+      "weight": 1.0,
+      "context": "call",
+      "_origin": "ast",
+      "source": "scripts_validate_snapshot_sh__entry",
+      "target": "scripts_validate_snapshot_docker_preflight",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "scripts/validate-snapshot.sh",
+      "source_location": "L589",
+      "weight": 1.0,
+      "context": "call",
+      "_origin": "ast",
+      "source": "scripts_validate_snapshot_sh__entry",
+      "target": "scripts_validate_snapshot_prepare_dirs",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "scripts/validate-snapshot.sh",
+      "source_location": "L77",
+      "weight": 1.0,
+      "context": "call",
+      "_origin": "ast",
+      "source": "scripts_validate_snapshot_sh__entry",
+      "target": "scripts_validate_snapshot_log_error",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "scripts/validate-snapshot.sh",
+      "source_location": "L802",
+      "weight": 1.0,
+      "context": "call",
+      "_origin": "ast",
+      "source": "scripts_validate_snapshot_sh__entry",
+      "target": "scripts_validate_snapshot_log_info",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "scripts/validate-snapshot.sh",
+      "source_location": "L945",
+      "weight": 1.0,
+      "context": "call",
+      "_origin": "ast",
+      "source": "scripts_validate_snapshot_sh__entry",
+      "target": "scripts_validate_snapshot_pre_check",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "scripts/validate-snapshot.sh",
+      "source_location": "L983",
+      "weight": 1.0,
+      "context": "call",
+      "_origin": "ast",
+      "source": "scripts_validate_snapshot_sh__entry",
+      "target": "scripts_validate_snapshot_sweep_leftovers",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "scripts/validate-snapshot.sh",
+      "source_location": "L984",
+      "weight": 1.0,
+      "context": "call",
+      "_origin": "ast",
+      "source": "scripts_validate_snapshot_sh__entry",
+      "target": "scripts_validate_snapshot_start_watchdog",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "scripts/validate-snapshot.sh",
+      "source_location": "L1102",
+      "weight": 1.0,
+      "context": "call",
+      "_origin": "ast",
+      "source": "scripts_validate_snapshot_stage_archive",
+      "target": "scripts_validate_snapshot_log_info",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "scripts/validate-snapshot.sh",
+      "source_location": "L1104",
+      "weight": 1.0,
+      "context": "call",
+      "_origin": "ast",
+      "source": "scripts_validate_snapshot_stage_archive",
+      "target": "scripts_validate_snapshot_run_bg",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "scripts/validate-snapshot.sh",
+      "source_location": "L1106",
+      "weight": 1.0,
+      "context": "call",
+      "_origin": "ast",
+      "source": "scripts_validate_snapshot_stage_archive",
+      "target": "scripts_validate_snapshot_record_stage",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "scripts/validate-snapshot.sh",
+      "source_location": "L1107",
+      "weight": 1.0,
+      "context": "call",
+      "_origin": "ast",
+      "source": "scripts_validate_snapshot_stage_archive",
+      "target": "scripts_validate_snapshot_finish",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "scripts/validate-snapshot.sh",
+      "source_location": "L2121",
+      "weight": 1.0,
+      "context": "call",
+      "_origin": "ast",
+      "source": "scripts_validate_snapshot_stage_boot",
+      "target": "scripts_validate_snapshot_boot_layout",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "scripts/validate-snapshot.sh",
+      "source_location": "L2123",
+      "weight": 1.0,
+      "context": "call",
+      "_origin": "ast",
+      "source": "scripts_validate_snapshot_stage_boot",
+      "target": "scripts_validate_snapshot_record_stage",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "scripts/validate-snapshot.sh",
+      "source_location": "L2130",
+      "weight": 1.0,
+      "context": "call",
+      "_origin": "ast",
+      "source": "scripts_validate_snapshot_stage_boot",
+      "target": "scripts_validate_snapshot_pg_exec",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "scripts/validate-snapshot.sh",
+      "source_location": "L2163",
+      "weight": 1.0,
+      "context": "call",
+      "_origin": "ast",
+      "source": "scripts_validate_snapshot_stage_boot",
+      "target": "scripts_validate_snapshot_log_info",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "scripts/validate-snapshot.sh",
+      "source_location": "L2164",
+      "weight": 1.0,
+      "context": "call",
+      "_origin": "ast",
+      "source": "scripts_validate_snapshot_stage_boot",
+      "target": "scripts_validate_snapshot_boot_run",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "scripts/validate-snapshot.sh",
+      "source_location": "L2165",
+      "weight": 1.0,
+      "context": "call",
+      "_origin": "ast",
+      "source": "scripts_validate_snapshot_stage_boot",
+      "target": "scripts_validate_snapshot_container_running",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "scripts/validate-snapshot.sh",
+      "source_location": "L1078",
+      "weight": 1.0,
+      "context": "call",
+      "_origin": "ast",
+      "source": "scripts_validate_snapshot_stage_checksum",
+      "target": "scripts_validate_snapshot_log_info",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "scripts/validate-snapshot.sh",
+      "source_location": "L1080",
+      "weight": 1.0,
+      "context": "call",
+      "_origin": "ast",
+      "source": "scripts_validate_snapshot_stage_checksum",
+      "target": "scripts_validate_snapshot_run_bg",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "scripts/validate-snapshot.sh",
+      "source_location": "L1081",
+      "weight": 1.0,
+      "context": "call",
+      "_origin": "ast",
+      "source": "scripts_validate_snapshot_stage_checksum",
+      "target": "scripts_validate_snapshot_record_stage",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "scripts/validate-snapshot.sh",
+      "source_location": "L1082",
+      "weight": 1.0,
+      "context": "call",
+      "_origin": "ast",
+      "source": "scripts_validate_snapshot_stage_checksum",
+      "target": "scripts_validate_snapshot_finish",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "scripts/validate-snapshot.sh",
+      "source_location": "L1941",
+      "weight": 1.0,
+      "context": "call",
+      "_origin": "ast",
+      "source": "scripts_validate_snapshot_stage_code",
+      "target": "scripts_validate_snapshot_record_stage",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "scripts/validate-snapshot.sh",
+      "source_location": "L1946",
+      "weight": 1.0,
+      "context": "call",
+      "_origin": "ast",
+      "source": "scripts_validate_snapshot_stage_code",
+      "target": "scripts_validate_snapshot_safe_rel",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "scripts/validate-snapshot.sh",
+      "source_location": "L1957",
+      "weight": 1.0,
+      "context": "call",
+      "_origin": "ast",
+      "source": "scripts_validate_snapshot_stage_code",
+      "target": "scripts_validate_snapshot_valid_commit",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "scripts/validate-snapshot.sh",
+      "source_location": "L1957",
+      "weight": 1.0,
+      "context": "call",
+      "_origin": "ast",
+      "source": "scripts_validate_snapshot_stage_code",
+      "target": "scripts_validate_snapshot_valid_remote",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "scripts/validate-snapshot.sh",
+      "source_location": "L1960",
+      "weight": 1.0,
+      "context": "call",
+      "_origin": "ast",
+      "source": "scripts_validate_snapshot_stage_code",
+      "target": "scripts_validate_snapshot_log_info",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "scripts/validate-snapshot.sh",
+      "source_location": "L1967",
+      "weight": 1.0,
+      "context": "call",
+      "_origin": "ast",
+      "source": "scripts_validate_snapshot_stage_code",
+      "target": "scripts_validate_snapshot_run_bg",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "scripts/validate-snapshot.sh",
+      "source_location": "L1474",
+      "weight": 1.0,
+      "context": "call",
+      "_origin": "ast",
+      "source": "scripts_validate_snapshot_stage_database",
+      "target": "scripts_validate_snapshot_log_info",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "scripts/validate-snapshot.sh",
+      "source_location": "L1475",
+      "weight": 1.0,
+      "context": "call",
+      "_origin": "ast",
+      "source": "scripts_validate_snapshot_stage_database",
+      "target": "scripts_validate_snapshot_run_bg",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "scripts/validate-snapshot.sh",
+      "source_location": "L1477",
+      "weight": 1.0,
+      "context": "call",
+      "_origin": "ast",
+      "source": "scripts_validate_snapshot_stage_database",
+      "target": "scripts_validate_snapshot_log_warn",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "scripts/validate-snapshot.sh",
+      "source_location": "L1480",
+      "weight": 1.0,
+      "context": "call",
+      "_origin": "ast",
+      "source": "scripts_validate_snapshot_stage_database",
+      "target": "scripts_validate_snapshot_record_stage",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "scripts/validate-snapshot.sh",
+      "source_location": "L1481",
+      "weight": 1.0,
+      "context": "call",
+      "_origin": "ast",
+      "source": "scripts_validate_snapshot_stage_database",
+      "target": "scripts_validate_snapshot_finish",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "scripts/validate-snapshot.sh",
+      "source_location": "L1505",
+      "weight": 1.0,
+      "context": "call",
+      "_origin": "ast",
+      "source": "scripts_validate_snapshot_stage_database",
+      "target": "scripts_validate_snapshot_pg_alive",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "scripts/validate-snapshot.sh",
+      "source_location": "L1521",
+      "weight": 1.0,
+      "context": "call",
+      "_origin": "ast",
+      "source": "scripts_validate_snapshot_stage_database",
+      "target": "scripts_validate_snapshot_pg_exec",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "scripts/validate-snapshot.sh",
+      "source_location": "L1620",
+      "weight": 1.0,
+      "context": "call",
+      "_origin": "ast",
       "source": "scripts_validate_snapshot_stage_filestore",
-      "target": "scripts_validate_snapshot_record_stage"
+      "target": "scripts_validate_snapshot_record_stage",
+      "confidence_score": 1.0
     },
     {
       "relation": "calls",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1601",
+      "source_location": "L1621",
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot_stage_filestore",
-      "target": "scripts_validate_snapshot_finish"
+      "target": "scripts_validate_snapshot_finish",
+      "confidence_score": 1.0
     },
     {
       "relation": "calls",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1315",
+      "source_location": "L1335",
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot_stage_git",
-      "target": "scripts_validate_snapshot_record_stage"
+      "target": "scripts_validate_snapshot_record_stage",
+      "confidence_score": 1.0
     },
     {
       "relation": "calls",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1349",
+      "source_location": "L1369",
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot_stage_git",
-      "target": "scripts_validate_snapshot_valid_remote"
+      "target": "scripts_validate_snapshot_valid_remote",
+      "confidence_score": 1.0
     },
     {
       "relation": "calls",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1352",
+      "source_location": "L1372",
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot_stage_git",
-      "target": "scripts_validate_snapshot_valid_commit"
+      "target": "scripts_validate_snapshot_valid_commit",
+      "confidence_score": 1.0
     },
     {
       "relation": "calls",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1355",
+      "source_location": "L1375",
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot_stage_git",
-      "target": "scripts_validate_snapshot_log_info"
+      "target": "scripts_validate_snapshot_log_info",
+      "confidence_score": 1.0
     },
     {
       "relation": "calls",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1357",
+      "source_location": "L1377",
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot_stage_git",
-      "target": "scripts_validate_snapshot_run_bg"
+      "target": "scripts_validate_snapshot_run_bg",
+      "confidence_score": 1.0
     },
     {
       "relation": "calls",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1831",
+      "source_location": "L1851",
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot_stage_image",
-      "target": "scripts_validate_snapshot_image_exists"
+      "target": "scripts_validate_snapshot_image_exists",
+      "confidence_score": 1.0
     },
     {
       "relation": "calls",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1834",
+      "source_location": "L1854",
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot_stage_image",
-      "target": "scripts_validate_snapshot_log_info"
+      "target": "scripts_validate_snapshot_log_info",
+      "confidence_score": 1.0
     },
     {
       "relation": "calls",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1852",
+      "source_location": "L1872",
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot_stage_image",
-      "target": "scripts_validate_snapshot_log_warn"
+      "target": "scripts_validate_snapshot_log_warn",
+      "confidence_score": 1.0
     },
     {
       "relation": "calls",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1863",
+      "source_location": "L1883",
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot_stage_image",
-      "target": "scripts_validate_snapshot_record_stage"
+      "target": "scripts_validate_snapshot_record_stage",
+      "confidence_score": 1.0
     },
     {
       "relation": "calls",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1864",
+      "source_location": "L1884",
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot_stage_image",
-      "target": "scripts_validate_snapshot_drill_dockerfile"
+      "target": "scripts_validate_snapshot_drill_dockerfile",
+      "confidence_score": 1.0
     },
     {
       "relation": "calls",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1868",
+      "source_location": "L1888",
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot_stage_image",
-      "target": "scripts_validate_snapshot_snap_file"
+      "target": "scripts_validate_snapshot_snap_file",
+      "confidence_score": 1.0
     },
     {
       "relation": "calls",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1889",
+      "source_location": "L1909",
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot_stage_image",
-      "target": "scripts_validate_snapshot_run_bg"
+      "target": "scripts_validate_snapshot_run_bg",
+      "confidence_score": 1.0
     },
     {
       "relation": "calls",
@@ -32006,9 +31991,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot_stage_manifest",
-      "target": "scripts_validate_snapshot_cat_member"
+      "target": "scripts_validate_snapshot_cat_member",
+      "confidence_score": 1.0
     },
     {
       "relation": "calls",
@@ -32018,9 +32003,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot_stage_manifest",
-      "target": "scripts_validate_snapshot_record_stage"
+      "target": "scripts_validate_snapshot_record_stage",
+      "confidence_score": 1.0
     },
     {
       "relation": "calls",
@@ -32030,9 +32015,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot_stage_manifest",
-      "target": "scripts_validate_snapshot_finish"
+      "target": "scripts_validate_snapshot_finish",
+      "confidence_score": 1.0
     },
     {
       "relation": "calls",
@@ -32042,9 +32027,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot_stage_structure",
-      "target": "scripts_validate_snapshot_open_inner_zip"
+      "target": "scripts_validate_snapshot_open_inner_zip",
+      "confidence_score": 1.0
     },
     {
       "relation": "calls",
@@ -32054,9 +32039,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot_stage_structure",
-      "target": "scripts_validate_snapshot_record_stage"
+      "target": "scripts_validate_snapshot_record_stage",
+      "confidence_score": 1.0
     },
     {
       "relation": "calls",
@@ -32066,9 +32051,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot_stage_structure",
-      "target": "scripts_validate_snapshot_finish"
+      "target": "scripts_validate_snapshot_finish",
+      "confidence_score": 1.0
     },
     {
       "relation": "calls",
@@ -32078,9 +32063,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot_sweep_leftovers",
-      "target": "scripts_validate_snapshot_log_info"
+      "target": "scripts_validate_snapshot_log_info",
+      "confidence_score": 1.0
     },
     {
       "relation": "calls",
@@ -32134,19 +32119,7 @@
       "relation": "calls",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot-worker.sh",
-      "source_location": "L224",
-      "weight": 1.0,
-      "context": "call",
-      "_origin": "ast",
-      "source": "scripts_validate_snapshot_worker_run_validator",
-      "target": "scripts_validate_snapshot_worker_log_info",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "calls",
-      "confidence": "EXTRACTED",
-      "source_file": "scripts/validate-snapshot-worker.sh",
-      "source_location": "L112",
+      "source_location": "L111",
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
@@ -32158,7 +32131,7 @@
       "relation": "calls",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot-worker.sh",
-      "source_location": "L219",
+      "source_location": "L218",
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
@@ -32170,19 +32143,7 @@
       "relation": "calls",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot-worker.sh",
-      "source_location": "L234",
-      "weight": 1.0,
-      "context": "call",
-      "_origin": "ast",
-      "source": "scripts_validate_snapshot_worker_sh__entry",
-      "target": "scripts_validate_snapshot_worker_run_validator",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "calls",
-      "confidence": "EXTRACTED",
-      "source_file": "scripts/validate-snapshot-worker.sh",
-      "source_location": "L247",
+      "source_location": "L237",
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
@@ -32222,9 +32183,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot_write_report",
-      "target": "scripts_validate_snapshot_own_path"
+      "target": "scripts_validate_snapshot_own_path",
+      "confidence_score": 1.0
     },
     {
       "relation": "calls",
@@ -32234,9 +32195,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot_write_report",
-      "target": "scripts_validate_snapshot_log_info"
+      "target": "scripts_validate_snapshot_log_info",
+      "confidence_score": 1.0
     },
     {
       "relation": "calls",
@@ -35746,13 +35707,13 @@
       "relation": "defines",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1661",
+      "source_location": "L1681",
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot_publish_result",
-      "target": "scripts_validate_snapshot_mkrec"
+      "target": "scripts_validate_snapshot_mkrec",
+      "confidence_score": 1.0
     },
     {
       "relation": "defines",
@@ -35762,9 +35723,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot_sweep_leftovers",
-      "target": "scripts_validate_snapshot_owner_alive"
+      "target": "scripts_validate_snapshot_owner_alive",
+      "confidence_score": 1.0
     },
     {
       "relation": "contains",
@@ -37478,9 +37439,9 @@
       "source_location": "L1",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot",
-      "target": "scripts_validate_snapshot_sh__entry"
+      "target": "scripts_validate_snapshot_sh__entry",
+      "confidence_score": 1.0
     },
     {
       "relation": "contains",
@@ -45948,9 +45909,9 @@
       "source_location": "L102",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot",
-      "target": "scripts_validate_snapshot_own_path"
+      "target": "scripts_validate_snapshot_own_path",
+      "confidence_score": 1.0
     },
     {
       "relation": "defines",
@@ -45959,9 +45920,9 @@
       "source_location": "L106",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot",
-      "target": "scripts_validate_snapshot_prepare_dirs"
+      "target": "scripts_validate_snapshot_prepare_dirs",
+      "confidence_score": 1.0
     },
     {
       "relation": "defines",
@@ -45970,9 +45931,9 @@
       "source_location": "L1075",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot",
-      "target": "scripts_validate_snapshot_stage_checksum"
+      "target": "scripts_validate_snapshot_stage_checksum",
+      "confidence_score": 1.0
     },
     {
       "relation": "defines",
@@ -45981,9 +45942,9 @@
       "source_location": "L1099",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot",
-      "target": "scripts_validate_snapshot_stage_archive"
+      "target": "scripts_validate_snapshot_stage_archive",
+      "confidence_score": 1.0
     },
     {
       "relation": "defines",
@@ -45992,9 +45953,9 @@
       "source_location": "L1148",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot",
-      "target": "scripts_validate_snapshot_cat_member"
+      "target": "scripts_validate_snapshot_cat_member",
+      "confidence_score": 1.0
     },
     {
       "relation": "defines",
@@ -46003,9 +45964,9 @@
       "source_location": "L1165",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot",
-      "target": "scripts_validate_snapshot_open_inner_zip"
+      "target": "scripts_validate_snapshot_open_inner_zip",
+      "confidence_score": 1.0
     },
     {
       "relation": "defines",
@@ -46014,9 +45975,9 @@
       "source_location": "L1208",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot",
-      "target": "scripts_validate_snapshot_stage_structure"
+      "target": "scripts_validate_snapshot_stage_structure",
+      "confidence_score": 1.0
     },
     {
       "relation": "defines",
@@ -46025,86 +45986,75 @@
       "source_location": "L1239",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot",
-      "target": "scripts_validate_snapshot_stage_manifest"
+      "target": "scripts_validate_snapshot_stage_manifest",
+      "confidence_score": 1.0
     },
     {
       "relation": "defines",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1282",
+      "source_location": "L1286",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot",
-      "target": "scripts_validate_snapshot_valid_commit"
+      "target": "scripts_validate_snapshot_valid_commit",
+      "confidence_score": 1.0
     },
     {
       "relation": "defines",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1283",
+      "source_location": "L1287",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot",
-      "target": "scripts_validate_snapshot_valid_remote"
+      "target": "scripts_validate_snapshot_valid_remote",
+      "confidence_score": 1.0
     },
     {
       "relation": "defines",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1284",
+      "source_location": "L1288",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot",
-      "target": "scripts_validate_snapshot_git_safe"
+      "target": "scripts_validate_snapshot_git_safe",
+      "confidence_score": 1.0
     },
     {
       "relation": "defines",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1289",
+      "source_location": "L1300",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot",
-      "target": "scripts_validate_snapshot_git_check_commit"
+      "target": "scripts_validate_snapshot_git_check_commit",
+      "confidence_score": 1.0
     },
     {
       "relation": "defines",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1312",
+      "source_location": "L1332",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot",
-      "target": "scripts_validate_snapshot_stage_git"
+      "target": "scripts_validate_snapshot_stage_git",
+      "confidence_score": 1.0
     },
     {
       "relation": "defines",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1375",
+      "source_location": "L1395",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot",
-      "target": "scripts_validate_snapshot_check_disk"
-    },
-    {
-      "relation": "defines",
-      "confidence": "EXTRACTED",
-      "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1406",
-      "weight": 1.0,
-      "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "scripts_validate_snapshot",
-      "target": "scripts_validate_snapshot_pg_major_of_dump"
+      "target": "scripts_validate_snapshot_check_disk",
+      "confidence_score": 1.0
     },
     {
       "relation": "defines",
@@ -46113,9 +46063,9 @@
       "source_location": "L142",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot",
-      "target": "scripts_validate_snapshot_show_help"
+      "target": "scripts_validate_snapshot_show_help",
+      "confidence_score": 1.0
     },
     {
       "relation": "defines",
@@ -46124,53 +46074,20 @@
       "source_location": "L1426",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot",
-      "target": "scripts_validate_snapshot_pg_exec"
+      "target": "scripts_validate_snapshot_pg_major_of_dump",
+      "confidence_score": 1.0
     },
     {
       "relation": "defines",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1427",
+      "source_location": "L1446",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot",
-      "target": "scripts_validate_snapshot_pg_query"
-    },
-    {
-      "relation": "defines",
-      "confidence": "EXTRACTED",
-      "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1430",
-      "weight": 1.0,
-      "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "scripts_validate_snapshot",
-      "target": "scripts_validate_snapshot_pg_alive"
-    },
-    {
-      "relation": "defines",
-      "confidence": "EXTRACTED",
-      "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1432",
-      "weight": 1.0,
-      "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "scripts_validate_snapshot",
-      "target": "scripts_validate_snapshot_restore_plain"
-    },
-    {
-      "relation": "defines",
-      "confidence": "EXTRACTED",
-      "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1442",
-      "weight": 1.0,
-      "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "scripts_validate_snapshot",
-      "target": "scripts_validate_snapshot_restore_custom"
+      "target": "scripts_validate_snapshot_pg_exec",
+      "confidence_score": 1.0
     },
     {
       "relation": "defines",
@@ -46179,174 +46096,196 @@
       "source_location": "L1447",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot",
-      "target": "scripts_validate_snapshot_stage_database"
+      "target": "scripts_validate_snapshot_pg_query",
+      "confidence_score": 1.0
     },
     {
       "relation": "defines",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1593",
+      "source_location": "L1450",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot",
-      "target": "scripts_validate_snapshot_stage_filestore"
+      "target": "scripts_validate_snapshot_pg_alive",
+      "confidence_score": 1.0
     },
     {
       "relation": "defines",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1644",
+      "source_location": "L1452",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot",
-      "target": "scripts_validate_snapshot_publish_result"
+      "target": "scripts_validate_snapshot_restore_plain",
+      "confidence_score": 1.0
     },
     {
       "relation": "defines",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1699",
+      "source_location": "L1462",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot",
-      "target": "scripts_validate_snapshot_publish_inbox"
+      "target": "scripts_validate_snapshot_restore_custom",
+      "confidence_score": 1.0
     },
     {
       "relation": "defines",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1751",
+      "source_location": "L1467",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot",
-      "target": "scripts_validate_snapshot_snap_member_exact"
+      "target": "scripts_validate_snapshot_stage_database",
+      "confidence_score": 1.0
     },
     {
       "relation": "defines",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1755",
+      "source_location": "L1613",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot",
-      "target": "scripts_validate_snapshot_snap_file"
+      "target": "scripts_validate_snapshot_stage_filestore",
+      "confidence_score": 1.0
     },
     {
       "relation": "defines",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1761",
+      "source_location": "L1664",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot",
-      "target": "scripts_validate_snapshot_envfile_get"
+      "target": "scripts_validate_snapshot_publish_result",
+      "confidence_score": 1.0
     },
     {
       "relation": "defines",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1766",
+      "source_location": "L1719",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot",
-      "target": "scripts_validate_snapshot_registry_of"
+      "target": "scripts_validate_snapshot_publish_inbox",
+      "confidence_score": 1.0
     },
     {
       "relation": "defines",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1773",
+      "source_location": "L1771",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot",
-      "target": "scripts_validate_snapshot_image_exists"
+      "target": "scripts_validate_snapshot_snap_member_exact",
+      "confidence_score": 1.0
     },
     {
       "relation": "defines",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1778",
+      "source_location": "L1775",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot",
-      "target": "scripts_validate_snapshot_snap_env"
+      "target": "scripts_validate_snapshot_snap_file",
+      "confidence_score": 1.0
     },
     {
       "relation": "defines",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1780",
+      "source_location": "L1781",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot",
-      "target": "scripts_validate_snapshot_boot_prepare"
+      "target": "scripts_validate_snapshot_envfile_get",
+      "confidence_score": 1.0
     },
     {
       "relation": "defines",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1791",
+      "source_location": "L1786",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot",
-      "target": "scripts_validate_snapshot_image_repo"
+      "target": "scripts_validate_snapshot_registry_of",
+      "confidence_score": 1.0
     },
     {
       "relation": "defines",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1797",
+      "source_location": "L1793",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot",
-      "target": "scripts_validate_snapshot_drill_dockerfile"
+      "target": "scripts_validate_snapshot_image_exists",
+      "confidence_score": 1.0
     },
     {
       "relation": "defines",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1821",
+      "source_location": "L1798",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot",
-      "target": "scripts_validate_snapshot_stage_image"
+      "target": "scripts_validate_snapshot_snap_env",
+      "confidence_score": 1.0
     },
     {
       "relation": "defines",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1913",
+      "source_location": "L1800",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot",
-      "target": "scripts_validate_snapshot_safe_rel"
+      "target": "scripts_validate_snapshot_boot_prepare",
+      "confidence_score": 1.0
     },
     {
       "relation": "defines",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1915",
+      "source_location": "L1811",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot",
-      "target": "scripts_validate_snapshot_stage_code"
+      "target": "scripts_validate_snapshot_image_repo",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "source_file": "scripts/validate-snapshot.sh",
+      "source_location": "L1817",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "scripts_validate_snapshot",
+      "target": "scripts_validate_snapshot_drill_dockerfile",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "source_file": "scripts/validate-snapshot.sh",
+      "source_location": "L1841",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "scripts_validate_snapshot",
+      "target": "scripts_validate_snapshot_stage_image",
+      "confidence_score": 1.0
     },
     {
       "relation": "defines",
@@ -46355,75 +46294,97 @@
       "source_location": "L192",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot",
-      "target": "scripts_validate_snapshot_need_value"
+      "target": "scripts_validate_snapshot_need_value",
+      "confidence_score": 1.0
     },
     {
       "relation": "defines",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L1967",
+      "source_location": "L1933",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot",
-      "target": "scripts_validate_snapshot_boot_layout"
+      "target": "scripts_validate_snapshot_safe_rel",
+      "confidence_score": 1.0
     },
     {
       "relation": "defines",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L2007",
+      "source_location": "L1935",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot",
-      "target": "scripts_validate_snapshot_boot_classify"
+      "target": "scripts_validate_snapshot_stage_code",
+      "confidence_score": 1.0
     },
     {
       "relation": "defines",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L2072",
+      "source_location": "L2000",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot",
-      "target": "scripts_validate_snapshot_boot_run"
+      "target": "scripts_validate_snapshot_boot_layout",
+      "confidence_score": 1.0
     },
     {
       "relation": "defines",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L2082",
+      "source_location": "L2040",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot",
-      "target": "scripts_validate_snapshot_container_running"
+      "target": "scripts_validate_snapshot_boot_classify",
+      "confidence_score": 1.0
     },
     {
       "relation": "defines",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L2084",
+      "source_location": "L2105",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot",
-      "target": "scripts_validate_snapshot_stage_boot"
+      "target": "scripts_validate_snapshot_boot_run",
+      "confidence_score": 1.0
     },
     {
       "relation": "defines",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot.sh",
-      "source_location": "L2208",
+      "source_location": "L2115",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot",
-      "target": "scripts_validate_snapshot_phase2"
+      "target": "scripts_validate_snapshot_container_running",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "source_file": "scripts/validate-snapshot.sh",
+      "source_location": "L2117",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "scripts_validate_snapshot",
+      "target": "scripts_validate_snapshot_stage_boot",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "source_file": "scripts/validate-snapshot.sh",
+      "source_location": "L2241",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "scripts_validate_snapshot",
+      "target": "scripts_validate_snapshot_phase2",
+      "confidence_score": 1.0
     },
     {
       "relation": "defines",
@@ -46432,9 +46393,9 @@
       "source_location": "L275",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot",
-      "target": "scripts_validate_snapshot_remote_fail"
+      "target": "scripts_validate_snapshot_remote_fail",
+      "confidence_score": 1.0
     },
     {
       "relation": "defines",
@@ -46443,9 +46404,9 @@
       "source_location": "L298",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot",
-      "target": "scripts_validate_snapshot_run_remote_drill"
+      "target": "scripts_validate_snapshot_run_remote_drill",
+      "confidence_score": 1.0
     },
     {
       "relation": "defines",
@@ -46454,9 +46415,9 @@
       "source_location": "L508",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot",
-      "target": "scripts_validate_snapshot_docker_setup_help"
+      "target": "scripts_validate_snapshot_docker_setup_help",
+      "confidence_score": 1.0
     },
     {
       "relation": "defines",
@@ -46465,9 +46426,9 @@
       "source_location": "L517",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot",
-      "target": "scripts_validate_snapshot_docker_preflight"
+      "target": "scripts_validate_snapshot_docker_preflight",
+      "confidence_score": 1.0
     },
     {
       "relation": "defines",
@@ -46476,9 +46437,9 @@
       "source_location": "L54",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot",
-      "target": "scripts_validate_snapshot_color_reset"
+      "target": "scripts_validate_snapshot_color_reset",
+      "confidence_score": 1.0
     },
     {
       "relation": "defines",
@@ -46487,9 +46448,9 @@
       "source_location": "L55",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot",
-      "target": "scripts_validate_snapshot_color_info"
+      "target": "scripts_validate_snapshot_color_info",
+      "confidence_score": 1.0
     },
     {
       "relation": "defines",
@@ -46498,9 +46459,9 @@
       "source_location": "L56",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot",
-      "target": "scripts_validate_snapshot_color_success"
+      "target": "scripts_validate_snapshot_color_success",
+      "confidence_score": 1.0
     },
     {
       "relation": "defines",
@@ -46509,9 +46470,9 @@
       "source_location": "L57",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot",
-      "target": "scripts_validate_snapshot_color_warn"
+      "target": "scripts_validate_snapshot_color_warn",
+      "confidence_score": 1.0
     },
     {
       "relation": "defines",
@@ -46520,9 +46481,9 @@
       "source_location": "L58",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot",
-      "target": "scripts_validate_snapshot_color_error"
+      "target": "scripts_validate_snapshot_color_error",
+      "confidence_score": 1.0
     },
     {
       "relation": "defines",
@@ -46531,9 +46492,9 @@
       "source_location": "L60",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot",
-      "target": "scripts_validate_snapshot_log"
+      "target": "scripts_validate_snapshot_log",
+      "confidence_score": 1.0
     },
     {
       "relation": "defines",
@@ -46542,9 +46503,9 @@
       "source_location": "L600",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot",
-      "target": "scripts_validate_snapshot_redact"
+      "target": "scripts_validate_snapshot_redact",
+      "confidence_score": 1.0
     },
     {
       "relation": "defines",
@@ -46553,9 +46514,9 @@
       "source_location": "L604",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot",
-      "target": "scripts_validate_snapshot_msg_of"
+      "target": "scripts_validate_snapshot_msg_of",
+      "confidence_score": 1.0
     },
     {
       "relation": "defines",
@@ -46564,9 +46525,9 @@
       "source_location": "L610",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot",
-      "target": "scripts_validate_snapshot_record_stage"
+      "target": "scripts_validate_snapshot_record_stage",
+      "confidence_score": 1.0
     },
     {
       "relation": "defines",
@@ -46575,9 +46536,9 @@
       "source_location": "L637",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot",
-      "target": "scripts_validate_snapshot_now_s"
+      "target": "scripts_validate_snapshot_now_s",
+      "confidence_score": 1.0
     },
     {
       "relation": "defines",
@@ -46586,9 +46547,9 @@
       "source_location": "L638",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot",
-      "target": "scripts_validate_snapshot_since"
+      "target": "scripts_validate_snapshot_since",
+      "confidence_score": 1.0
     },
     {
       "relation": "defines",
@@ -46597,9 +46558,9 @@
       "source_location": "L639",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot",
-      "target": "scripts_validate_snapshot_jstr"
+      "target": "scripts_validate_snapshot_jstr",
+      "confidence_score": 1.0
     },
     {
       "relation": "defines",
@@ -46608,9 +46569,9 @@
       "source_location": "L641",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot",
-      "target": "scripts_validate_snapshot_run_bg"
+      "target": "scripts_validate_snapshot_run_bg",
+      "confidence_score": 1.0
     },
     {
       "relation": "defines",
@@ -46619,9 +46580,9 @@
       "source_location": "L652",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot",
-      "target": "scripts_validate_snapshot_kill_child"
+      "target": "scripts_validate_snapshot_kill_child",
+      "confidence_score": 1.0
     },
     {
       "relation": "defines",
@@ -46630,9 +46591,9 @@
       "source_location": "L661",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot",
-      "target": "scripts_validate_snapshot_cleanup"
+      "target": "scripts_validate_snapshot_cleanup",
+      "confidence_score": 1.0
     },
     {
       "relation": "defines",
@@ -46641,9 +46602,9 @@
       "source_location": "L67",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot",
-      "target": "scripts_validate_snapshot_log_info"
+      "target": "scripts_validate_snapshot_log_info",
+      "confidence_score": 1.0
     },
     {
       "relation": "defines",
@@ -46652,9 +46613,9 @@
       "source_location": "L68",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot",
-      "target": "scripts_validate_snapshot_log_success"
+      "target": "scripts_validate_snapshot_log_success",
+      "confidence_score": 1.0
     },
     {
       "relation": "defines",
@@ -46663,9 +46624,9 @@
       "source_location": "L681",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot",
-      "target": "scripts_validate_snapshot_on_signal"
+      "target": "scripts_validate_snapshot_on_signal",
+      "confidence_score": 1.0
     },
     {
       "relation": "defines",
@@ -46674,9 +46635,9 @@
       "source_location": "L69",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot",
-      "target": "scripts_validate_snapshot_log_warn"
+      "target": "scripts_validate_snapshot_log_warn",
+      "confidence_score": 1.0
     },
     {
       "relation": "defines",
@@ -46685,9 +46646,9 @@
       "source_location": "L691",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot",
-      "target": "scripts_validate_snapshot_write_report"
+      "target": "scripts_validate_snapshot_write_report",
+      "confidence_score": 1.0
     },
     {
       "relation": "defines",
@@ -46696,9 +46657,9 @@
       "source_location": "L70",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot",
-      "target": "scripts_validate_snapshot_log_error"
+      "target": "scripts_validate_snapshot_log_error",
+      "confidence_score": 1.0
     },
     {
       "relation": "defines",
@@ -46707,9 +46668,9 @@
       "source_location": "L723",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot",
-      "target": "scripts_validate_snapshot_revoke_record"
+      "target": "scripts_validate_snapshot_revoke_record",
+      "confidence_score": 1.0
     },
     {
       "relation": "defines",
@@ -46718,9 +46679,9 @@
       "source_location": "L764",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot",
-      "target": "scripts_validate_snapshot_finish"
+      "target": "scripts_validate_snapshot_finish",
+      "confidence_score": 1.0
     },
     {
       "relation": "defines",
@@ -46729,9 +46690,9 @@
       "source_location": "L791",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot",
-      "target": "scripts_validate_snapshot_free_bytes"
+      "target": "scripts_validate_snapshot_free_bytes",
+      "confidence_score": 1.0
     },
     {
       "relation": "defines",
@@ -46740,9 +46701,9 @@
       "source_location": "L792",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot",
-      "target": "scripts_validate_snapshot_human"
+      "target": "scripts_validate_snapshot_human",
+      "confidence_score": 1.0
     },
     {
       "relation": "defines",
@@ -46751,9 +46712,9 @@
       "source_location": "L807",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot",
-      "target": "scripts_validate_snapshot_start_watchdog"
+      "target": "scripts_validate_snapshot_start_watchdog",
+      "confidence_score": 1.0
     },
     {
       "relation": "defines",
@@ -46762,9 +46723,9 @@
       "source_location": "L83",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot",
-      "target": "scripts_validate_snapshot_env_get"
+      "target": "scripts_validate_snapshot_env_get",
+      "confidence_score": 1.0
     },
     {
       "relation": "defines",
@@ -46773,9 +46734,9 @@
       "source_location": "L843",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot",
-      "target": "scripts_validate_snapshot_inbox_jobs"
+      "target": "scripts_validate_snapshot_inbox_jobs",
+      "confidence_score": 1.0
     },
     {
       "relation": "defines",
@@ -46784,9 +46745,9 @@
       "source_location": "L852",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot",
-      "target": "scripts_validate_snapshot_inbox_sweep"
+      "target": "scripts_validate_snapshot_inbox_sweep",
+      "confidence_score": 1.0
     },
     {
       "relation": "defines",
@@ -46795,9 +46756,9 @@
       "source_location": "L869",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot",
-      "target": "scripts_validate_snapshot_inbox_take"
+      "target": "scripts_validate_snapshot_inbox_take",
+      "confidence_score": 1.0
     },
     {
       "relation": "defines",
@@ -46806,9 +46767,9 @@
       "source_location": "L87",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot",
-      "target": "scripts_validate_snapshot_cfg"
+      "target": "scripts_validate_snapshot_cfg",
+      "confidence_score": 1.0
     },
     {
       "relation": "defines",
@@ -46817,9 +46778,9 @@
       "source_location": "L889",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot",
-      "target": "scripts_validate_snapshot_inbox_dispose"
+      "target": "scripts_validate_snapshot_inbox_dispose",
+      "confidence_score": 1.0
     },
     {
       "relation": "defines",
@@ -46828,9 +46789,9 @@
       "source_location": "L906",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot",
-      "target": "scripts_validate_snapshot_pre_check"
+      "target": "scripts_validate_snapshot_pre_check",
+      "confidence_score": 1.0
     },
     {
       "relation": "defines",
@@ -46839,9 +46800,9 @@
       "source_location": "L957",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot",
-      "target": "scripts_validate_snapshot_sweep_leftovers"
+      "target": "scripts_validate_snapshot_sweep_leftovers",
+      "confidence_score": 1.0
     },
     {
       "relation": "defines",
@@ -46850,9 +46811,9 @@
       "source_location": "L987",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot",
-      "target": "scripts_validate_snapshot_fetch_snapshot"
+      "target": "scripts_validate_snapshot_fetch_snapshot",
+      "confidence_score": 1.0
     },
     {
       "relation": "defines",
@@ -46861,9 +46822,9 @@
       "source_location": "L1178",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot_open_inner_zip",
-      "target": "scripts_validate_snapshot_copy_zip"
+      "target": "scripts_validate_snapshot_copy_zip",
+      "confidence_score": 1.0
     },
     {
       "relation": "defines",
@@ -46872,9 +46833,9 @@
       "source_location": "L1181",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot_open_inner_zip",
-      "target": "scripts_validate_snapshot_check_zip"
+      "target": "scripts_validate_snapshot_check_zip",
+      "confidence_score": 1.0
     },
     {
       "relation": "defines",
@@ -46883,9 +46844,9 @@
       "source_location": "L1103",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot_stage_archive",
-      "target": "scripts_validate_snapshot_list_archive"
+      "target": "scripts_validate_snapshot_list_archive",
+      "confidence_score": 1.0
     },
     {
       "relation": "defines",
@@ -46894,9 +46855,9 @@
       "source_location": "L1079",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot_stage_checksum",
-      "target": "scripts_validate_snapshot_hash_archive"
+      "target": "scripts_validate_snapshot_hash_archive",
+      "confidence_score": 1.0
     },
     {
       "relation": "defines",
@@ -46905,30 +46866,19 @@
       "source_location": "L1212",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot_stage_structure",
-      "target": "scripts_validate_snapshot_member"
-    },
-    {
-      "relation": "defines",
-      "confidence": "EXTRACTED",
-      "source_file": "scripts/validate-snapshot-worker.sh",
-      "source_location": "L178",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "scripts_validate_snapshot_worker",
-      "target": "scripts_validate_snapshot_worker_when",
+      "target": "scripts_validate_snapshot_member",
       "confidence_score": 1.0
     },
     {
       "relation": "defines",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot-worker.sh",
-      "source_location": "L222",
+      "source_location": "L177",
       "weight": 1.0,
       "_origin": "ast",
       "source": "scripts_validate_snapshot_worker",
-      "target": "scripts_validate_snapshot_worker_run_validator",
+      "target": "scripts_validate_snapshot_worker_when",
       "confidence_score": 1.0
     },
     {
@@ -51311,5 +51261,5 @@
     }
   ],
   "hyperedges": [],
-  "built_at_commit": "95f0ae920afda66ac1f0451eeb795930db3f6bd0"
+  "built_at_commit": "0128653362337155bd00fb41d36d480c2a27987c"
 }

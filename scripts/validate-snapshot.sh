@@ -1279,18 +1279,38 @@ PY
 
 # git_hashes.json comes from the archive: never let its values reach git as options, and only
 # allow the transports production uses (VALIDATOR_GIT_ALLOW_PROTOCOL, default https:ssh).
+VALIDATOR_GIT_USER=""
+if [ "$(id -u)" = 0 ] && [ -n "$SNAPSHOT_REMOTE_USER" ] && [ "$SNAPSHOT_REMOTE_USER" != root ] && id "$SNAPSHOT_REMOTE_USER" >/dev/null 2>&1; then
+  VALIDATOR_GIT_USER="$SNAPSHOT_REMOTE_USER"
+fi
 valid_commit() { [[ "$1" =~ ^[0-9a-f]{40}([0-9a-f]{24})?$ ]]; }
 valid_remote() { [ -n "$1" ] && [[ "$1" != -* ]] && [[ "$1" != *[[:space:][:cntrl:]]* ]]; }
 git_safe() {
-  GIT_TERMINAL_PROMPT=0 GIT_ALLOW_PROTOCOL="$VALIDATOR_GIT_ALLOW_PROTOCOL" GIT_CONFIG_NOSYSTEM=1 \
-  GIT_SSH_COMMAND="ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=15" \
-    timeout "$VALIDATOR_GIT_TIMEOUT" git "$@"
+  if [ -n "$VALIDATOR_GIT_USER" ]; then
+    sudo -u "$VALIDATOR_GIT_USER" -H env \
+      GIT_TERMINAL_PROMPT=0 GIT_ALLOW_PROTOCOL="$VALIDATOR_GIT_ALLOW_PROTOCOL" GIT_CONFIG_NOSYSTEM=1 \
+      GIT_SSH_COMMAND="ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=15" \
+      timeout "$VALIDATOR_GIT_TIMEOUT" git "$@"
+  else
+    GIT_TERMINAL_PROMPT=0 GIT_ALLOW_PROTOCOL="$VALIDATOR_GIT_ALLOW_PROTOCOL" GIT_CONFIG_NOSYSTEM=1 \
+    GIT_SSH_COMMAND="ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=15" \
+      timeout "$VALIDATOR_GIT_TIMEOUT" git "$@"
+  fi
 }
 git_check_commit() {
   # Args: remote commit. Prints found:by-id | found:history | missing | unreachable
   local remote="$1" commit="$2" tmp
-  tmp=$(mktemp -d "$WORK/git.XXXXXX") || { echo unreachable; return; }
-  git init -q --bare "$tmp" >/dev/null 2>&1
+  if [ -n "$VALIDATOR_GIT_USER" ]; then
+    tmp=$(mktemp -d "${TMPDIR:-/tmp}/odoo-drill-git.XXXXXX") || { echo unreachable; return; }
+    chmod 700 "$tmp" && chown -R "$VALIDATOR_GIT_USER": "$tmp"
+  else
+    tmp=$(mktemp -d "$WORK/git.XXXXXX") || { echo unreachable; return; }
+  fi
+  if [ -n "$VALIDATOR_GIT_USER" ]; then
+    sudo -u "$VALIDATOR_GIT_USER" -H git init -q --bare "$tmp" >/dev/null 2>&1
+  else
+    git init -q --bare "$tmp" >/dev/null 2>&1
+  fi
   if ! git_safe ls-remote -q --heads -- "$remote" >/dev/null 2>&1 \
      && ! git_safe ls-remote -q -- "$remote" >/dev/null 2>&1; then
     echo unreachable
@@ -1938,10 +1958,23 @@ stage_code() {
     cache="$VALIDATOR_DIR/cache/git/$(printf '%s' "$remote" | sha256sum | cut -c1-24).git"
     [ -d "$cache" ] || git init -q --bare "$cache" >/dev/null 2>&1
     log_info "[code] $rel: checking out ${commit:0:8}..."
-    if ! git -C "$cache" cat-file -e "$commit^{tree}" 2>/dev/null \
-       && ! run_bg git_safe -C "$cache" fetch -q --depth=1 -- "$remote" "$commit" >/dev/null 2>"$BOOT_DIR/fetch.err"; then
-      problems+=("$rel: could not fetch ${commit:0:8} from $(redact "$remote"): $(head -c 200 "$BOOT_DIR/fetch.err" | tr '\n' ' ')")
-      continue
+    if ! git -C "$cache" cat-file -e "$commit^{tree}" 2>/dev/null; then
+      if [ -n "$VALIDATOR_GIT_USER" ]; then
+        local fetch_tmp
+        fetch_tmp=$(mktemp -d "${TMPDIR:-/tmp}/odoo-drill-fetch.XXXXXX")
+        chmod 700 "$fetch_tmp" && chown -R "$VALIDATOR_GIT_USER": "$fetch_tmp"
+        sudo -u "$VALIDATOR_GIT_USER" -H git init -q --bare "$fetch_tmp" >/dev/null 2>&1
+        if ! run_bg git_safe -C "$fetch_tmp" fetch -q --depth=1 -- "$remote" "$commit" >/dev/null 2>"$BOOT_DIR/fetch.err" \
+           || ! git -C "$cache" fetch -q "$fetch_tmp" "$commit" >/dev/null 2>>"$BOOT_DIR/fetch.err"; then
+          rm -rf "$fetch_tmp"
+          problems+=("$rel: could not fetch ${commit:0:8} from $(redact "$remote"): $(head -c 200 "$BOOT_DIR/fetch.err" | tr '\n' ' ')")
+          continue
+        fi
+        rm -rf "$fetch_tmp"
+      elif ! run_bg git_safe -C "$cache" fetch -q --depth=1 -- "$remote" "$commit" >/dev/null 2>"$BOOT_DIR/fetch.err"; then
+        problems+=("$rel: could not fetch ${commit:0:8} from $(redact "$remote"): $(head -c 200 "$BOOT_DIR/fetch.err" | tr '\n' ' ')")
+        continue
+      fi
     fi
     git -C "$cache" update-ref "refs/drill/$(printf '%s' "$rel" | tr '/' '_')" "$commit" 2>/dev/null
     if ( umask 022; mkdir -p "$dest/$rel" && GIT_INDEX_FILE="$BOOT_DIR/index.$n" git --git-dir="$cache" --work-tree="$dest/$rel" read-tree "$commit" \

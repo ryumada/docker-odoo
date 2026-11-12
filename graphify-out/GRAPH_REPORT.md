@@ -1,16 +1,16 @@
 # Graph Report - docker-odoo  (2026-11-12)
 
 ## Corpus Check
-- 122 files · ~140,517 words
+- 122 files · ~140,649 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 1508 nodes · 2559 edges · 106 communities (79 shown, 27 thin omitted)
+- 1507 nodes · 2556 edges · 106 communities (79 shown, 27 thin omitted)
 - Extraction: 100% EXTRACTED · 0% INFERRED · 0% AMBIGUOUS · INFERRED: 11 edges (avg confidence: 0.5)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `95f0ae92`
+- Built from commit: `01286533`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -399,7 +399,7 @@ Nodes (16): COLOR_CYAN, COLOR_ERROR, COLOR_INFO, COLOR_RESET, COLOR_SUCCESS, COL
 
 ### Community 84 - "validate-snapshot-worker.sh"
 Cohesion: 0.20
-Nodes (13): COLOR_ERROR, COLOR_INFO, COLOR_RESET, COLOR_SUCCESS, COLOR_WARN, log(), log_error(), log_info() (+5 more)
+Nodes (12): COLOR_ERROR, COLOR_INFO, COLOR_RESET, COLOR_SUCCESS, COLOR_WARN, log(), log_error(), log_info() (+4 more)
 
 ### Community 85 - "test_read_drill_reports.sh"
 Cohesion: 0.23

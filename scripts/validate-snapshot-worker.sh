@@ -86,7 +86,6 @@ VALIDATOR_WORKER=$(cfg VALIDATOR_WORKER "")
 ENABLE_SNAPSHOT=$(cfg ENABLE_SNAPSHOT "")
 VALIDATOR_MIN_INTERVAL_HOURS=$(cfg VALIDATOR_MIN_INTERVAL_HOURS 24)
 SNAPSHOT_REMOTE_HOST=$(cfg SNAPSHOT_REMOTE_HOST "")
-SNAPSHOT_REMOTE_USER=$(cfg SNAPSHOT_REMOTE_USER "")
 SNAPSHOT_VALIDATOR_INBOX=$(cfg SNAPSHOT_VALIDATOR_INBOX "")
 GDRIVE_ACCESS_TOKEN=$(cfg GDRIVE_ACCESS_TOKEN "")
 GDRIVE_SERVICE_ACCOUNT_KEY=$(cfg GDRIVE_SERVICE_ACCOUNT_KEY "")
@@ -219,19 +218,10 @@ fi
 [ -n "$SNAPSHOT_REMOTE_HOST" ] || log_warn "SNAPSHOT_REMOTE_HOST is not set: the drill runs on this host (Docker here, at the lowest priority)."
 
 # The drill never inherits the worker lock: only this process holds it, so it ends with this run
-run_validator() {
-  if [ -z "$SNAPSHOT_REMOTE_HOST" ] && [ "$(id -u)" = 0 ] && [ -n "$SNAPSHOT_REMOTE_USER" ] && [ "$SNAPSHOT_REMOTE_USER" != root ] && id "$SNAPSHOT_REMOTE_USER" >/dev/null 2>&1; then
-    log_info "Running local drill as $SNAPSHOT_REMOTE_USER (SNAPSHOT_REMOTE_USER)."
-    sudo -u "$SNAPSHOT_REMOTE_USER" -H "$VALIDATOR" "$@" </dev/null {LOCK_FD}<&-
-  else
-    "$VALIDATOR" "$@" </dev/null {LOCK_FD}<&-
-  fi
-}
-
 rc=5
 if [ "$USE_INBOX" = true ]; then
   log_info "A drill of $SERVICE_NAME is due: looking in the validator inbox on $SNAPSHOT_REMOTE_HOST."
-  run_validator --inbox "$SERVICE_NAME" --publish
+  "$VALIDATOR" --inbox "$SERVICE_NAME" --publish </dev/null {LOCK_FD}<&-
   rc=$?
 fi
 if [ "$rc" = 5 ]; then
@@ -240,7 +230,7 @@ if [ "$rc" = 5 ]; then
     exit 0
   fi
   log_info "A drill of $SERVICE_NAME is due: drilling $FALLBACK_DESC$([ -n "$PROVEN_SHA" ] && echo ", unless it is the one already proved")."
-  run_validator "${FALLBACK[@]}" --publish ${PROVEN_SHA:+--unless-checksum "$PROVEN_SHA"}
+  "$VALIDATOR" "${FALLBACK[@]}" --publish ${PROVEN_SHA:+--unless-checksum "$PROVEN_SHA"} </dev/null {LOCK_FD}<&-
   rc=$?
 fi
 case "$rc" in
