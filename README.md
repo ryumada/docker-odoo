@@ -357,6 +357,48 @@ OCA `queue_job`'s `/queue_job/runjob` route runs a job as superuser, without log
 
 Tested by `./tests/test_reverse_proxy.sh` (each template in a throwaway nginx on 127.0.0.1, and the generated Traefik labels in Traefik v2 and v3 with `TRAEFIK_V2_BIN` / `TRAEFIK_BIN`), including `%`-encoded, `//` and `/../` variants.
 
+## Snapshot Restore Drill & Automatic Validation
+
+`./scripts/validate-snapshot.sh` performs a non-destructive restore drill on a snapshot inside throwaway Docker containers on an isolated network (never touching production). When `SNAPSHOT_REMOTE_HOST` is set, the drill runs over SSH on the Secondary VPS using rootless Docker; otherwise it runs locally.
+
+### How `validate-snapshot.sh` Works
+1. **Fetch & Verify:** Pulls the snapshot from `--inbox`, `--drive`, `--gcs`, or `--file`, checks its `.sha256` sidecar (`checksum`), decompresses/lists the `.tar.zst` (`archive`), and verifies `dump.sql`, `manifest.json`, `git_hashes.json`, and `filestore` (`structure`, `manifest`).
+2. **Git & Restore:** Verifies every repository can be checked out at its recorded commit (`git`), restores `dump.sql` into a throwaway PostgreSQL container (`database`), and checks attachment sizes (`filestore`).
+3. **Odoo Boot Check (Phase 2):** Unless `--no-boot` (`VALIDATOR_BOOT=false`) or `--no-git-check` is set, checks out `odoo-base` + addons (`code`), pulls or builds the Odoo image (`image`), neutralizes the restored database, and boots Odoo (`workers = 0`, `max_cron_threads = 0`, no outbound network) to verify the registry loads and `/web/login` returns HTTP `200` (`boot`).
+4. **Reports & Cloud Publishing (`--publish`):** Writes a JSON report to `~/.odoo-validator/reports/`. When `--publish` is passed and the `git` check passes:
+   - **On pass:** Uploads `<archive>.validated.json` next to the snapshot on Google Drive, GCS, and/or local archives (for `--inbox`, it publishes to every cloud destination recorded in `job.json`). Retention then protects that validated snapshot.
+   - **On fail:** Removes any existing `<archive>.validated.json` so a broken snapshot is no longer protected.
+
+### Automatic Validation & Worker Cron
+Automatic drills are controlled by leaving `VALIDATOR_WORKER` and `SNAPSHOT_VALIDATOR_INBOX` empty in `.env` (resolved via `scripts/lib/drill_defaults.sh`):
+- **`VALIDATOR_WORKER=` (empty):** Automatically **on** whenever `ENABLE_SNAPSHOT` is enabled. Running `sudo ./setup.sh` installs `/etc/cron.d/validate-snapshot-<service>`, which runs `scripts/validate-snapshot-worker.sh` every hour at minute `47` with low CPU/I/O priority (`nice -n 19`, `ionice -c2 -n7`).
+- **`SNAPSHOT_VALIDATOR_INBOX=` (empty):** Automatically **on** when `SNAPSHOT_REMOTE_HOST` points to a Secondary VPS. After uploading a snapshot, the snapshot tool hands the archive to `~/.odoo-validator/inbox/<service>/` on the Secondary VPS so the worker can drill it without re-downloading it.
+- **Due Interval (`VALIDATOR_MIN_INTERVAL_HOURS`, default `24`):** On each hourly tick, the worker checks `~/.odoo-validator/reports/`: it drills immediately if never drilled, waits `VALIDATOR_MIN_INTERVAL_HOURS` after a `pass`/`fail`, or retries after `max(1h, VALIDATOR_MIN_INTERVAL_HOURS / 4)` following an `error`. It checks `--inbox` first, then falls back to Drive/GCS/local archives with `--unless-checksum` so already-proven snapshots are skipped.
+
+### Triggering the Cron / Drill Manually
+- **Check worker status (no drill runs):**
+  ```bash
+  ./scripts/validate-snapshot-worker.sh --status
+  ```
+- **Run with normal cron rules** (only drills if enabled and due):
+  ```bash
+  ./scripts/validate-snapshot-worker.sh
+  ```
+- **Force a drill immediately** (ignores `VALIDATOR_WORKER=false` and the interval, but still skips if the newest snapshot's SHA-256 was already proven):
+  ```bash
+  ./scripts/validate-snapshot-worker.sh --force
+  ```
+  To run it in the background with the same priority and log file as cron:
+  ```bash
+  sudo ionice -c2 -n7 nice -n 19 /usr/local/sbin/validate-snapshot-worker-<service> --force >> /var/log/odoo/_utilities/validate-snapshot-<service>.log 2>&1 &
+  ```
+- **Re-drill an already-proven snapshot** (bypassing `--unless-checksum`):
+  ```bash
+  ./scripts/validate-snapshot.sh --drive <service> --publish
+  ```
+
+For full technical details, exit codes, and configuration variables, see [scripts/README.md](scripts/README.md).
+
 ---
 
 Copyright © 2024 ryumada. All Rights Reserved.

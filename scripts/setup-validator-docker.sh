@@ -2,8 +2,8 @@
 set -o pipefail
 # Category: Utility
 # Description: Sets up rootless Docker for the snapshot validator's drills on the Secondary VPS (or this host), through a sudo admin account, so the drill user never needs the docker group.
-# Usage: ./scripts/setup-validator-docker.sh -a ADMIN [--password-stdin] [--target-host HOST] [--target-user USER] [--port PORT] [--check] [--remove-docker-group] [--local] [--key PATH]
-# Dependencies: ssh, sudo (with --local); on the target: Ubuntu/Debian with Docker Engine, systemd, cgroup v2
+# Usage: ./scripts/setup-validator-docker.sh -a ADMIN [--password-stdin] [--target-host HOST] [--target-user USER] [--port PORT] [--check] [--check-git] [--remote URL] [--skip-git-check] [--remove-docker-group] [--local] [--key PATH]
+# Dependencies: ssh, git, timeout, sudo (with --local); on the target: Ubuntu/Debian with Docker Engine, systemd, cgroup v2
 
 CURRENT_DIR=$(dirname "$(readlink -f "$0")")
 PATH_TO_ODOO=$(git -C "$CURRENT_DIR" rev-parse --show-toplevel 2>/dev/null || dirname "$CURRENT_DIR")
@@ -28,7 +28,8 @@ env_get() {
 }
 
 TARGET_HOST="" TARGET_USER="" TARGET_PORT="" TARGET_KEY="" ADMIN_USER="" ADMIN_PASS="" PASSWORD_STDIN=false
-MODE=setup REMOVE_DOCKER_GROUP=false LOCAL=false
+MODE=setup REMOVE_DOCKER_GROUP=false LOCAL=false CHECK_GIT=false CHECK_DOCKER=false SKIP_GIT_CHECK=false
+CUSTOM_REMOTES=()
 
 show_help() {
   cat << EOF
@@ -58,6 +59,11 @@ Options:
   --check                    Only report what is missing; change nothing. Without -a it logs in as the drill
                              user with its snapshot key (SNAPSHOT_REMOTE_KEY), so no admin account is needed.
                              Exit code: 0 ready, 3 steps missing, 1 could not check
+  --check-git                Check if the drill user (SNAPSHOT_REMOTE_USER, or current user with --local)
+                             can reach/clone git remotes from git/*, odoo-base/*, and docker-odoo.
+                             Can be used alone or combined with --check. (Setup mode runs this automatically.)
+  --remote <URL>             Test a specific git remote URL with --check-git (can be repeated)
+  --skip-git-check           Skip the automatic git access check after setup
   -i, --key <PATH>           SSH key of the drill user for --check (default: SNAPSHOT_REMOTE_KEY from .env)
   --remove-docker-group      Also remove the drill user from the docker group
   --local                    Set up this host instead (runs the steps with sudo here)
@@ -85,7 +91,10 @@ while [ $# -gt 0 ]; do
     --target-user=*) TARGET_USER="${1#*=}"; shift ;;
     -p|--port) need_value "$1" "${2:-}"; TARGET_PORT="$2"; shift 2 ;;
     --port=*) TARGET_PORT="${1#*=}"; shift ;;
-    --check) MODE=check; shift ;;
+    --check) MODE=check; CHECK_DOCKER=true; shift ;;
+    --check-git) CHECK_GIT=true; shift ;;
+    --remote) need_value "$1" "${2:-}"; CUSTOM_REMOTES+=("$2"); shift 2 ;;
+    --skip-git-check) SKIP_GIT_CHECK=true; shift ;;
     -i|--key) need_value "$1" "${2:-}"; TARGET_KEY="$2"; shift 2 ;;
     --remove-docker-group) REMOVE_DOCKER_GROUP=true; shift ;;
     --local) LOCAL=true; shift ;;
@@ -93,6 +102,115 @@ while [ $# -gt 0 ]; do
     *) log_error "Unknown option: $1"; show_help; exit 1 ;;
   esac
 done
+
+git_redact() { sed -E 's#([a-zA-Z][a-zA-Z0-9+.-]*://)[^/@[:space:]]+@#\1***@#g' <<< "$1"; }
+git_valid_remote() { [ -n "$1" ] && [[ "$1" != -* ]] && [[ "$1" != *[[:space:][:cntrl:]]* ]]; }
+
+run_git_check() {
+  local allow tout rhost ruser rport rkey owner owner_home this_vps clean_tgt cand
+  local remotes=() ssh_opts=() remote_target="" local_user=""
+  local entry label remote shown cmd ok=0 fail=0 rc_cmd
+  allow="${VALIDATOR_GIT_ALLOW_PROTOCOL:-$(env_get VALIDATOR_GIT_ALLOW_PROTOCOL)}"; allow="${allow:-https:ssh}"
+  tout="${VALIDATOR_GIT_TIMEOUT:-$(env_get VALIDATOR_GIT_TIMEOUT)}"; tout="${tout:-30}"
+
+  add_repo_remote() {
+    local dir="$1" lbl="$2" url
+    [ -d "$dir/.git" ] || [ -f "$dir/.git" ] || return 0
+    url=$(git -C "$dir" remote get-url origin 2>/dev/null || git -C "$dir" remote -v 2>/dev/null | awk 'NR==1{print $2}')
+    [ -n "$url" ] && remotes+=("$lbl|$url")
+  }
+
+  if [ ${#CUSTOM_REMOTES[@]} -gt 0 ]; then
+    for cand in "${CUSTOM_REMOTES[@]}"; do remotes+=("custom|$cand"); done
+  else
+    for cand in "$PATH_TO_ODOO"/git/*/; do [ -d "$cand" ] && add_repo_remote "${cand%/}" "git/$(basename "${cand%/}")"; done
+    for cand in "$PATH_TO_ODOO"/odoo-base/*/; do [ -d "$cand" ] && add_repo_remote "${cand%/}" "odoo-base/$(basename "${cand%/}")"; done
+    add_repo_remote "$PATH_TO_ODOO" "docker-odoo"
+  fi
+  if [ ${#remotes[@]} -eq 0 ]; then
+    log_error "No git repositories found in git/*, odoo-base/*, or $PATH_TO_ODOO (pass --remote <URL>)."
+    return 3
+  fi
+
+  rhost="${TARGET_HOST:-$(env_get SNAPSHOT_REMOTE_HOST)}"
+  ruser="${TARGET_USER:-$(env_get SNAPSHOT_REMOTE_USER)}"
+  rport="${TARGET_PORT:-$(env_get SNAPSHOT_REMOTE_PORT)}"; rport="${rport:-22}"
+  rkey="${TARGET_KEY:-$(env_get SNAPSHOT_REMOTE_KEY)}"
+
+  if [ "$LOCAL" != true ] && [ -n "$rhost" ]; then
+    [ -n "$ruser" ] || { log_error "SNAPSHOT_REMOTE_USER is required when SNAPSHOT_REMOTE_HOST is set."; return 3; }
+    if [[ "$rhost" == -* || "$rhost" =~ [[:space:][:cntrl:]@] || "$ruser" == -* || "$ruser" =~ [[:space:][:cntrl:]@] ]] || ! [[ "$rport" =~ ^[0-9]{1,5}$ ]]; then
+      log_error "Invalid SNAPSHOT_REMOTE_HOST/USER/PORT ('$ruser@$rhost:$rport')."; return 3
+    fi
+    owner=$(stat -c '%U' "$PATH_TO_ODOO" 2>/dev/null)
+    owner_home=$(getent passwd "$owner" 2>/dev/null | cut -d: -f6)
+    [ -d "$owner_home" ] || owner_home="$HOME"
+    if [ -z "$rkey" ]; then
+      this_vps=$(hostname -s 2>/dev/null || hostname 2>/dev/null || echo "vps-source")
+      clean_tgt=$(echo "$rhost" | sed -e 's|^.*://||' -e 's|:.*$||' -e 's|/.*$||' -e 's|[^a-zA-Z0-9._-]|_|g')
+      for cand in "$owner_home/.ssh/snapshot-${this_vps}-${clean_tgt}" "$owner_home/.ssh/id_ed25519-snapshot-$(basename "$PATH_TO_ODOO")" "$owner_home/.ssh/id_ed25519_snapshot"; do
+        [ -f "$cand" ] && { rkey="$cand"; break; }
+      done
+    fi
+    rkey="${rkey/#\~/$owner_home}"
+    ssh_opts=(-p "$rport" -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=15)
+    [ -n "$rkey" ] && [ -f "$rkey" ] && ssh_opts+=(-i "$rkey")
+    remote_target="$ruser@$rhost"
+    log_info "Checking git access on Secondary VPS as $remote_target (port $rport)..."
+    if ! ssh "${ssh_opts[@]}" "$remote_target" true </dev/null 2>/dev/null; then
+      log_error "Cannot connect to $remote_target over SSH."; return 2
+    fi
+  else
+    [ -n "$TARGET_USER" ] && [ "$TARGET_USER" != "$(id -un)" ] && local_user="$TARGET_USER"
+    log_info "Checking git access locally as ${local_user:-$(id -un)}..."
+  fi
+
+  declare -A seen=()
+  for entry in "${remotes[@]}"; do
+    label="${entry%%|*}"
+    remote="${entry#*|}"
+    shown=$(git_redact "$remote")
+    if ! git_valid_remote "$remote"; then
+      log_error "[$label] Invalid remote URL: $shown"
+      fail=$((fail + 1)); continue
+    fi
+    if [ -n "${seen[$remote]:-}" ]; then
+      log_info "[$label] $shown (already checked via ${seen[$remote]})"
+      continue
+    fi
+    seen["$remote"]="$label"
+
+    cmd=$(printf 'GIT_TERMINAL_PROMPT=0 GIT_ALLOW_PROTOCOL=%q GIT_CONFIG_NOSYSTEM=1 GIT_SSH_COMMAND="ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=15" timeout %q git ls-remote -q --heads -- %q >/dev/null 2>&1 || GIT_TERMINAL_PROMPT=0 GIT_ALLOW_PROTOCOL=%q GIT_CONFIG_NOSYSTEM=1 GIT_SSH_COMMAND="ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=15" timeout %q git ls-remote -q -- %q >/dev/null 2>&1' \
+      "$allow" "$tout" "$remote" "$allow" "$tout" "$remote")
+    rc_cmd=0
+    if [ -n "$remote_target" ]; then
+      ssh "${ssh_opts[@]}" "$remote_target" "$cmd" </dev/null || rc_cmd=$?
+    elif [ -n "$local_user" ]; then
+      sudo -u "$local_user" -H bash -c "$cmd" || rc_cmd=$?
+    else
+      bash -c "$cmd" || rc_cmd=$?
+    fi
+    if [ "$rc_cmd" -eq 0 ]; then
+      log_success "[$label] Reachable: $shown"
+      ok=$((ok + 1))
+    else
+      log_error "[$label] Cannot reach: $shown"
+      fail=$((fail + 1))
+    fi
+  done
+
+  if [ "$fail" -gt 0 ]; then
+    log_error "$fail remote(s) unreachable ($ok ok). Ensure the drill user has a passwordless deploy key / credentials for those repositories."
+    return 1
+  fi
+  log_success "All $ok unique remote(s) are reachable."
+  return 0
+}
+
+if [ "$CHECK_GIT" = true ] && [ "$CHECK_DOCKER" != true ] && [ -z "$ADMIN_USER" ]; then
+  run_git_check
+  exit $?
+fi
 
 TARGET_USER="${TARGET_USER:-$(env_get SNAPSHOT_REMOTE_USER)}"
 if [ -z "$TARGET_USER" ]; then log_error "No drill user: pass --target-user or set SNAPSHOT_REMOTE_USER in .env."; exit 1; fi
@@ -409,7 +527,10 @@ fi
 
 if [ "$MODE" = check ]; then
   case "$rc" in
-    0) log_success "Rootless Docker is ready for $TARGET_USER: snapshot drills can run." ; exit 0 ;;
+    0)
+      log_success "Rootless Docker is ready for $TARGET_USER: snapshot drills can run."
+      if [ "$CHECK_GIT" = true ]; then run_git_check; exit $?; fi
+      exit 0 ;;
     3) log_warn "Some steps are missing (marked [!]). Set them up with: ./scripts/setup-validator-docker.sh -a <sudo-admin>"; exit 3 ;;
     *) log_error "Could not check (exit $rc)."; exit 1 ;;
   esac
@@ -421,5 +542,12 @@ elif [ "$rc" -ne 0 ]; then
   log_error "Setup did not finish (exit $rc). Fix the step marked [-] above and run this again; finished steps are skipped."
   exit 1
 else
-  log_success "Rootless Docker is ready for $TARGET_USER. Next: ./scripts/validate-snapshot.sh --drive <service>"
+  log_success "Rootless Docker is ready for $TARGET_USER."
+  if [ "$SKIP_GIT_CHECK" != true ]; then
+    if ! run_git_check; then
+      log_error "Rootless Docker is ready, but git access failed for $TARGET_USER. Configure a passwordless deploy key / credentials for $TARGET_USER before running validate-snapshot.sh."
+      exit 1
+    fi
+  fi
+  log_success "Validator host is ready for $TARGET_USER. Next: ./scripts/validate-snapshot.sh --drive <service>"
 fi

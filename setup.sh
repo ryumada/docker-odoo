@@ -965,6 +965,9 @@ function setupValidatorDocker() {
   out=$("$tool" --check -t "$host" -u "$user" -p "$port" -i "$key" 2>&1) || rc=$?
   if [ "$rc" -eq 0 ]; then
     log_success "Secondary VPS is ready for snapshot drills (rootless Docker for $user@$host)."
+    if ! "$tool" --check-git -t "$host" -u "$user" -p "$port" -i "$key"; then
+      TODO+=("Snapshot drills: git access failed for $user@$host. Add a passwordless deploy key / credentials for $user on $host and verify with ./scripts/setup-validator-docker.sh --check-git")
+    fi
     return 0
   fi
   if [ "$rc" -ne 3 ]; then
@@ -1476,6 +1479,12 @@ function main() {
             TODO+=("Secondary VPS SSH Key not yet verified for $remote_user@$remote_host. Please add '$remote_key.pub' to ~/.ssh/authorized_keys on the Secondary VPS.")
           else
             setupValidatorDocker "$remote_host" "$remote_user" "$remote_port" "$remote_key"
+          fi
+        fi
+      else
+        if [ -x "$REPOSITORY_DIRPATH/scripts/setup-validator-docker.sh" ]; then
+          if ! "$REPOSITORY_DIRPATH/scripts/setup-validator-docker.sh" --local --check-git; then
+            TODO+=("Snapshot drills (local): git access failed as $(id -un). Add a passwordless deploy key / credentials and verify with sudo ./scripts/setup-validator-docker.sh --local --check-git")
           fi
         fi
       fi
