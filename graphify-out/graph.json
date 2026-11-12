@@ -1598,10 +1598,10 @@
         "kind": "file"
       },
       "_origin": "ast",
-      "id": "setup",
       "community": 1,
       "community_name": "setup.sh",
-      "norm_label": "setup.sh"
+      "norm_label": "setup.sh",
+      "id": "setup"
     },
     {
       "label": "checkAddonsPathOnOdooConfFile()",
@@ -1613,10 +1613,10 @@
         "kind": "bash_function"
       },
       "_origin": "ast",
-      "id": "setup_checkaddonspathonodooconffile",
       "community": 1,
       "community_name": "setup.sh",
-      "norm_label": "checkaddonspathonodooconffile()"
+      "norm_label": "checkaddonspathonodooconffile()",
+      "id": "setup_checkaddonspathonodooconffile"
     },
     {
       "label": "checkGitRepositories()",
@@ -1628,10 +1628,10 @@
         "kind": "bash_function"
       },
       "_origin": "ast",
-      "id": "setup_checkgitrepositories",
       "community": 1,
       "community_name": "setup.sh",
-      "norm_label": "checkgitrepositories()"
+      "norm_label": "checkgitrepositories()",
+      "id": "setup_checkgitrepositories"
     },
     {
       "label": "checkImportantEnvVariable()",
@@ -1643,10 +1643,10 @@
         "kind": "bash_function"
       },
       "_origin": "ast",
-      "id": "setup_checkimportantenvvariable",
       "community": 1,
       "community_name": "setup.sh",
-      "norm_label": "checkimportantenvvariable()"
+      "norm_label": "checkimportantenvvariable()",
+      "id": "setup_checkimportantenvvariable"
     },
     {
       "label": "checkRegistryConnection()",
@@ -1658,10 +1658,10 @@
         "kind": "bash_function"
       },
       "_origin": "ast",
-      "id": "setup_checkregistryconnection",
       "community": 1,
       "community_name": "setup.sh",
-      "norm_label": "checkregistryconnection()"
+      "norm_label": "checkregistryconnection()",
+      "id": "setup_checkregistryconnection"
     },
     {
       "label": "COLOR_ERROR",
@@ -1673,10 +1673,10 @@
         "kind": "code"
       },
       "_origin": "ast",
-      "id": "setup_color_error",
       "community": 1,
       "community_name": "setup.sh",
-      "norm_label": "color_error"
+      "norm_label": "color_error",
+      "id": "setup_color_error"
     },
     {
       "label": "COLOR_INFO",
@@ -1688,10 +1688,10 @@
         "kind": "code"
       },
       "_origin": "ast",
-      "id": "setup_color_info",
       "community": 1,
       "community_name": "setup.sh",
-      "norm_label": "color_info"
+      "norm_label": "color_info",
+      "id": "setup_color_info"
     },
     {
       "label": "COLOR_RESET",
@@ -1703,10 +1703,10 @@
         "kind": "code"
       },
       "_origin": "ast",
-      "id": "setup_color_reset",
       "community": 1,
       "community_name": "setup.sh",
-      "norm_label": "color_reset"
+      "norm_label": "color_reset",
+      "id": "setup_color_reset"
     },
     {
       "label": "COLOR_SUCCESS",
@@ -1718,10 +1718,10 @@
         "kind": "code"
       },
       "_origin": "ast",
-      "id": "setup_color_success",
       "community": 1,
       "community_name": "setup.sh",
-      "norm_label": "color_success"
+      "norm_label": "color_success",
+      "id": "setup_color_success"
     },
     {
       "label": "COLOR_WARN",
@@ -1733,10 +1733,10 @@
         "kind": "code"
       },
       "_origin": "ast",
-      "id": "setup_color_warn",
       "community": 1,
       "community_name": "setup.sh",
-      "norm_label": "color_warn"
+      "norm_label": "color_warn",
+      "id": "setup_color_warn"
     },
     {
       "label": "createDataDir()",
@@ -1748,10 +1748,10 @@
         "kind": "bash_function"
       },
       "_origin": "ast",
-      "id": "setup_createdatadir",
       "community": 1,
       "community_name": "setup.sh",
-      "norm_label": "createdatadir()"
+      "norm_label": "createdatadir()",
+      "id": "setup_createdatadir"
     },
     {
       "label": "createLogDir()",
@@ -1763,10 +1763,10 @@
         "kind": "bash_function"
       },
       "_origin": "ast",
-      "id": "setup_createlogdir",
       "community": 1,
       "community_name": "setup.sh",
-      "norm_label": "createlogdir()"
+      "norm_label": "createlogdir()",
+      "id": "setup_createlogdir"
     },
     {
       "label": "createOdooUtilitiesFromEntrypoint()",
@@ -1778,10 +1778,10 @@
         "kind": "bash_function"
       },
       "_origin": "ast",
-      "id": "setup_createodooutilitiesfromentrypoint",
       "community": 1,
       "community_name": "setup.sh",
-      "norm_label": "createodooutilitiesfromentrypoint()"
+      "norm_label": "createodooutilitiesfromentrypoint()",
+      "id": "setup_createodooutilitiesfromentrypoint"
     },
     {
       "label": "error_handler()",
@@ -1793,10 +1793,10 @@
         "kind": "bash_function"
       },
       "_origin": "ast",
-      "id": "setup_error_handler",
       "community": 1,
       "community_name": "setup.sh",
-      "norm_label": "error_handler()"
+      "norm_label": "error_handler()",
+      "id": "setup_error_handler"
     },
     {
       "label": "generateDockerComposeAndDockerfile()",
@@ -1808,10 +1808,10 @@
         "kind": "bash_function"
       },
       "_origin": "ast",
-      "id": "setup_generatedockercomposeanddockerfile",
       "community": 1,
       "community_name": "setup.sh",
-      "norm_label": "generatedockercomposeanddockerfile()"
+      "norm_label": "generatedockercomposeanddockerfile()",
+      "id": "setup_generatedockercomposeanddockerfile"
     },
     {
       "label": "generateDockerFile()",
@@ -1823,10 +1823,10 @@
         "kind": "bash_function"
       },
       "_origin": "ast",
-      "id": "setup_generatedockerfile",
       "community": 1,
       "community_name": "setup.sh",
-      "norm_label": "generatedockerfile()"
+      "norm_label": "generatedockerfile()",
+      "id": "setup_generatedockerfile"
     },
     {
       "label": "generatePostgresPassword()",
@@ -1838,10 +1838,10 @@
         "kind": "bash_function"
       },
       "_origin": "ast",
-      "id": "setup_generatepostgrespassword",
       "community": 1,
       "community_name": "setup.sh",
-      "norm_label": "generatepostgrespassword()"
+      "norm_label": "generatepostgrespassword()",
+      "id": "setup_generatepostgrespassword"
     },
     {
       "label": "generatePostgresSecrets()",
@@ -1853,10 +1853,10 @@
         "kind": "bash_function"
       },
       "_origin": "ast",
-      "id": "setup_generatepostgressecrets",
       "community": 1,
       "community_name": "setup.sh",
-      "norm_label": "generatepostgressecrets()"
+      "norm_label": "generatepostgressecrets()",
+      "id": "setup_generatepostgressecrets"
     },
     {
       "label": "getSubDirectories()",
@@ -1868,10 +1868,10 @@
         "kind": "bash_function"
       },
       "_origin": "ast",
-      "id": "setup_getsubdirectories",
       "community": 1,
       "community_name": "setup.sh",
-      "norm_label": "getsubdirectories()"
+      "norm_label": "getsubdirectories()",
+      "id": "setup_getsubdirectories"
     },
     {
       "label": "installDockerServiceRestartorScript()",
@@ -1883,10 +1883,10 @@
         "kind": "bash_function"
       },
       "_origin": "ast",
-      "id": "setup_installdockerservicerestartorscript",
       "community": 1,
       "community_name": "setup.sh",
-      "norm_label": "installdockerservicerestartorscript()"
+      "norm_label": "installdockerservicerestartorscript()",
+      "id": "setup_installdockerservicerestartorscript"
     },
     {
       "label": "installOdooLogRotator()",
@@ -1898,10 +1898,10 @@
         "kind": "bash_function"
       },
       "_origin": "ast",
-      "id": "setup_installodoologrotator",
       "community": 1,
       "community_name": "setup.sh",
-      "norm_label": "installodoologrotator()"
+      "norm_label": "installodoologrotator()",
+      "id": "setup_installodoologrotator"
     },
     {
       "label": "installPostgresRestartorScript()",
@@ -1913,10 +1913,10 @@
         "kind": "bash_function"
       },
       "_origin": "ast",
-      "id": "setup_installpostgresrestartorscript",
       "community": 1,
       "community_name": "setup.sh",
-      "norm_label": "installpostgresrestartorscript()"
+      "norm_label": "installpostgresrestartorscript()",
+      "id": "setup_installpostgresrestartorscript"
     },
     {
       "label": "isDirectoryGitRepository()",
@@ -1928,10 +1928,10 @@
         "kind": "bash_function"
       },
       "_origin": "ast",
-      "id": "setup_isdirectorygitrepository",
       "community": 1,
       "community_name": "setup.sh",
-      "norm_label": "isdirectorygitrepository()"
+      "norm_label": "isdirectorygitrepository()",
+      "id": "setup_isdirectorygitrepository"
     },
     {
       "label": "isDockerInstalled()",
@@ -1943,10 +1943,10 @@
         "kind": "bash_function"
       },
       "_origin": "ast",
-      "id": "setup_isdockerinstalled",
       "community": 1,
       "community_name": "setup.sh",
-      "norm_label": "isdockerinstalled()"
+      "norm_label": "isdockerinstalled()",
+      "id": "setup_isdockerinstalled"
     },
     {
       "label": "isFileExists()",
@@ -1958,10 +1958,10 @@
         "kind": "bash_function"
       },
       "_origin": "ast",
-      "id": "setup_isfileexists",
       "community": 1,
       "community_name": "setup.sh",
-      "norm_label": "isfileexists()"
+      "norm_label": "isfileexists()",
+      "id": "setup_isfileexists"
     },
     {
       "label": "isInteger()",
@@ -1973,10 +1973,10 @@
         "kind": "bash_function"
       },
       "_origin": "ast",
-      "id": "setup_isinteger",
       "community": 1,
       "community_name": "setup.sh",
-      "norm_label": "isinteger()"
+      "norm_label": "isinteger()",
+      "id": "setup_isinteger"
     },
     {
       "label": "isJqInstalled()",
@@ -1988,10 +1988,10 @@
         "kind": "bash_function"
       },
       "_origin": "ast",
-      "id": "setup_isjqinstalled",
       "community": 1,
       "community_name": "setup.sh",
-      "norm_label": "isjqinstalled()"
+      "norm_label": "isjqinstalled()",
+      "id": "setup_isjqinstalled"
     },
     {
       "label": "isLogRotateInstalled()",
@@ -2003,10 +2003,10 @@
         "kind": "bash_function"
       },
       "_origin": "ast",
-      "id": "setup_islogrotateinstalled",
       "community": 1,
       "community_name": "setup.sh",
-      "norm_label": "islogrotateinstalled()"
+      "norm_label": "islogrotateinstalled()",
+      "id": "setup_islogrotateinstalled"
     },
     {
       "label": "isPostgresInstalled()",
@@ -2018,10 +2018,10 @@
         "kind": "bash_function"
       },
       "_origin": "ast",
-      "id": "setup_ispostgresinstalled",
       "community": 1,
       "community_name": "setup.sh",
-      "norm_label": "ispostgresinstalled()"
+      "norm_label": "ispostgresinstalled()",
+      "id": "setup_ispostgresinstalled"
     },
     {
       "label": "isSubDirectoryExists()",
@@ -2033,10 +2033,10 @@
         "kind": "bash_function"
       },
       "_origin": "ast",
-      "id": "setup_issubdirectoryexists",
       "community": 1,
       "community_name": "setup.sh",
-      "norm_label": "issubdirectoryexists()"
+      "norm_label": "issubdirectoryexists()",
+      "id": "setup_issubdirectoryexists"
     },
     {
       "label": "isUserExist()",
@@ -2048,10 +2048,10 @@
         "kind": "bash_function"
       },
       "_origin": "ast",
-      "id": "setup_isuserexist",
       "community": 1,
       "community_name": "setup.sh",
-      "norm_label": "isuserexist()"
+      "norm_label": "isuserexist()",
+      "id": "setup_isuserexist"
     },
     {
       "label": "log()",
@@ -2063,10 +2063,10 @@
         "kind": "bash_function"
       },
       "_origin": "ast",
-      "id": "setup_log",
       "community": 1,
       "community_name": "setup.sh",
-      "norm_label": "log()"
+      "norm_label": "log()",
+      "id": "setup_log"
     },
     {
       "label": "log_error()",
@@ -2078,10 +2078,10 @@
         "kind": "bash_function"
       },
       "_origin": "ast",
-      "id": "setup_log_error",
       "community": 1,
       "community_name": "setup.sh",
-      "norm_label": "log_error()"
+      "norm_label": "log_error()",
+      "id": "setup_log_error"
     },
     {
       "label": "log_info()",
@@ -2093,10 +2093,10 @@
         "kind": "bash_function"
       },
       "_origin": "ast",
-      "id": "setup_log_info",
       "community": 1,
       "community_name": "setup.sh",
-      "norm_label": "log_info()"
+      "norm_label": "log_info()",
+      "id": "setup_log_info"
     },
     {
       "label": "log_success()",
@@ -2108,10 +2108,10 @@
         "kind": "bash_function"
       },
       "_origin": "ast",
-      "id": "setup_log_success",
       "community": 1,
       "community_name": "setup.sh",
-      "norm_label": "log_success()"
+      "norm_label": "log_success()",
+      "id": "setup_log_success"
     },
     {
       "label": "log_warn()",
@@ -2123,10 +2123,10 @@
         "kind": "bash_function"
       },
       "_origin": "ast",
-      "id": "setup_log_warn",
       "community": 1,
       "community_name": "setup.sh",
-      "norm_label": "log_warn()"
+      "norm_label": "log_warn()",
+      "id": "setup_log_warn"
     },
     {
       "label": "main()",
@@ -2138,10 +2138,10 @@
         "kind": "bash_function"
       },
       "_origin": "ast",
-      "id": "setup_main",
       "community": 1,
       "community_name": "setup.sh",
-      "norm_label": "main()"
+      "norm_label": "main()",
+      "id": "setup_main"
     },
     {
       "label": "prepareOdooSources()",
@@ -2153,10 +2153,10 @@
         "kind": "bash_function"
       },
       "_origin": "ast",
-      "id": "setup_prepareodoosources",
       "community": 1,
       "community_name": "setup.sh",
-      "norm_label": "prepareodoosources()"
+      "norm_label": "prepareodoosources()",
+      "id": "setup_prepareodoosources"
     },
     {
       "label": "printTodo()",
@@ -2168,10 +2168,10 @@
         "kind": "bash_function"
       },
       "_origin": "ast",
-      "id": "setup_printtodo",
       "community": 1,
       "community_name": "setup.sh",
-      "norm_label": "printtodo()"
+      "norm_label": "printtodo()",
+      "id": "setup_printtodo"
     },
     {
       "label": "printTodoMessage()",
@@ -2183,10 +2183,10 @@
         "kind": "bash_function"
       },
       "_origin": "ast",
-      "id": "setup_printtodomessage",
       "community": 1,
       "community_name": "setup.sh",
-      "norm_label": "printtodomessage()"
+      "norm_label": "printtodomessage()",
+      "id": "setup_printtodomessage"
     },
     {
       "label": "run_psql_setup()",
@@ -2198,10 +2198,10 @@
         "kind": "bash_function"
       },
       "_origin": "ast",
-      "id": "setup_run_psql_setup",
       "community": 1,
       "community_name": "setup.sh",
-      "norm_label": "run_psql_setup()"
+      "norm_label": "run_psql_setup()",
+      "id": "setup_run_psql_setup"
     },
     {
       "label": "selectMode()",
@@ -2213,10 +2213,10 @@
         "kind": "bash_function"
       },
       "_origin": "ast",
-      "id": "setup_selectmode",
       "community": 1,
       "community_name": "setup.sh",
-      "norm_label": "selectmode()"
+      "norm_label": "selectmode()",
+      "id": "setup_selectmode"
     },
     {
       "label": "setPermissionFileToReadOnlyAndOnlyTo()",
@@ -2228,10 +2228,10 @@
         "kind": "bash_function"
       },
       "_origin": "ast",
-      "id": "setup_setpermissionfiletoreadonlyandonlyto",
       "community": 1,
       "community_name": "setup.sh",
-      "norm_label": "setpermissionfiletoreadonlyandonlyto()"
+      "norm_label": "setpermissionfiletoreadonlyandonlyto()",
+      "id": "setup_setpermissionfiletoreadonlyandonlyto"
     },
     {
       "label": "setupAutoDevops()",
@@ -2243,10 +2243,10 @@
         "kind": "bash_function"
       },
       "_origin": "ast",
-      "id": "setup_setupautodevops",
       "community": 1,
       "community_name": "setup.sh",
-      "norm_label": "setupautodevops()"
+      "norm_label": "setupautodevops()",
+      "id": "setup_setupautodevops"
     },
     {
       "label": "setupValidatorDocker()",
@@ -2258,10 +2258,10 @@
         "kind": "bash_function"
       },
       "_origin": "ast",
-      "id": "setup_setupvalidatordocker",
       "community": 1,
       "community_name": "setup.sh",
-      "norm_label": "setupvalidatordocker()"
+      "norm_label": "setupvalidatordocker()",
+      "id": "setup_setupvalidatordocker"
     },
     {
       "label": "setup.sh script",
@@ -2273,10 +2273,10 @@
         "kind": "bash_entrypoint"
       },
       "_origin": "ast",
-      "id": "setup_sh__entry",
       "community": 1,
       "community_name": "setup.sh",
-      "norm_label": "setup.sh script"
+      "norm_label": "setup.sh script",
+      "id": "setup_sh__entry"
     },
     {
       "label": "show_usage()",
@@ -2288,10 +2288,10 @@
         "kind": "bash_function"
       },
       "_origin": "ast",
-      "id": "setup_show_usage",
       "community": 1,
       "community_name": "setup.sh",
-      "norm_label": "show_usage()"
+      "norm_label": "show_usage()",
+      "id": "setup_show_usage"
     },
     {
       "label": "validateDatetimeFormat()",
@@ -2303,10 +2303,10 @@
         "kind": "bash_function"
       },
       "_origin": "ast",
-      "id": "setup_validatedatetimeformat",
       "community": 1,
       "community_name": "setup.sh",
-      "norm_label": "validatedatetimeformat()"
+      "norm_label": "validatedatetimeformat()",
+      "id": "setup_validatedatetimeformat"
     },
     {
       "label": "writeDatadirVariableOnEnvFile()",
@@ -2318,10 +2318,10 @@
         "kind": "bash_function"
       },
       "_origin": "ast",
-      "id": "setup_writedatadirvariableonenvfile",
       "community": 1,
       "community_name": "setup.sh",
-      "norm_label": "writedatadirvariableonenvfile()"
+      "norm_label": "writedatadirvariableonenvfile()",
+      "id": "setup_writedatadirvariableonenvfile"
     },
     {
       "label": "writeLogDirVariableOnEnvFile()",
@@ -2333,10 +2333,10 @@
         "kind": "bash_function"
       },
       "_origin": "ast",
-      "id": "setup_writelogdirvariableonenvfile",
       "community": 1,
       "community_name": "setup.sh",
-      "norm_label": "writelogdirvariableonenvfile()"
+      "norm_label": "writelogdirvariableonenvfile()",
+      "id": "setup_writelogdirvariableonenvfile"
     },
     {
       "label": "writeServiceNameVariableOnEnvFile()",
@@ -2348,10 +2348,10 @@
         "kind": "bash_function"
       },
       "_origin": "ast",
-      "id": "setup_writeservicenamevariableonenvfile",
       "community": 1,
       "community_name": "setup.sh",
-      "norm_label": "writeservicenamevariableonenvfile()"
+      "norm_label": "writeservicenamevariableonenvfile()",
+      "id": "setup_writeservicenamevariableonenvfile"
     },
     {
       "label": "writeTextFile()",
@@ -2363,10 +2363,10 @@
         "kind": "bash_function"
       },
       "_origin": "ast",
-      "id": "setup_writetextfile",
       "community": 1,
       "community_name": "setup.sh",
-      "norm_label": "writetextfile()"
+      "norm_label": "writetextfile()",
+      "id": "setup_writetextfile"
     },
     {
       "label": ".uninstall-odoo.sh",
@@ -19989,190 +19989,205 @@
         "kind": "file"
       },
       "_origin": "ast",
+      "id": "scripts_validate_snapshot_worker",
       "community": 84,
       "community_name": "validate-snapshot-worker.sh",
-      "norm_label": "validate-snapshot-worker.sh",
-      "id": "scripts_validate_snapshot_worker"
+      "norm_label": "validate-snapshot-worker.sh"
     },
     {
       "label": "cfg()",
       "file_type": "code",
       "source_file": "scripts/validate-snapshot-worker.sh",
-      "source_location": "L75",
+      "source_location": "L83",
       "metadata": {
         "language": "bash",
         "kind": "bash_function"
       },
       "_origin": "ast",
+      "id": "scripts_validate_snapshot_worker_cfg",
       "community": 84,
       "community_name": "validate-snapshot-worker.sh",
-      "norm_label": "cfg()",
-      "id": "scripts_validate_snapshot_worker_cfg"
+      "norm_label": "cfg()"
     },
     {
       "label": "COLOR_ERROR",
       "file_type": "code",
       "source_file": "scripts/validate-snapshot-worker.sh",
-      "source_location": "L34",
+      "source_location": "L42",
       "metadata": {
         "language": "bash",
         "kind": "code"
       },
       "_origin": "ast",
+      "id": "scripts_validate_snapshot_worker_color_error",
       "community": 84,
       "community_name": "validate-snapshot-worker.sh",
-      "norm_label": "color_error",
-      "id": "scripts_validate_snapshot_worker_color_error"
+      "norm_label": "color_error"
     },
     {
       "label": "COLOR_INFO",
       "file_type": "code",
       "source_file": "scripts/validate-snapshot-worker.sh",
-      "source_location": "L31",
+      "source_location": "L39",
       "metadata": {
         "language": "bash",
         "kind": "code"
       },
       "_origin": "ast",
+      "id": "scripts_validate_snapshot_worker_color_info",
       "community": 84,
       "community_name": "validate-snapshot-worker.sh",
-      "norm_label": "color_info",
-      "id": "scripts_validate_snapshot_worker_color_info"
+      "norm_label": "color_info"
     },
     {
       "label": "COLOR_RESET",
       "file_type": "code",
       "source_file": "scripts/validate-snapshot-worker.sh",
-      "source_location": "L30",
+      "source_location": "L38",
       "metadata": {
         "language": "bash",
         "kind": "code"
       },
       "_origin": "ast",
+      "id": "scripts_validate_snapshot_worker_color_reset",
       "community": 84,
       "community_name": "validate-snapshot-worker.sh",
-      "norm_label": "color_reset",
-      "id": "scripts_validate_snapshot_worker_color_reset"
+      "norm_label": "color_reset"
     },
     {
       "label": "COLOR_SUCCESS",
       "file_type": "code",
       "source_file": "scripts/validate-snapshot-worker.sh",
-      "source_location": "L32",
+      "source_location": "L40",
       "metadata": {
         "language": "bash",
         "kind": "code"
       },
       "_origin": "ast",
+      "id": "scripts_validate_snapshot_worker_color_success",
       "community": 84,
       "community_name": "validate-snapshot-worker.sh",
-      "norm_label": "color_success",
-      "id": "scripts_validate_snapshot_worker_color_success"
+      "norm_label": "color_success"
     },
     {
       "label": "COLOR_WARN",
       "file_type": "code",
       "source_file": "scripts/validate-snapshot-worker.sh",
-      "source_location": "L33",
+      "source_location": "L41",
       "metadata": {
         "language": "bash",
         "kind": "code"
       },
       "_origin": "ast",
+      "id": "scripts_validate_snapshot_worker_color_warn",
       "community": 84,
       "community_name": "validate-snapshot-worker.sh",
-      "norm_label": "color_warn",
-      "id": "scripts_validate_snapshot_worker_color_warn"
+      "norm_label": "color_warn"
     },
     {
       "label": "env_get()",
       "file_type": "code",
       "source_file": "scripts/validate-snapshot-worker.sh",
-      "source_location": "L71",
+      "source_location": "L79",
       "metadata": {
         "language": "bash",
         "kind": "bash_function"
       },
       "_origin": "ast",
+      "id": "scripts_validate_snapshot_worker_env_get",
       "community": 84,
       "community_name": "validate-snapshot-worker.sh",
-      "norm_label": "env_get()",
-      "id": "scripts_validate_snapshot_worker_env_get"
+      "norm_label": "env_get()"
     },
     {
       "label": "log()",
       "file_type": "code",
       "source_file": "scripts/validate-snapshot-worker.sh",
-      "source_location": "L35",
+      "source_location": "L43",
       "metadata": {
         "language": "bash",
         "kind": "bash_function"
       },
       "_origin": "ast",
+      "id": "scripts_validate_snapshot_worker_log",
       "community": 84,
       "community_name": "validate-snapshot-worker.sh",
-      "norm_label": "log()",
-      "id": "scripts_validate_snapshot_worker_log"
+      "norm_label": "log()"
     },
     {
       "label": "log_error()",
       "file_type": "code",
       "source_file": "scripts/validate-snapshot-worker.sh",
-      "source_location": "L39",
+      "source_location": "L47",
       "metadata": {
         "language": "bash",
         "kind": "bash_function"
       },
       "_origin": "ast",
+      "id": "scripts_validate_snapshot_worker_log_error",
       "community": 84,
       "community_name": "validate-snapshot-worker.sh",
-      "norm_label": "log_error()",
-      "id": "scripts_validate_snapshot_worker_log_error"
+      "norm_label": "log_error()"
     },
     {
       "label": "log_info()",
       "file_type": "code",
       "source_file": "scripts/validate-snapshot-worker.sh",
-      "source_location": "L36",
+      "source_location": "L44",
       "metadata": {
         "language": "bash",
         "kind": "bash_function"
       },
       "_origin": "ast",
+      "id": "scripts_validate_snapshot_worker_log_info",
       "community": 84,
       "community_name": "validate-snapshot-worker.sh",
-      "norm_label": "log_info()",
-      "id": "scripts_validate_snapshot_worker_log_info"
+      "norm_label": "log_info()"
     },
     {
       "label": "log_success()",
       "file_type": "code",
       "source_file": "scripts/validate-snapshot-worker.sh",
-      "source_location": "L37",
+      "source_location": "L45",
       "metadata": {
         "language": "bash",
         "kind": "bash_function"
       },
       "_origin": "ast",
+      "id": "scripts_validate_snapshot_worker_log_success",
       "community": 84,
       "community_name": "validate-snapshot-worker.sh",
-      "norm_label": "log_success()",
-      "id": "scripts_validate_snapshot_worker_log_success"
+      "norm_label": "log_success()"
     },
     {
       "label": "log_warn()",
       "file_type": "code",
       "source_file": "scripts/validate-snapshot-worker.sh",
-      "source_location": "L38",
+      "source_location": "L46",
       "metadata": {
         "language": "bash",
         "kind": "bash_function"
       },
       "_origin": "ast",
+      "id": "scripts_validate_snapshot_worker_log_warn",
       "community": 84,
       "community_name": "validate-snapshot-worker.sh",
-      "norm_label": "log_warn()",
-      "id": "scripts_validate_snapshot_worker_log_warn"
+      "norm_label": "log_warn()"
+    },
+    {
+      "label": "run_validator()",
+      "file_type": "code",
+      "source_file": "scripts/validate-snapshot-worker.sh",
+      "source_location": "L222",
+      "metadata": {
+        "language": "bash",
+        "kind": "bash_function"
+      },
+      "_origin": "ast",
+      "id": "scripts_validate_snapshot_worker_run_validator",
+      "community": 84,
+      "community_name": "validate-snapshot-worker.sh",
+      "norm_label": "run_validator()"
     },
     {
       "label": "validate-snapshot-worker.sh script",
@@ -20184,40 +20199,40 @@
         "kind": "bash_entrypoint"
       },
       "_origin": "ast",
+      "id": "scripts_validate_snapshot_worker_sh__entry",
       "community": 84,
       "community_name": "validate-snapshot-worker.sh",
-      "norm_label": "validate-snapshot-worker.sh script",
-      "id": "scripts_validate_snapshot_worker_sh__entry"
+      "norm_label": "validate-snapshot-worker.sh script"
     },
     {
       "label": "show_help()",
       "file_type": "code",
       "source_file": "scripts/validate-snapshot-worker.sh",
-      "source_location": "L41",
+      "source_location": "L49",
       "metadata": {
         "language": "bash",
         "kind": "bash_function"
       },
       "_origin": "ast",
+      "id": "scripts_validate_snapshot_worker_show_help",
       "community": 84,
       "community_name": "validate-snapshot-worker.sh",
-      "norm_label": "show_help()",
-      "id": "scripts_validate_snapshot_worker_show_help"
+      "norm_label": "show_help()"
     },
     {
       "label": "when()",
       "file_type": "code",
       "source_file": "scripts/validate-snapshot-worker.sh",
-      "source_location": "L164",
+      "source_location": "L178",
       "metadata": {
         "language": "bash",
         "kind": "bash_function"
       },
       "_origin": "ast",
+      "id": "scripts_validate_snapshot_worker_when",
       "community": 84,
       "community_name": "validate-snapshot-worker.sh",
-      "norm_label": "when()",
-      "id": "scripts_validate_snapshot_worker_when"
+      "norm_label": "when()"
     },
     {
       "label": "test_read_drill_reports.sh",
@@ -32071,109 +32086,133 @@
       "relation": "calls",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot-worker.sh",
-      "source_location": "L39",
+      "source_location": "L47",
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot_worker_log_error",
-      "target": "scripts_validate_snapshot_worker_log"
+      "target": "scripts_validate_snapshot_worker_log",
+      "confidence_score": 1.0
     },
     {
       "relation": "calls",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot-worker.sh",
-      "source_location": "L36",
+      "source_location": "L44",
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot_worker_log_info",
-      "target": "scripts_validate_snapshot_worker_log"
+      "target": "scripts_validate_snapshot_worker_log",
+      "confidence_score": 1.0
     },
     {
       "relation": "calls",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot-worker.sh",
-      "source_location": "L37",
+      "source_location": "L45",
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot_worker_log_success",
-      "target": "scripts_validate_snapshot_worker_log"
+      "target": "scripts_validate_snapshot_worker_log",
+      "confidence_score": 1.0
     },
     {
       "relation": "calls",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot-worker.sh",
-      "source_location": "L38",
+      "source_location": "L46",
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot_worker_log_warn",
-      "target": "scripts_validate_snapshot_worker_log"
+      "target": "scripts_validate_snapshot_worker_log",
+      "confidence_score": 1.0
     },
     {
       "relation": "calls",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot-worker.sh",
-      "source_location": "L204",
+      "source_location": "L224",
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "scripts_validate_snapshot_worker_sh__entry",
-      "target": "scripts_validate_snapshot_worker_log_warn"
+      "source": "scripts_validate_snapshot_worker_run_validator",
+      "target": "scripts_validate_snapshot_worker_log_info",
+      "confidence_score": 1.0
     },
     {
       "relation": "calls",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot-worker.sh",
-      "source_location": "L223",
+      "source_location": "L112",
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot_worker_sh__entry",
-      "target": "scripts_validate_snapshot_worker_log_success"
+      "target": "scripts_validate_snapshot_worker_log_info",
+      "confidence_score": 1.0
     },
     {
       "relation": "calls",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot-worker.sh",
-      "source_location": "L66",
+      "source_location": "L219",
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot_worker_sh__entry",
-      "target": "scripts_validate_snapshot_worker_show_help"
+      "target": "scripts_validate_snapshot_worker_log_warn",
+      "confidence_score": 1.0
     },
     {
       "relation": "calls",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot-worker.sh",
-      "source_location": "L67",
+      "source_location": "L234",
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot_worker_sh__entry",
-      "target": "scripts_validate_snapshot_worker_log_error"
+      "target": "scripts_validate_snapshot_worker_run_validator",
+      "confidence_score": 1.0
     },
     {
       "relation": "calls",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot-worker.sh",
-      "source_location": "L98",
+      "source_location": "L247",
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot_worker_sh__entry",
-      "target": "scripts_validate_snapshot_worker_log_info"
+      "target": "scripts_validate_snapshot_worker_log_success",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "scripts/validate-snapshot-worker.sh",
+      "source_location": "L74",
+      "weight": 1.0,
+      "context": "call",
+      "_origin": "ast",
+      "source": "scripts_validate_snapshot_worker_sh__entry",
+      "target": "scripts_validate_snapshot_worker_show_help",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "scripts/validate-snapshot-worker.sh",
+      "source_location": "L75",
+      "weight": 1.0,
+      "context": "call",
+      "_origin": "ast",
+      "source": "scripts_validate_snapshot_worker_sh__entry",
+      "target": "scripts_validate_snapshot_worker_log_error",
+      "confidence_score": 1.0
     },
     {
       "relation": "calls",
@@ -32207,9 +32246,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "setup_checkaddonspathonodooconffile",
-      "target": "setup_log_success",
-      "confidence_score": 1.0
+      "target": "setup_log_success"
     },
     {
       "relation": "calls",
@@ -32219,9 +32258,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "setup_checkaddonspathonodooconffile",
-      "target": "setup_log_info",
-      "confidence_score": 1.0
+      "target": "setup_log_info"
     },
     {
       "relation": "calls",
@@ -32231,9 +32270,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "setup_checkaddonspathonodooconffile",
-      "target": "setup_log_error",
-      "confidence_score": 1.0
+      "target": "setup_log_error"
     },
     {
       "relation": "calls",
@@ -32243,9 +32282,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "setup_checkgitrepositories",
-      "target": "setup_isdirectorygitrepository",
-      "confidence_score": 1.0
+      "target": "setup_isdirectorygitrepository"
     },
     {
       "relation": "calls",
@@ -32255,9 +32294,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "setup_checkgitrepositories",
-      "target": "setup_log_warn",
-      "confidence_score": 1.0
+      "target": "setup_log_warn"
     },
     {
       "relation": "calls",
@@ -32267,9 +32306,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "setup_checkimportantenvvariable",
-      "target": "setup_log_error",
-      "confidence_score": 1.0
+      "target": "setup_log_error"
     },
     {
       "relation": "calls",
@@ -32279,9 +32318,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "setup_checkimportantenvvariable",
-      "target": "setup_log_success",
-      "confidence_score": 1.0
+      "target": "setup_log_success"
     },
     {
       "relation": "calls",
@@ -32291,9 +32330,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "setup_checkregistryconnection",
-      "target": "setup_log_warn",
-      "confidence_score": 1.0
+      "target": "setup_log_warn"
     },
     {
       "relation": "calls",
@@ -32303,9 +32342,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "setup_checkregistryconnection",
-      "target": "setup_log_error",
-      "confidence_score": 1.0
+      "target": "setup_log_error"
     },
     {
       "relation": "calls",
@@ -32315,9 +32354,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "setup_checkregistryconnection",
-      "target": "setup_log_info",
-      "confidence_score": 1.0
+      "target": "setup_log_info"
     },
     {
       "relation": "calls",
@@ -32327,9 +32366,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "setup_createdatadir",
-      "target": "setup_log_info",
-      "confidence_score": 1.0
+      "target": "setup_log_info"
     },
     {
       "relation": "calls",
@@ -32339,9 +32378,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "setup_createdatadir",
-      "target": "setup_writedatadirvariableonenvfile",
-      "confidence_score": 1.0
+      "target": "setup_writedatadirvariableonenvfile"
     },
     {
       "relation": "calls",
@@ -32351,9 +32390,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "setup_createlogdir",
-      "target": "setup_log_info",
-      "confidence_score": 1.0
+      "target": "setup_log_info"
     },
     {
       "relation": "calls",
@@ -32363,9 +32402,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "setup_createlogdir",
-      "target": "setup_writelogdirvariableonenvfile",
-      "confidence_score": 1.0
+      "target": "setup_writelogdirvariableonenvfile"
     },
     {
       "relation": "calls",
@@ -32375,9 +32414,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "setup_createlogdir",
-      "target": "setup_installodoologrotator",
-      "confidence_score": 1.0
+      "target": "setup_installodoologrotator"
     },
     {
       "relation": "calls",
@@ -32387,9 +32426,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "setup_createodooutilitiesfromentrypoint",
-      "target": "setup_log_info",
-      "confidence_score": 1.0
+      "target": "setup_log_info"
     },
     {
       "relation": "calls",
@@ -32399,9 +32438,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "setup_error_handler",
-      "target": "setup_log_error",
-      "confidence_score": 1.0
+      "target": "setup_log_error"
     },
     {
       "relation": "calls",
@@ -32411,9 +32450,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "setup_generatedockercomposeanddockerfile",
-      "target": "setup_log_info",
-      "confidence_score": 1.0
+      "target": "setup_log_info"
     },
     {
       "relation": "calls",
@@ -32423,9 +32462,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "setup_generatedockercomposeanddockerfile",
-      "target": "setup_log_error",
-      "confidence_score": 1.0
+      "target": "setup_log_error"
     },
     {
       "relation": "calls",
@@ -32435,9 +32474,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "setup_generatedockercomposeanddockerfile",
-      "target": "setup_setpermissionfiletoreadonlyandonlyto",
-      "confidence_score": 1.0
+      "target": "setup_setpermissionfiletoreadonlyandonlyto"
     },
     {
       "relation": "calls",
@@ -32447,9 +32486,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "setup_generatedockercomposeanddockerfile",
-      "target": "setup_generatedockerfile",
-      "confidence_score": 1.0
+      "target": "setup_generatedockerfile"
     },
     {
       "relation": "calls",
@@ -32459,9 +32498,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "setup_generatedockerfile",
-      "target": "setup_log_info",
-      "confidence_score": 1.0
+      "target": "setup_log_info"
     },
     {
       "relation": "calls",
@@ -32471,9 +32510,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "setup_generatedockerfile",
-      "target": "setup_validatedatetimeformat",
-      "confidence_score": 1.0
+      "target": "setup_validatedatetimeformat"
     },
     {
       "relation": "calls",
@@ -32483,9 +32522,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "setup_generatepostgrespassword",
-      "target": "setup_log_info",
-      "confidence_score": 1.0
+      "target": "setup_log_info"
     },
     {
       "relation": "calls",
@@ -32495,9 +32534,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "setup_generatepostgrespassword",
-      "target": "setup_run_psql_setup",
-      "confidence_score": 1.0
+      "target": "setup_run_psql_setup"
     },
     {
       "relation": "calls",
@@ -32507,9 +32546,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "setup_generatepostgrespassword",
-      "target": "setup_writetextfile",
-      "confidence_score": 1.0
+      "target": "setup_writetextfile"
     },
     {
       "relation": "calls",
@@ -32519,9 +32558,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "setup_generatepostgressecrets",
-      "target": "setup_log_info",
-      "confidence_score": 1.0
+      "target": "setup_log_info"
     },
     {
       "relation": "calls",
@@ -32531,9 +32570,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "setup_generatepostgressecrets",
-      "target": "setup_writetextfile",
-      "confidence_score": 1.0
+      "target": "setup_writetextfile"
     },
     {
       "relation": "calls",
@@ -32543,9 +32582,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "setup_generatepostgressecrets",
-      "target": "setup_setpermissionfiletoreadonlyandonlyto",
-      "confidence_score": 1.0
+      "target": "setup_setpermissionfiletoreadonlyandonlyto"
     },
     {
       "relation": "calls",
@@ -32555,9 +32594,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "setup_generatepostgressecrets",
-      "target": "setup_log_success",
-      "confidence_score": 1.0
+      "target": "setup_log_success"
     },
     {
       "relation": "calls",
@@ -32567,9 +32606,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "setup_generatepostgressecrets",
-      "target": "setup_generatepostgrespassword",
-      "confidence_score": 1.0
+      "target": "setup_generatepostgrespassword"
     },
     {
       "relation": "calls",
@@ -32579,9 +32618,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "setup_installdockerservicerestartorscript",
-      "target": "setup_log_info",
-      "confidence_score": 1.0
+      "target": "setup_log_info"
     },
     {
       "relation": "calls",
@@ -32591,9 +32630,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "setup_installpostgresrestartorscript",
-      "target": "setup_log_info",
-      "confidence_score": 1.0
+      "target": "setup_log_info"
     },
     {
       "relation": "calls",
@@ -32603,9 +32642,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "setup_isdockerinstalled",
-      "target": "setup_log_error",
-      "confidence_score": 1.0
+      "target": "setup_log_error"
     },
     {
       "relation": "calls",
@@ -32615,9 +32654,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "setup_isdockerinstalled",
-      "target": "setup_log_success",
-      "confidence_score": 1.0
+      "target": "setup_log_success"
     },
     {
       "relation": "calls",
@@ -32627,9 +32666,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "setup_isfileexists",
-      "target": "setup_log_success",
-      "confidence_score": 1.0
+      "target": "setup_log_success"
     },
     {
       "relation": "calls",
@@ -32639,9 +32678,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "setup_isfileexists",
-      "target": "setup_log_error",
-      "confidence_score": 1.0
+      "target": "setup_log_error"
     },
     {
       "relation": "calls",
@@ -32651,9 +32690,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "setup_isjqinstalled",
-      "target": "setup_log_error",
-      "confidence_score": 1.0
+      "target": "setup_log_error"
     },
     {
       "relation": "calls",
@@ -32663,9 +32702,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "setup_isjqinstalled",
-      "target": "setup_log_success",
-      "confidence_score": 1.0
+      "target": "setup_log_success"
     },
     {
       "relation": "calls",
@@ -32675,9 +32714,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "setup_islogrotateinstalled",
-      "target": "setup_log_error",
-      "confidence_score": 1.0
+      "target": "setup_log_error"
     },
     {
       "relation": "calls",
@@ -32687,9 +32726,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "setup_islogrotateinstalled",
-      "target": "setup_log_success",
-      "confidence_score": 1.0
+      "target": "setup_log_success"
     },
     {
       "relation": "calls",
@@ -32699,9 +32738,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "setup_ispostgresinstalled",
-      "target": "setup_log_info",
-      "confidence_score": 1.0
+      "target": "setup_log_info"
     },
     {
       "relation": "calls",
@@ -32711,9 +32750,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "setup_ispostgresinstalled",
-      "target": "setup_log_error",
-      "confidence_score": 1.0
+      "target": "setup_log_error"
     },
     {
       "relation": "calls",
@@ -32723,9 +32762,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "setup_ispostgresinstalled",
-      "target": "setup_log_success",
-      "confidence_score": 1.0
+      "target": "setup_log_success"
     },
     {
       "relation": "calls",
@@ -32735,9 +32774,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "setup_issubdirectoryexists",
-      "target": "setup_log_error",
-      "confidence_score": 1.0
+      "target": "setup_log_error"
     },
     {
       "relation": "calls",
@@ -32747,9 +32786,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "setup_issubdirectoryexists",
-      "target": "setup_log_success",
-      "confidence_score": 1.0
+      "target": "setup_log_success"
     },
     {
       "relation": "calls",
@@ -32759,9 +32798,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "setup_issubdirectoryexists",
-      "target": "setup_log_info",
-      "confidence_score": 1.0
+      "target": "setup_log_info"
     },
     {
       "relation": "calls",
@@ -32771,9 +32810,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "setup_isuserexist",
-      "target": "setup_log_info",
-      "confidence_score": 1.0
+      "target": "setup_log_info"
     },
     {
       "relation": "calls",
@@ -32783,9 +32822,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "setup_isuserexist",
-      "target": "setup_log_success",
-      "confidence_score": 1.0
+      "target": "setup_log_success"
     },
     {
       "relation": "calls",
@@ -32795,9 +32834,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "setup_isuserexist",
-      "target": "setup_log_error",
-      "confidence_score": 1.0
+      "target": "setup_log_error"
     },
     {
       "relation": "calls",
@@ -32807,9 +32846,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "setup_log_error",
-      "target": "setup_log",
-      "confidence_score": 1.0
+      "target": "setup_log"
     },
     {
       "relation": "calls",
@@ -32819,9 +32858,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "setup_log_info",
-      "target": "setup_log",
-      "confidence_score": 1.0
+      "target": "setup_log"
     },
     {
       "relation": "calls",
@@ -32831,9 +32870,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "setup_log_success",
-      "target": "setup_log",
-      "confidence_score": 1.0
+      "target": "setup_log"
     },
     {
       "relation": "calls",
@@ -32843,9 +32882,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "setup_log_warn",
-      "target": "setup_log",
-      "confidence_score": 1.0
+      "target": "setup_log"
     },
     {
       "relation": "calls",
@@ -32855,9 +32894,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "setup_main",
-      "target": "setup_show_usage",
-      "confidence_score": 1.0
+      "target": "setup_show_usage"
     },
     {
       "relation": "calls",
@@ -32867,9 +32906,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "setup_main",
-      "target": "setup_log_info",
-      "confidence_score": 1.0
+      "target": "setup_log_info"
     },
     {
       "relation": "calls",
@@ -32879,9 +32918,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "setup_main",
-      "target": "setup_log_error",
-      "confidence_score": 1.0
+      "target": "setup_log_error"
     },
     {
       "relation": "calls",
@@ -32891,9 +32930,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "setup_main",
-      "target": "setup_isdockerinstalled",
-      "confidence_score": 1.0
+      "target": "setup_isdockerinstalled"
     },
     {
       "relation": "calls",
@@ -32903,9 +32942,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "setup_main",
-      "target": "setup_islogrotateinstalled",
-      "confidence_score": 1.0
+      "target": "setup_islogrotateinstalled"
     },
     {
       "relation": "calls",
@@ -32915,9 +32954,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "setup_main",
-      "target": "setup_isjqinstalled",
-      "confidence_score": 1.0
+      "target": "setup_isjqinstalled"
     },
     {
       "relation": "calls",
@@ -32927,9 +32966,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "setup_main",
-      "target": "setup_isuserexist",
-      "confidence_score": 1.0
+      "target": "setup_isuserexist"
     },
     {
       "relation": "calls",
@@ -32939,9 +32978,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "setup_main",
-      "target": "setup_setupautodevops",
-      "confidence_score": 1.0
+      "target": "setup_setupautodevops"
     },
     {
       "relation": "calls",
@@ -32951,9 +32990,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "setup_main",
-      "target": "setup_installdockerservicerestartorscript",
-      "confidence_score": 1.0
+      "target": "setup_installdockerservicerestartorscript"
     },
     {
       "relation": "calls",
@@ -32963,9 +33002,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "setup_main",
-      "target": "setup_createodooutilitiesfromentrypoint",
-      "confidence_score": 1.0
+      "target": "setup_createodooutilitiesfromentrypoint"
     },
     {
       "relation": "calls",
@@ -32975,9 +33014,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "setup_main",
-      "target": "setup_generatedockercomposeanddockerfile",
-      "confidence_score": 1.0
+      "target": "setup_generatedockercomposeanddockerfile"
     },
     {
       "relation": "calls",
@@ -32987,9 +33026,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "setup_main",
-      "target": "setup_isfileexists",
-      "confidence_score": 1.0
+      "target": "setup_isfileexists"
     },
     {
       "relation": "calls",
@@ -32999,9 +33038,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "setup_main",
-      "target": "setup_writeservicenamevariableonenvfile",
-      "confidence_score": 1.0
+      "target": "setup_writeservicenamevariableonenvfile"
     },
     {
       "relation": "calls",
@@ -33011,9 +33050,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "setup_main",
-      "target": "setup_createlogdir",
-      "confidence_score": 1.0
+      "target": "setup_createlogdir"
     },
     {
       "relation": "calls",
@@ -33023,9 +33062,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "setup_main",
-      "target": "setup_createdatadir",
-      "confidence_score": 1.0
+      "target": "setup_createdatadir"
     },
     {
       "relation": "calls",
@@ -33035,9 +33074,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "setup_main",
-      "target": "setup_generatepostgressecrets",
-      "confidence_score": 1.0
+      "target": "setup_generatepostgressecrets"
     },
     {
       "relation": "calls",
@@ -33047,9 +33086,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "setup_main",
-      "target": "setup_ispostgresinstalled",
-      "confidence_score": 1.0
+      "target": "setup_ispostgresinstalled"
     },
     {
       "relation": "calls",
@@ -33059,9 +33098,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "setup_main",
-      "target": "setup_installpostgresrestartorscript",
-      "confidence_score": 1.0
+      "target": "setup_installpostgresrestartorscript"
     },
     {
       "relation": "calls",
@@ -33071,9 +33110,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "setup_main",
-      "target": "setup_log_warn",
-      "confidence_score": 1.0
+      "target": "setup_log_warn"
     },
     {
       "relation": "calls",
@@ -33083,9 +33122,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "setup_main",
-      "target": "setup_checkimportantenvvariable",
-      "confidence_score": 1.0
+      "target": "setup_checkimportantenvvariable"
     },
     {
       "relation": "calls",
@@ -33095,9 +33134,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "setup_main",
-      "target": "setup_checkaddonspathonodooconffile",
-      "confidence_score": 1.0
+      "target": "setup_checkaddonspathonodooconffile"
     },
     {
       "relation": "calls",
@@ -33107,9 +33146,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "setup_main",
-      "target": "setup_prepareodoosources",
-      "confidence_score": 1.0
+      "target": "setup_prepareodoosources"
     },
     {
       "relation": "calls",
@@ -33119,9 +33158,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "setup_main",
-      "target": "setup_log_success",
-      "confidence_score": 1.0
+      "target": "setup_log_success"
     },
     {
       "relation": "calls",
@@ -33131,9 +33170,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "setup_main",
-      "target": "setup_setupvalidatordocker",
-      "confidence_score": 1.0
+      "target": "setup_setupvalidatordocker"
     },
     {
       "relation": "calls",
@@ -33143,9 +33182,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "setup_main",
-      "target": "setup_printtodo",
-      "confidence_score": 1.0
+      "target": "setup_printtodo"
     },
     {
       "relation": "calls",
@@ -33155,9 +33194,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "setup_prepareodoosources",
-      "target": "setup_issubdirectoryexists",
-      "confidence_score": 1.0
+      "target": "setup_issubdirectoryexists"
     },
     {
       "relation": "calls",
@@ -33167,9 +33206,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "setup_prepareodoosources",
-      "target": "setup_checkgitrepositories",
-      "confidence_score": 1.0
+      "target": "setup_checkgitrepositories"
     },
     {
       "relation": "calls",
@@ -33179,9 +33218,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "setup_prepareodoosources",
-      "target": "setup_log_info",
-      "confidence_score": 1.0
+      "target": "setup_log_info"
     },
     {
       "relation": "calls",
@@ -33191,9 +33230,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "setup_prepareodoosources",
-      "target": "setup_isfileexists",
-      "confidence_score": 1.0
+      "target": "setup_isfileexists"
     },
     {
       "relation": "calls",
@@ -33203,9 +33242,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "setup_prepareodoosources",
-      "target": "setup_log_success",
-      "confidence_score": 1.0
+      "target": "setup_log_success"
     },
     {
       "relation": "calls",
@@ -33215,9 +33254,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "setup_prepareodoosources",
-      "target": "setup_log_error",
-      "confidence_score": 1.0
+      "target": "setup_log_error"
     },
     {
       "relation": "calls",
@@ -33227,9 +33266,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "setup_printtodo",
-      "target": "setup_printtodomessage",
-      "confidence_score": 1.0
+      "target": "setup_printtodomessage"
     },
     {
       "relation": "calls",
@@ -33239,9 +33278,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "setup_printtodomessage",
-      "target": "setup_log_error",
-      "confidence_score": 1.0
+      "target": "setup_log_error"
     },
     {
       "relation": "calls",
@@ -33251,9 +33290,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "setup_selectmode",
-      "target": "setup_log_warn",
-      "confidence_score": 1.0
+      "target": "setup_log_warn"
     },
     {
       "relation": "calls",
@@ -33263,9 +33302,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "setup_setpermissionfiletoreadonlyandonlyto",
-      "target": "setup_log_warn",
-      "confidence_score": 1.0
+      "target": "setup_log_warn"
     },
     {
       "relation": "calls",
@@ -33275,9 +33314,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "setup_setupautodevops",
-      "target": "setup_isuserexist",
-      "confidence_score": 1.0
+      "target": "setup_isuserexist"
     },
     {
       "relation": "calls",
@@ -33287,9 +33326,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "setup_setupvalidatordocker",
-      "target": "setup_log_success",
-      "confidence_score": 1.0
+      "target": "setup_log_success"
     },
     {
       "relation": "calls",
@@ -33299,9 +33338,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "setup_setupvalidatordocker",
-      "target": "setup_log_warn",
-      "confidence_score": 1.0
+      "target": "setup_log_warn"
     },
     {
       "relation": "calls",
@@ -33311,9 +33350,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "setup_sh__entry",
-      "target": "setup_main",
-      "confidence_score": 1.0
+      "target": "setup_main"
     },
     {
       "relation": "calls",
@@ -33323,9 +33362,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "setup_validatedatetimeformat",
-      "target": "setup_isinteger",
-      "confidence_score": 1.0
+      "target": "setup_isinteger"
     },
     {
       "relation": "calls",
@@ -33335,9 +33374,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "setup_validatedatetimeformat",
-      "target": "setup_log_success",
-      "confidence_score": 1.0
+      "target": "setup_log_success"
     },
     {
       "relation": "calls",
@@ -33347,9 +33386,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "setup_validatedatetimeformat",
-      "target": "setup_log_error",
-      "confidence_score": 1.0
+      "target": "setup_log_error"
     },
     {
       "relation": "calls",
@@ -33359,9 +33398,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "setup_writetextfile",
-      "target": "setup_log_info",
-      "confidence_score": 1.0
+      "target": "setup_log_info"
     },
     {
       "relation": "calls",
@@ -37450,9 +37489,9 @@
       "source_location": "L1",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot_worker",
-      "target": "scripts_validate_snapshot_worker_sh__entry"
+      "target": "scripts_validate_snapshot_worker_sh__entry",
+      "confidence_score": 1.0
     },
     {
       "relation": "contains",
@@ -37461,9 +37500,9 @@
       "source_location": "L1",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "setup",
-      "target": "setup_sh__entry",
-      "confidence_score": 1.0
+      "target": "setup_sh__entry"
     },
     {
       "relation": "contains",
@@ -46874,100 +46913,23 @@
       "relation": "defines",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot-worker.sh",
-      "source_location": "L164",
+      "source_location": "L178",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot_worker",
-      "target": "scripts_validate_snapshot_worker_when"
+      "target": "scripts_validate_snapshot_worker_when",
+      "confidence_score": 1.0
     },
     {
       "relation": "defines",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot-worker.sh",
-      "source_location": "L30",
+      "source_location": "L222",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot_worker",
-      "target": "scripts_validate_snapshot_worker_color_reset"
-    },
-    {
-      "relation": "defines",
-      "confidence": "EXTRACTED",
-      "source_file": "scripts/validate-snapshot-worker.sh",
-      "source_location": "L31",
-      "weight": 1.0,
-      "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "scripts_validate_snapshot_worker",
-      "target": "scripts_validate_snapshot_worker_color_info"
-    },
-    {
-      "relation": "defines",
-      "confidence": "EXTRACTED",
-      "source_file": "scripts/validate-snapshot-worker.sh",
-      "source_location": "L32",
-      "weight": 1.0,
-      "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "scripts_validate_snapshot_worker",
-      "target": "scripts_validate_snapshot_worker_color_success"
-    },
-    {
-      "relation": "defines",
-      "confidence": "EXTRACTED",
-      "source_file": "scripts/validate-snapshot-worker.sh",
-      "source_location": "L33",
-      "weight": 1.0,
-      "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "scripts_validate_snapshot_worker",
-      "target": "scripts_validate_snapshot_worker_color_warn"
-    },
-    {
-      "relation": "defines",
-      "confidence": "EXTRACTED",
-      "source_file": "scripts/validate-snapshot-worker.sh",
-      "source_location": "L34",
-      "weight": 1.0,
-      "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "scripts_validate_snapshot_worker",
-      "target": "scripts_validate_snapshot_worker_color_error"
-    },
-    {
-      "relation": "defines",
-      "confidence": "EXTRACTED",
-      "source_file": "scripts/validate-snapshot-worker.sh",
-      "source_location": "L35",
-      "weight": 1.0,
-      "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "scripts_validate_snapshot_worker",
-      "target": "scripts_validate_snapshot_worker_log"
-    },
-    {
-      "relation": "defines",
-      "confidence": "EXTRACTED",
-      "source_file": "scripts/validate-snapshot-worker.sh",
-      "source_location": "L36",
-      "weight": 1.0,
-      "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "scripts_validate_snapshot_worker",
-      "target": "scripts_validate_snapshot_worker_log_info"
-    },
-    {
-      "relation": "defines",
-      "confidence": "EXTRACTED",
-      "source_file": "scripts/validate-snapshot-worker.sh",
-      "source_location": "L37",
-      "weight": 1.0,
-      "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "scripts_validate_snapshot_worker",
-      "target": "scripts_validate_snapshot_worker_log_success"
+      "target": "scripts_validate_snapshot_worker_run_validator",
+      "confidence_score": 1.0
     },
     {
       "relation": "defines",
@@ -46976,9 +46938,9 @@
       "source_location": "L38",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot_worker",
-      "target": "scripts_validate_snapshot_worker_log_warn"
+      "target": "scripts_validate_snapshot_worker_color_reset",
+      "confidence_score": 1.0
     },
     {
       "relation": "defines",
@@ -46987,9 +46949,20 @@
       "source_location": "L39",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot_worker",
-      "target": "scripts_validate_snapshot_worker_log_error"
+      "target": "scripts_validate_snapshot_worker_color_info",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "source_file": "scripts/validate-snapshot-worker.sh",
+      "source_location": "L40",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "scripts_validate_snapshot_worker",
+      "target": "scripts_validate_snapshot_worker_color_success",
+      "confidence_score": 1.0
     },
     {
       "relation": "defines",
@@ -46998,31 +46971,108 @@
       "source_location": "L41",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot_worker",
-      "target": "scripts_validate_snapshot_worker_show_help"
+      "target": "scripts_validate_snapshot_worker_color_warn",
+      "confidence_score": 1.0
     },
     {
       "relation": "defines",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot-worker.sh",
-      "source_location": "L71",
+      "source_location": "L42",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot_worker",
-      "target": "scripts_validate_snapshot_worker_env_get"
+      "target": "scripts_validate_snapshot_worker_color_error",
+      "confidence_score": 1.0
     },
     {
       "relation": "defines",
       "confidence": "EXTRACTED",
       "source_file": "scripts/validate-snapshot-worker.sh",
-      "source_location": "L75",
+      "source_location": "L43",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "scripts_validate_snapshot_worker",
-      "target": "scripts_validate_snapshot_worker_cfg"
+      "target": "scripts_validate_snapshot_worker_log",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "source_file": "scripts/validate-snapshot-worker.sh",
+      "source_location": "L44",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "scripts_validate_snapshot_worker",
+      "target": "scripts_validate_snapshot_worker_log_info",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "source_file": "scripts/validate-snapshot-worker.sh",
+      "source_location": "L45",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "scripts_validate_snapshot_worker",
+      "target": "scripts_validate_snapshot_worker_log_success",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "source_file": "scripts/validate-snapshot-worker.sh",
+      "source_location": "L46",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "scripts_validate_snapshot_worker",
+      "target": "scripts_validate_snapshot_worker_log_warn",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "source_file": "scripts/validate-snapshot-worker.sh",
+      "source_location": "L47",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "scripts_validate_snapshot_worker",
+      "target": "scripts_validate_snapshot_worker_log_error",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "source_file": "scripts/validate-snapshot-worker.sh",
+      "source_location": "L49",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "scripts_validate_snapshot_worker",
+      "target": "scripts_validate_snapshot_worker_show_help",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "source_file": "scripts/validate-snapshot-worker.sh",
+      "source_location": "L79",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "scripts_validate_snapshot_worker",
+      "target": "scripts_validate_snapshot_worker_env_get",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "source_file": "scripts/validate-snapshot-worker.sh",
+      "source_location": "L83",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "scripts_validate_snapshot_worker",
+      "target": "scripts_validate_snapshot_worker_cfg",
+      "confidence_score": 1.0
     },
     {
       "relation": "defines",
@@ -47031,9 +47081,9 @@
       "source_location": "L1087",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "setup",
-      "target": "setup_checkgitrepositories",
-      "confidence_score": 1.0
+      "target": "setup_checkgitrepositories"
     },
     {
       "relation": "defines",
@@ -47042,9 +47092,9 @@
       "source_location": "L109",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "setup",
-      "target": "setup_checkimportantenvvariable",
-      "confidence_score": 1.0
+      "target": "setup_checkimportantenvvariable"
     },
     {
       "relation": "defines",
@@ -47053,9 +47103,9 @@
       "source_location": "L1098",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "setup",
-      "target": "setup_writedatadirvariableonenvfile",
-      "confidence_score": 1.0
+      "target": "setup_writedatadirvariableonenvfile"
     },
     {
       "relation": "defines",
@@ -47064,9 +47114,9 @@
       "source_location": "L1110",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "setup",
-      "target": "setup_writeservicenamevariableonenvfile",
-      "confidence_score": 1.0
+      "target": "setup_writeservicenamevariableonenvfile"
     },
     {
       "relation": "defines",
@@ -47075,9 +47125,9 @@
       "source_location": "L1122",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "setup",
-      "target": "setup_writelogdirvariableonenvfile",
-      "confidence_score": 1.0
+      "target": "setup_writelogdirvariableonenvfile"
     },
     {
       "relation": "defines",
@@ -47086,9 +47136,9 @@
       "source_location": "L1132",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "setup",
-      "target": "setup_writetextfile",
-      "confidence_score": 1.0
+      "target": "setup_writetextfile"
     },
     {
       "relation": "defines",
@@ -47097,9 +47147,9 @@
       "source_location": "L1142",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "setup",
-      "target": "setup_checkregistryconnection",
-      "confidence_score": 1.0
+      "target": "setup_checkregistryconnection"
     },
     {
       "relation": "defines",
@@ -47108,9 +47158,9 @@
       "source_location": "L1174",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "setup",
-      "target": "setup_prepareodoosources",
-      "confidence_score": 1.0
+      "target": "setup_prepareodoosources"
     },
     {
       "relation": "defines",
@@ -47119,9 +47169,9 @@
       "source_location": "L1216",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "setup",
-      "target": "setup_show_usage",
-      "confidence_score": 1.0
+      "target": "setup_show_usage"
     },
     {
       "relation": "defines",
@@ -47130,9 +47180,9 @@
       "source_location": "L1229",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "setup",
-      "target": "setup_main",
-      "confidence_score": 1.0
+      "target": "setup_main"
     },
     {
       "relation": "defines",
@@ -47141,9 +47191,9 @@
       "source_location": "L123",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "setup",
-      "target": "setup_createdatadir",
-      "confidence_score": 1.0
+      "target": "setup_createdatadir"
     },
     {
       "relation": "defines",
@@ -47152,9 +47202,9 @@
       "source_location": "L151",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "setup",
-      "target": "setup_createlogdir",
-      "confidence_score": 1.0
+      "target": "setup_createlogdir"
     },
     {
       "relation": "defines",
@@ -47163,9 +47213,9 @@
       "source_location": "L179",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "setup",
-      "target": "setup_createodooutilitiesfromentrypoint",
-      "confidence_score": 1.0
+      "target": "setup_createodooutilitiesfromentrypoint"
     },
     {
       "relation": "defines",
@@ -47174,9 +47224,9 @@
       "source_location": "L319",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "setup",
-      "target": "setup_generatedockercomposeanddockerfile",
-      "confidence_score": 1.0
+      "target": "setup_generatedockercomposeanddockerfile"
     },
     {
       "relation": "defines",
@@ -47185,9 +47235,9 @@
       "source_location": "L455",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "setup",
-      "target": "setup_generatedockerfile",
-      "confidence_score": 1.0
+      "target": "setup_generatedockerfile"
     },
     {
       "relation": "defines",
@@ -47196,9 +47246,9 @@
       "source_location": "L46",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "setup",
-      "target": "setup_color_reset",
-      "confidence_score": 1.0
+      "target": "setup_color_reset"
     },
     {
       "relation": "defines",
@@ -47207,9 +47257,9 @@
       "source_location": "L47",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "setup",
-      "target": "setup_color_info",
-      "confidence_score": 1.0
+      "target": "setup_color_info"
     },
     {
       "relation": "defines",
@@ -47218,9 +47268,9 @@
       "source_location": "L470",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "setup",
-      "target": "setup_run_psql_setup",
-      "confidence_score": 1.0
+      "target": "setup_run_psql_setup"
     },
     {
       "relation": "defines",
@@ -47229,9 +47279,9 @@
       "source_location": "L48",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "setup",
-      "target": "setup_color_success",
-      "confidence_score": 1.0
+      "target": "setup_color_success"
     },
     {
       "relation": "defines",
@@ -47240,9 +47290,9 @@
       "source_location": "L49",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "setup",
-      "target": "setup_color_warn",
-      "confidence_score": 1.0
+      "target": "setup_color_warn"
     },
     {
       "relation": "defines",
@@ -47251,9 +47301,9 @@
       "source_location": "L498",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "setup",
-      "target": "setup_generatepostgrespassword",
-      "confidence_score": 1.0
+      "target": "setup_generatepostgrespassword"
     },
     {
       "relation": "defines",
@@ -47262,9 +47312,9 @@
       "source_location": "L50",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "setup",
-      "target": "setup_color_error",
-      "confidence_score": 1.0
+      "target": "setup_color_error"
     },
     {
       "relation": "defines",
@@ -47273,9 +47323,9 @@
       "source_location": "L512",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "setup",
-      "target": "setup_generatepostgressecrets",
-      "confidence_score": 1.0
+      "target": "setup_generatepostgressecrets"
     },
     {
       "relation": "defines",
@@ -47284,9 +47334,9 @@
       "source_location": "L53",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "setup",
-      "target": "setup_log",
-      "confidence_score": 1.0
+      "target": "setup_log"
     },
     {
       "relation": "defines",
@@ -47295,9 +47345,9 @@
       "source_location": "L569",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "setup",
-      "target": "setup_getsubdirectories",
-      "confidence_score": 1.0
+      "target": "setup_getsubdirectories"
     },
     {
       "relation": "defines",
@@ -47306,9 +47356,9 @@
       "source_location": "L577",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "setup",
-      "target": "setup_installdockerservicerestartorscript",
-      "confidence_score": 1.0
+      "target": "setup_installdockerservicerestartorscript"
     },
     {
       "relation": "defines",
@@ -47317,9 +47367,9 @@
       "source_location": "L60",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "setup",
-      "target": "setup_log_info",
-      "confidence_score": 1.0
+      "target": "setup_log_info"
     },
     {
       "relation": "defines",
@@ -47328,9 +47378,9 @@
       "source_location": "L61",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "setup",
-      "target": "setup_log_success",
-      "confidence_score": 1.0
+      "target": "setup_log_success"
     },
     {
       "relation": "defines",
@@ -47339,9 +47389,9 @@
       "source_location": "L62",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "setup",
-      "target": "setup_log_warn",
-      "confidence_score": 1.0
+      "target": "setup_log_warn"
     },
     {
       "relation": "defines",
@@ -47350,9 +47400,9 @@
       "source_location": "L623",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "setup",
-      "target": "setup_installodoologrotator",
-      "confidence_score": 1.0
+      "target": "setup_installodoologrotator"
     },
     {
       "relation": "defines",
@@ -47361,9 +47411,9 @@
       "source_location": "L63",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "setup",
-      "target": "setup_log_error",
-      "confidence_score": 1.0
+      "target": "setup_log_error"
     },
     {
       "relation": "defines",
@@ -47372,9 +47422,9 @@
       "source_location": "L65",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "setup",
-      "target": "setup_error_handler",
-      "confidence_score": 1.0
+      "target": "setup_error_handler"
     },
     {
       "relation": "defines",
@@ -47383,9 +47433,9 @@
       "source_location": "L657",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "setup",
-      "target": "setup_installpostgresrestartorscript",
-      "confidence_score": 1.0
+      "target": "setup_installpostgresrestartorscript"
     },
     {
       "relation": "defines",
@@ -47394,9 +47444,9 @@
       "source_location": "L704",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "setup",
-      "target": "setup_selectmode",
-      "confidence_score": 1.0
+      "target": "setup_selectmode"
     },
     {
       "relation": "defines",
@@ -47405,9 +47455,9 @@
       "source_location": "L738",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "setup",
-      "target": "setup_isdirectorygitrepository",
-      "confidence_score": 1.0
+      "target": "setup_isdirectorygitrepository"
     },
     {
       "relation": "defines",
@@ -47416,9 +47466,9 @@
       "source_location": "L752",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "setup",
-      "target": "setup_isdockerinstalled",
-      "confidence_score": 1.0
+      "target": "setup_isdockerinstalled"
     },
     {
       "relation": "defines",
@@ -47427,9 +47477,9 @@
       "source_location": "L761",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "setup",
-      "target": "setup_ispostgresinstalled",
-      "confidence_score": 1.0
+      "target": "setup_ispostgresinstalled"
     },
     {
       "relation": "defines",
@@ -47438,9 +47488,9 @@
       "source_location": "L782",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "setup",
-      "target": "setup_isinteger",
-      "confidence_score": 1.0
+      "target": "setup_isinteger"
     },
     {
       "relation": "defines",
@@ -47449,9 +47499,9 @@
       "source_location": "L787",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "setup",
-      "target": "setup_islogrotateinstalled",
-      "confidence_score": 1.0
+      "target": "setup_islogrotateinstalled"
     },
     {
       "relation": "defines",
@@ -47460,9 +47510,9 @@
       "source_location": "L800",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "setup",
-      "target": "setup_isjqinstalled",
-      "confidence_score": 1.0
+      "target": "setup_isjqinstalled"
     },
     {
       "relation": "defines",
@@ -47471,9 +47521,9 @@
       "source_location": "L813",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "setup",
-      "target": "setup_issubdirectoryexists",
-      "confidence_score": 1.0
+      "target": "setup_issubdirectoryexists"
     },
     {
       "relation": "defines",
@@ -47482,9 +47532,9 @@
       "source_location": "L83",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "setup",
-      "target": "setup_checkaddonspathonodooconffile",
-      "confidence_score": 1.0
+      "target": "setup_checkaddonspathonodooconffile"
     },
     {
       "relation": "defines",
@@ -47493,9 +47543,9 @@
       "source_location": "L849",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "setup",
-      "target": "setup_isfileexists",
-      "confidence_score": 1.0
+      "target": "setup_isfileexists"
     },
     {
       "relation": "defines",
@@ -47504,9 +47554,9 @@
       "source_location": "L864",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "setup",
-      "target": "setup_isuserexist",
-      "confidence_score": 1.0
+      "target": "setup_isuserexist"
     },
     {
       "relation": "defines",
@@ -47515,9 +47565,9 @@
       "source_location": "L886",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "setup",
-      "target": "setup_printtodo",
-      "confidence_score": 1.0
+      "target": "setup_printtodo"
     },
     {
       "relation": "defines",
@@ -47526,9 +47576,9 @@
       "source_location": "L908",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "setup",
-      "target": "setup_printtodomessage",
-      "confidence_score": 1.0
+      "target": "setup_printtodomessage"
     },
     {
       "relation": "defines",
@@ -47537,9 +47587,9 @@
       "source_location": "L918",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "setup",
-      "target": "setup_setpermissionfiletoreadonlyandonlyto",
-      "confidence_score": 1.0
+      "target": "setup_setpermissionfiletoreadonlyandonlyto"
     },
     {
       "relation": "defines",
@@ -47548,9 +47598,9 @@
       "source_location": "L930",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "setup",
-      "target": "setup_setupautodevops",
-      "confidence_score": 1.0
+      "target": "setup_setupautodevops"
     },
     {
       "relation": "defines",
@@ -47559,9 +47609,9 @@
       "source_location": "L957",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "setup",
-      "target": "setup_setupvalidatordocker",
-      "confidence_score": 1.0
+      "target": "setup_setupvalidatordocker"
     },
     {
       "relation": "defines",
@@ -47570,9 +47620,9 @@
       "source_location": "L988",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "setup",
-      "target": "setup_validatedatetimeformat",
-      "confidence_score": 1.0
+      "target": "setup_validatedatetimeformat"
     },
     {
       "relation": "defines",
@@ -51255,11 +51305,11 @@
       "weight": 1.0,
       "context": "import",
       "_origin": "ast",
+      "confidence_score": 0.5,
       "source": "setup",
-      "target": "scripts_lib_os_detect",
-      "confidence_score": 0.5
+      "target": "scripts_lib_os_detect"
     }
   ],
   "hyperedges": [],
-  "built_at_commit": "38863363286d03c9fd33e011ff7ce927e59ccbb5"
+  "built_at_commit": "95f0ae920afda66ac1f0451eeb795930db3f6bd0"
 }
