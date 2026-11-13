@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -e
 # Category: Utility
-# Description: Updates the docker-odoo repository via git fetch and pull as repository owner. Supports JSON output.
+# Description: Updates the docker-odoo repository via git fetch/pull and syncs .env from .env.example.
 # Usage: ./scripts/update-deployment-tool.sh [branch] [json]
 # Dependencies: git, sudo, bash
 
@@ -87,8 +87,29 @@ else
     log_success "Deployment tool successfully updated: $OLD_COMMIT -> $NEW_COMMIT"
 fi
 
+ENV_UPDATED="false"
+UPDATE_ENV_SCRIPT="$PATH_TO_ODOO/scripts/update-env-file.sh"
+if [ -f "$UPDATE_ENV_SCRIPT" ]; then
+    log_info "Synchronizing .env with .env.example..."
+    if [ "$JSON_MODE" = "true" ]; then
+        if bash "$UPDATE_ENV_SCRIPT" >&2; then
+            ENV_UPDATED="true"
+            log_success ".env synchronized with .env.example."
+        else
+            log_error "Failed to synchronize .env with .env.example."
+        fi
+    else
+        if bash "$UPDATE_ENV_SCRIPT"; then
+            ENV_UPDATED="true"
+            log_success ".env synchronized with .env.example."
+        else
+            log_error "Failed to synchronize .env with .env.example."
+        fi
+    fi
+fi
+
 if [ "$JSON_MODE" = "true" ]; then
-    echo "{\"status\": \"success\", \"branch\": \"$TARGET_BRANCH\", \"old_commit\": \"$OLD_COMMIT\", \"new_commit\": \"$NEW_COMMIT\", \"output\": \"$PULL_OUTPUT\"}"
+    echo "{\"status\": \"success\", \"branch\": \"$TARGET_BRANCH\", \"old_commit\": \"$OLD_COMMIT\", \"new_commit\": \"$NEW_COMMIT\", \"env_updated\": $ENV_UPDATED, \"output\": \"$PULL_OUTPUT\"}"
 else
     echo "$PULL_OUTPUT"
 fi
