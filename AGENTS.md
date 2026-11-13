@@ -14,6 +14,7 @@ context: Root Repository
 - 5-Line Signatures mandatory for all files.
 - No browser testing (use logs and build status).
 - Run `./scripts/generate_map.sh` after file/knowledge updates (syncs `REPO_MAP.md` and Graphify knowledge graph).
+- When adding a new script under `scripts/`, add `!scripts/<filename>` to `.gitignore` (because `scripts/*` is ignored by default) and register it in `scripts/installer/install_sudoers.sh` if it requires `sudo`.
 
 ## Example
 ```yaml

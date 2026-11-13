@@ -2415,10 +2415,10 @@
         "kind": "file"
       },
       "_origin": "ast",
-      "id": "scripts_download_backupdata",
       "community": 109,
       "community_name": "download-backupdata.sh",
-      "norm_label": "download-backupdata.sh"
+      "norm_label": "download-backupdata.sh",
+      "id": "scripts_download_backupdata"
     },
     {
       "label": "append_neutralization_sql()",
@@ -2430,10 +2430,10 @@
         "kind": "bash_function"
       },
       "_origin": "ast",
-      "id": "scripts_download_backupdata_append_neutralization_sql",
       "community": 109,
       "community_name": "download-backupdata.sh",
-      "norm_label": "append_neutralization_sql()"
+      "norm_label": "append_neutralization_sql()",
+      "id": "scripts_download_backupdata_append_neutralization_sql"
     },
     {
       "label": "cleanup()",
@@ -2445,10 +2445,10 @@
         "kind": "bash_function"
       },
       "_origin": "ast",
-      "id": "scripts_download_backupdata_cleanup",
       "community": 109,
       "community_name": "download-backupdata.sh",
-      "norm_label": "cleanup()"
+      "norm_label": "cleanup()",
+      "id": "scripts_download_backupdata_cleanup"
     },
     {
       "label": "generate_manifest()",
@@ -2460,10 +2460,10 @@
         "kind": "bash_function"
       },
       "_origin": "ast",
-      "id": "scripts_download_backupdata_generate_manifest",
       "community": 109,
       "community_name": "download-backupdata.sh",
-      "norm_label": "generate_manifest()"
+      "norm_label": "generate_manifest()",
+      "id": "scripts_download_backupdata_generate_manifest"
     },
     {
       "label": "json_error()",
@@ -2475,10 +2475,10 @@
         "kind": "bash_function"
       },
       "_origin": "ast",
-      "id": "scripts_download_backupdata_json_error",
       "community": 109,
       "community_name": "download-backupdata.sh",
-      "norm_label": "json_error()"
+      "norm_label": "json_error()",
+      "id": "scripts_download_backupdata_json_error"
     },
     {
       "label": "log_msg()",
@@ -2490,10 +2490,10 @@
         "kind": "bash_function"
       },
       "_origin": "ast",
-      "id": "scripts_download_backupdata_log_msg",
       "community": 109,
       "community_name": "download-backupdata.sh",
-      "norm_label": "log_msg()"
+      "norm_label": "log_msg()",
+      "id": "scripts_download_backupdata_log_msg"
     },
     {
       "label": "read_env_val()",
@@ -2505,10 +2505,10 @@
         "kind": "bash_function"
       },
       "_origin": "ast",
-      "id": "scripts_download_backupdata_read_env_val",
       "community": 109,
       "community_name": "download-backupdata.sh",
-      "norm_label": "read_env_val()"
+      "norm_label": "read_env_val()",
+      "id": "scripts_download_backupdata_read_env_val"
     },
     {
       "label": "run_pg_dump()",
@@ -2520,10 +2520,10 @@
         "kind": "bash_function"
       },
       "_origin": "ast",
-      "id": "scripts_download_backupdata_run_pg_dump",
       "community": 109,
       "community_name": "download-backupdata.sh",
-      "norm_label": "run_pg_dump()"
+      "norm_label": "run_pg_dump()",
+      "id": "scripts_download_backupdata_run_pg_dump"
     },
     {
       "label": "run_psql()",
@@ -2535,10 +2535,10 @@
         "kind": "bash_function"
       },
       "_origin": "ast",
-      "id": "scripts_download_backupdata_run_psql",
       "community": 109,
       "community_name": "download-backupdata.sh",
-      "norm_label": "run_psql()"
+      "norm_label": "run_psql()",
+      "id": "scripts_download_backupdata_run_psql"
     },
     {
       "label": "download-backupdata.sh script",
@@ -2550,10 +2550,10 @@
         "kind": "bash_entrypoint"
       },
       "_origin": "ast",
-      "id": "scripts_download_backupdata_sh__entry",
       "community": 109,
       "community_name": "download-backupdata.sh",
-      "norm_label": "download-backupdata.sh script"
+      "norm_label": "download-backupdata.sh script",
+      "id": "scripts_download_backupdata_sh__entry"
     },
     {
       "label": "upload_to_gdrive()",
@@ -2565,10 +2565,10 @@
         "kind": "bash_function"
       },
       "_origin": "ast",
-      "id": "scripts_download_backupdata_upload_to_gdrive",
       "community": 109,
       "community_name": "download-backupdata.sh",
-      "norm_label": "upload_to_gdrive()"
+      "norm_label": "upload_to_gdrive()",
+      "id": "scripts_download_backupdata_upload_to_gdrive"
     },
     {
       "label": "test_drill_defaults.sh",
@@ -4946,10 +4946,10 @@
       "source_file": "AGENTS.md",
       "source_location": "L1",
       "_origin": "ast",
+      "id": "agents",
       "community": 2,
       "community_name": "Critical Workflows",
-      "norm_label": "agents.md",
-      "id": "agents"
+      "norm_label": "agents.md"
     },
     {
       "label": "Agent Instructions",
@@ -4957,21 +4957,21 @@
       "source_file": "AGENTS.md",
       "source_location": "L8",
       "_origin": "ast",
+      "id": "agents_agent_instructions",
       "community": 2,
       "community_name": "Critical Workflows",
-      "norm_label": "agent instructions",
-      "id": "agents_agent_instructions"
+      "norm_label": "agent instructions"
     },
     {
       "label": "Agent Personas (Routing)",
       "file_type": "document",
       "source_file": "AGENTS.md",
-      "source_location": "L27",
+      "source_location": "L28",
       "_origin": "ast",
+      "id": "agents_agent_personas_routing",
       "community": 2,
       "community_name": "Critical Workflows",
-      "norm_label": "agent personas (routing)",
-      "id": "agents_agent_personas_routing"
+      "norm_label": "agent personas (routing)"
     },
     {
       "label": "Core Checklist",
@@ -4979,21 +4979,21 @@
       "source_file": "AGENTS.md",
       "source_location": "L13",
       "_origin": "ast",
+      "id": "agents_core_checklist",
       "community": 2,
       "community_name": "Critical Workflows",
-      "norm_label": "core checklist",
-      "id": "agents_core_checklist"
+      "norm_label": "core checklist"
     },
     {
       "label": "Example",
       "file_type": "document",
       "source_file": "AGENTS.md",
-      "source_location": "L18",
+      "source_location": "L19",
       "_origin": "ast",
+      "id": "agents_example",
       "community": 2,
       "community_name": "Critical Workflows",
-      "norm_label": "example",
-      "id": "agents_example"
+      "norm_label": "example"
     },
     {
       "label": "Required Protocol",
@@ -5001,10 +5001,10 @@
       "source_file": "AGENTS.md",
       "source_location": "L10",
       "_origin": "ast",
+      "id": "agents_required_protocol",
       "community": 2,
       "community_name": "Critical Workflows",
-      "norm_label": "required protocol",
-      "id": "agents_required_protocol"
+      "norm_label": "required protocol"
     },
     {
       "label": "ponytail.md",
@@ -8277,10 +8277,10 @@
         "kind": "file"
       },
       "_origin": "ast",
-      "id": "scripts_installer_install_sudoers",
       "community": 30,
       "community_name": "install_sudoers.sh",
-      "norm_label": "install_sudoers.sh"
+      "norm_label": "install_sudoers.sh",
+      "id": "scripts_installer_install_sudoers"
     },
     {
       "label": "append_sudoers_rule()",
@@ -8292,10 +8292,10 @@
         "kind": "bash_function"
       },
       "_origin": "ast",
-      "id": "scripts_installer_install_sudoers_append_sudoers_rule",
       "community": 30,
       "community_name": "install_sudoers.sh",
-      "norm_label": "append_sudoers_rule()"
+      "norm_label": "append_sudoers_rule()",
+      "id": "scripts_installer_install_sudoers_append_sudoers_rule"
     },
     {
       "label": "COLOR_ERROR",
@@ -8307,10 +8307,10 @@
         "kind": "code"
       },
       "_origin": "ast",
-      "id": "scripts_installer_install_sudoers_color_error",
       "community": 30,
       "community_name": "install_sudoers.sh",
-      "norm_label": "color_error"
+      "norm_label": "color_error",
+      "id": "scripts_installer_install_sudoers_color_error"
     },
     {
       "label": "COLOR_INFO",
@@ -8322,10 +8322,10 @@
         "kind": "code"
       },
       "_origin": "ast",
-      "id": "scripts_installer_install_sudoers_color_info",
       "community": 30,
       "community_name": "install_sudoers.sh",
-      "norm_label": "color_info"
+      "norm_label": "color_info",
+      "id": "scripts_installer_install_sudoers_color_info"
     },
     {
       "label": "COLOR_RESET",
@@ -8337,10 +8337,10 @@
         "kind": "code"
       },
       "_origin": "ast",
-      "id": "scripts_installer_install_sudoers_color_reset",
       "community": 30,
       "community_name": "install_sudoers.sh",
-      "norm_label": "color_reset"
+      "norm_label": "color_reset",
+      "id": "scripts_installer_install_sudoers_color_reset"
     },
     {
       "label": "COLOR_SUCCESS",
@@ -8352,10 +8352,10 @@
         "kind": "code"
       },
       "_origin": "ast",
-      "id": "scripts_installer_install_sudoers_color_success",
       "community": 30,
       "community_name": "install_sudoers.sh",
-      "norm_label": "color_success"
+      "norm_label": "color_success",
+      "id": "scripts_installer_install_sudoers_color_success"
     },
     {
       "label": "COLOR_WARN",
@@ -8367,10 +8367,10 @@
         "kind": "code"
       },
       "_origin": "ast",
-      "id": "scripts_installer_install_sudoers_color_warn",
       "community": 30,
       "community_name": "install_sudoers.sh",
-      "norm_label": "color_warn"
+      "norm_label": "color_warn",
+      "id": "scripts_installer_install_sudoers_color_warn"
     },
     {
       "label": "error_handler()",
@@ -8382,10 +8382,10 @@
         "kind": "bash_function"
       },
       "_origin": "ast",
-      "id": "scripts_installer_install_sudoers_error_handler",
       "community": 30,
       "community_name": "install_sudoers.sh",
-      "norm_label": "error_handler()"
+      "norm_label": "error_handler()",
+      "id": "scripts_installer_install_sudoers_error_handler"
     },
     {
       "label": "log()",
@@ -8397,10 +8397,10 @@
         "kind": "bash_function"
       },
       "_origin": "ast",
-      "id": "scripts_installer_install_sudoers_log",
       "community": 30,
       "community_name": "install_sudoers.sh",
-      "norm_label": "log()"
+      "norm_label": "log()",
+      "id": "scripts_installer_install_sudoers_log"
     },
     {
       "label": "log_error()",
@@ -8412,10 +8412,10 @@
         "kind": "bash_function"
       },
       "_origin": "ast",
-      "id": "scripts_installer_install_sudoers_log_error",
       "community": 30,
       "community_name": "install_sudoers.sh",
-      "norm_label": "log_error()"
+      "norm_label": "log_error()",
+      "id": "scripts_installer_install_sudoers_log_error"
     },
     {
       "label": "log_info()",
@@ -8427,10 +8427,10 @@
         "kind": "bash_function"
       },
       "_origin": "ast",
-      "id": "scripts_installer_install_sudoers_log_info",
       "community": 30,
       "community_name": "install_sudoers.sh",
-      "norm_label": "log_info()"
+      "norm_label": "log_info()",
+      "id": "scripts_installer_install_sudoers_log_info"
     },
     {
       "label": "log_success()",
@@ -8442,10 +8442,10 @@
         "kind": "bash_function"
       },
       "_origin": "ast",
-      "id": "scripts_installer_install_sudoers_log_success",
       "community": 30,
       "community_name": "install_sudoers.sh",
-      "norm_label": "log_success()"
+      "norm_label": "log_success()",
+      "id": "scripts_installer_install_sudoers_log_success"
     },
     {
       "label": "log_warn()",
@@ -8457,10 +8457,10 @@
         "kind": "bash_function"
       },
       "_origin": "ast",
-      "id": "scripts_installer_install_sudoers_log_warn",
       "community": 30,
       "community_name": "install_sudoers.sh",
-      "norm_label": "log_warn()"
+      "norm_label": "log_warn()",
+      "id": "scripts_installer_install_sudoers_log_warn"
     },
     {
       "label": "main()",
@@ -8472,10 +8472,10 @@
         "kind": "bash_function"
       },
       "_origin": "ast",
-      "id": "scripts_installer_install_sudoers_main",
       "community": 30,
       "community_name": "install_sudoers.sh",
-      "norm_label": "main()"
+      "norm_label": "main()",
+      "id": "scripts_installer_install_sudoers_main"
     },
     {
       "label": "install_sudoers.sh script",
@@ -8487,10 +8487,10 @@
         "kind": "bash_entrypoint"
       },
       "_origin": "ast",
-      "id": "scripts_installer_install_sudoers_sh__entry",
       "community": 30,
       "community_name": "install_sudoers.sh",
-      "norm_label": "install_sudoers.sh script"
+      "norm_label": "install_sudoers.sh script",
+      "id": "scripts_installer_install_sudoers_sh__entry"
     },
     {
       "label": "test_deploy_release_candidate.sh",
@@ -24359,9 +24359,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "scripts_download_backupdata_generate_manifest",
-      "target": "scripts_download_backupdata_run_psql",
-      "confidence_score": 1.0
+      "target": "scripts_download_backupdata_run_psql"
     },
     {
       "relation": "calls",
@@ -24371,9 +24371,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "scripts_download_backupdata_json_error",
-      "target": "scripts_download_backupdata_log_msg",
-      "confidence_score": 1.0
+      "target": "scripts_download_backupdata_log_msg"
     },
     {
       "relation": "calls",
@@ -24383,9 +24383,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "scripts_download_backupdata_sh__entry",
-      "target": "scripts_download_backupdata_log_msg",
-      "confidence_score": 1.0
+      "target": "scripts_download_backupdata_log_msg"
     },
     {
       "relation": "calls",
@@ -24395,9 +24395,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "scripts_download_backupdata_sh__entry",
-      "target": "scripts_download_backupdata_run_pg_dump",
-      "confidence_score": 1.0
+      "target": "scripts_download_backupdata_run_pg_dump"
     },
     {
       "relation": "calls",
@@ -24407,9 +24407,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "scripts_download_backupdata_sh__entry",
-      "target": "scripts_download_backupdata_append_neutralization_sql",
-      "confidence_score": 1.0
+      "target": "scripts_download_backupdata_append_neutralization_sql"
     },
     {
       "relation": "calls",
@@ -24419,9 +24419,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "scripts_download_backupdata_sh__entry",
-      "target": "scripts_download_backupdata_generate_manifest",
-      "confidence_score": 1.0
+      "target": "scripts_download_backupdata_generate_manifest"
     },
     {
       "relation": "calls",
@@ -24431,9 +24431,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "scripts_download_backupdata_sh__entry",
-      "target": "scripts_download_backupdata_json_error",
-      "confidence_score": 1.0
+      "target": "scripts_download_backupdata_json_error"
     },
     {
       "relation": "calls",
@@ -27287,9 +27287,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "scripts_installer_install_sudoers_append_sudoers_rule",
-      "target": "scripts_installer_install_sudoers_log_warn",
-      "confidence_score": 1.0
+      "target": "scripts_installer_install_sudoers_log_warn"
     },
     {
       "relation": "calls",
@@ -27299,9 +27299,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "scripts_installer_install_sudoers_append_sudoers_rule",
-      "target": "scripts_installer_install_sudoers_log_info",
-      "confidence_score": 1.0
+      "target": "scripts_installer_install_sudoers_log_info"
     },
     {
       "relation": "calls",
@@ -27311,9 +27311,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "scripts_installer_install_sudoers_error_handler",
-      "target": "scripts_installer_install_sudoers_log_error",
-      "confidence_score": 1.0
+      "target": "scripts_installer_install_sudoers_log_error"
     },
     {
       "relation": "calls",
@@ -27323,9 +27323,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "scripts_installer_install_sudoers_log_error",
-      "target": "scripts_installer_install_sudoers_log",
-      "confidence_score": 1.0
+      "target": "scripts_installer_install_sudoers_log"
     },
     {
       "relation": "calls",
@@ -27335,9 +27335,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "scripts_installer_install_sudoers_log_info",
-      "target": "scripts_installer_install_sudoers_log",
-      "confidence_score": 1.0
+      "target": "scripts_installer_install_sudoers_log"
     },
     {
       "relation": "calls",
@@ -27347,9 +27347,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "scripts_installer_install_sudoers_log_success",
-      "target": "scripts_installer_install_sudoers_log",
-      "confidence_score": 1.0
+      "target": "scripts_installer_install_sudoers_log"
     },
     {
       "relation": "calls",
@@ -27359,9 +27359,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "scripts_installer_install_sudoers_log_warn",
-      "target": "scripts_installer_install_sudoers_log",
-      "confidence_score": 1.0
+      "target": "scripts_installer_install_sudoers_log"
     },
     {
       "relation": "calls",
@@ -27371,9 +27371,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "scripts_installer_install_sudoers_main",
-      "target": "scripts_installer_install_sudoers_log_info",
-      "confidence_score": 1.0
+      "target": "scripts_installer_install_sudoers_log_info"
     },
     {
       "relation": "calls",
@@ -27383,9 +27383,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "scripts_installer_install_sudoers_main",
-      "target": "scripts_installer_install_sudoers_log_error",
-      "confidence_score": 1.0
+      "target": "scripts_installer_install_sudoers_log_error"
     },
     {
       "relation": "calls",
@@ -27395,9 +27395,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "scripts_installer_install_sudoers_main",
-      "target": "scripts_installer_install_sudoers_append_sudoers_rule",
-      "confidence_score": 1.0
+      "target": "scripts_installer_install_sudoers_append_sudoers_rule"
     },
     {
       "relation": "calls",
@@ -27407,9 +27407,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "scripts_installer_install_sudoers_main",
-      "target": "scripts_installer_install_sudoers_log_success",
-      "confidence_score": 1.0
+      "target": "scripts_installer_install_sudoers_log_success"
     },
     {
       "relation": "calls",
@@ -27419,9 +27419,9 @@
       "weight": 1.0,
       "context": "call",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "scripts_installer_install_sudoers_sh__entry",
-      "target": "scripts_installer_install_sudoers_main",
-      "confidence_score": 1.0
+      "target": "scripts_installer_install_sudoers_main"
     },
     {
       "relation": "calls",
@@ -36790,9 +36790,9 @@
       "source_location": "L8",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "agents",
-      "target": "agents_agent_instructions"
+      "target": "agents_agent_instructions",
+      "confidence_score": 1.0
     },
     {
       "relation": "contains",
@@ -36801,9 +36801,9 @@
       "source_location": "L10",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "agents_agent_instructions",
-      "target": "agents_required_protocol"
+      "target": "agents_required_protocol",
+      "confidence_score": 1.0
     },
     {
       "relation": "contains",
@@ -36812,31 +36812,31 @@
       "source_location": "L13",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "agents_agent_instructions",
-      "target": "agents_core_checklist"
+      "target": "agents_core_checklist",
+      "confidence_score": 1.0
     },
     {
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "AGENTS.md",
-      "source_location": "L18",
+      "source_location": "L19",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "agents_agent_instructions",
-      "target": "agents_example"
+      "target": "agents_example",
+      "confidence_score": 1.0
     },
     {
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "AGENTS.md",
-      "source_location": "L27",
+      "source_location": "L28",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "agents_agent_instructions",
-      "target": "agents_agent_personas_routing"
+      "target": "agents_agent_personas_routing",
+      "confidence_score": 1.0
     },
     {
       "relation": "contains",
@@ -37692,9 +37692,9 @@
       "source_location": "L1",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "scripts_download_backupdata",
-      "target": "scripts_download_backupdata_sh__entry",
-      "confidence_score": 1.0
+      "target": "scripts_download_backupdata_sh__entry"
     },
     {
       "relation": "contains",
@@ -37912,9 +37912,9 @@
       "source_location": "L1",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "scripts_installer_install_sudoers",
-      "target": "scripts_installer_install_sudoers_sh__entry",
-      "confidence_score": 1.0
+      "target": "scripts_installer_install_sudoers_sh__entry"
     },
     {
       "relation": "contains",
@@ -40915,9 +40915,9 @@
       "source_location": "L125",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "scripts_download_backupdata",
-      "target": "scripts_download_backupdata_run_pg_dump",
-      "confidence_score": 1.0
+      "target": "scripts_download_backupdata_run_pg_dump"
     },
     {
       "relation": "defines",
@@ -40926,9 +40926,9 @@
       "source_location": "L143",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "scripts_download_backupdata",
-      "target": "scripts_download_backupdata_run_psql",
-      "confidence_score": 1.0
+      "target": "scripts_download_backupdata_run_psql"
     },
     {
       "relation": "defines",
@@ -40937,9 +40937,9 @@
       "source_location": "L161",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "scripts_download_backupdata",
-      "target": "scripts_download_backupdata_generate_manifest",
-      "confidence_score": 1.0
+      "target": "scripts_download_backupdata_generate_manifest"
     },
     {
       "relation": "defines",
@@ -40948,9 +40948,9 @@
       "source_location": "L192",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "scripts_download_backupdata",
-      "target": "scripts_download_backupdata_append_neutralization_sql",
-      "confidence_score": 1.0
+      "target": "scripts_download_backupdata_append_neutralization_sql"
     },
     {
       "relation": "defines",
@@ -40959,9 +40959,9 @@
       "source_location": "L232",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "scripts_download_backupdata",
-      "target": "scripts_download_backupdata_upload_to_gdrive",
-      "confidence_score": 1.0
+      "target": "scripts_download_backupdata_upload_to_gdrive"
     },
     {
       "relation": "defines",
@@ -40970,9 +40970,9 @@
       "source_location": "L24",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "scripts_download_backupdata",
-      "target": "scripts_download_backupdata_log_msg",
-      "confidence_score": 1.0
+      "target": "scripts_download_backupdata_log_msg"
     },
     {
       "relation": "defines",
@@ -40981,9 +40981,9 @@
       "source_location": "L30",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "scripts_download_backupdata",
-      "target": "scripts_download_backupdata_json_error",
-      "confidence_score": 1.0
+      "target": "scripts_download_backupdata_json_error"
     },
     {
       "relation": "defines",
@@ -40992,9 +40992,9 @@
       "source_location": "L40",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "scripts_download_backupdata",
-      "target": "scripts_download_backupdata_cleanup",
-      "confidence_score": 1.0
+      "target": "scripts_download_backupdata_cleanup"
     },
     {
       "relation": "defines",
@@ -41003,9 +41003,9 @@
       "source_location": "L98",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "scripts_download_backupdata",
-      "target": "scripts_download_backupdata_read_env_val",
-      "confidence_score": 1.0
+      "target": "scripts_download_backupdata_read_env_val"
     },
     {
       "relation": "defines",
@@ -43610,9 +43610,9 @@
       "source_location": "L102",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "scripts_installer_install_sudoers",
-      "target": "scripts_installer_install_sudoers_main",
-      "confidence_score": 1.0
+      "target": "scripts_installer_install_sudoers_main"
     },
     {
       "relation": "defines",
@@ -43621,9 +43621,9 @@
       "source_location": "L22",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "scripts_installer_install_sudoers",
-      "target": "scripts_installer_install_sudoers_color_reset",
-      "confidence_score": 1.0
+      "target": "scripts_installer_install_sudoers_color_reset"
     },
     {
       "relation": "defines",
@@ -43632,9 +43632,9 @@
       "source_location": "L23",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "scripts_installer_install_sudoers",
-      "target": "scripts_installer_install_sudoers_color_info",
-      "confidence_score": 1.0
+      "target": "scripts_installer_install_sudoers_color_info"
     },
     {
       "relation": "defines",
@@ -43643,9 +43643,9 @@
       "source_location": "L24",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "scripts_installer_install_sudoers",
-      "target": "scripts_installer_install_sudoers_color_success",
-      "confidence_score": 1.0
+      "target": "scripts_installer_install_sudoers_color_success"
     },
     {
       "relation": "defines",
@@ -43654,9 +43654,9 @@
       "source_location": "L25",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "scripts_installer_install_sudoers",
-      "target": "scripts_installer_install_sudoers_color_warn",
-      "confidence_score": 1.0
+      "target": "scripts_installer_install_sudoers_color_warn"
     },
     {
       "relation": "defines",
@@ -43665,9 +43665,9 @@
       "source_location": "L26",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "scripts_installer_install_sudoers",
-      "target": "scripts_installer_install_sudoers_color_error",
-      "confidence_score": 1.0
+      "target": "scripts_installer_install_sudoers_color_error"
     },
     {
       "relation": "defines",
@@ -43676,9 +43676,9 @@
       "source_location": "L29",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "scripts_installer_install_sudoers",
-      "target": "scripts_installer_install_sudoers_log",
-      "confidence_score": 1.0
+      "target": "scripts_installer_install_sudoers_log"
     },
     {
       "relation": "defines",
@@ -43687,9 +43687,9 @@
       "source_location": "L36",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "scripts_installer_install_sudoers",
-      "target": "scripts_installer_install_sudoers_log_info",
-      "confidence_score": 1.0
+      "target": "scripts_installer_install_sudoers_log_info"
     },
     {
       "relation": "defines",
@@ -43698,9 +43698,9 @@
       "source_location": "L37",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "scripts_installer_install_sudoers",
-      "target": "scripts_installer_install_sudoers_log_success",
-      "confidence_score": 1.0
+      "target": "scripts_installer_install_sudoers_log_success"
     },
     {
       "relation": "defines",
@@ -43709,9 +43709,9 @@
       "source_location": "L38",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "scripts_installer_install_sudoers",
-      "target": "scripts_installer_install_sudoers_log_warn",
-      "confidence_score": 1.0
+      "target": "scripts_installer_install_sudoers_log_warn"
     },
     {
       "relation": "defines",
@@ -43720,9 +43720,9 @@
       "source_location": "L39",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "scripts_installer_install_sudoers",
-      "target": "scripts_installer_install_sudoers_log_error",
-      "confidence_score": 1.0
+      "target": "scripts_installer_install_sudoers_log_error"
     },
     {
       "relation": "defines",
@@ -43731,9 +43731,9 @@
       "source_location": "L42",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "scripts_installer_install_sudoers",
-      "target": "scripts_installer_install_sudoers_error_handler",
-      "confidence_score": 1.0
+      "target": "scripts_installer_install_sudoers_error_handler"
     },
     {
       "relation": "defines",
@@ -43742,9 +43742,9 @@
       "source_location": "L57",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "scripts_installer_install_sudoers",
-      "target": "scripts_installer_install_sudoers_append_sudoers_rule",
-      "confidence_score": 1.0
+      "target": "scripts_installer_install_sudoers_append_sudoers_rule"
     },
     {
       "relation": "defines",
@@ -52605,12 +52605,12 @@
       "relation": "references",
       "confidence": "EXTRACTED",
       "source_file": "AGENTS.md",
-      "source_location": "L28",
+      "source_location": "L29",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "agents",
-      "target": "agents_rules_references_agent_personas_ref"
+      "target": "agents_rules_references_agent_personas_ref",
+      "confidence_score": 1.0
     },
     {
       "relation": "references",
@@ -52802,5 +52802,5 @@
     }
   ],
   "hyperedges": [],
-  "built_at_commit": "52947093a89ce2fb32d86c98a49767ad0a5e243c"
+  "built_at_commit": "b12523f78693baa8f971201b289d74bb021adae8"
 }

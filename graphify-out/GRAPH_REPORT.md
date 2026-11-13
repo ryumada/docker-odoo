@@ -1,7 +1,7 @@
 # Graph Report - docker-odoo  (2026-11-13)
 
 ## Corpus Check
-- 124 files · ~143,009 words
+- 124 files · ~143,036 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
@@ -10,7 +10,7 @@
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `52947093`
+- Built from commit: `b12523f7`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -458,16 +458,18 @@ Cohesion: 0.31
 Nodes (7): append_neutralization_sql(), generate_manifest(), json_error(), log_msg(), run_pg_dump(), run_psql(), download-backupdata.sh script
 
 ## Knowledge Gaps
-- **435 isolated node(s):** `COLOR_RESET`, `COLOR_INFO`, `COLOR_SUCCESS`, `COLOR_WARN`, `COLOR_ERROR` (+430 more)
+- **435 isolated node(s):** `Required Protocol`, `Core Checklist`, `Example`, `Agent Personas (Routing)`, `snapshot_storage.sh script` (+430 more)
   These have ≤1 connection - possible missing edges or undocumented components.
 - **27 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `snap_write_sidecar()` connect `snapshot_storage.sh` to `download-snapshot.sh`?**
+- **Why does `snap_check_or_create_sidecar()` connect `snapshot_storage.sh` to `upload-snapshot.sh`, `upload-temp-snapshots.sh`?**
   _High betweenness centrality (0.000) - this node is a cross-community bridge._
-- **What connects `COLOR_RESET`, `COLOR_INFO`, `COLOR_SUCCESS` to the rest of the system?**
+- **Why does `gcs_verify_upload()` connect `snapshot_storage.sh` to `upload-temp-snapshots.sh`?**
+  _High betweenness centrality (0.000) - this node is a cross-community bridge._
+- **What connects `Required Protocol`, `Core Checklist`, `Example` to the rest of the system?**
   _435 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `snapshot_storage.sh` be split into smaller, more focused modules?**
   _Cohesion score 0.08502024291497975 - nodes in this community are weakly interconnected._
@@ -477,5 +479,3 @@ _Questions this graph is uniquely positioned to answer:_
   _Cohesion score 0.047619047619047616 - nodes in this community are weakly interconnected._
 - **Should `restore-snapshot.sh` be split into smaller, more focused modules?**
   _Cohesion score 0.14750290360046459 - nodes in this community are weakly interconnected._
-- **Should `ssh_utils.sh` be split into smaller, more focused modules?**
-  _Cohesion score 0.0700354609929078 - nodes in this community are weakly interconnected._
