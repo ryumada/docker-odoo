@@ -125,6 +125,7 @@ EOF
 
   # Create sudoers rules for the 'devops' user
   append_sudoers_rule "devops" "scripts" "change_database" "$temp_file"
+  append_sudoers_rule "devops" "scripts" "change_faketime" "$temp_file"
   append_sudoers_rule "devops" "scripts" "git_addons_updater" "$temp_file"
   append_sudoers_rule "devops" "scripts" "git_odoo-base_updater" "$temp_file"
   append_sudoers_rule "devops" "scripts" "list-databases" "$temp_file"
@@ -135,6 +136,7 @@ EOF
 
   # Create sudoers rules for the 'odoo' user
   append_sudoers_rule "odoo" "scripts" "change_database" "$temp_file"
+  append_sudoers_rule "odoo" "scripts" "change_faketime" "$temp_file"
   append_sudoers_rule "odoo" "scripts" "git_addons_updater" "$temp_file"
   append_sudoers_rule "odoo" "scripts" "git_odoo-base_updater" "$temp_file"
   append_sudoers_rule "odoo" "scripts" "list-databases" "$temp_file"
@@ -148,6 +150,7 @@ EOF
   logged_in_user="${SUDO_USER:-${REPOSITORY_OWNER:-$(id -un)}}"
   if [ "$logged_in_user" != "root" ] && [ "$logged_in_user" != "devops" ]; then
     append_sudoers_rule "$logged_in_user" "scripts" "change_database" "$temp_file"
+    append_sudoers_rule "$logged_in_user" "scripts" "change_faketime" "$temp_file"
     append_sudoers_rule "$logged_in_user" "scripts" "git_addons_updater" "$temp_file"
     append_sudoers_rule "$logged_in_user" "scripts" "git_odoo-base_updater" "$temp_file"
     append_sudoers_rule "$logged_in_user" "scripts" "list-databases" "$temp_file"
