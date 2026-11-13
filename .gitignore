@@ -37,6 +37,7 @@ scripts/*
 !scripts/dataodoo-password_changer.sh
 !scripts/dataodoo-remover.sh
 !scripts/disk_free_monitor.sh
+!scripts/download-backupdata.sh
 !scripts/download-snapshot.sh
 !scripts/generate_map.sh
 !scripts/generate_app_tree.sh

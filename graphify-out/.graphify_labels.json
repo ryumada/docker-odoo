@@ -78,8 +78,10 @@
   "76": "test_local_retention.sh",
   "77": "test_odoo_sizes.sh",
   "78": "test_snapshot_stats.sh",
+  "79": "upload-temp-snapshots.sh",
   "80": "test_reverse_proxy.sh",
   "81": "Handler",
+  "82": "upload-snapshot.sh",
   "83": "setup-validator-docker.sh",
   "84": "validate-snapshot-worker.sh",
   "85": "test_read_drill_reports.sh",
@@ -105,5 +107,6 @@
   "105": "read-drill-reports.sh",
   "106": "test_validate_snapshot.sh",
   "107": "df",
-  "108": "launch.py"
+  "108": "launch.py",
+  "109": "download-backupdata.sh"
 }

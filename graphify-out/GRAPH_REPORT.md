@@ -1,16 +1,16 @@
 # Graph Report - docker-odoo  (2026-11-13)
 
 ## Corpus Check
-- 123 files · ~141,219 words
+- 124 files · ~143,009 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 1544 nodes · 2611 edges · 107 communities (80 shown, 27 thin omitted)
+- 1555 nodes · 2628 edges · 110 communities (83 shown, 27 thin omitted)
 - Extraction: 100% EXTRACTED · 0% INFERRED · 0% AMBIGUOUS · INFERRED: 12 edges (avg confidence: 0.5)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `0459adce`
+- Built from commit: `52947093`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -90,8 +90,10 @@
 - test_local_retention.sh
 - test_odoo_sizes.sh
 - test_snapshot_stats.sh
+- upload-temp-snapshots.sh
 - test_reverse_proxy.sh
 - Handler
+- upload-snapshot.sh
 - setup-validator-docker.sh
 - validate-snapshot-worker.sh
 - test_read_drill_reports.sh
@@ -116,39 +118,40 @@
 - read-drill-reports.sh
 - test_validate_snapshot.sh
 - df
+- download-backupdata.sh
 
 ## God Nodes (most connected - your core abstractions)
 1. `main()` - 27 edges
 2. `validate-snapshot.sh script` - 23 edges
 3. `record_stage()` - 22 edges
 4. `log_info()` - 21 edges
-5. `log_error()` - 19 edges
-6. `log_info()` - 19 edges
-7. `restoreSnapshotFull()` - 18 edges
-8. `log_error()` - 18 edges
+5. `log_info()` - 19 edges
+6. `log_error()` - 19 edges
+7. `log_error()` - 18 edges
+8. `restoreSnapshotFull()` - 18 edges
 9. `finish()` - 17 edges
 10. `log_success()` - 16 edges
 
 ## Surprising Connections (you probably didn't know these)
 - `verifySnapshotChecksum()` --calls--> `snap_verify_file()`  [EXTRACTED]
   scripts/restore-snapshot.sh → scripts/lib/snapshot_storage.sh
+- `upload-temp-snapshots.sh script` --calls--> `gcs_verify_upload()`  [EXTRACTED]
+  scripts/upload-temp-snapshots.sh → scripts/lib/snapshot_storage.sh
+- `upload_snapshot()` --calls--> `gds_delete_file()`  [EXTRACTED]
+  scripts/upload-snapshot.sh → scripts/lib/snapshot_storage.sh
+- `upload_to_gdrive_file()` --calls--> `gds_delete_file()`  [EXTRACTED]
+  scripts/upload-temp-snapshots.sh → scripts/lib/snapshot_storage.sh
 - `download-snapshot.sh script` --calls--> `gds_download()`  [EXTRACTED]
   scripts/download-snapshot.sh → scripts/lib/snapshot_storage.sh
-- `download-snapshot.sh script` --calls--> `snap_write_sidecar()`  [EXTRACTED]
-  scripts/download-snapshot.sh → scripts/lib/snapshot_storage.sh
-- `cleanup-snapshot.sh script` --calls--> `snap_local_retention()`  [EXTRACTED]
-  scripts/cleanup-snapshot.sh → scripts/lib/snapshot_storage.sh
-- `generate-snapshot-ssh-key.sh script` --calls--> `install_pubkey_via_admin()`  [EXTRACTED]
-  scripts/generate-snapshot-ssh-key.sh → scripts/lib/ssh_utils.sh
 
 ## Import Cycles
 - None detected.
 
-## Communities (107 total, 27 thin omitted)
+## Communities (110 total, 27 thin omitted)
 
 ### Community 0 - "snapshot_storage.sh"
-Cohesion: 0.05
-Nodes (63): gcs_invalidate_validation(), gcs_publish_validation(), gcs_verify_upload(), gds_apply_plan(), gds_curl(), gds_delete_file(), gds_download(), gds_find_by_name() (+55 more)
+Cohesion: 0.09
+Nodes (28): gcs_invalidate_validation(), gcs_publish_validation(), gcs_verify_upload(), gds_apply_plan(), gds_curl(), gds_delete_file(), gds_download(), gds_find_by_name() (+20 more)
 
 ### Community 1 - "setup.sh"
 Cohesion: 0.10
@@ -390,6 +393,10 @@ Nodes (17): as_pg(), C_FAIL, C_INFO, C_PASS, C_RESET, C_SKIP, check_eq(), check_
 Cohesion: 0.15
 Nodes (16): C_FAIL, C_INFO, C_PASS, C_RESET, C_SKIP, check_eq(), fail(), lib() (+8 more)
 
+### Community 79 - "upload-temp-snapshots.sh"
+Cohesion: 0.22
+Nodes (18): cleanup_gdrive_old_snapshots(), COLOR_ERROR, COLOR_INFO, COLOR_RESET, COLOR_SUCCESS, COLOR_WARN, get_gdrive_access_token_from_sa(), is_gdrive_token_valid() (+10 more)
+
 ### Community 80 - "test_reverse_proxy.sh"
 Cohesion: 0.20
 Nodes (16): C_FAIL, C_INFO, C_PASS, C_RESET, C_SKIP, check_proxy(), fail(), odoo_would_run_queue_job() (+8 more)
@@ -397,6 +404,10 @@ Nodes (16): C_FAIL, C_INFO, C_PASS, C_RESET, C_SKIP, check_proxy(), fail(), odoo
 ### Community 81 - "Handler"
 Cohesion: 0.27
 Nodes (8): BaseHTTPRequestHandler, files_dir(), Handler, load_all(), main(), parse_q(), Supports the clauses the scripts send, joined by ' and '., save_file()
+
+### Community 82 - "upload-snapshot.sh"
+Cohesion: 0.22
+Nodes (17): cleanup_gdrive_old_snapshots(), COLOR_ERROR, COLOR_INFO, COLOR_RESET, COLOR_SUCCESS, COLOR_WARN, get_gdrive_access_token_from_sa(), is_gdrive_token_valid() (+9 more)
 
 ### Community 83 - "setup-validator-docker.sh"
 Cohesion: 0.18
@@ -442,6 +453,10 @@ Nodes (3): odoo_version_detect(), _odoo_version_log(), odoo_version.sh script
 Cohesion: 0.50
 Nodes (3): make_curl_spy(), suite_credentials.sh script, suite_credentials()
 
+### Community 109 - "download-backupdata.sh"
+Cohesion: 0.31
+Nodes (7): append_neutralization_sql(), generate_manifest(), json_error(), log_msg(), run_pg_dump(), run_psql(), download-backupdata.sh script
+
 ## Knowledge Gaps
 - **435 isolated node(s):** `COLOR_RESET`, `COLOR_INFO`, `COLOR_SUCCESS`, `COLOR_WARN`, `COLOR_ERROR` (+430 more)
   These have ≤1 connection - possible missing edges or undocumented components.
@@ -450,10 +465,12 @@ Nodes (3): make_curl_spy(), suite_credentials.sh script, suite_credentials()
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
+- **Why does `snap_write_sidecar()` connect `snapshot_storage.sh` to `download-snapshot.sh`?**
+  _High betweenness centrality (0.000) - this node is a cross-community bridge._
 - **What connects `COLOR_RESET`, `COLOR_INFO`, `COLOR_SUCCESS` to the rest of the system?**
   _435 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `snapshot_storage.sh` be split into smaller, more focused modules?**
-  _Cohesion score 0.05052631578947368 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.08502024291497975 - nodes in this community are weakly interconnected._
 - **Should `setup.sh` be split into smaller, more focused modules?**
   _Cohesion score 0.10235690235690235 - nodes in this community are weakly interconnected._
 - **Should `Critical Workflows` be split into smaller, more focused modules?**
@@ -462,5 +479,3 @@ _Questions this graph is uniquely positioned to answer:_
   _Cohesion score 0.14750290360046459 - nodes in this community are weakly interconnected._
 - **Should `ssh_utils.sh` be split into smaller, more focused modules?**
   _Cohesion score 0.0700354609929078 - nodes in this community are weakly interconnected._
-- **Should `scripts/README.md` be split into smaller, more focused modules?**
-  _Cohesion score 0.041666666666666664 - nodes in this community are weakly interconnected._
