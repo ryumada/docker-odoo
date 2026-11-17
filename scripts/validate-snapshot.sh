@@ -125,6 +125,7 @@ VALIDATOR_BOOT_STRICT=$(cfg VALIDATOR_BOOT_STRICT false)
 VALIDATOR_BOOT_TIMEOUT=$(cfg VALIDATOR_BOOT_TIMEOUT 900)
 VALIDATOR_BUILD_TIMEOUT=$(cfg VALIDATOR_BUILD_TIMEOUT 3600)
 VALIDATOR_ODOO_MEMORY=$(cfg VALIDATOR_ODOO_MEMORY 2g)
+VALIDATOR_REPORTS_KEEP=$(cfg VALIDATOR_REPORTS_KEEP 30)
 GDRIVE_ACCESS_TOKEN=$(cfg GDRIVE_ACCESS_TOKEN "")
 GDRIVE_SERVICE_ACCOUNT_KEY=$(cfg GDRIVE_SERVICE_ACCOUNT_KEY "")
 GDRIVE_FOLDER_ID=$(cfg GDRIVE_FOLDER_ID "")
@@ -137,6 +138,7 @@ KEEP_WORKDIR=false
 GIT_CHECK=true
 LOCAL_ONLY=false
 REPORT_PATH=""
+CUSTOM_REPORT_PATH=false
 UNLESS_SHA=""
 
 show_help() {
@@ -179,7 +181,8 @@ Settings (environment or .env): VALIDATOR_WORK_DIR, VALIDATOR_DISK_RESERVE_GB,
 VALIDATOR_WATCHDOG_INTERVAL, VALIDATOR_POSTGRES_IMAGE, VALIDATOR_PG_CPUS, VALIDATOR_PG_MEMORY,
 VALIDATOR_FILESTORE_MAX_MISSING_PCT, VALIDATOR_QUEUE_TIMEOUT, VALIDATOR_GIT_TIMEOUT,
 VALIDATOR_GIT_ALLOW_PROTOCOL, VALIDATOR_PULL_POLICY, VALIDATOR_REMOTE_WORK_DIR, VALIDATOR_BOOT,
-VALIDATOR_BOOT_STRICT, VALIDATOR_BOOT_TIMEOUT, VALIDATOR_BUILD_TIMEOUT, VALIDATOR_ODOO_MEMORY.
+VALIDATOR_BOOT_STRICT, VALIDATOR_BOOT_TIMEOUT, VALIDATOR_BUILD_TIMEOUT, VALIDATOR_ODOO_MEMORY,
+VALIDATOR_REPORTS_KEEP.
 Prefer GDRIVE_SERVICE_ACCOUNT_KEY in .env over --token: command-line arguments are visible to
 other users of this host.
 
@@ -199,7 +202,7 @@ while [ $# -gt 0 ]; do
     --inbox) need_value "$1" "${2:-}"; SOURCE_KIND=inbox; SOURCE_REF="$2"; shift 2 ;;
     --unless-checksum) need_value "$1" "${2:-}"; UNLESS_SHA="$2"; shift 2 ;;
     --publish) PUBLISH=true; shift ;;
-    --report) need_value "$1" "${2:-}"; REPORT_PATH="$2"; shift 2 ;;
+    --report) need_value "$1" "${2:-}"; REPORT_PATH="$2"; CUSTOM_REPORT_PATH=true; shift 2 ;;
     --keep-workdir) KEEP_WORKDIR=true; shift ;;
     --no-git-check) GIT_CHECK=false; shift ;;
     --no-boot) VALIDATOR_BOOT=false; shift ;;
@@ -258,6 +261,7 @@ bad_settings=()
 [[ "$VALIDATOR_BOOT_TIMEOUT" =~ ^[1-9][0-9]*$ ]] || bad_settings+=("VALIDATOR_BOOT_TIMEOUT='$VALIDATOR_BOOT_TIMEOUT' (seconds)")
 [[ "$VALIDATOR_BUILD_TIMEOUT" =~ ^[1-9][0-9]*$ ]] || bad_settings+=("VALIDATOR_BUILD_TIMEOUT='$VALIDATOR_BUILD_TIMEOUT' (seconds)")
 [[ "$VALIDATOR_ODOO_MEMORY" =~ ^[0-9]+[bkmgBKMG]?$ ]] || bad_settings+=("VALIDATOR_ODOO_MEMORY='$VALIDATOR_ODOO_MEMORY' (e.g. 2g)")
+[[ "$VALIDATOR_REPORTS_KEEP" =~ ^[0-9]+$ ]] || bad_settings+=("VALIDATOR_REPORTS_KEEP='$VALIDATOR_REPORTS_KEEP' (whole number, 0 keeps all)")
 if [ ${#bad_settings[@]} -gt 0 ]; then
   for b in "${bad_settings[@]}"; do log_error "Invalid setting: $b"; done
   exit 3
@@ -271,6 +275,44 @@ SNAPSHOT_REMOTE_USER=$(cfg SNAPSHOT_REMOTE_USER "")
 SNAPSHOT_REMOTE_PORT=$(cfg SNAPSHOT_REMOTE_PORT 22)
 SNAPSHOT_REMOTE_KEY=$(cfg SNAPSHOT_REMOTE_KEY "")
 VALIDATOR_REMOTE_WORK_DIR=$(cfg VALIDATOR_REMOTE_WORK_DIR "")
+
+prune_reports() {
+  # Keep at most VALIDATOR_REPORTS_KEEP reports for the given service in $VALIDATOR_DIR/reports.
+  local svc="$1" keep_file="${2:-}"
+  [ "$CUSTOM_REPORT_PATH" = true ] && return 0
+  [ -n "${VALIDATOR_REMOTE_CHILD:-}" ] && return 0
+  [ "${VALIDATOR_REPORTS_KEEP:-0}" -gt 0 ] 2>/dev/null || return 0
+  [ -n "$svc" ] || return 0
+  python3 - "$VALIDATOR_DIR/reports" "$svc" "$VALIDATOR_REPORTS_KEEP" "$keep_file" <<'PY' 2>/dev/null || true
+import glob, json, os, sys
+rdir, svc, keep_n, just_written = sys.argv[1], sys.argv[2], int(sys.argv[3]), os.path.realpath(sys.argv[4]) if sys.argv[4] else ""
+latest_link = os.path.join(rdir, f"latest-{svc}.json")
+latest_target = os.path.realpath(latest_link) if os.path.islink(latest_link) else ""
+matches = []
+for p in glob.glob(os.path.join(rdir, "*.json")):
+    name = os.path.basename(p)
+    if name.startswith("latest-") or name.startswith(".") or os.path.islink(p):
+        continue
+    try:
+        with open(p) as f:
+            r = json.load(f)
+        if not isinstance(r, dict) or r.get("service") != svc:
+            continue
+        key = (r.get("started_at") or "", os.path.getmtime(p), name)
+    except Exception:
+        continue
+    matches.append((key, p))
+matches.sort(key=lambda x: x[0], reverse=True)
+for _, p in matches[keep_n:]:
+    rp = os.path.realpath(p)
+    if rp in (just_written, latest_target):
+        continue
+    try:
+        os.unlink(p)
+    except OSError:
+        pass
+PY
+}
 
 remote_fail() {
   # Args: exit_code message. Writes a report on this host for a drill that never got a result.
@@ -290,6 +332,7 @@ json.dump({"schema": 1, "level": "database", "result": "error", "service": svc o
   chmod 600 "$REPORT_PATH" 2>/dev/null
   ln -sf "$REPORT_PATH" "$VALIDATOR_DIR/reports/latest-${svc:-unknown}.json" 2>/dev/null
   own_path "$REPORT_PATH" "$VALIDATOR_DIR/reports/latest-${svc:-unknown}.json"
+  prune_reports "${svc:-}" "$REPORT_PATH"
   log_error "$msg"
   log_info "Report: $REPORT_PATH"
   exit "$code"
@@ -467,6 +510,7 @@ json.dump(r, open(sys.argv[1], "w"), indent=2)
     mv "$VALIDATOR_DIR/reports/.incoming.$$" "$REPORT_PATH" && chmod 600 "$REPORT_PATH"
     ln -sf "$REPORT_PATH" "$VALIDATOR_DIR/reports/latest-$svc.json" 2>/dev/null
     own_path "$REPORT_PATH" "$VALIDATOR_DIR/reports/latest-$svc.json"
+    prune_reports "$svc" "$REPORT_PATH"
     log_info "Report (from the Secondary VPS): $REPORT_PATH"
     case "$rc" in 0|1|2|3|4) exit "$rc" ;; esac
     log_warn "The drill on the Secondary VPS ended unexpectedly (exit $rc)."
@@ -716,6 +760,7 @@ with open(out, "w") as f:
   chmod 600 "$REPORT_PATH" 2>/dev/null || true
   ln -sf "$REPORT_PATH" "$VALIDATOR_DIR/reports/latest-${SERVICE:-unknown}.json" 2>/dev/null || true
   own_path "$REPORT_PATH" "$VALIDATOR_DIR/reports/latest-${SERVICE:-unknown}.json"
+  prune_reports "${SERVICE:-}" "$REPORT_PATH"
   # On the Secondary VPS this copy is temporary: the main VPS keeps the report and says where
   [ -n "${VALIDATOR_REMOTE_CHILD:-}" ] || log_info "Report: $REPORT_PATH"
 }

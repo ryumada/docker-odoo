@@ -287,4 +287,26 @@ sys.exit(0 if any(re.fullmatch(r"odoo-base: [0-9a-f]{8} found on remote \((by-id
   check "no Postgres left running" no_postgres_under "$T/dl"
   check "lock released after the abort" lock_free
   check "work folder removed after the abort" runs_empty
+
+  tvs_section "local: VALIDATOR_REPORTS_KEEP prunes older reports per service"
+  local kd="$T/keep-work"
+  mkdir -p "$kd/reports"
+  printf '{"service":"good","started_at":"2026-01-01T00:00:01Z"}\n' > "$kd/reports/good-20260101-000001-1.json"
+  printf '{"service":"good","started_at":"2026-01-01T00:00:02Z"}\n' > "$kd/reports/good-20260101-000002-2.json"
+  printf '{"service":"good","started_at":"2026-01-01T00:00:03Z"}\n' > "$kd/reports/good-20260101-000003-3.json"
+  printf '{"service":"other","started_at":"2025-12-01T00:00:00Z"}\n' > "$kd/reports/other-20251201-000000-1.json"
+  VS_NO_REPORT=1 vs keep-two VALIDATOR_WORK_DIR="$kd" VALIDATOR_REPORTS_KEEP=2 -- --file "$good"
+  check_rc "drill with VALIDATOR_REPORTS_KEEP=2 passes" 0
+  check_eq "only 2 reports for good remain" 2 "$(find "$kd/reports" -maxdepth 1 -type f -name 'good-*.json' | wc -l)"
+  check_not "oldest report for good was deleted" test -e "$kd/reports/good-20260101-000001-1.json"
+  check_not "second oldest report for good was deleted" test -e "$kd/reports/good-20260101-000002-2.json"
+  check "newest prior report for good was kept" test -f "$kd/reports/good-20260101-000003-3.json"
+  check "latest-good.json symlink exists" test -L "$kd/reports/latest-good.json"
+  check "other service report was untouched" test -f "$kd/reports/other-20251201-000000-1.json"
+  VS_NO_REPORT=1 vs keep-zero VALIDATOR_WORK_DIR="$kd" VALIDATOR_REPORTS_KEEP=0 -- --file "$good"
+  check_rc "drill with VALIDATOR_REPORTS_KEEP=0 passes" 0
+  check_eq "VALIDATOR_REPORTS_KEEP=0 keeps all 3 reports for good" 3 "$(find "$kd/reports" -maxdepth 1 -type f -name 'good-*.json' | wc -l)"
+  vs keep-bad VALIDATOR_REPORTS_KEEP=abc -- --file "$good"
+  check_rc "non-numeric VALIDATOR_REPORTS_KEEP is rejected (exit 3)" 3
+  rm -rf "$kd"
 }
