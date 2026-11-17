@@ -403,11 +403,12 @@ if [ -n "$SNAPSHOT_REMOTE_HOST" ]; then
   rm -f "$ZIP_PATH"
 
   # Upload from Secondary VPS using only the short-lived Bearer token via stdin
-  UPLOAD_JSON=$(printf '%s\n' "$GDRIVE_ACCESS_TOKEN" | ssh "${SSH_OPTS[@]}" "$SNAPSHOT_REMOTE_USER@$SNAPSHOT_REMOTE_HOST" \
-    "python3 - '$REMOTE_TMP' '$ZIP_NAME' '$GDRIVE_FOLDER_ID' '$SHARE_EMAIL'" <<'REMOTE_PY'
+  REMOTE_PY_CODE=$(cat <<'REMOTE_PY'
 import json, os, sys, urllib.error, urllib.request
 file_path, file_name, folder_id, share_email = sys.argv[1:5]
 token = sys.stdin.readline().strip()
+if not token:
+    raise RuntimeError("GDRIVE_ACCESS_TOKEN was not received on stdin")
 try:
     file_size = os.path.getsize(file_path)
     init_url = "https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&supportsAllDrives=true"
@@ -458,6 +459,8 @@ finally:
         os.remove(file_path)
 REMOTE_PY
   )
+  UPLOAD_JSON=$(printf '%s\n' "$GDRIVE_ACCESS_TOKEN" | ssh "${SSH_OPTS[@]}" "$SNAPSHOT_REMOTE_USER@$SNAPSHOT_REMOTE_HOST" \
+    "python3 -c $(printf '%q' "$REMOTE_PY_CODE") $(printf '%q' "$REMOTE_TMP") $(printf '%q' "$ZIP_NAME") $(printf '%q' "$GDRIVE_FOLDER_ID") $(printf '%q' "$SHARE_EMAIL")")
 else
   log_msg "INFO" "Uploading archive to Google Drive..."
   UPLOAD_JSON=$(upload_to_gdrive "$ZIP_PATH" "$ZIP_NAME" "$GDRIVE_FOLDER_ID" "$GDRIVE_ACCESS_TOKEN" "$SHARE_EMAIL")
