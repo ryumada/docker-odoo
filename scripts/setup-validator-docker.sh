@@ -6,7 +6,7 @@ set -o pipefail
 # Dependencies: ssh, git, timeout, sudo (with --local); on the target: Ubuntu/Debian with Docker Engine, systemd, cgroup v2
 
 CURRENT_DIR=$(dirname "$(readlink -f "$0")")
-PATH_TO_ODOO=$(git -C "$CURRENT_DIR" rev-parse --show-toplevel 2>/dev/null || dirname "$CURRENT_DIR")
+PATH_TO_ODOO=$(git -c safe.directory='*' -C "$CURRENT_DIR" rev-parse --show-toplevel 2>/dev/null || dirname "$CURRENT_DIR")
 
 # --- Logging Functions & Colors ---
 readonly COLOR_RESET="\033[0m"
@@ -116,7 +116,7 @@ run_git_check() {
   add_repo_remote() {
     local dir="$1" lbl="$2" url
     [ -d "$dir/.git" ] || [ -f "$dir/.git" ] || return 0
-    url=$(git -C "$dir" remote get-url origin 2>/dev/null || git -C "$dir" remote -v 2>/dev/null | awk 'NR==1{print $2}')
+    url=$(git -c safe.directory='*' -C "$dir" remote get-url origin 2>/dev/null || git -c safe.directory='*' -C "$dir" remote -v 2>/dev/null | awk 'NR==1{print $2}')
     [ -n "$url" ] && remotes+=("$lbl|$url")
   }
 
