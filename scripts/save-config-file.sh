@@ -30,10 +30,11 @@ case "$CLEAN_NAME" in
         ;;
 esac
 
-FULL_PATH="$PATH_TO_ODOO/$TARGET_FILE"
+FULL_PATH="$PATH_TO_ODOO/$CLEAN_NAME"
 
 # Write content (from argument or stdin)
 TEMP_FILE=$(mktemp)
+trap 'rm -f "$TEMP_FILE"' EXIT
 if [ -n "$B64_DATA" ]; then
     echo "$B64_DATA" | base64 -d > "$TEMP_FILE"
 else
@@ -42,12 +43,12 @@ fi
 
 # Move file into place and set ownership and permissions
 if [ -n "$REPOSITORY_OWNER" ] && [ "$REPOSITORY_OWNER" != "$(whoami)" ]; then
+    chown "$REPOSITORY_OWNER" "$TEMP_FILE"
     sudo -H -u "$REPOSITORY_OWNER" cp "$TEMP_FILE" "$FULL_PATH"
     sudo -H -u "$REPOSITORY_OWNER" chmod 644 "$FULL_PATH"
 else
     cp "$TEMP_FILE" "$FULL_PATH"
     chmod 644 "$FULL_PATH"
 fi
-rm -f "$TEMP_FILE"
 
-echo "Successfully saved $TARGET_FILE"
+echo "Successfully saved $CLEAN_NAME"
