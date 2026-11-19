@@ -28,7 +28,7 @@ env_get() {
 }
 
 TARGET_HOST="" TARGET_USER="" TARGET_PORT="" TARGET_KEY="" ADMIN_USER="" ADMIN_PASS="" PASSWORD_STDIN=false
-MODE=setup REMOVE_DOCKER_GROUP=false LOCAL=false CHECK_GIT=false CHECK_DOCKER=false SKIP_GIT_CHECK=false
+MODE=setup REMOVE_DOCKER_GROUP=false LOCAL=false CHECK_GIT=false CHECK_DOCKER=false SKIP_GIT_CHECK=false CREATE_KEY=false
 CUSTOM_REMOTES=()
 
 show_help() {
@@ -63,6 +63,7 @@ Options:
                              can reach/clone git remotes from git/*, odoo-base/*, and docker-odoo.
                              Can be used alone or combined with --check. (Setup mode runs this automatically.)
   --remote <URL>             Test a specific git remote URL with --check-git (can be repeated)
+  --create-key               With --check-git: auto-generate ~/.ssh/id_ed25519 if missing and print the public key when a remote fails
   --skip-git-check           Skip the automatic git access check after setup
   -i, --key <PATH>           SSH key of the drill user for --check (default: SNAPSHOT_REMOTE_KEY from .env)
   --remove-docker-group      Also remove the drill user from the docker group
@@ -94,6 +95,7 @@ while [ $# -gt 0 ]; do
     --check) MODE=check; CHECK_DOCKER=true; shift ;;
     --check-git) CHECK_GIT=true; shift ;;
     --remote) need_value "$1" "${2:-}"; CUSTOM_REMOTES+=("$2"); shift 2 ;;
+    --create-key) CREATE_KEY=true; shift ;;
     --skip-git-check) SKIP_GIT_CHECK=true; shift ;;
     -i|--key) need_value "$1" "${2:-}"; TARGET_KEY="$2"; shift 2 ;;
     --remove-docker-group) REMOVE_DOCKER_GROUP=true; shift ;;
@@ -108,7 +110,7 @@ git_valid_remote() { [ -n "$1" ] && [[ "$1" != -* ]] && [[ "$1" != *[[:space:][:
 
 run_git_check() {
   local create_key=false
-  [ "${1:-}" = "--create-key" ] && create_key=true
+  { [ "${1:-}" = "--create-key" ] || [ "${CREATE_KEY:-false}" = true ]; } && create_key=true
   local allow tout rhost ruser rport rkey owner owner_home this_vps clean_tgt cand
   local remotes=() ssh_opts=() remote_target="" local_user="" git_user=""
   local entry label remote shown cmd ok=0 fail=0 rc_cmd key_cmd pubkey

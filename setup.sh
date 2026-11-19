@@ -954,6 +954,23 @@ EOF
   rm -rf "$temp_dir"
 }
 
+function checkValidatorGitAccess() {
+  local target_label="$1" verify_cmd="$2"
+  shift 2
+  local git_out pubkey
+  if ! git_out=$("$@" 2>&1); then
+    printf '%s\n' "$git_out" >&2
+    pubkey=$(grep '^ssh-ed25519 ' <<< "$git_out" | tail -n1 || true)
+    if [ -n "$pubkey" ]; then
+      TODO+=("Snapshot drills: git access failed for $target_label. Add this deploy key to your git platform and verify with $verify_cmd:\n    $pubkey")
+    else
+      TODO+=("Snapshot drills: git access failed for $target_label. Add a passwordless deploy key / credentials and verify with $verify_cmd")
+    fi
+    return 1
+  fi
+  return 0
+}
+
 function setupValidatorDocker() {
   # Snapshot drills (scripts/validate-snapshot.sh) run on the Secondary VPS with rootless Docker for the
   # snapshot user. Checked with the snapshot key (no admin needed); set up through a sudo admin on request.
@@ -965,9 +982,8 @@ function setupValidatorDocker() {
   out=$("$tool" --check -t "$host" -u "$user" -p "$port" -i "$key" 2>&1) || rc=$?
   if [ "$rc" -eq 0 ]; then
     log_success "Secondary VPS is ready for snapshot drills (rootless Docker for $user@$host)."
-    if ! "$tool" --check-git -t "$host" -u "$user" -p "$port" -i "$key"; then
-      TODO+=("Snapshot drills: git access failed for $user@$host. Add a passwordless deploy key / credentials for $user on $host and verify with ./scripts/setup-validator-docker.sh --check-git")
-    fi
+    checkValidatorGitAccess "$user@$host" "./scripts/setup-validator-docker.sh --check-git" \
+      "$tool" --check-git --create-key -t "$host" -u "$user" -p "$port" -i "$key" || true
     return 0
   fi
   if [ "$rc" -ne 3 ]; then
@@ -978,8 +994,14 @@ function setupValidatorDocker() {
   grep '^\[!\]' <<< "$out" | sed 's/^/    /' >&2 || true
   if [ "$IS_NON_INTERACTIVE" != true ]; then
     read -rp "❓ Sudo admin account on $host to set it up now (leave empty to skip): " admin || admin=""
-    if [ -n "$admin" ] && "$tool" -a "$admin" -t "$host" -u "$user" -p "$port"; then
-      return 0
+    if [ -n "$admin" ]; then
+      if "$tool" -a "$admin" -t "$host" -u "$user" -p "$port"; then
+        return 0
+      elif "$tool" --check -t "$host" -u "$user" -p "$port" -i "$key" >/dev/null 2>&1; then
+        checkValidatorGitAccess "$user@$host" "./scripts/setup-validator-docker.sh --check-git" \
+          "$tool" --check-git --create-key -t "$host" -u "$user" -p "$port" -i "$key" || true
+        return 0
+      fi
     fi
   fi
   TODO+=("Snapshot drills: set up rootless Docker for $user on $host with ./scripts/setup-validator-docker.sh -a <sudo-admin of $host>")
@@ -1484,15 +1506,14 @@ function main() {
       else
         if [ -x "$REPOSITORY_DIRPATH/scripts/setup-validator-docker.sh" ]; then
           remote_user=$(grep "^SNAPSHOT_REMOTE_USER=" "$REPOSITORY_DIRPATH/.env" 2>/dev/null | cut -d "=" -f 2- | sed 's/[[:space:]]*#.*//;s/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//')
-          local git_check_args=(--local --check-git)
+          local git_check_args=(--local --check-git --create-key)
           local git_check_user="$(id -un)"
           if [ -n "$remote_user" ] && id "$remote_user" >/dev/null 2>&1; then
             git_check_args+=(-u "$remote_user")
             git_check_user="$remote_user"
           fi
-          if ! "$REPOSITORY_DIRPATH/scripts/setup-validator-docker.sh" "${git_check_args[@]}"; then
-            TODO+=("Snapshot drills (local): git access failed as $git_check_user. Add a passwordless deploy key / credentials and verify with sudo ./scripts/setup-validator-docker.sh ${git_check_args[*]}")
-          fi
+          checkValidatorGitAccess "$git_check_user (local)" "sudo ./scripts/setup-validator-docker.sh ${git_check_args[*]}" \
+            "$REPOSITORY_DIRPATH/scripts/setup-validator-docker.sh" "${git_check_args[@]}" || true
         fi
       fi
 
