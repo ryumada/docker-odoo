@@ -147,6 +147,23 @@ suite_boot() {
   check "built with odoo-base's requirements.txt instead (as setup.sh does)" bash -c '[[ "$1" == *"built with odoo-base'"'"'s odoo-base/requirements.txt"* ]] && grep -q psycopg2 "$2"' _ "$(stage_of "$VS_REPORT" image message)" "$(ls -d "$T"/dl/builds/*/ | sort -V | tail -n 1)requirements.txt"
   check "addons_path is worked out from odoo-base" bash -c '[[ "$1" == *"no addons_path"* ]]' _ "$(boot_detail "$VS_REPORT" "['notes'][0]")"
 
+  tvs_section "boot: Odoo 11 (pre-15, SQL neutralize, Modules loaded. without Registry loaded in)"
+  a=$(fx boot11 svc11)
+  : > "$T/dl/odoo-events.log"
+  vs boot11 VALIDATOR_BOOT_TIMEOUT=15 -- --file "$a"
+  r="$VS_REPORT"
+  check_rc "Odoo 11 snapshot passes with Odoo booted" 0
+  check_eq "Odoo 11 report level is boot" boot "$(rj "$r" 'r["level"]')"
+  check_eq "Odoo 11 version recorded" 11.0 "$(rj "$r" 'r["odoo_version"]')"
+  check_eq "Odoo 11 boot stage passed" pass "$(stage_of "$r" boot)"
+  check_eq "Odoo 11 /web/login answered 200" 200 "$(boot_detail "$r" '["http_status"]')"
+  check_eq "Odoo 11 neutralized via SQL (no odoo-bin neutralize)" "SQL (crons, outgoing and incoming mail servers off)" "$(boot_detail "$r" '["neutralized"]')"
+  check_eq "Odoo 11 only started server (not neutralize)" "server" "$(awk '{print $1}' "$T/dl/odoo-events.log" | tr '\n' ' ' | sed 's/ $//')"
+  vs boot11missing VALIDATOR_BOOT_TIMEOUT=15 -- --file "$(fx boot11missing svc11)"
+  check_rc "Odoo 11 missing module still fails" 1
+  check_eq "Odoo 11 missing module: boot stage failed" fail "$(stage_of "$VS_REPORT" boot)"
+  check "Odoo 11 missing module: caught via not installable" bash -c '[[ "$1" == *"not installable"* ]]' _ "$(stage_of "$VS_REPORT" boot message)"
+
   tvs_section "boot: when Odoo is not started"
   a=$(fx bootgood svc)
   vs bootoff -- --file "$a" --no-boot

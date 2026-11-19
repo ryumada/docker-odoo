@@ -37,6 +37,8 @@ set -o pipefail
 #   boothttp      /web/login answers 500            bootcrash   Odoo stops before the registry is ready
 #   bootaddons    addons_path names a folder the snapshot does not have (left out, with a note)
 #   bootnoconf    no conf/odoo.conf: addons_path comes from ADDONS_PATH in .env
+#   boot11        Odoo 11.0 (pre-15: SQL neutralize, logs "Modules loaded." without "Registry loaded in")
+#   boot11missing Odoo 11.0 with an installed module missing its code
 
 OUT="$1"; VARIANT="$2"; SERVICE="${3:-svc}"; TS="${4:-20260101-000000}"
 [ -n "$OUT" ] && [ -n "$VARIANT" ] || { echo "usage: mkfixture.sh OUT_DIR VARIANT [SERVICE] [TIMESTAMP]" >&2; exit 2; }
@@ -109,13 +111,15 @@ COPY public.res_company (id, name) FROM stdin;
 INSERT INTO public.res_partner (id, name, company_id) VALUES (1, 'Test Company', 1), (2, 'Administrator', 1), (3, 'Customer', 1);
 EOF
   [ "$VARIANT" = nousers ] || echo "INSERT INTO public.res_users (id, login, partner_id) VALUES (1, '__system__', 1), (2, 'admin', 2);"
-  cat <<'EOF'
+  local_series="17.0"
+  case "$VARIANT" in boot11*) local_series="11.0" ;; esac
+  cat <<EOF
 INSERT INTO public.ir_module_module (id, name, state, latest_version) VALUES
-  (1, 'base', 'installed', '17.0.1.3'), (2, 'web', 'installed', '17.0.1.0'), (3, 'sale', 'uninstalled', NULL);
+  (1, 'base', 'installed', '${local_series}.1.3'), (2, 'web', 'installed', '${local_series}.1.0'), (3, 'sale', 'uninstalled', NULL);
 INSERT INTO public.ir_model (id, model) VALUES (1, 'res.partner'), (2, 'res.users');
 EOF
   case "$VARIANT" in
-    bootmissing) echo "INSERT INTO public.ir_module_module (id, name, state, latest_version) VALUES (4, 'hr_custom', 'installed', '17.0.1.0');" ;;
+    bootmissing|boot11missing) echo "INSERT INTO public.ir_module_module (id, name, state, latest_version) VALUES (4, 'hr_custom', 'installed', '${local_series}.1.0');" ;;
     bootimport) echo "INSERT INTO public.ir_module_module (id, name, state, latest_version) VALUES (4, 'broken_import', 'installed', '17.0.1.0');" ;;
     bootnoisy) echo "INSERT INTO public.ir_module_module (id, name, state, latest_version) VALUES (4, 'noisy', 'installed', '17.0.1.0');" ;;
     boothttp) echo "INSERT INTO public.ir_module_module (id, name, state, latest_version) VALUES (4, 'http500', 'installed', '17.0.1.0');" ;;
@@ -141,6 +145,8 @@ elif [ "$VARIANT" = noversion ]; then
   echo '{"odoo_dump": "1", "version": "", "version_info": null, "major_version": "", "modules": {}}' > "$STAGE/manifest.json"
 elif [ "$VARIANT" = plaindump ] || [ "$VARIANT" = newerdump ]; then
   echo '{"version": "17.0", "service": "'"$SERVICE"'"}' > "$STAGE/manifest.json"
+elif [[ "$VARIANT" == boot11* ]]; then
+  echo '{"version": "11.0", "version_info": [11, 0, 0, "final", 0, ""], "service": "'"$SERVICE"'", "sudodevops": {"postgres": {"server_version": "16.4", "db_size_bytes": 52428800}}}' > "$STAGE/manifest.json"
 else
   echo '{"version": "17.0", "service": "'"$SERVICE"'", "sudodevops": {"postgres": {"server_version": "16.4", "db_size_bytes": 52428800}}}' > "$STAGE/manifest.json"
 fi

@@ -2119,6 +2119,7 @@ FATAL = [
     (re.compile(r"Some modules are not loaded, some dependencies or manifest may be missing"), "installed modules are missing their code"),
     (re.compile(r"Couldn't load module"), "a module's Python code does not import"),
     (re.compile(r"(?i)module \S+: not installable, skipped"), "an installed module is not installable"),
+    (re.compile(r"(?i)module \S+: Unmet dependencies:"), "installed modules have unmet dependencies"),
 ]
 try:
     raw = open(log_file, errors="replace").read().splitlines()
@@ -2165,9 +2166,12 @@ else:
     msg = "Odoo runs on this snapshot: registry loaded, every installed module loaded, /web/login answers 200"
 for e in fatal + errors:
     e["detail"] = "\n".join(e["detail"])[:1500]
+out = {"message": msg, "registry": registry, "http_status": http, "strict": strict,
+       "fatal": fatal[:20], "errors": errors[:20], "error_lines": len(errors) + len(fatal)}
+if problems and not fatal and not errors and raw:
+    out["log_tail"] = "\n".join(raw[-20:])[:2000]
 print(status)
-print(json.dumps({"message": msg, "registry": registry, "http_status": http, "strict": strict,
-                  "fatal": fatal[:20], "errors": errors[:20], "error_lines": len(errors) + len(fatal)}))
+print(json.dumps(out))
 PY
 }
 
@@ -2256,7 +2260,7 @@ PY
   ) || { record_stage "boot" "error" "$(since "$t0")" "Cannot write the drill's Odoo configuration"; return 1; }
 
   # Neutralize first: crons, mail servers, payment providers... off (odoo-bin neutralize, Odoo 16+)
-  major="${ODOO_VERSION%%.*}"
+  major="${ODOO_VERSION#saas~}"; major="${major%%.*}"
   if [[ "$major" =~ ^[0-9]+$ ]] && [ "$major" -ge 16 ]; then
     log_info "[boot] Neutralizing the restored database (odoo-bin neutralize)..."
     if boot_run "$NEUTRALIZE_CONTAINER" neutralize -c /etc/odoo-drill/drill.conf -d "$dbname"; then
@@ -2297,26 +2301,42 @@ SQL
     record_stage "boot" "error" "$(since "$t0")" "Could not start the Odoo container: $(head -c 400 "$BOOT_DIR/run.err" | tr '\n' ' ')"
     return 1
   fi
+  local ready_re='Registry loaded in'
+  # Odoo 10-14 do not log "Registry loaded in" (added in Odoo 15); "Modules loaded." is their final load marker.
+  if ! [[ "$major" =~ ^[0-9]+$ ]] || [ "$major" -lt 15 ]; then
+    ready_re='Registry loaded in|(odoo|openerp)\.modules\.loading: Modules loaded\.'
+  fi
   for i in $(seq "$VALIDATOR_BOOT_TIMEOUT"); do
     docker logs "$ODOO_CONTAINER" > "$BOOT_DIR/odoo.log" 2>&1
     if grep -qE 'Failed to initialize database|Failed to load registry' "$BOOT_DIR/odoo.log"; then registry=failed; break; fi
-    if grep -q 'Registry loaded in' "$BOOT_DIR/odoo.log"; then registry=loaded; break; fi
+    if grep -qE "$ready_re" "$BOOT_DIR/odoo.log"; then registry=loaded; break; fi
     container_running "$ODOO_CONTAINER" || { registry=exited; break; }
     sleep 1
   done
   if [ "$registry" = loaded ] || [ "$registry" = failed ]; then
     # From inside the container, so nothing has to be published on the host
     result=$(docker exec "$ODOO_CONTAINER" python3 -c '
-import configparser, sys, urllib.parse, urllib.request, urllib.error
+import configparser, sys, time, urllib.parse, urllib.request, urllib.error
 c = configparser.ConfigParser(interpolation=None); c.read(sys.argv[1])
 port = c.get("options", "http_port", fallback="8069")
-try:
-    r = urllib.request.urlopen("http://127.0.0.1:%s/web/login" % port, timeout=float(sys.argv[2]))
-    print(r.status, urllib.parse.urlparse(r.geturl()).path)
-except urllib.error.HTTPError as e:
-    print(e.code, urllib.parse.urlparse(e.geturl() or "").path)
-except Exception as e:
-    print("no-answer", "")
+timeout = float(sys.argv[2])
+deadline = time.monotonic() + min(5.0, timeout)
+while True:
+    try:
+        r = urllib.request.urlopen("http://127.0.0.1:%s/web/login" % port, timeout=timeout)
+        print(r.status, urllib.parse.urlparse(r.geturl()).path)
+        break
+    except urllib.error.HTTPError as e:
+        print(e.code, urllib.parse.urlparse(e.geturl() or "").path)
+        break
+    except urllib.error.URLError:
+        if time.monotonic() >= deadline:
+            print("no-answer", "")
+            break
+        time.sleep(0.2)
+    except Exception:
+        print("no-answer", "")
+        break
 ' /etc/odoo-drill/drill.conf "$VALIDATOR_BOOT_TIMEOUT" 2>/dev/null | tail -n 1)
     http="${result%% *}"; path="${result#* }"; [ "$path" = "$result" ] && path=""
     sleep 1

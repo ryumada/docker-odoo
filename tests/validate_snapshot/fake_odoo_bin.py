@@ -52,7 +52,14 @@ with open(os.path.join(state, "odoo-events.log"), "a") as f:
         command, db, o.get("workers"), o.get("max_cron_threads"), o.get("server_wide_modules"),
         o.get("list_db"), o.get("db_user")))
 
-log("INFO", "odoo", "Odoo version 17.0 (fake)")
+base_ver = ""
+try:
+    bv = psql("SELECT latest_version FROM ir_module_module WHERE name = 'base' AND state = 'installed'")
+    base_ver = bv[0] if bv else ""
+except RuntimeError:
+    pass
+major = int(base_ver.split(".")[0]) if base_ver and base_ver.split(".")[0].isdigit() else 17
+log("INFO", "odoo", "Odoo version %d.0 (fake)" % major)
 if command == "neutralize":
     if os.environ.get("FAKE_NEUTRALIZE_FAIL") == "1":
         log("CRITICAL", "odoo.cli.neutralize", "An error occurred during the neutralization (fake)")
@@ -94,14 +101,20 @@ for name in installed or []:
     if b == "log_error":
         log("ERROR", "odoo.addons.%s.models.sftp" % name, "Could not connect to SFTP server sftp.example.invalid: [Errno -3] Temporary failure in name resolution")
 if missing:
-    log("ERROR", "odoo.modules.loading", "Some modules are not loaded, some dependencies or manifest may be missing: %s" % sorted(missing))
+    if major < 12:
+        for m in sorted(missing):
+            log("WARNING", "odoo.modules.module", "module %s: module not found" % m)
+            log("WARNING", "odoo.modules.graph", "module %s: not installable, skipped" % m)
+    else:
+        log("ERROR", "odoo.modules.loading", "Some modules are not loaded, some dependencies or manifest may be missing: %s" % sorted(missing))
 if "crash" in behaviors:
     log("CRITICAL", "odoo", "Segmentation fault in a C extension (fake)")
     sys.exit(139)
 if installed is not None:
     log("INFO", "odoo.modules.loading", "%d modules loaded in 0.05s, 0 queries" % len(installed))
     log("INFO", "odoo.modules.loading", "Modules loaded.")
-    log("INFO", "odoo.modules.registry", "Registry loaded in 0.123s")
+    if major >= 15:
+        log("INFO", "odoo.modules.registry", "Registry loaded in 0.123s")
 
 
 class H(http.server.BaseHTTPRequestHandler):
