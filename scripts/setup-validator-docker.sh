@@ -107,9 +107,11 @@ git_redact() { sed -E 's#([a-zA-Z][a-zA-Z0-9+.-]*://)[^/@[:space:]]+@#\1***@#g' 
 git_valid_remote() { [ -n "$1" ] && [[ "$1" != -* ]] && [[ "$1" != *[[:space:][:cntrl:]]* ]]; }
 
 run_git_check() {
+  local create_key=false
+  [ "${1:-}" = "--create-key" ] && create_key=true
   local allow tout rhost ruser rport rkey owner owner_home this_vps clean_tgt cand
-  local remotes=() ssh_opts=() remote_target="" local_user=""
-  local entry label remote shown cmd ok=0 fail=0 rc_cmd
+  local remotes=() ssh_opts=() remote_target="" local_user="" git_user=""
+  local entry label remote shown cmd ok=0 fail=0 rc_cmd key_cmd pubkey
   allow="${VALIDATOR_GIT_ALLOW_PROTOCOL:-$(env_get VALIDATOR_GIT_ALLOW_PROTOCOL)}"; allow="${allow:-https:ssh}"
   tout="${VALIDATOR_GIT_TIMEOUT:-$(env_get VALIDATOR_GIT_TIMEOUT)}"; tout="${tout:-30}"
 
@@ -156,14 +158,26 @@ run_git_check() {
     ssh_opts=(-p "$rport" -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=15)
     [ -n "$rkey" ] && [ -f "$rkey" ] && ssh_opts+=(-i "$rkey")
     remote_target="$ruser@$rhost"
+    git_user="$ruser"
     log_info "Checking git access on Secondary VPS as $remote_target (port $rport)..."
     if ! ssh "${ssh_opts[@]}" "$remote_target" true </dev/null 2>/dev/null; then
       log_error "Cannot connect to $remote_target over SSH."; return 2
     fi
   else
     [ -n "$TARGET_USER" ] && [ "$TARGET_USER" != "$(id -un)" ] && local_user="$TARGET_USER"
-    log_info "Checking git access locally as ${local_user:-$(id -un)}..."
+    git_user="${local_user:-$(id -un)}"
+    log_info "Checking git access locally as $git_user..."
   fi
+
+  run_as_git_user() {
+    if [ -n "$remote_target" ]; then
+      ssh "${ssh_opts[@]}" "$remote_target" "$1" </dev/null
+    elif [ -n "$local_user" ]; then
+      sudo -u "$local_user" -H bash -c "$1"
+    else
+      bash -c "$1"
+    fi
+  }
 
   declare -A seen=()
   for entry in "${remotes[@]}"; do
@@ -183,13 +197,7 @@ run_git_check() {
     cmd=$(printf 'GIT_TERMINAL_PROMPT=0 GIT_ALLOW_PROTOCOL=%q GIT_CONFIG_NOSYSTEM=1 GIT_SSH_COMMAND="ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=15" timeout %q git ls-remote -q --heads -- %q >/dev/null 2>&1 || GIT_TERMINAL_PROMPT=0 GIT_ALLOW_PROTOCOL=%q GIT_CONFIG_NOSYSTEM=1 GIT_SSH_COMMAND="ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=15" timeout %q git ls-remote -q -- %q >/dev/null 2>&1' \
       "$allow" "$tout" "$remote" "$allow" "$tout" "$remote")
     rc_cmd=0
-    if [ -n "$remote_target" ]; then
-      ssh "${ssh_opts[@]}" "$remote_target" "$cmd" </dev/null || rc_cmd=$?
-    elif [ -n "$local_user" ]; then
-      sudo -u "$local_user" -H bash -c "$cmd" || rc_cmd=$?
-    else
-      bash -c "$cmd" || rc_cmd=$?
-    fi
+    run_as_git_user "$cmd" || rc_cmd=$?
     if [ "$rc_cmd" -eq 0 ]; then
       log_success "[$label] Reachable: $shown"
       ok=$((ok + 1))
@@ -201,6 +209,15 @@ run_git_check() {
 
   if [ "$fail" -gt 0 ]; then
     log_error "$fail remote(s) unreachable ($ok ok). Ensure the drill user has a passwordless deploy key / credentials for those repositories."
+    if [ "$create_key" = true ]; then
+      key_cmd='umask 077 && mkdir -p "$HOME/.ssh" && chmod 700 "$HOME/.ssh" && { [ -f "$HOME/.ssh/id_ed25519" ] || ssh-keygen -q -t ed25519 -N "" -C "$(id -un)@$(hostname -s 2>/dev/null || hostname)" -f "$HOME/.ssh/id_ed25519"; } && { [ -f "$HOME/.ssh/id_ed25519.pub" ] && cat "$HOME/.ssh/id_ed25519.pub" || ssh-keygen -y -f "$HOME/.ssh/id_ed25519"; }'
+      if pubkey=$(run_as_git_user "$key_cmd"); then
+        log_info "Copy this public key to your git platform (Deploy Keys) for $git_user:"
+        printf '\n%s\n\n' "$pubkey" >&2
+      else
+        log_warn "Could not generate or read ~/.ssh/id_ed25519.pub for $git_user."
+      fi
+    fi
     return 1
   fi
   log_success "All $ok unique remote(s) are reachable."
@@ -544,8 +561,8 @@ elif [ "$rc" -ne 0 ]; then
 else
   log_success "Rootless Docker is ready for $TARGET_USER."
   if [ "$SKIP_GIT_CHECK" != true ]; then
-    if ! run_git_check; then
-      log_error "Rootless Docker is ready, but git access failed for $TARGET_USER. Configure a passwordless deploy key / credentials for $TARGET_USER before running validate-snapshot.sh."
+    if ! run_git_check --create-key; then
+      log_error "Rootless Docker is ready, but git access failed for $TARGET_USER. Add the public key above to your git platform (or configure credentials) for $TARGET_USER before running validate-snapshot.sh."
       exit 1
     fi
   fi
