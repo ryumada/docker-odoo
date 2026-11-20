@@ -216,6 +216,7 @@ run_git_check() {
       if pubkey=$(run_as_git_user "$key_cmd"); then
         log_info "Copy this public key to your git platform (Deploy Keys) for $git_user:"
         printf '\n%s\n\n' "$pubkey" >&2
+        log_info "If the user is wrong, please change SNAPSHOT_REMOTE_USER in .env."
       else
         log_warn "Could not generate or read ~/.ssh/id_ed25519.pub for $git_user."
       fi
