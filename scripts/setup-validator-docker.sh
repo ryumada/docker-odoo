@@ -167,6 +167,10 @@ run_git_check() {
     fi
   else
     [ -n "$ruser" ] && [ "$ruser" != "$(id -un)" ] && local_user="$ruser"
+    if [ -n "$local_user" ] && ! id "$local_user" >/dev/null 2>&1; then
+      log_error "User '$local_user' not found on $(hostname). Create the user, pass --target-user, or update SNAPSHOT_REMOTE_USER in .env."
+      return 3
+    fi
     git_user="${local_user:-$(id -un)}"
     log_info "Checking git access locally as $git_user..."
   fi

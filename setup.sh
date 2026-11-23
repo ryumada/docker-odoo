@@ -960,9 +960,13 @@ function checkValidatorGitAccess() {
   local git_out pubkey
   if ! git_out=$("$@" 2>&1); then
     printf '%s\n' "$git_out" >&2
+    local err_line
     pubkey=$(grep '^ssh-ed25519 ' <<< "$git_out" | tail -n1 || true)
+    err_line=$(grep -E "User '.*' not found|sudo: user '.*' not found" <<< "$git_out" | tail -n1 | sed -E 's/^\[[^]]*\] ❌ //' || true)
     if [ -n "$pubkey" ]; then
       TODO+=("Snapshot drills: git access failed for $target_label. Add this deploy key to your git platform and verify with $verify_cmd:\n    $pubkey")
+    elif [ -n "$err_line" ]; then
+      TODO+=("Snapshot drills: $err_line")
     else
       TODO+=("Snapshot drills: git access failed for $target_label. Add a passwordless deploy key / credentials and verify with $verify_cmd")
     fi
