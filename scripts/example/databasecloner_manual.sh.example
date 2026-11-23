@@ -18,6 +18,12 @@ elif [ -f "$CURRENT_DIR/../lib/odoo_utils.sh" ]; then
     source "$CURRENT_DIR/../lib/odoo_utils.sh"
 fi
 
+if [ -f "$CURRENT_DIR/lib/ssh_utils.sh" ]; then
+    source "$CURRENT_DIR/lib/ssh_utils.sh"
+elif [ -f "$PATH_TO_ODOO/scripts/lib/ssh_utils.sh" ]; then
+    source "$PATH_TO_ODOO/scripts/lib/ssh_utils.sh"
+fi
+
 # --- Logging Functions & Colors ---
 readonly COLOR_RESET="\033[0m"
 readonly COLOR_INFO="\033[0;34m"
@@ -88,7 +94,7 @@ cleanup_temp_files() {
         rm -f "$odoo_tmp"/*.sql "$odoo_tmp"/*.zip 2>/dev/null || true
     fi
     [ -n "$owner_home" ] && rm -f "$owner_home/backupdata-$SERVICE_NAME.zip" 2>/dev/null || true
-    rm -f "/tmp/$ODOO_DB_NAME_ENV.sql" "/tmp/$STG_DB_NAME.sql" "/tmp/dump.sql" "/tmp/db_dump_only_$ODOO_DB_NAME_ENV.zip" "/tmp/backupdata-$SERVICE_NAME.zip" 2>/dev/null || true
+    rm -f "/tmp/${ODOO_DB_NAME_ENV:-}.sql" "/tmp/${STG_DB_NAME:-}.sql" "/tmp/${STG_DB_NAME:-}.sql.zst" "/tmp/dump.sql" "/tmp/db_dump_only_${ODOO_DB_NAME_ENV:-}.zip" "/tmp/backupdata-$SERVICE_NAME.zip" 2>/dev/null || true
     if [ -n "${STDERR_LOG:-}" ] && [ -f "$STDERR_LOG" ]; then
         rm -f "$STDERR_LOG"
     fi
@@ -204,7 +210,8 @@ function run_psql() {
   fi
   if [ -n "$db_host" ] && [ "$db_host" != "localhost" ]; then
     local db_port=$(grep "^DB_PORT=" "$env_file" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
-    local db_user=$(cat "$(dirname "$env_file")/.secrets/db_user" 2>/dev/null || true)
+    local db_user=$(grep "^ACTIVE_DB_USER=" "$env_file" 2>/dev/null | cut -d '=' -f2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//')
+    [ -z "$db_user" ] && db_user=$(cat "$(dirname "$env_file")/.secrets/db_user" 2>/dev/null || true)
     local db_pass=$(cat "$(dirname "$env_file")/.secrets/db_password" 2>/dev/null || true)
     local docker_net=$(grep "^DOCKER_NETWORK_MODE=" "$env_file" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
     [ -z "$db_port" ] && db_port="5432"
@@ -221,7 +228,8 @@ function run_pg_dump() {
   local db_host=$(grep "^DB_HOST=" "$env_file" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
   if [ -n "$db_host" ] && [ "$db_host" != "localhost" ]; then
     local db_port=$(grep "^DB_PORT=" "$env_file" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
-    local db_user=$(cat "$(dirname "$env_file")/.secrets/db_user" 2>/dev/null || true)
+    local db_user=$(grep "^ACTIVE_DB_USER=" "$env_file" 2>/dev/null | cut -d '=' -f2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//')
+    [ -z "$db_user" ] && db_user=$(cat "$(dirname "$env_file")/.secrets/db_user" 2>/dev/null || true)
     local db_pass=$(cat "$(dirname "$env_file")/.secrets/db_password" 2>/dev/null || true)
     local docker_net=$(grep "^DOCKER_NETWORK_MODE=" "$env_file" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
     [ -z "$db_port" ] && db_port="5432"
@@ -231,6 +239,12 @@ function run_pg_dump() {
   else
     sudo -u postgres pg_dump "$@"
   fi
+}
+
+function fail_with_json() {
+  local message="$1"
+  log_error "$message"
+  exit 1
 }
 
 function sanitize_database() {
@@ -322,74 +336,42 @@ EOF
 }
 
 function run_automated_pull_mode() {
-    TARGET_DB=$1
-    MODULES_TO_UPDATE=$2
+    local TARGET_DB="${1:-}"
+    local MODULES_TO_UPDATE="${2:-}"
 
     STG_PATH_TO_ODOO=$PATH_TO_ODOO
     SERVICE_NAME_PRD=${SERVICE_NAME%-*}
 
-    if [ "$SERVICE_NAME" = "$SERVICE_NAME_PRD" ]; then
-        if [ "$JSON_MODE" = "true" ]; then
-            echo "{\"error\": \"Cannot clone production database onto itself ($SERVICE_NAME).\"}"
-        fi
-        log_error "Cannot clone production database onto itself ($SERVICE_NAME)."
-        exit 1
-    fi
-
     STG_ENV_FILE="$STG_PATH_TO_ODOO/.env"
     if [ ! -f "$STG_ENV_FILE" ]; then
-        if [ "$JSON_MODE" = "true" ]; then
-            echo "{\"error\": \"Target .env file not found at $STG_ENV_FILE\"}"
-        fi
-        log_error "Target .env file not found at: $STG_ENV_FILE"
-        exit 1
+        fail_with_json "Target .env file not found at $STG_ENV_FILE"
     fi
+
+    local prev_stg_db
+    prev_stg_db=$(sed -e 's/#.*//' "$STG_ENV_FILE" 2>/dev/null | grep "^DB_NAME=" | cut -d '=' -f2- | tr -d '[:space:]"' | tr -d "'" || true)
 
     if [ -n "$TARGET_DB" ]; then
         STG_DB_NAME="$TARGET_DB"
     else
-        STG_DB_NAME_FROM_ENV=$(grep "^DB_NAME=" "$STG_ENV_FILE" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
-        STG_DB_NAME="$STG_DB_NAME_FROM_ENV"
+        STG_DB_NAME="$prev_stg_db"
         if [ -z "$STG_DB_NAME" ]; then
             STG_DB_NAME="$(get_next_prefix "$STG_ENV_FILE")-$SERVICE_NAME-$(date +"%Y%m%d-%H%M%S")"
         fi
     fi
 
-    PRD_PATH_TO_ODOO="$STG_PATH_TO_ODOO/../$SERVICE_NAME_PRD"
-    PRD_ENV_FILE="$PRD_PATH_TO_ODOO/.env"
-    if [ ! -f "$PRD_ENV_FILE" ]; then
-        if [ "$JSON_MODE" = "true" ]; then
-            echo "{\"error\": \"Production .env file not found at $PRD_ENV_FILE\"}"
-        fi
-        log_error "Production .env file not found at: $PRD_ENV_FILE"
-        exit 1
-    fi
+    local PRD_SSH_HOST PRD_SSH_USER PRD_SSH_PORT PRD_SSH_KEY PRD_SSH_PATH
+    PRD_SSH_HOST=$(grep "^PRD_SSH_HOST=" "$STG_ENV_FILE" 2>/dev/null | cut -d '=' -f2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//' || true)
+    PRD_SSH_USER=$(grep "^PRD_SSH_USER=" "$STG_ENV_FILE" 2>/dev/null | cut -d '=' -f2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//' || true)
+    PRD_SSH_PORT=$(grep "^PRD_SSH_PORT=" "$STG_ENV_FILE" 2>/dev/null | cut -d '=' -f2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//' || true)
+    PRD_SSH_KEY=$(grep "^PRD_SSH_KEY=" "$STG_ENV_FILE" 2>/dev/null | cut -d '=' -f2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//' || true)
+    PRD_SSH_PATH=$(grep "^PRD_SSH_PATH=" "$STG_ENV_FILE" 2>/dev/null | cut -d '=' -f2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//' || true)
+    [ -z "$PRD_SSH_PORT" ] && PRD_SSH_PORT="22"
 
-    PRD_DB_NAME=$(grep "^DB_NAME=" "$PRD_ENV_FILE" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
-    if [ -z "$PRD_DB_NAME" ]; then
-        if [ "$JSON_MODE" = "true" ]; then
-            echo "{\"error\": \"DB_NAME not set in production .env ($PRD_ENV_FILE).\"}"
-        fi
-        log_error "DB_NAME not set in production .env ($PRD_ENV_FILE)."
-        exit 1
-    fi
-
-    log_stage "[1/3] Dumping Production Database ($PRD_DB_NAME)..."
-    ODOO_FILESTORE_PATH_PRD="/var/lib/odoo/$SERVICE_NAME_PRD/filestore/$PRD_DB_NAME"
-    ODOO_FILESTORE_PATH_ENV="/var/lib/odoo/$SERVICE_NAME/filestore/$STG_DB_NAME"
-
-    OWNER_HOME=$(eval echo "~$REPOSITORY_OWNER")
-    ODOO_TMP_DIR="$OWNER_HOME/.odoo-tmp/$SERVICE_NAME"
-    mkdir -p "$ODOO_TMP_DIR" 2>/dev/null || true
-    chmod 700 "$OWNER_HOME/.odoo-tmp" "$ODOO_TMP_DIR" 2>/dev/null || true
-    chown -R "$REPOSITORY_OWNER":"$REPOSITORY_OWNER" "$OWNER_HOME/.odoo-tmp" 2>/dev/null || true
-
-    PSQL_ENV_FILE="$PRD_ENV_FILE" run_pg_dump --no-owner -d "$PRD_DB_NAME" > "$ODOO_TMP_DIR/$STG_DB_NAME.sql"
     export PSQL_ENV_FILE="$STG_ENV_FILE"
+    local PRD_DB_NAME=""
+    local PRD_ENV_FILE=""
+    local ODOO_FILESTORE_PATH_ENV="/var/lib/odoo/$SERVICE_NAME/filestore/$STG_DB_NAME"
 
-    log_stage "[2/3] Restoring Filestore and Database to $STG_DB_NAME..."
-    local prev_stg_db
-    prev_stg_db=$(grep "^DB_NAME=" "$STG_ENV_FILE" 2>/dev/null | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
     if [ -n "$prev_stg_db" ] && [ "$prev_stg_db" != "$STG_DB_NAME" ]; then
         local old_pull_filestore="/var/lib/odoo/$SERVICE_NAME/filestore/$prev_stg_db"
         if [ -d "$old_pull_filestore" ] && [ ! -d "$ODOO_FILESTORE_PATH_ENV" ]; then
@@ -399,32 +381,281 @@ function run_automated_pull_mode() {
             rm -rf "$old_pull_filestore"
         fi
     fi
-    mkdir -p "$ODOO_FILESTORE_PATH_ENV"
-    rsync -a --delete "$ODOO_FILESTORE_PATH_PRD/" "$ODOO_FILESTORE_PATH_ENV"
-    chown -R odoo:odoo "$ODOO_FILESTORE_PATH_ENV"
 
-    DB_USER=$(grep "^ACTIVE_DB_USER=" "$STG_ENV_FILE" 2>/dev/null | cut -d '=' -f2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//')
-    [ -z "$DB_USER" ] && DB_USER=$(cat "$(dirname "$STG_ENV_FILE")/.secrets/db_user" 2>/dev/null || echo "odoo")
+    local DB_USER
+    DB_USER=$(sed -e 's/#.*//' "$STG_ENV_FILE" 2>/dev/null | grep "^ACTIVE_DB_USER=" | cut -d '=' -f2- | tr -d '[:space:]"' | tr -d "'" || true)
+    [ -z "$DB_USER" ] && DB_USER=$(cat "$STG_PATH_TO_ODOO/.secrets/db_user" 2>/dev/null || echo "odoo")
 
-    log_info "Dropping old database $STG_DB_NAME (if exists)..."
-    run_psql -d postgres -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '$STG_DB_NAME' AND pid <> pg_backend_pid();" > /dev/null 2>&1 || true
-    run_psql -d postgres -c "DROP DATABASE IF EXISTS \"$STG_DB_NAME\"" >/dev/null
+    if [ -n "$PRD_SSH_HOST" ]; then
+        # --- Cross-VPS Pull Mode ---
+        if [ -z "$PRD_SSH_USER" ] || [ -z "$PRD_SSH_PATH" ]; then
+            fail_with_json "PRD_SSH_USER and PRD_SSH_PATH are required when PRD_SSH_HOST is configured in .env!"
+        fi
 
-    log_info "Creating database $STG_DB_NAME owned by $DB_USER..."
-    run_psql -d postgres -c "CREATE DATABASE \"$STG_DB_NAME\" OWNER \"$DB_USER\"" >/dev/null
+        local PRD_SERVICE_NAME
+        PRD_SERVICE_NAME=$(basename "$PRD_SSH_PATH")
 
-    log_info "Restoring SQL dump..."
-    run_psql -d "$STG_DB_NAME" < "$ODOO_TMP_DIR/$STG_DB_NAME.sql" >/dev/null
+        log_stage "[1/3] Connecting to Remote Production VPS ($PRD_SSH_USER@$PRD_SSH_HOST:$PRD_SSH_PORT)..."
 
-    NEUTRALIZE_DB=$(grep "^NEUTRALIZE_DATABASE=" "$PRD_ENV_FILE" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' | tr '[:upper:]' '[:lower:]' || true)
+        local key_path
+        if declare -f ensure_ssh_key_for_remote >/dev/null 2>&1; then
+            key_path=$(ensure_ssh_key_for_remote "deploy_rc" "$PRD_SSH_HOST" "$PRD_SSH_USER" "$PRD_SSH_KEY" "$REPOSITORY_OWNER" "PRD_SSH_KEY" "$STG_ENV_FILE")
+        else
+            local owner_home
+            owner_home=$(eval echo "~$REPOSITORY_OWNER")
+            [ -z "$owner_home" ] && owner_home="$HOME"
+            key_path="${PRD_SSH_KEY/#\~/$owner_home}"
+        fi
+
+        local prd_ssh_opts=(-p "$PRD_SSH_PORT" -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o ServerAliveInterval=30 -o ServerAliveCountMax=5)
+        local prd_rsync_ssh="ssh -p $PRD_SSH_PORT -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o ServerAliveInterval=30 -o ServerAliveCountMax=5"
+        if [ -n "$key_path" ] && [ -f "$key_path" ]; then
+            prd_ssh_opts+=(-i "$key_path")
+            prd_rsync_ssh+=" -i $key_path"
+        fi
+
+        if ! ssh "${prd_ssh_opts[@]}" "$PRD_SSH_USER@$PRD_SSH_HOST" "true" 2>/dev/null; then
+            fail_with_json "Failed to establish SSH connection with Remote Production VPS at $PRD_SSH_USER@$PRD_SSH_HOST:$PRD_SSH_PORT."
+        fi
+        log_success "SSH connection to Production VPS established."
+
+        local remote_prd_db
+        remote_prd_db=$(ssh "${prd_ssh_opts[@]}" "$PRD_SSH_USER@$PRD_SSH_HOST" "sed -e 's/#.*//' '$PRD_SSH_PATH/.env' 2>/dev/null | grep '^DB_NAME=' | cut -d '=' -f2- | tr -d '[:space:]\"' | tr -d \"'\" || true" | tr -d '\r\n')
+        [ -z "$remote_prd_db" ] && remote_prd_db="$PRD_SERVICE_NAME"
+        PRD_DB_NAME="$remote_prd_db"
+
+        local remote_has_zstd
+        remote_has_zstd=$(ssh "${prd_ssh_opts[@]}" "$PRD_SSH_USER@$PRD_SSH_HOST" "command -v zstd >/dev/null 2>&1 && echo true || echo false" | tr -d '\r\n')
+
+        log_info "Synchronizing Odoo filestore from Remote Production VPS ($PRD_DB_NAME -> $STG_DB_NAME)..."
+        local local_filestore_base="/var/lib/odoo/$SERVICE_NAME/filestore"
+        local local_target_filestore="$ODOO_FILESTORE_PATH_ENV"
+        mkdir -p "$local_filestore_base"
+
+        if [ ! -d "$local_target_filestore" ]; then
+            local existing_seed_filestore
+            existing_seed_filestore=$(find "$local_filestore_base" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | head -n 1 || true)
+            if [ -n "$existing_seed_filestore" ] && [ -d "$existing_seed_filestore" ]; then
+                log_info "Seeding filestore from existing local directory: $existing_seed_filestore..."
+                cp -al "$existing_seed_filestore" "$local_target_filestore" 2>/dev/null || cp -r "$existing_seed_filestore" "$local_target_filestore" 2>/dev/null || true
+            else
+                mkdir -p "$local_target_filestore"
+            fi
+        fi
+
+        local remote_has_export_helper
+        remote_has_export_helper=$(ssh "${prd_ssh_opts[@]}" "$PRD_SSH_USER@$PRD_SSH_HOST" "
+            if command -v export_filestore-$PRD_SERVICE_NAME &>/dev/null || [ -x '/usr/local/sbin/export_filestore-$PRD_SERVICE_NAME' ] || [ -f '$PRD_SSH_PATH/scripts/export_filestore-$PRD_SERVICE_NAME.sh' ] || [ -f '$PRD_SSH_PATH/scripts/export_filestore.sh' ]; then
+                echo 'true'
+            elif [ -f '$PRD_SSH_PATH/scripts/installer/install-export_filestore.sh' ] && sudo -n true 2>/dev/null; then
+                sudo -n bash '$PRD_SSH_PATH/scripts/installer/install-export_filestore.sh' >/dev/null 2>&1 || true
+                if command -v export_filestore-$PRD_SERVICE_NAME &>/dev/null || [ -x '/usr/local/sbin/export_filestore-$PRD_SERVICE_NAME' ]; then
+                    echo 'true'
+                else
+                    echo 'false'
+                fi
+            else
+                echo 'false'
+            fi
+        " | tr -d '\r\n')
+
+        if [ "$remote_has_export_helper" = "true" ]; then
+            log_info "Streaming remote filestore via export_filestore helper..."
+            local remote_export_cmd="if command -v export_filestore-$PRD_SERVICE_NAME &>/dev/null; then sudo -n export_filestore-$PRD_SERVICE_NAME; elif [ -x '/usr/local/sbin/export_filestore-$PRD_SERVICE_NAME' ]; then sudo -n /usr/local/sbin/export_filestore-$PRD_SERVICE_NAME; elif [ -f '$PRD_SSH_PATH/scripts/export_filestore-$PRD_SERVICE_NAME.sh' ]; then sudo -n '$PRD_SSH_PATH/scripts/export_filestore-$PRD_SERVICE_NAME.sh'; else sudo -n '$PRD_SSH_PATH/scripts/export_filestore.sh'; fi"
+            if [ "$remote_has_zstd" = "true" ] && command -v zstd >/dev/null 2>&1; then
+                ssh "${prd_ssh_opts[@]}" "$PRD_SSH_USER@$PRD_SSH_HOST" "$remote_export_cmd" | zstd -d -T0 | tar -C "$local_target_filestore" -xf -
+            else
+                ssh "${prd_ssh_opts[@]}" "$PRD_SSH_USER@$PRD_SSH_HOST" "$remote_export_cmd" | tar -C "$local_target_filestore" -xf -
+            fi
+        else
+            log_info "Syncing filestore via rsync from /var/lib/odoo/$PRD_SERVICE_NAME/filestore/$remote_prd_db/..."
+            rsync -e "$prd_rsync_ssh" -avz --delete "$PRD_SSH_USER@$PRD_SSH_HOST:/var/lib/odoo/$PRD_SERVICE_NAME/filestore/$remote_prd_db/" "$local_target_filestore/" 2>/dev/null || \
+            rsync -e "$prd_rsync_ssh" -avz "$PRD_SSH_USER@$PRD_SSH_HOST:/var/lib/odoo/$PRD_SERVICE_NAME/filestore/$remote_prd_db/" "$local_target_filestore/" 2>/dev/null || \
+            log_warn "Filestore direct rsync skipped or partially transferred."
+        fi
+        chown -R odoo:odoo "$local_target_filestore" 2>/dev/null || true
+        log_success "Filestore synchronization completed."
+
+        log_stage "[2/3] Dumping & Restoring Remote Production Database ($PRD_DB_NAME -> $STG_DB_NAME)..."
+        local remote_has_dump_helper
+        remote_has_dump_helper=$(ssh "${prd_ssh_opts[@]}" "$PRD_SSH_USER@$PRD_SSH_HOST" "
+            if command -v dump_database-$PRD_SERVICE_NAME &>/dev/null || [ -x '/usr/local/sbin/dump_database-$PRD_SERVICE_NAME' ] || [ -f '$PRD_SSH_PATH/scripts/dump_database-$PRD_SERVICE_NAME.sh' ] || [ -f '$PRD_SSH_PATH/scripts/dump_database.sh' ]; then
+                echo 'true'
+            elif [ -f '$PRD_SSH_PATH/scripts/installer/install-dump_database.sh' ] && sudo -n true 2>/dev/null; then
+                sudo -n bash '$PRD_SSH_PATH/scripts/installer/install-dump_database.sh' >/dev/null 2>&1 || true
+                if command -v dump_database-$PRD_SERVICE_NAME &>/dev/null || [ -x '/usr/local/sbin/dump_database-$PRD_SERVICE_NAME' ]; then
+                    echo 'true'
+                else
+                    echo 'false'
+                fi
+            else
+                echo 'false'
+            fi
+        " | tr -d '\r\n')
+
+        local remote_dump_b64="IyEvdXNyL2Jpbi9lbnYgYmFzaApzZXQgLWVvIHBpcGVmYWlsCgpwcmRfcGF0aD0iJDEiCnRhcmdldF9kYj0iJDIiCnRtcF9iYXNlPSIkMyIKZW52X2ZpbGU9IiRwcmRfcGF0aC8uZW52IgpzdmNfbmFtZT0kKGJhc2VuYW1lICIkcHJkX3BhdGgiKQoKZGJfaG9zdD0kKHNlZCAtZSAncy8jLiovLycgIiRlbnZfZmlsZSIgMj4vZGV2L251bGwgfCBncmVwICJeREJfSE9TVD0iIHwgY3V0IC1kICc9JyAtZjItIHwgdHIgLWQgJ1s6c3BhY2U6XSInIHwgdHIgLWQgIiciIHx8IHRydWUpCmRiX3BvcnQ9JChzZWQgLWUgJ3MvIy4qLy8nICIkZW52X2ZpbGUiIDI+L2Rldi9udWxsIHwgZ3JlcCAiXkRCX1BPUlQ9IiB8IGN1dCAtZCAnPScgLWYyLSB8IHRyIC1kICdbOnNwYWNlOl0iJyB8IHRyIC1kICInIiB8fCB0cnVlKQpkYl91c2VyPSQoc2VkIC1lICdzLyMuKi8vJyAiJGVudl9maWxlIiAyPi9kZXYvbnVsbCB8IGdyZXAgIl5BQ1RJVkVfREJfVVNFUj0iIHwgY3V0IC1kICc9JyAtZjItIHwgdHIgLWQgJ1s6c3BhY2U6XSInIHwgdHIgLWQgIiciIHx8IHRydWUpCmRvY2tlcl9uZXQ9JChzZWQgLWUgJ3MvIy4qLy8nICIkZW52X2ZpbGUiIDI+L2Rldi9udWxsIHwgZ3JlcCAiXkRPQ0tFUl9ORVRXT1JLX01PREU9IiB8IGN1dCAtZCAnPScgLWYyLSB8IHRyIC1kICdbOnNwYWNlOl0iJyB8IHRyIC1kICInIiB8fCB0cnVlKQpbIC16ICIkZGJfcG9ydCIgXSAmJiBkYl9wb3J0PSI1NDMyIgpbIC16ICIkZG9ja2VyX25ldCIgXSAmJiBkb2NrZXJfbmV0PSJob3N0IgpuZXQ9JChlY2hvICIkZG9ja2VyX25ldCIgfCBjdXQgLWQgIiwiIC1mIDEpCgpkdW1wX3RvX3N0cmVhbSgpIHsKICAgIGlmIFsgLW4gIiRkYl9ob3N0IiBdICYmIFsgIiRkYl9ob3N0IiAhPSAibG9jYWxob3N0IiBdOyB0aGVuCiAgICAgICAgZG9ja2VyIHJ1biAtLXJtIC0tbmV0d29yaz0iJG5ldCIgLXYgIiRwcmRfcGF0aC8uc2VjcmV0czovc2VjcmV0czpybyIgcG9zdGdyZXMgYmFzaCAtYyAnCiAgICAgICAgICAgIGRiX3U9IiQxIgogICAgICAgICAgICBbIC16ICIkZGJfdSIgXSAmJiBkYl91PSQoY2F0IC9zZWNyZXRzL2RiX3VzZXIgMj4vZGV2L251bGwgfCB0ciAtZCAiWzpzcGFjZTpdIikKICAgICAgICAgICAgWyAteiAiJGRiX3UiIF0gJiYgZGJfdT0iJDIiCiAgICAgICAgICAgIGV4cG9ydCBQR1BBU1NXT1JEPSQoY2F0IC9zZWNyZXRzL2RiX3Bhc3N3b3JkIDI+L2Rldi9udWxsIHwgdHIgLWQgIls6c3BhY2U6XSIpCiAgICAgICAgICAgIHBnX2R1bXAgLWggIiQzIiAtcCAiJDQiIC1VICIkZGJfdSIgLS1uby1vd25lciAiJDUiCiAgICAgICAgJyBfICIkZGJfdXNlciIgIiRzdmNfbmFtZSIgIiRkYl9ob3N0IiAiJGRiX3BvcnQiICIkdGFyZ2V0X2RiIgogICAgZWxzZQogICAgICAgIHN1ZG8gLXUgcG9zdGdyZXMgcGdfZHVtcCAtLW5vLW93bmVyICIkdGFyZ2V0X2RiIgogICAgZmkKfQoKb3V0X2ZpbGU9IiIKaWYgY29tbWFuZCAtdiB6c3RkID4vZGV2L251bGwgMj4mMTsgdGhlbgogICAgb3V0X2ZpbGU9IiR7dG1wX2Jhc2V9LnNxbC56c3QiCiAgICBkdW1wX3RvX3N0cmVhbSB8IHpzdGQgLTEgLVQwID4gIiRvdXRfZmlsZSIKZWxzZQogICAgb3V0X2ZpbGU9IiR7dG1wX2Jhc2V9LnNxbCIKICAgIGR1bXBfdG9fc3RyZWFtID4gIiRvdXRfZmlsZSIKZmkKCmlmIFsgLXMgIiRvdXRfZmlsZSIgXTsgdGhlbgogICAgZWNobyAiJG91dF9maWxlIgplbHNlCiAgICBlY2hvICLinYwgRXJyb3I6IER1bXAgZmlsZSBpcyBlbXB0eSBvciBtaXNzaW5nLiIgPiYyCiAgICBybSAtZiAiJG91dF9maWxlIgogICAgZXhpdCAxCmZpCg=="
+
+        log_info "Recreating staging database '$STG_DB_NAME'..."
+        run_psql -d postgres -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '$STG_DB_NAME' AND pid <> pg_backend_pid();" >/dev/null 2>&1 || true
+        run_psql -d postgres -c "DROP DATABASE IF EXISTS \"$STG_DB_NAME\"" >/dev/null 2>&1 || true
+
+        local local_db_user="$DB_USER"
+        run_psql -d postgres -c "CREATE DATABASE \"$STG_DB_NAME\" OWNER \"$local_db_user\"" >/dev/null 2>&1 || run_psql -d postgres -c "CREATE DATABASE \"$STG_DB_NAME\"" >/dev/null 2>&1
+
+        restore_via_odoo_container() {
+            local stg_db_host
+            stg_db_host=$(sed -e 's/#.*//' "$STG_ENV_FILE" 2>/dev/null | grep "^DB_HOST=" | cut -d '=' -f2- | tr -d '[:space:]"' | tr -d "'" || true)
+            local stg_db_port
+            stg_db_port=$(sed -e 's/#.*//' "$STG_ENV_FILE" 2>/dev/null | grep "^DB_PORT=" | cut -d '=' -f2- | tr -d '[:space:]"' | tr -d "'" || true)
+            [ -z "$stg_db_host" ] && stg_db_host="localhost"
+            [ -z "$stg_db_port" ] && stg_db_port="5432"
+
+            local stg_db_pass
+            stg_db_pass=$(cat "$STG_PATH_TO_ODOO/.secrets/db_password" 2>/dev/null | tr -d '[:space:]' || true)
+
+            local odoo_cid
+            odoo_cid=$(cd "$STG_PATH_TO_ODOO" && docker compose ps -q odoo 2>/dev/null || true)
+            if [ -n "$odoo_cid" ]; then
+                (
+                    cd "$STG_PATH_TO_ODOO"
+                    PGPASSWORD="$stg_db_pass" docker exec -i -e PGPASSWORD "$odoo_cid" psql -h "$stg_db_host" -p "$stg_db_port" -U "$local_db_user" "$@"
+                )
+            else
+                run_psql "$@"
+            fi
+        }
+
+        local remote_dump_file=""
+        if [ "$remote_has_dump_helper" = "true" ]; then
+            log_info "Streaming remote database dump via dump_database helper..."
+            local remote_dump_cmd="if command -v dump_database-$PRD_SERVICE_NAME &>/dev/null; then sudo -n dump_database-$PRD_SERVICE_NAME; elif [ -x '/usr/local/sbin/dump_database-$PRD_SERVICE_NAME' ]; then sudo -n /usr/local/sbin/dump_database-$PRD_SERVICE_NAME; elif [ -f '$PRD_SSH_PATH/scripts/dump_database-$PRD_SERVICE_NAME.sh' ]; then sudo -n '$PRD_SSH_PATH/scripts/dump_database-$PRD_SERVICE_NAME.sh'; else sudo -n '$PRD_SSH_PATH/scripts/dump_database.sh'; fi"
+            local ssh_status=0
+            if [ "$remote_has_zstd" = "true" ] && command -v zstd >/dev/null 2>&1; then
+                ssh "${prd_ssh_opts[@]}" "$PRD_SSH_USER@$PRD_SSH_HOST" "$remote_dump_cmd" | zstd -d -T0 | restore_via_odoo_container -d "$STG_DB_NAME" >/dev/null
+                ssh_status=${PIPESTATUS[0]}
+            else
+                ssh "${prd_ssh_opts[@]}" "$PRD_SSH_USER@$PRD_SSH_HOST" "$remote_dump_cmd --raw" | restore_via_odoo_container -d "$STG_DB_NAME" >/dev/null
+                ssh_status=${PIPESTATUS[0]}
+            fi
+            if [ "$ssh_status" -ne 0 ]; then
+                fail_with_json "Database streaming restore from remote production failed (SSH exit code: $ssh_status)."
+            fi
+        else
+            log_info "dump_database helper not found on remote; dumping on production host via container pg_dump..."
+            local remote_tmp_base="/tmp/${STG_DB_NAME}"
+            local remote_exec_cmd="echo '$remote_dump_b64' | base64 -d | bash -s -- '$PRD_SSH_PATH' '$remote_prd_db' '$remote_tmp_base'"
+            local remote_dump_out=""
+            if ! remote_dump_out=$(ssh "${prd_ssh_opts[@]}" "$PRD_SSH_USER@$PRD_SSH_HOST" "$remote_exec_cmd" 2>&1); then
+                fail_with_json "Database dump on remote production host failed. Output: $remote_dump_out"
+            fi
+            remote_dump_file=$(echo "$remote_dump_out" | tail -n 1 | tr -d '\r\n')
+            if [ -z "$remote_dump_file" ] || [[ "$remote_dump_file" != /tmp/* ]]; then
+                fail_with_json "Database dump on remote production host failed. Output: $remote_dump_out"
+            fi
+
+            log_info "Moving database dump from Production VPS to staging environment ($remote_dump_file)..."
+            local local_dump_file="/tmp/$(basename "$remote_dump_file")"
+            if [ "$JSON_MODE" = "true" ]; then
+                if ! rsync -az -e "$prd_rsync_ssh" "$PRD_SSH_USER@$PRD_SSH_HOST:$remote_dump_file" "$local_dump_file" >&2; then
+                    ssh "${prd_ssh_opts[@]}" "$PRD_SSH_USER@$PRD_SSH_HOST" "rm -f '$remote_dump_file'" 2>/dev/null || true
+                    fail_with_json "Failed to transfer database dump from Production VPS."
+                fi
+            else
+                if ! rsync -az -e "$prd_rsync_ssh" "$PRD_SSH_USER@$PRD_SSH_HOST:$remote_dump_file" "$local_dump_file"; then
+                    ssh "${prd_ssh_opts[@]}" "$PRD_SSH_USER@$PRD_SSH_HOST" "rm -f '$remote_dump_file'" 2>/dev/null || true
+                    fail_with_json "Failed to transfer database dump from Production VPS."
+                fi
+            fi
+            ssh "${prd_ssh_opts[@]}" "$PRD_SSH_USER@$PRD_SSH_HOST" "rm -f '$remote_dump_file'" 2>/dev/null || true
+
+            log_info "Restoring SQL into '$STG_DB_NAME'..."
+            if [[ "$local_dump_file" == *.zst ]] && command -v zstd >/dev/null 2>&1; then
+                zstd -d -c "$local_dump_file" | restore_via_odoo_container -d "$STG_DB_NAME" >/dev/null
+            else
+                restore_via_odoo_container -d "$STG_DB_NAME" < "$local_dump_file" >/dev/null
+            fi
+            rm -f "$local_dump_file"
+        fi
+    else
+        # --- Same-VPS Pull Mode ---
+        if [ "$SERVICE_NAME" = "$SERVICE_NAME_PRD" ]; then
+            fail_with_json "Cannot clone production database onto itself ($SERVICE_NAME)."
+        fi
+
+        local PRD_PATH_TO_ODOO="$STG_PATH_TO_ODOO/../$SERVICE_NAME_PRD"
+        PRD_ENV_FILE="$PRD_PATH_TO_ODOO/.env"
+        if [ ! -f "$PRD_ENV_FILE" ]; then
+            fail_with_json "Production .env file not found at $PRD_ENV_FILE"
+        fi
+
+        PRD_DB_NAME=$(sed -e 's/#.*//' "$PRD_ENV_FILE" 2>/dev/null | grep "^DB_NAME=" | cut -d '=' -f2- | tr -d '[:space:]"' | tr -d "'" || true)
+        if [ -z "$PRD_DB_NAME" ]; then
+            fail_with_json "DB_NAME not set in production .env ($PRD_ENV_FILE)."
+        fi
+
+        log_stage "[1/3] Dumping Production Database ($PRD_DB_NAME)..."
+        local ODOO_FILESTORE_PATH_PRD="/var/lib/odoo/$SERVICE_NAME_PRD/filestore/$PRD_DB_NAME"
+        local OWNER_HOME
+        OWNER_HOME=$(eval echo "~$REPOSITORY_OWNER")
+        local ODOO_TMP_DIR="$OWNER_HOME/.odoo-tmp/$SERVICE_NAME"
+        mkdir -p "$ODOO_TMP_DIR" 2>/dev/null || true
+        chmod 700 "$OWNER_HOME/.odoo-tmp" "$ODOO_TMP_DIR" 2>/dev/null || true
+        chown -R "$REPOSITORY_OWNER":"$REPOSITORY_OWNER" "$OWNER_HOME/.odoo-tmp" 2>/dev/null || true
+
+        PSQL_ENV_FILE="$PRD_ENV_FILE" run_pg_dump --no-owner -d "$PRD_DB_NAME" > "$ODOO_TMP_DIR/$STG_DB_NAME.sql"
+
+        log_stage "[2/3] Restoring Filestore and Database to $STG_DB_NAME..."
+        mkdir -p "$ODOO_FILESTORE_PATH_ENV"
+        if [ -d "$ODOO_FILESTORE_PATH_PRD" ]; then
+            rsync -a --delete "$ODOO_FILESTORE_PATH_PRD/" "$ODOO_FILESTORE_PATH_ENV"
+        fi
+        chown -R odoo:odoo "$ODOO_FILESTORE_PATH_ENV"
+
+        log_info "Dropping old database $STG_DB_NAME (if exists)..."
+        run_psql -d postgres -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '$STG_DB_NAME' AND pid <> pg_backend_pid();" >/dev/null 2>&1 || true
+        run_psql -d postgres -c "DROP DATABASE IF EXISTS \"$STG_DB_NAME\"" >/dev/null
+
+        log_info "Creating database $STG_DB_NAME owned by $DB_USER..."
+        run_psql -d postgres -c "CREATE DATABASE \"$STG_DB_NAME\" OWNER \"$DB_USER\"" >/dev/null 2>&1 || run_psql -d postgres -c "CREATE DATABASE \"$STG_DB_NAME\"" >/dev/null 2>&1
+
+        log_info "Restoring SQL dump..."
+        run_psql -d "$STG_DB_NAME" < "$ODOO_TMP_DIR/$STG_DB_NAME.sql" >/dev/null
+        rm -f "$ODOO_TMP_DIR/$STG_DB_NAME.sql"
+    fi
+
+    log_info "Reassigning database object ownership to role '$DB_USER'..."
+    run_psql -d "$STG_DB_NAME" -c "
+        DO \$\$
+        DECLARE
+            rec RECORD;
+        BEGIN
+            FOR rec IN (SELECT tablename FROM pg_tables WHERE schemaname = 'public') LOOP
+                EXECUTE 'ALTER TABLE ' || quote_ident(rec.tablename) || ' OWNER TO \"$DB_USER\"';
+            END LOOP;
+            FOR rec IN (SELECT sequence_name FROM information_schema.sequences WHERE sequence_schema = 'public') LOOP
+                EXECUTE 'ALTER SEQUENCE ' || quote_ident(rec.sequence_name) || ' OWNER TO \"$DB_USER\"';
+            END LOOP;
+            FOR rec IN (SELECT table_name FROM information_schema.views WHERE table_schema = 'public') LOOP
+                EXECUTE 'ALTER VIEW ' || quote_ident(rec.table_name) || ' OWNER TO \"$DB_USER\"';
+            END LOOP;
+            FOR rec IN (SELECT matviewname FROM pg_matviews WHERE schemaname = 'public') LOOP
+                EXECUTE 'ALTER MATERIALIZED VIEW ' || quote_ident(rec.matviewname) || ' OWNER TO \"$DB_USER\"';
+            END LOOP;
+        END \$\$;
+    " >/dev/null 2>&1 || true
+
+    local NEUTRALIZE_DB
+    NEUTRALIZE_DB=$(grep "^NEUTRALIZE_DATABASE=" "$STG_ENV_FILE" 2>/dev/null | cut -d '=' -f2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//' | tr '[:upper:]' '[:lower:]' || true)
+    if [ -z "$NEUTRALIZE_DB" ] && [ -n "${PRD_ENV_FILE:-}" ] && [ -f "${PRD_ENV_FILE:-}" ]; then
+        NEUTRALIZE_DB=$(grep "^NEUTRALIZE_DATABASE=" "$PRD_ENV_FILE" 2>/dev/null | cut -d '=' -f2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//' | tr '[:upper:]' '[:lower:]' || true)
+    fi
     [ -z "$NEUTRALIZE_DB" ] && NEUTRALIZE_DB="true"
 
     if [ "$NEUTRALIZE_DB" = "true" ]; then
         sanitize_database "$STG_DB_NAME"
     fi
 
-    stg_db_name_from_env=$(grep "^DB_NAME=" "$STG_ENV_FILE" 2>/dev/null | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
-    if [ -n "$stg_db_name_from_env" ] && [ "$stg_db_name_from_env" != "$STG_DB_NAME" ]; then
+    if [ -n "$prev_stg_db" ] && [ "$prev_stg_db" != "$STG_DB_NAME" ]; then
         if grep -q "^DB_NAME=" "$STG_ENV_FILE"; then
             sed -i "s/^DB_NAME=.*/DB_NAME=$STG_DB_NAME/" "$STG_ENV_FILE"
         else
@@ -443,18 +674,21 @@ function run_automated_pull_mode() {
 
     trigger_registry_reload "$STG_DB_NAME" "$STG_PATH_TO_ODOO" 2>/dev/null || true
 
-    MODULE_UPDATE_ERROR=false
+    local MODULE_UPDATE_ERROR=false
+    local UPDATE_OUTPUT=""
     if [ -n "$MODULES_TO_UPDATE" ]; then
         log_info "Updating Odoo modules: $MODULES_TO_UPDATE..."
         sleep 10
+        local TEMP_UPDATE_LOG
         TEMP_UPDATE_LOG=$(mktemp)
         if [ "$JSON_MODE" = "true" ]; then
-            docker compose exec odoo odoo-module-upgrade "$STG_DB_NAME" --update="$MODULES_TO_UPDATE" 2>&1 | tee "$TEMP_UPDATE_LOG" >&2
+            docker compose exec -T odoo odoo-module-upgrade "$STG_DB_NAME" --update="$MODULES_TO_UPDATE" 2>&1 | tee "$TEMP_UPDATE_LOG" >&2
             if [ ${PIPESTATUS[0]} -ne 0 ]; then MODULE_UPDATE_ERROR=true; fi
         else
-            docker compose exec odoo odoo-module-upgrade "$STG_DB_NAME" --update="$MODULES_TO_UPDATE" 2>&1 | tee "$TEMP_UPDATE_LOG"
+            docker compose exec -T odoo odoo-module-upgrade "$STG_DB_NAME" --update="$MODULES_TO_UPDATE" 2>&1 | tee "$TEMP_UPDATE_LOG"
             if [ ${PIPESTATUS[0]} -ne 0 ]; then MODULE_UPDATE_ERROR=true; fi
         fi
+        UPDATE_OUTPUT=$(cat "$TEMP_UPDATE_LOG")
         rm -f "$TEMP_UPDATE_LOG"
     fi
 
@@ -463,10 +697,30 @@ function run_automated_pull_mode() {
         echo "  \"database_name\": \"$STG_DB_NAME\","
         echo "  \"source_database\": \"$PRD_DB_NAME\""
         if [ -n "$MODULES_TO_UPDATE" ]; then
-            echo "  , \"modules_to_upgrade\": [ \"$MODULES_TO_UPDATE\" ]"
+            echo "  , \"modules_to_upgrade\": ["
+            IFS=',' read -ra MODULES <<< "$MODULES_TO_UPDATE"
+            local FIRST_MODULE=1
+            for module in "${MODULES[@]}"; do
+                module=$(echo "$module" | xargs)
+                [ -z "$module" ] && continue
+                if [ $FIRST_MODULE -eq 0 ]; then echo ","; fi
+                echo -n "    \"$module\""
+                FIRST_MODULE=0
+            done
+            echo ""
+            echo "  ]"
         fi
         if [ "$MODULE_UPDATE_ERROR" = "true" ]; then
             echo "  , \"error\": true"
+            local JSON_SAFE_LOG
+            if command -v python3 >/dev/null 2>&1; then
+                JSON_SAFE_LOG=$(python3 -c 'import json, sys; print(json.dumps(sys.stdin.read()))' <<< "$UPDATE_OUTPUT")
+            else
+                local ESCAPED
+                ESCAPED=$(echo "$UPDATE_OUTPUT" | sed 's/\\/\\\\/g' | sed 's/"/\\"/g' | awk '{printf "%s\\n", $0}' | sed 's/\\n$//')
+                JSON_SAFE_LOG="\"$ESCAPED\""
+            fi
+            echo "  , \"module_upgrade_log\": $JSON_SAFE_LOG"
         fi
         echo "}"
     fi
@@ -850,18 +1104,14 @@ main() {
     }
 
     JSON_MODE="false"
-    ARGS=()
     for arg in "$@"; do
         if [[ "$arg" == "-h" || "$arg" == "--help" ]]; then
             display_usage
             exit 0
         elif [[ "$arg" == "json" ]]; then
             JSON_MODE="true"
-        else
-            ARGS+=("$arg")
         fi
     done
-    set -- "${ARGS[@]}"
 
     if [ "$(id -u)" -ne 0 ]; then
         log_info "Elevating permissions to root..."
@@ -871,7 +1121,20 @@ main() {
         exit 1
     fi
 
-    if [ "$SERVICE_NAME" != "${SERVICE_NAME%-*}" ] && ([ "$#" -gt 0 ] || [ "$JSON_MODE" = "true" ]); then
+    ARGS=()
+    for arg in "$@"; do
+        if [[ "$arg" != "json" ]]; then
+            ARGS+=("$arg")
+        fi
+    done
+    set -- "${ARGS[@]}"
+
+    local PRD_SSH_HOST=""
+    if [ -f "$PATH_TO_ODOO/.env" ]; then
+        PRD_SSH_HOST=$(grep "^PRD_SSH_HOST=" "$PATH_TO_ODOO/.env" 2>/dev/null | cut -d '=' -f2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//' || true)
+    fi
+
+    if [ "$JSON_MODE" = "true" ] || ([ "$#" -gt 0 ] && ([ "$SERVICE_NAME" != "${SERVICE_NAME%-*}" ] || [ -n "$PRD_SSH_HOST" ])); then
         run_automated_pull_mode "$@"
     else
         run_interactive_push_mode "$@"

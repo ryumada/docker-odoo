@@ -1477,13 +1477,7 @@ function main() {
     "$REPOSITORY_DIRPATH/scripts/installer/install-restore_backupdata.sh"
     "$REPOSITORY_DIRPATH/scripts/installer/install-dump_database.sh"
     "$REPOSITORY_DIRPATH/scripts/installer/install-export_filestore.sh"
-
-    ENABLE_DATABASE_CLONER=$(grep "^ENABLE_DATABASE_CLONER=" "$REPOSITORY_DIRPATH/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
-    if [ -n "$ENABLE_DATABASE_CLONER" ]; then
-      "$REPOSITORY_DIRPATH/scripts/installer/install-databasecloner.sh"
-    else
-      log_warn "databasecloner utility is not installed. Please fill ENABLE_DATABASE_CLONER variable in your .env file, then re-run this install script to install databasecloner utility."
-    fi
+    "$REPOSITORY_DIRPATH/scripts/installer/install-databasecloner.sh"
 
     ENABLE_SNAPSHOT=$(grep "^ENABLE_SNAPSHOT=" "$REPOSITORY_DIRPATH/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
     ODOO_DB_NAME=$(grep "^DB_NAME=" "$REPOSITORY_DIRPATH/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g')
