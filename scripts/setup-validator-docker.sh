@@ -166,7 +166,7 @@ run_git_check() {
       log_error "Cannot connect to $remote_target over SSH."; return 2
     fi
   else
-    [ -n "$TARGET_USER" ] && [ "$TARGET_USER" != "$(id -un)" ] && local_user="$TARGET_USER"
+    [ -n "$ruser" ] && [ "$ruser" != "$(id -un)" ] && local_user="$ruser"
     git_user="${local_user:-$(id -un)}"
     log_info "Checking git access locally as $git_user..."
   fi
