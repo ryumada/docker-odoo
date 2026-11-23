@@ -53,8 +53,24 @@ case "$ACTION" in
         "${GIT_RUN[@]}" clone -q --depth 1 -b "$BRANCH" "$URL" "$TARGET_PATH"
         ;;
 
+    status)
+        REPO_PATH="$1"
+        [[ -n "$REPO_PATH" && -d "$REPO_PATH" ]] || { echo "Directory not found: $REPO_PATH" >&2; exit 1; }
+        "${GIT_RUN[@]}" -c safe.directory='*' -C "$REPO_PATH" status --porcelain
+        ;;
+
+    restore)
+        REPO_PATH="$1"
+        [[ -n "$REPO_PATH" && -d "$REPO_PATH" ]] || { echo "Directory not found: $REPO_PATH" >&2; exit 1; }
+        "${GIT_RUN[@]}" -c safe.directory='*' -C "$REPO_PATH" diff --name-only
+        "${GIT_RUN[@]}" -c safe.directory='*' -C "$REPO_PATH" diff --cached --name-only
+        "${GIT_RUN[@]}" -c safe.directory='*' -C "$REPO_PATH" restore --worktree --staged . 2>/dev/null \
+            || "${GIT_RUN[@]}" -c safe.directory='*' -C "$REPO_PATH" restore . 2>/dev/null \
+            || "${GIT_RUN[@]}" -c safe.directory='*' -C "$REPO_PATH" checkout -- .
+        ;;
+
     *)
-        echo "Usage: $0 {branches <path>|fetch <path>|info <path>|clone <url> <branch> <path>}" >&2
+        echo "Usage: $0 {branches <path>|fetch <path>|info <path>|clone <url> <branch> <path>|status <path>|restore <path>}" >&2
         exit 1
         ;;
 esac
