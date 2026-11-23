@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -e
 # Category: Utility
-# Description: Safely performs git operations (branches, info, clone) within the deployment as repository owner.
+# Description: Safely performs git operations (branches, fetch, info, clone) within the deployment as repository owner.
 # Usage: ./scripts/git-helper.sh <action> [args...]
 # Dependencies: git, sudo, bash
 
@@ -27,6 +27,12 @@ case "$ACTION" in
         "${GIT_RUN[@]}" -C "$REPO_PATH" branch -a
         ;;
 
+    fetch)
+        REPO_PATH="$1"
+        [[ -n "$REPO_PATH" && -d "$REPO_PATH" ]] || { echo "Directory not found: $REPO_PATH" >&2; exit 1; }
+        "${GIT_RUN[@]}" -C "$REPO_PATH" fetch --prune
+        ;;
+
     info)
         REPO_PATH="$1"
         [[ -n "$REPO_PATH" && -d "$REPO_PATH" ]] || { echo "Directory not found: $REPO_PATH" >&2; exit 1; }
@@ -48,7 +54,7 @@ case "$ACTION" in
         ;;
 
     *)
-        echo "Usage: $0 {branches <path>|info <path>|clone <url> <branch> <path>}" >&2
+        echo "Usage: $0 {branches <path>|fetch <path>|info <path>|clone <url> <branch> <path>}" >&2
         exit 1
         ;;
 esac
