@@ -20,6 +20,9 @@ JSON_MODE=false
 GDRIVE_ACCESS_TOKEN="${GDRIVE_ACCESS_TOKEN:-}"
 
 TEMP_WORK_DIR=""
+REMOTE_CLEANUP_TARGET=""
+REMOTE_CLEANUP_PATH=""
+REMOTE_SSH_OPTS=()
 
 log_msg() {
   local level="$1"
@@ -40,6 +43,9 @@ json_error() {
 cleanup() {
   if [ -n "$TEMP_WORK_DIR" ] && [ -d "$TEMP_WORK_DIR" ]; then
     rm -rf "$TEMP_WORK_DIR"
+  fi
+  if [ -n "$REMOTE_CLEANUP_TARGET" ] && [ -n "$REMOTE_CLEANUP_PATH" ]; then
+    ssh "${REMOTE_SSH_OPTS[@]}" "$REMOTE_CLEANUP_TARGET" "rm -f $(printf '%q' "$REMOTE_CLEANUP_PATH")" >/dev/null 2>&1 || true
   fi
 }
 trap cleanup EXIT
@@ -346,7 +352,12 @@ PY
 
 TIMESTAMP=$(date +"%Y%m%d-%H%M%S")
 ZIP_NAME="${TARGET_DB}-${TIMESTAMP}.zip"
-TEMP_WORK_DIR=$(mktemp -d -t "depcon_dl_XXXXXX")
+OWNER_HOME=$(getent passwd "$CURRENT_DIR_USER" 2>/dev/null | cut -d: -f6 || true)
+if [ -n "$OWNER_HOME" ] && [ -d "$OWNER_HOME" ]; then
+  TEMP_WORK_DIR=$(mktemp -d "$OWNER_HOME/.depcon_dl_XXXXXX")
+else
+  TEMP_WORK_DIR=$(mktemp -d -t "depcon_dl_XXXXXX")
+fi
 ZIP_PATH="$TEMP_WORK_DIR/$ZIP_NAME"
 
 # Build dump + manifest + filestore
@@ -397,7 +408,12 @@ if [ -n "$SNAPSHOT_REMOTE_HOST" ]; then
   SSH_OPTS=(-p "$SNAPSHOT_REMOTE_PORT" -o BatchMode=yes -o StrictHostKeyChecking=accept-new)
   [ -n "$SNAPSHOT_REMOTE_KEY" ] && SSH_OPTS+=(-i "$SNAPSHOT_REMOTE_KEY")
 
-  REMOTE_TMP="/tmp/depcon_dl_${TIMESTAMP}_${ZIP_NAME}"
+  REMOTE_HOME=$(ssh "${SSH_OPTS[@]}" "$SNAPSHOT_REMOTE_USER@$SNAPSHOT_REMOTE_HOST" 'echo "$HOME"' 2>/dev/null | tr -d '\r\n' || true)
+  REMOTE_TMP="${REMOTE_HOME:-/tmp}/.depcon_dl_${TIMESTAMP}_${ZIP_NAME}"
+  REMOTE_SSH_OPTS=("${SSH_OPTS[@]}")
+  REMOTE_CLEANUP_TARGET="$SNAPSHOT_REMOTE_USER@$SNAPSHOT_REMOTE_HOST"
+  REMOTE_CLEANUP_PATH="$REMOTE_TMP"
+
   log_msg "INFO" "Transferring archive to Secondary VPS ($SNAPSHOT_REMOTE_USER@$SNAPSHOT_REMOTE_HOST) for Google Drive upload..."
   rsync -e "ssh ${SSH_OPTS[*]}" -az "$ZIP_PATH" "$SNAPSHOT_REMOTE_USER@$SNAPSHOT_REMOTE_HOST:$REMOTE_TMP"
   rm -f "$ZIP_PATH"
@@ -461,6 +477,7 @@ REMOTE_PY
   )
   UPLOAD_JSON=$(printf '%s\n' "$GDRIVE_ACCESS_TOKEN" | ssh "${SSH_OPTS[@]}" "$SNAPSHOT_REMOTE_USER@$SNAPSHOT_REMOTE_HOST" \
     "python3 -c $(printf '%q' "$REMOTE_PY_CODE") $(printf '%q' "$REMOTE_TMP") $(printf '%q' "$ZIP_NAME") $(printf '%q' "$GDRIVE_FOLDER_ID") $(printf '%q' "$SHARE_EMAIL")")
+  REMOTE_CLEANUP_PATH=""
 else
   log_msg "INFO" "Uploading archive to Google Drive..."
   UPLOAD_JSON=$(upload_to_gdrive "$ZIP_PATH" "$ZIP_NAME" "$GDRIVE_FOLDER_ID" "$GDRIVE_ACCESS_TOKEN" "$SHARE_EMAIL")
