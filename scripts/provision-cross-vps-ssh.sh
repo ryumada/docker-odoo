@@ -31,6 +31,7 @@ TARGET=""
 AUTH_METHOD=""
 ADMIN_USER=""
 CHECK_ONLY=false
+RESET_HOST_KEY=false
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -48,6 +49,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --check-only)
       CHECK_ONLY=true
+      shift
+      ;;
+    --reset-host-key)
+      RESET_HOST_KEY=true
       shift
       ;;
     *)
@@ -193,6 +198,18 @@ if [ ! -f "$KEY_PATH" ] || [ ! -f "${KEY_PATH}.pub" ]; then
   chmod 600 "$KEY_PATH"
   chmod 644 "${KEY_PATH}.pub"
   log_success "Generated SSH key pair: $KEY_PATH"
+fi
+
+if [ "$RESET_HOST_KEY" = true ]; then
+  log_info "Resetting known_hosts entry for ${HOST}:${PORT} (--reset-host-key)..."
+  for kh_file in "$HOME/.ssh/known_hosts" "$OWNER_HOME/.ssh/known_hosts"; do
+    if [ -f "$kh_file" ]; then
+      if [ "$PORT" = "22" ]; then
+        ssh-keygen -f "$kh_file" -R "$HOST" >/dev/null 2>&1 || true
+      fi
+      ssh-keygen -f "$kh_file" -R "[$HOST]:$PORT" >/dev/null 2>&1 || true
+    fi
+  done
 fi
 
 if [ "$AUTH_METHOD" = "admin" ]; then
