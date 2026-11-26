@@ -191,6 +191,11 @@ function main() {
         log_success "Passwordless SSH key authentication verified on Production VPS."
         ssh_verified=true
       else
+        if [ "${IS_NON_INTERACTIVE:-false}" = true ] || [ ! -t 0 ]; then
+          log_error "Passwordless SSH key is not verified on Production VPS ($PRD_SSH_USER@$PRD_SSH_HOST:$PRD_SSH_PORT) and interactive setup is disabled in non-interactive/auto mode."
+          log_error "Add '${PRD_SSH_KEY}.pub' to ~/.ssh/authorized_keys on the Production VPS (or run './setup.sh' interactively on the server), then re-run setup."
+          exit 1
+        fi
         log_warn "Passwordless SSH key not yet verified on Production VPS ($PRD_SSH_HOST)."
         echo -e "${COLOR_WARN}Choose an option to install SSH key on Production VPS:${COLOR_RESET}"
         echo "  [1] Password authentication as '$PRD_SSH_USER' (via ssh-copy-id)"

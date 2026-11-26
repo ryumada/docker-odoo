@@ -311,6 +311,11 @@ function main() {
       log_success "Passwordless SSH key authentication verified on Secondary VPS."
       ssh_verified=true
     else
+      if [ "${IS_NON_INTERACTIVE:-false}" = true ] || [ ! -t 0 ]; then
+        log_error "Passwordless SSH key is not verified on Secondary VPS ($SNAPSHOT_REMOTE_USER@$SNAPSHOT_REMOTE_HOST:$SNAPSHOT_REMOTE_PORT) and interactive setup is disabled in non-interactive/auto mode."
+        log_error "Add '${SNAPSHOT_REMOTE_KEY}.pub' to ~/.ssh/authorized_keys on the Secondary VPS (or run './setup.sh' interactively on the server), then re-run setup."
+        exit 1
+      fi
       log_warn "Passwordless SSH key not yet verified on Secondary VPS ($SNAPSHOT_REMOTE_HOST)."
       echo -e "${COLOR_WARN}Choose an option to install SSH key on Secondary VPS:${COLOR_RESET}"
       echo "  [1] Password authentication as '$SNAPSHOT_REMOTE_USER' (via ssh-copy-id)"

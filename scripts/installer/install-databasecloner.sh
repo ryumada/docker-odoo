@@ -189,6 +189,11 @@ function main() {
         log_success "Passwordless SSH key authentication verified on Remote VPS."
         ssh_verified=true
       else
+        if [ "${IS_NON_INTERACTIVE:-false}" = true ] || [ ! -t 0 ]; then
+          log_error "Passwordless SSH key is not verified on Remote VPS ($CLONER_SSH_USER@$CLONER_SSH_HOST:$CLONER_SSH_PORT) and interactive setup is disabled in non-interactive/auto mode."
+          log_error "Add '${CLONER_SSH_KEY}.pub' to ~/.ssh/authorized_keys on the Remote VPS (or run './setup.sh' interactively on the server), then re-run setup."
+          exit 1
+        fi
         log_warn "Passwordless SSH key not yet verified on Remote VPS ($CLONER_SSH_HOST)."
         echo -e "${COLOR_WARN}Choose an option to install SSH key on Remote VPS:${COLOR_RESET}"
         echo "  [1] Password authentication as '$CLONER_SSH_USER' (via ssh-copy-id)"

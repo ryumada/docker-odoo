@@ -1276,6 +1276,7 @@ function main() {
   if [ "$SETUP_MODE" = "auto" ] || [ "$ENFORCE_BUILD_MODE" = "-y" ] || [ "$ENFORCE_BUILD_MODE" = "--yes" ] || [ ! -t 0 ] || [ -n "$VSCODE_PID" ]; then
     IS_NON_INTERACTIVE=true
   fi
+  export SETUP_MODE IS_NON_INTERACTIVE
 
   echo -e "\n==================================================================="
   echo "Path for working directory : $REPOSITORY_DIRPATH"
