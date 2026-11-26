@@ -2,7 +2,7 @@
 set -euo pipefail
 # Category: Utility
 # Description: Dumps an Odoo database + filestore into a standard Odoo ZIP and uploads it to Google Drive.
-# Usage: ./scripts/download-backupdata.sh [--db NAME] [--neutralize] [--gdrive-folder-id ID] [--gdrive-token-stdin] [--share-email EMAIL] [--json]
+# Usage: ./scripts/download-backupdata.sh [--db NAME] [--neutralize] [--exclude-chatter] [--exclude-assets] [--no-filestore] [--gdrive-folder-id ID] [--gdrive-token-stdin] [--share-email EMAIL] [--json]
 # Dependencies: 7z/7za, pg_dump, psql, curl, python3, sudo, git, ssh, rsync
 
 CURRENT_DIR=$(dirname "$(readlink -f "$0")")
@@ -13,6 +13,9 @@ ENV_FILE="$PATH_TO_ODOO/.env"
 
 TARGET_DB=""
 NEUTRALIZE=false
+EXCLUDE_CHATTER=false
+EXCLUDE_ASSETS=false
+NO_FILESTORE=false
 GDRIVE_FOLDER_ID=""
 GDRIVE_TOKEN_STDIN=false
 SHARE_EMAIL=""
@@ -60,6 +63,18 @@ while [[ $# -gt 0 ]]; do
       NEUTRALIZE=true
       shift
       ;;
+    --exclude-chatter)
+      EXCLUDE_CHATTER=true
+      shift
+      ;;
+    --exclude-assets)
+      EXCLUDE_ASSETS=true
+      shift
+      ;;
+    --no-filestore)
+      NO_FILESTORE=true
+      shift
+      ;;
     --gdrive-folder-id)
       GDRIVE_FOLDER_ID="${2:-}"
       shift 2
@@ -77,7 +92,7 @@ while [[ $# -gt 0 ]]; do
       shift
       ;;
     -h|--help)
-      echo "Usage: $0 [--db NAME] [--neutralize] [--gdrive-folder-id ID] [--gdrive-token-stdin] [--share-email EMAIL] [--json]"
+      echo "Usage: $0 [--db NAME] [--neutralize] [--exclude-chatter] [--exclude-assets] [--no-filestore] [--gdrive-folder-id ID] [--gdrive-token-stdin] [--share-email EMAIL] [--json]"
       exit 0
       ;;
     *)
@@ -96,6 +111,9 @@ if [ "$(id -u)" -ne 0 ]; then
   exec sudo --preserve-env=GDRIVE_ACCESS_TOKEN "$0" \
     ${TARGET_DB:+--db "$TARGET_DB"} \
     $([ "$NEUTRALIZE" = true ] && echo "--neutralize") \
+    $([ "$EXCLUDE_CHATTER" = true ] && echo "--exclude-chatter") \
+    $([ "$EXCLUDE_ASSETS" = true ] && echo "--exclude-assets") \
+    $([ "$NO_FILESTORE" = true ] && echo "--no-filestore") \
     ${GDRIVE_FOLDER_ID:+--gdrive-folder-id "$GDRIVE_FOLDER_ID"} \
     ${SHARE_EMAIL:+--share-email "$SHARE_EMAIL"} \
     $([ "$JSON_MODE" = true ] && echo "--json")
@@ -350,8 +368,91 @@ print(json.dumps(meta))
 PY
 }
 
+generate_attachment_exclusions() {
+  local db="$1"
+  local exclude_txt="$2"
+  local ex_chatter="$3"
+  local ex_assets="$4"
+
+  local excluded_cats=()
+  [ "$ex_chatter" = true ] && excluded_cats+=("'chatter'")
+  [ "$ex_assets" = true ] && excluded_cats+=("'asset'")
+
+  if [ "${#excluded_cats[@]}" -eq 0 ]; then
+    touch "$exclude_txt"
+    return 0
+  fi
+
+  local cat_in
+  cat_in=$(IFS=,; echo "${excluded_cats[*]}")
+
+  local has_chatter
+  has_chatter=$(run_psql -d "$db" -t -A -c "SELECT count(*) FROM information_schema.tables WHERE table_name = 'message_attachment_rel';" 2>/dev/null || echo "0")
+
+  local cte
+  if [ "$has_chatter" = "1" ]; then
+    cte="
+WITH chatter_ids AS (
+  SELECT DISTINCT attachment_id FROM message_attachment_rel
+),
+classified AS (
+  SELECT
+    store_fname,
+    CASE
+      WHEN id IN (SELECT attachment_id FROM chatter_ids) THEN 'chatter'
+      WHEN res_model = 'ir.ui.view' AND (url LIKE '/web/assets/%' OR name LIKE '%.assets_%') THEN 'asset'
+      WHEN res_field IS NOT NULL AND res_field != '' THEN 'field'
+      WHEN res_model IS NOT NULL AND res_model != '' THEN 'record'
+      ELSE 'standalone'
+    END AS category
+  FROM ir_attachment
+  WHERE store_fname IS NOT NULL
+)"
+  else
+    cte="
+WITH classified AS (
+  SELECT
+    store_fname,
+    CASE
+      WHEN res_model = 'mail.message' THEN 'chatter'
+      WHEN res_model = 'ir.ui.view' AND (url LIKE '/web/assets/%' OR name LIKE '%.assets_%') THEN 'asset'
+      WHEN res_field IS NOT NULL AND res_field != '' THEN 'field'
+      WHEN res_model IS NOT NULL AND res_model != '' THEN 'record'
+      ELSE 'standalone'
+    END AS category
+  FROM ir_attachment
+  WHERE store_fname IS NOT NULL
+)"
+  fi
+
+  # Dedup rule: A store_fname is ONLY excluded if ALL references to it belong to excluded categories
+  local sql_exclude="
+$cte,
+excludable_fnames AS (
+  SELECT store_fname
+  FROM classified
+  GROUP BY store_fname
+  HAVING bool_and(category IN ($cat_in))
+)
+SELECT store_fname FROM excludable_fnames;
+"
+  run_psql -d "$db" -t -A -c "$sql_exclude" 2>/dev/null | sed '/^[[:space:]]*$/d' > "$exclude_txt" || touch "$exclude_txt"
+  local count
+  count=$(wc -l < "$exclude_txt")
+  log_msg "INFO" "Identified $count unique filestore files to exclude (dedup-safe: $cat_in)."
+}
+
 TIMESTAMP=$(date +"%Y%m%d-%H%M%S")
-ZIP_NAME="${TARGET_DB}-${TIMESTAMP}.zip"
+if [ "$NO_FILESTORE" = true ]; then
+  ZIP_NAME="${TARGET_DB}-${TIMESTAMP}-nofilestore.zip"
+  FILESTORE_MODE="none"
+elif [ "$EXCLUDE_CHATTER" = true ] || [ "$EXCLUDE_ASSETS" = true ]; then
+  ZIP_NAME="${TARGET_DB}-${TIMESTAMP}-lite.zip"
+  FILESTORE_MODE="lightweight"
+else
+  ZIP_NAME="${TARGET_DB}-${TIMESTAMP}.zip"
+  FILESTORE_MODE="full"
+fi
 OWNER_HOME=$(getent passwd "$CURRENT_DIR_USER" 2>/dev/null | cut -d: -f6 || true)
 if [ -n "$OWNER_HOME" ] && [ -d "$OWNER_HOME" ]; then
   TEMP_WORK_DIR=$(mktemp -d "$OWNER_HOME/.depcon_dl_XXXXXX")
@@ -377,9 +478,24 @@ fi
 generate_manifest "$TARGET_DB" "$DB_WORK_DIR/manifest.json"
 
 FILESTORE_SRC="/var/lib/odoo/$SERVICE_NAME/filestore/$TARGET_DB"
-if [ -d "$FILESTORE_SRC" ]; then
-  log_msg "INFO" "Packaging filestore from $FILESTORE_SRC..."
-  cp -al "$FILESTORE_SRC" "$DB_WORK_DIR/filestore" 2>/dev/null || cp -r "$FILESTORE_SRC" "$DB_WORK_DIR/filestore"
+if [ "$NO_FILESTORE" = true ]; then
+  log_msg "INFO" "Skipping filestore (--no-filestore)."
+elif [ -d "$FILESTORE_SRC" ]; then
+  if [ "$EXCLUDE_CHATTER" = true ] || [ "$EXCLUDE_ASSETS" = true ]; then
+    EXCLUDE_LIST="$TEMP_WORK_DIR/exclude_store_fnames.txt"
+    generate_attachment_exclusions "$TARGET_DB" "$EXCLUDE_LIST" "$EXCLUDE_CHATTER" "$EXCLUDE_ASSETS"
+    if [ -s "$EXCLUDE_LIST" ]; then
+      log_msg "INFO" "Packaging lightweight filestore from $FILESTORE_SRC (excluding chatter/assets via hardlinks)..."
+      mkdir -p "$DB_WORK_DIR/filestore"
+      rsync -a --link-dest="$FILESTORE_SRC/" --exclude-from="$EXCLUDE_LIST" "$FILESTORE_SRC/" "$DB_WORK_DIR/filestore/"
+    else
+      log_msg "INFO" "Packaging filestore from $FILESTORE_SRC..."
+      cp -al "$FILESTORE_SRC" "$DB_WORK_DIR/filestore" 2>/dev/null || cp -r "$FILESTORE_SRC" "$DB_WORK_DIR/filestore"
+    fi
+  else
+    log_msg "INFO" "Packaging filestore from $FILESTORE_SRC..."
+    cp -al "$FILESTORE_SRC" "$DB_WORK_DIR/filestore" 2>/dev/null || cp -r "$FILESTORE_SRC" "$DB_WORK_DIR/filestore"
+  fi
 fi
 
 ZIP_CMD="7z"
@@ -484,10 +600,10 @@ else
   rm -f "$ZIP_PATH"
 fi
 
-python3 - "$UPLOAD_JSON" "$TARGET_DB" "$ZIP_NAME" "$SIZE_BYTES" "$NEUTRALIZE" <<'PY'
+python3 - "$UPLOAD_JSON" "$TARGET_DB" "$ZIP_NAME" "$SIZE_BYTES" "$NEUTRALIZE" "$FILESTORE_MODE" <<'PY'
 import json, sys
 meta = json.loads(sys.argv[1])
-db_name, file_name, size_bytes, neutralized = sys.argv[2:6]
+db_name, file_name, size_bytes, neutralized, filestore_mode = sys.argv[2:7]
 fid = meta.get("id", "")
 print(json.dumps({
     "status": "ok",
@@ -498,5 +614,6 @@ print(json.dumps({
     "gdrive_web_view_link": meta.get("webViewLink") or f"https://drive.google.com/file/d/{fid}/view",
     "gdrive_download_link": meta.get("webContentLink") or f"https://drive.google.com/uc?id={fid}&export=download",
     "neutralized": neutralized == "true",
+    "filestore_mode": filestore_mode,
 }))
 PY
