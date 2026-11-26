@@ -56,6 +56,7 @@ scripts/*
 !scripts/list-databases.sh
 !scripts/list-snapshot.sh
 !scripts/long-process-mode.sh
+!scripts/provision-cross-vps-ssh.sh
 !scripts/read-config-file.sh
 !scripts/read-drill-reports.sh
 !scripts/README.md
