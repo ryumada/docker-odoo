@@ -76,6 +76,10 @@ for arg in "$@"; do
 done
 set -- "${ARGS[@]}"
 
+if declare -F check_deployment_lock >/dev/null 2>&1; then
+    check_deployment_lock "$PATH_TO_ODOO/.env"
+fi
+
 TARGET_DB="${1:-}"
 RAW_MODULES="${2:-}"
 

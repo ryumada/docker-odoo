@@ -52,6 +52,15 @@ if [ ! -f "$ENV_FILE" ]; then
     exit 1
 fi
 
+if [ -f "$CURRENT_DIR/lib/odoo_utils.sh" ]; then
+    source "$CURRENT_DIR/lib/odoo_utils.sh"
+elif [ -f "$PATH_TO_ODOO/scripts/lib/odoo_utils.sh" ]; then
+    source "$PATH_TO_ODOO/scripts/lib/odoo_utils.sh"
+fi
+if declare -F check_deployment_lock >/dev/null 2>&1; then
+    check_deployment_lock "$ENV_FILE"
+fi
+
 # Update FAKETIME in .env
 if grep -q "^FAKETIME=" "$ENV_FILE"; then
     sed -i "s|^FAKETIME=.*|FAKETIME=$NEW_FAKETIME|" "$ENV_FILE"

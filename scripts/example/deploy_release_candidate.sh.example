@@ -225,6 +225,10 @@ for arg in "$@"; do
 done
 set -- "${ARGS[@]}"
 
+if [[ "${1:-}" != "--list-db" && "${1:-}" != "-h" && "${1:-}" != "--help" ]] && declare -F check_deployment_lock >/dev/null 2>&1; then
+    check_deployment_lock "$PATH_TO_ODOO/.env"
+fi
+
 # --- Usage / Help Function ---
 display_usage() {
     echo -e "${COLOR_INFO}Usage:${COLOR_RESET} sudo $0 <REPO_NAME> <BRANCH> <RENEW_DB> [DB_NAME] [MODULES]"

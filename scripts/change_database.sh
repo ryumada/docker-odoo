@@ -44,6 +44,15 @@ if [ ! -f "$ENV_FILE" ]; then
     exit 1
 fi
 
+if [ -f "$CURRENT_DIR/lib/odoo_utils.sh" ]; then
+    source "$CURRENT_DIR/lib/odoo_utils.sh"
+elif [ -f "$PATH_TO_ODOO/scripts/lib/odoo_utils.sh" ]; then
+    source "$PATH_TO_ODOO/scripts/lib/odoo_utils.sh"
+fi
+if declare -F check_deployment_lock >/dev/null 2>&1; then
+    check_deployment_lock "$ENV_FILE"
+fi
+
 # Update DB_NAME in .env
 if grep -q "^DB_NAME=" "$ENV_FILE"; then
     sed -i "s/^DB_NAME=.*/DB_NAME=$NEW_DB/" "$ENV_FILE"

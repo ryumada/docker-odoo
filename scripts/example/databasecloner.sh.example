@@ -1152,6 +1152,10 @@ main() {
     exit 1
   fi
 
+  if declare -F check_deployment_lock >/dev/null 2>&1; then
+    check_deployment_lock "$PATH_TO_ODOO/.env"
+  fi
+
   ARGS=()
   for arg in "$@"; do
     if [[ "$arg" != "json" ]]; then

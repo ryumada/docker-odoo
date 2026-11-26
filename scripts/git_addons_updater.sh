@@ -17,6 +17,12 @@ ENV_FILE=".env"
 UPDATE_SCRIPT="./scripts/update-env-file.sh"
 MAX_BACKUPS=3
 
+if [ -f "$CURRENT_DIR/lib/odoo_utils.sh" ]; then
+  source "$CURRENT_DIR/lib/odoo_utils.sh"
+elif [ -f "$PATH_TO_ODOO/scripts/lib/odoo_utils.sh" ]; then
+  source "$PATH_TO_ODOO/scripts/lib/odoo_utils.sh"
+fi
+
 # --- Logging Functions & Colors ---
 # Define colors for log messages
 readonly COLOR_RESET="\033[0m"
@@ -397,6 +403,10 @@ function main() {
   if ! cd "$PATH_TO_ODOO"; then
     log_error "Can't change directory to $PATH_TO_ODOO"
     exit 1
+  fi
+
+  if declare -F check_deployment_lock >/dev/null 2>&1; then
+    check_deployment_lock "$PATH_TO_ODOO/.env"
   fi
 
   log_info "Start checking git repositories"
