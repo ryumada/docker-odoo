@@ -53,17 +53,34 @@ error_handler() {
 trap 'error_handler $? $LINENO "$BASH_COMMAND"' ERR
 
 ODOO_FILESTORE_PATH="/var/lib/odoo/$SERVICE_NAME/filestore"
+temporary_directory=""
+REMOTE_STAGING_DIR=""
+REMOTE_SSH_OPTS=()
+REMOTE_TARGET=""
+
+read_env_val() {
+  local key="$1"
+  local file="${2:-$PATH_TO_ODOO/.env}"
+  [ -f "$file" ] || return 0
+  grep -E "^${key}=" "$file" 2>/dev/null | tail -n 1 | cut -d '=' -f 2- | sed 's/[[:space:]]*#.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^["'\'']//;s/["'\'']$//' || true
+}
 
 # --- Centralized Cleanup Hook ---
-cleanup_on_error() {
+cleanup_all() {
     local exit_code=$?
-    if [ $exit_code -ne 0 ]; then
+    if declare -F queue_lock_release_all >/dev/null 2>&1; then
+        queue_lock_release_all
+    fi
+    if [ -n "$REMOTE_TARGET" ] && [ -n "$REMOTE_STAGING_DIR" ]; then
+        ssh "${REMOTE_SSH_OPTS[@]}" "$REMOTE_TARGET" "rm -rf $(printf '%q' "$REMOTE_STAGING_DIR")" >/dev/null 2>&1 || true
+    fi
+    if [ "$exit_code" -ne 0 ]; then
         if [ -n "$temporary_directory" ] && [ -d "$temporary_directory" ]; then
             rm -rf "$temporary_directory"
         fi
     fi
 }
-trap cleanup_on_error EXIT
+trap cleanup_all EXIT
 
 function run_pg_dump() {
   local env_file="${PSQL_ENV_FILE:-$PATH_TO_ODOO/.env}"
@@ -116,9 +133,9 @@ function run_psql() {
 
 function generate_manifest() {
   local db_name="$1"
-  local target_file="$2"
+  local target_file="${2:-}"
 
-  log_info "Gathering exact metadata for manifest.json..."
+  log_info "Gathering exact metadata for manifest.json..." >&2
 
   local MANIFEST_SQL="
     WITH installed_modules AS (
@@ -144,8 +161,9 @@ function generate_manifest() {
     ) FROM ir_module_module WHERE name = 'base';
   "
 
-  if ! run_psql -d "$db_name" -t -A -c "$MANIFEST_SQL" > "$target_file" 2>/dev/null; then
-    log_warn "Could not query database for manifest. Falling back to the Odoo version in release.py or .env."
+  local manifest_out
+  if ! manifest_out=$(run_psql -d "$db_name" -t -A -c "$MANIFEST_SQL" 2>/dev/null) || [ -z "$manifest_out" ]; then
+    log_warn "Could not query database for manifest. Falling back to the Odoo version in release.py or .env." >&2
     local MANIFEST_VERSION="" MANIFEST_MAJOR_VERSION="" MANIFEST_VERSION_INFO="null"
     if ! declare -F odoo_version_detect >/dev/null && [ -f "$PATH_TO_ODOO/scripts/lib/odoo_version.sh" ]; then
       # shellcheck source=/dev/null
@@ -154,9 +172,9 @@ function generate_manifest() {
     if declare -F odoo_version_detect >/dev/null; then
       odoo_version_detect "$PATH_TO_ODOO"
     else
-      log_warn "scripts/lib/odoo_version.sh not found (update docker-odoo and re-run ./setup.sh); manifest.json will have no Odoo version."
+      log_warn "scripts/lib/odoo_version.sh not found (update docker-odoo and re-run ./setup.sh); manifest.json will have no Odoo version." >&2
     fi
-    cat <<EOF > "$target_file"
+    manifest_out=$(cat <<EOF
 {
     "odoo_dump": "1",
     "db_name": "$db_name",
@@ -166,6 +184,13 @@ function generate_manifest() {
     "modules": {}
 }
 EOF
+)
+  fi
+
+  if [ -n "$target_file" ]; then
+    printf '%s\n' "$manifest_out" > "$target_file"
+  else
+    printf '%s\n' "$manifest_out"
   fi
 }
 
@@ -239,14 +264,15 @@ function main() {
       exit 1
   fi
 
-  BACKUP_RESTORE_METHOD=$(grep "^BACKUP_RESTORE_METHOD=" "$PATH_TO_ODOO/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
+  BACKUP_RESTORE_METHOD=$(read_env_val "BACKUP_RESTORE_METHOD")
   if [ -z "$BACKUP_RESTORE_METHOD" ]; then
     BACKUP_RESTORE_METHOD="manual"
   fi
+  SNAPSHOT_REMOTE_HOST=$(read_env_val "SNAPSHOT_REMOTE_HOST")
 
   if [ "$BACKUP_RESTORE_METHOD" = "endpoint" ]; then
     isCurlInstalled
-  else
+  elif [ -z "$SNAPSHOT_REMOTE_HOST" ]; then
     isZipInstalled
   fi
 
@@ -254,8 +280,8 @@ function main() {
 
   DB_LIST="$(whichData)"
 
-  ADMIN_PASSWD=$(grep "^ADMIN_PASSWD=" "$PATH_TO_ODOO/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
-  PORT=$(grep "^PORT=" "$PATH_TO_ODOO/.env" | cut -d "=" -f 2 | sed 's/^[[:space:]\n]*//g' | sed 's/[[:space:]\n]*$//g' || true)
+  ADMIN_PASSWD=$(read_env_val "ADMIN_PASSWD")
+  PORT=$(read_env_val "PORT")
 
   if [ "$BACKUP_RESTORE_METHOD" = "endpoint" ]; then
     if [ -z "$ADMIN_PASSWD" ] || [ -z "$PORT" ]; then
@@ -265,11 +291,204 @@ function main() {
     checkOdooEndpoint
   fi
 
-  temporary_directory="/tmp/$(date +"%Y%m%d-%H%M%S")-dataodoo-backupper"
-  if mkdir -p "$temporary_directory"; then
-    log_success "Created temporary directory: $temporary_directory"
+  # Shared queue lock (odoo-backup-system): coordinate I/O & mirror/filestore with snapshot.sh
+  local SNAPSHOT_QUEUE_NAME="odoo-backup-system"
+  local DEFAULT_SNAPSHOT_QUEUE_TIMEOUT=43200
+  local SNAPSHOT_QUEUE_TIMEOUT
+  SNAPSHOT_QUEUE_TIMEOUT=$(read_env_val "SNAPSHOT_QUEUE_TIMEOUT")
+  if ! [[ "$SNAPSHOT_QUEUE_TIMEOUT" =~ ^[0-9]+$ ]] || [ "$SNAPSHOT_QUEUE_TIMEOUT" -le 0 ]; then
+    SNAPSHOT_QUEUE_TIMEOUT="$DEFAULT_SNAPSHOT_QUEUE_TIMEOUT"
+  fi
+  local SNAPSHOT_QUEUE_POLL_INTERVAL SNAPSHOT_QUEUE_STALE_AFTER
+  SNAPSHOT_QUEUE_POLL_INTERVAL=$(read_env_val "SNAPSHOT_QUEUE_POLL_INTERVAL")
+  [[ "$SNAPSHOT_QUEUE_POLL_INTERVAL" =~ ^[0-9]+$ ]] && [ "$SNAPSHOT_QUEUE_POLL_INTERVAL" -gt 0 ] || SNAPSHOT_QUEUE_POLL_INTERVAL=60
+  SNAPSHOT_QUEUE_STALE_AFTER=$(read_env_val "SNAPSHOT_QUEUE_STALE_AFTER")
+  [[ "$SNAPSHOT_QUEUE_STALE_AFTER" =~ ^[0-9]+$ ]] && [ "$SNAPSHOT_QUEUE_STALE_AFTER" -gt 0 ] || SNAPSHOT_QUEUE_STALE_AFTER=600
+
+  local QUEUE_LOCK_LIB=""
+  if [ -f "$CURRENT_DIR/lib/queue_lock.sh" ]; then
+    QUEUE_LOCK_LIB="$CURRENT_DIR/lib/queue_lock.sh"
+  elif [ -f "$PATH_TO_ODOO/scripts/lib/queue_lock.sh" ]; then
+    QUEUE_LOCK_LIB="$PATH_TO_ODOO/scripts/lib/queue_lock.sh"
+  fi
+  if [ -n "$QUEUE_LOCK_LIB" ]; then
+    # shellcheck source=/dev/null
+    source "$QUEUE_LOCK_LIB"
+    QUEUE_LOCK_POLL_INTERVAL="$SNAPSHOT_QUEUE_POLL_INTERVAL"
+    QUEUE_LOCK_STALE_AFTER="$SNAPSHOT_QUEUE_STALE_AFTER"
+    QUEUE_LOCK_LEGACY_STALE_AFTER="$SNAPSHOT_QUEUE_TIMEOUT"
+    if ! queue_lock_acquire_local "$SNAPSHOT_QUEUE_NAME" "$SERVICE_NAME" \
+        "$SERVICE_NAME (dataodoo-backupper on $(hostname -s 2>/dev/null || hostname))" "$SNAPSHOT_QUEUE_TIMEOUT"; then
+      exit 1
+    fi
+  fi
+
+  if command -v ionice >/dev/null 2>&1; then
+    ionice -c2 -n7 -p $$ 2>/dev/null || true
+  fi
+  renice -n 19 -p $$ >/dev/null 2>&1 || true
+
+  local TARGET_OWNER="${SUDO_USER:-$REPOSITORY_OWNER}"
+  local OWNER_HOME
+  OWNER_HOME=$(getent passwd "$TARGET_OWNER" 2>/dev/null | cut -d: -f6 || true)
+  if [ -z "$OWNER_HOME" ] || [ ! -d "$OWNER_HOME" ]; then
+    OWNER_HOME=$(getent passwd "$REPOSITORY_OWNER" 2>/dev/null | cut -d: -f6 || true)
+  fi
+  local LOCAL_HOSTNAME
+  LOCAL_HOSTNAME=$(hostname -f 2>/dev/null || hostname 2>/dev/null || echo "localhost")
+  local TIMESTAMP
+  TIMESTAMP=$(date +"%Y%m%d-%H%M%S")
+
+  # --- Branch 1: Manual mode offloaded to Secondary VPS (SNAPSHOT_REMOTE_HOST) ---
+  if [ "$BACKUP_RESTORE_METHOD" != "endpoint" ] && [ -n "$SNAPSHOT_REMOTE_HOST" ]; then
+    local SNAPSHOT_REMOTE_USER SNAPSHOT_REMOTE_PORT SNAPSHOT_REMOTE_KEY
+    SNAPSHOT_REMOTE_USER=$(read_env_val "SNAPSHOT_REMOTE_USER")
+    SNAPSHOT_REMOTE_PORT=$(read_env_val "SNAPSHOT_REMOTE_PORT")
+    SNAPSHOT_REMOTE_KEY=$(read_env_val "SNAPSHOT_REMOTE_KEY")
+    [ -z "$SNAPSHOT_REMOTE_PORT" ] && SNAPSHOT_REMOTE_PORT="22"
+    if [ -z "$SNAPSHOT_REMOTE_USER" ]; then
+      log_error "SNAPSHOT_REMOTE_USER is required when SNAPSHOT_REMOTE_HOST is set in .env!"
+      exit 1
+    fi
+
+    local KEY_HOME="${OWNER_HOME:-$HOME}"
+    if [ -z "$SNAPSHOT_REMOTE_KEY" ] && [ -n "$KEY_HOME" ]; then
+      local THIS_VPS CLEAN_TGT
+      THIS_VPS=$(hostname -s 2>/dev/null || hostname 2>/dev/null || echo "vps-source")
+      CLEAN_TGT=$(echo "$SNAPSHOT_REMOTE_HOST" | sed -e 's|^.*://||' -e 's|^.*@||' -e 's|:.*$||' -e 's|/.*$||' -e 's|[^a-zA-Z0-9._-]|_|g')
+      if [ -f "$KEY_HOME/.ssh/snapshot-${THIS_VPS}-${CLEAN_TGT}" ]; then
+        SNAPSHOT_REMOTE_KEY="$KEY_HOME/.ssh/snapshot-${THIS_VPS}-${CLEAN_TGT}"
+      elif [ -f "$KEY_HOME/.ssh/id_ed25519-snapshot-$SERVICE_NAME" ]; then
+        SNAPSHOT_REMOTE_KEY="$KEY_HOME/.ssh/id_ed25519-snapshot-$SERVICE_NAME"
+      elif [ -f "$KEY_HOME/.ssh/id_ed25519_snapshot" ]; then
+        SNAPSHOT_REMOTE_KEY="$KEY_HOME/.ssh/id_ed25519_snapshot"
+      fi
+    elif [ -n "$SNAPSHOT_REMOTE_KEY" ] && [ -n "$KEY_HOME" ]; then
+      SNAPSHOT_REMOTE_KEY="${SNAPSHOT_REMOTE_KEY/#\~/$KEY_HOME}"
+    fi
+
+    local SSH_OPTS=(-p "$SNAPSHOT_REMOTE_PORT" -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o ServerAliveInterval=30 -o ServerAliveCountMax=5)
+    [ -n "$SNAPSHOT_REMOTE_KEY" ] && [ -f "$SNAPSHOT_REMOTE_KEY" ] && SSH_OPTS+=(-i "$SNAPSHOT_REMOTE_KEY")
+    REMOTE_SSH_OPTS=("${SSH_OPTS[@]}")
+    REMOTE_TARGET="$SNAPSHOT_REMOTE_USER@$SNAPSHOT_REMOTE_HOST"
+    local RSYNC_SSH="ssh"
+    for _opt in "${SSH_OPTS[@]}"; do
+      RSYNC_SSH+=" $(printf '%q' "$_opt")"
+    done
+
+    bk_remote_exec() {
+      ssh "${SSH_OPTS[@]}" "$SNAPSHOT_REMOTE_USER@$SNAPSHOT_REMOTE_HOST" "$@"
+    }
+
+    log_info "Connecting to Secondary VPS ($SNAPSHOT_REMOTE_USER@$SNAPSHOT_REMOTE_HOST:$SNAPSHOT_REMOTE_PORT)..."
+    if ! bk_remote_exec "true" 2>/dev/null; then
+      log_error "Failed to establish SSH connection with Secondary VPS ($SNAPSHOT_REMOTE_USER@$SNAPSHOT_REMOTE_HOST:$SNAPSHOT_REMOTE_PORT)."
+      exit 1
+    fi
+
+    if declare -F queue_lock_acquire_remote >/dev/null 2>&1; then
+      if ! queue_lock_acquire_remote "$SNAPSHOT_QUEUE_NAME" "$SERVICE_NAME" \
+          "$SERVICE_NAME (dataodoo-backupper from $(hostname -s 2>/dev/null || hostname))" "$SNAPSHOT_QUEUE_TIMEOUT" bk_remote_exec; then
+        exit 1
+      fi
+    fi
+
+    local REMOTE_ZIP_CMD REMOTE_HOME REMOTE_HOSTNAME
+    REMOTE_ZIP_CMD=$(bk_remote_exec "command -v 7z 2>/dev/null || command -v 7za 2>/dev/null || true" | tr -d '\r\n')
+    if [ -z "$REMOTE_ZIP_CMD" ]; then
+      log_error "7z/7za is not installed on Secondary VPS ($SNAPSHOT_REMOTE_HOST)."
+      exit 1
+    fi
+    REMOTE_HOME=$(bk_remote_exec 'echo "$HOME"' 2>/dev/null | tr -d '\r\n' || true)
+    if [ -z "$REMOTE_HOME" ]; then
+      log_error "Could not determine HOME directory on Secondary VPS."
+      exit 1
+    fi
+    REMOTE_HOSTNAME=$(bk_remote_exec 'hostname -f 2>/dev/null || hostname' 2>/dev/null | tr -d '\r\n' || echo "$SNAPSHOT_REMOTE_HOST")
+
+    local REMOTE_BASE="$REMOTE_HOME/.odoo-snapshots/$SERVICE_NAME"
+    local REMOTE_MIRROR="$REMOTE_BASE/mirror/filestore"
+    local REMOTE_OUT_DIR="$REMOTE_HOME/${SERVICE_NAME}-${TIMESTAMP}-dataodoo-backupper"
+    REMOTE_STAGING_DIR="$REMOTE_BASE/backupper_staging_$$"
+    local ENV_DB_NAME
+    ENV_DB_NAME=$(read_env_val "DB_NAME")
+
+    bk_remote_exec "mkdir -p $(printf '%q' "$REMOTE_MIRROR") $(printf '%q' "$REMOTE_OUT_DIR") $(printf '%q' "$REMOTE_STAGING_DIR") && chmod 700 $(printf '%q' "$REMOTE_HOME/.odoo-snapshots")"
+
+    for DB in $(echo "$DB_LIST" | tr "," "\n"); do
+      log_info "Backing up Odoo Database '$DB' via Secondary VPS ($REMOTE_HOSTNAME)..."
+      local REMOTE_ZIP_PATH="$REMOTE_OUT_DIR/${DB}.zip"
+      bk_remote_exec "rm -rf $(printf '%q' "$REMOTE_STAGING_DIR")/* && mkdir -p $(printf '%q' "$REMOTE_STAGING_DIR")"
+
+      log_info "Streaming pg_dump of '$DB' directly to Secondary VPS..."
+      if ! run_pg_dump --no-owner "$DB" | bk_remote_exec "cat > $(printf '%q' "$REMOTE_STAGING_DIR/dump.sql")"; then
+        log_error "pg_dump stream to Secondary VPS failed for database '$DB'."
+        exit 1
+      fi
+
+      generate_manifest "$DB" | bk_remote_exec "cat > $(printf '%q' "$REMOTE_STAGING_DIR/manifest.json")"
+
+      local HASH_SRC=""
+      if [ -f "$PATH_TO_ODOO/git/git_hashes.txt" ]; then
+        HASH_SRC="$PATH_TO_ODOO/git/git_hashes.txt"
+      elif [ -f "$PATH_TO_ODOO/odoo-base/git_hashes.txt" ]; then
+        HASH_SRC="$PATH_TO_ODOO/odoo-base/git_hashes.txt"
+      fi
+      if [ -n "$HASH_SRC" ]; then
+        rsync -e "$RSYNC_SSH" -az "$HASH_SRC" "$SNAPSHOT_REMOTE_USER@$SNAPSHOT_REMOTE_HOST:$REMOTE_STAGING_DIR/git_hashes.txt"
+      fi
+
+      local odoo_filestore_path="$ODOO_FILESTORE_PATH/$DB"
+      if [ -d "$odoo_filestore_path" ]; then
+        if [ -z "$ENV_DB_NAME" ] || [ "$DB" = "$ENV_DB_NAME" ]; then
+          log_info "Syncing filestore incrementally to Secondary VPS snapshot mirror ($REMOTE_MIRROR)..."
+          rsync -e "$RSYNC_SSH" -az --delete "$odoo_filestore_path/" "$SNAPSHOT_REMOTE_USER@$SNAPSHOT_REMOTE_HOST:$REMOTE_MIRROR/"
+          bk_remote_exec "cp -al $(printf '%q' "$REMOTE_MIRROR") $(printf '%q' "$REMOTE_STAGING_DIR/filestore") 2>/dev/null || cp -r $(printf '%q' "$REMOTE_MIRROR") $(printf '%q' "$REMOTE_STAGING_DIR/filestore")"
+        else
+          log_info "Syncing non-active DB '$DB' filestore to Secondary VPS staging..."
+          rsync -e "$RSYNC_SSH" -az "$odoo_filestore_path/" "$SNAPSHOT_REMOTE_USER@$SNAPSHOT_REMOTE_HOST:$REMOTE_STAGING_DIR/filestore/"
+        fi
+      else
+        log_warn "Filestore not found at $odoo_filestore_path. Skipping filestore."
+      fi
+
+      log_info "Compressing $DB.zip on Secondary VPS ($REMOTE_HOSTNAME)..."
+      if ! bk_remote_exec "
+        set -e
+        if command -v ionice >/dev/null 2>&1; then ionice -c2 -n7 -p \$\$ 2>/dev/null || true; fi
+        renice -n 19 -p \$\$ >/dev/null 2>&1 || true
+        cd $(printf '%q' "$REMOTE_STAGING_DIR")
+        meta=(dump.sql manifest.json)
+        [ -f git_hashes.txt ] && meta+=(git_hashes.txt)
+        $(printf '%q' "$REMOTE_ZIP_CMD") a -tzip -mmt=on $(printf '%q' "$REMOTE_ZIP_PATH") \"\${meta[@]}\" >/dev/null
+        if [ -d filestore ]; then
+          $(printf '%q' "$REMOTE_ZIP_CMD") a -tzip -mx=0 $(printf '%q' "$REMOTE_ZIP_PATH") filestore >/dev/null
+        fi
+        rm -rf $(printf '%q' "$REMOTE_STAGING_DIR")/*
+      "; then
+        log_error "Failed to create backup ZIP archive on Secondary VPS for '$DB'."
+        exit 1
+      fi
+      log_success "Backup for '$DB' saved on Secondary VPS ($REMOTE_HOSTNAME): $REMOTE_ZIP_PATH"
+    done
+
+    bk_remote_exec "rm -rf $(printf '%q' "$REMOTE_STAGING_DIR")" >/dev/null 2>&1 || true
+    REMOTE_STAGING_DIR=""
+    log_success "All backup operations are complete."
+    log_info "Retrieve your backup file(s) from Secondary VPS '$REMOTE_HOSTNAME' ($SNAPSHOT_REMOTE_USER@$SNAPSHOT_REMOTE_HOST) at: $REMOTE_OUT_DIR"
+    return 0
+  fi
+
+  # --- Branch 2: Local Mode (endpoint mode or manual mode without SNAPSHOT_REMOTE_HOST) ---
+  if [ -n "$OWNER_HOME" ] && [ -d "$OWNER_HOME" ]; then
+    temporary_directory="$OWNER_HOME/${SERVICE_NAME}-${TIMESTAMP}-dataodoo-backupper"
   else
-    log_error "Error creating temporary directory: $temporary_directory"
+    temporary_directory="/tmp/${SERVICE_NAME}-${TIMESTAMP}-dataodoo-backupper"
+  fi
+  if mkdir -p "$temporary_directory"; then
+    log_success "Created backup directory on '$LOCAL_HOSTNAME': $temporary_directory"
+  else
+    log_error "Error creating backup directory: $temporary_directory"
     exit 1
   fi
 
@@ -278,7 +497,7 @@ function main() {
     BACKUP_FILE_PATH="$temporary_directory/$DB.zip"
 
     if [ "$BACKUP_RESTORE_METHOD" != "endpoint" ]; then
-      local odoo_filestore_path="/var/lib/odoo/$SERVICE_NAME/filestore/$DB"
+      local odoo_filestore_path="$ODOO_FILESTORE_PATH/$DB"
       local db_temp_dir
       db_temp_dir=$(mktemp -d -t "backupdata_${DB}_XXXXXX")
 
@@ -329,7 +548,7 @@ function main() {
       fi
 
       rm -rf "$db_temp_dir"
-      log_success "Backup for '$DB' is completed manually."
+      log_success "Backup for '$DB' completed on '$LOCAL_HOSTNAME': $BACKUP_FILE_PATH"
     else
       printf '%s' "$ADMIN_PASSWD" | curl -s -X POST \
         -F "master_pwd=<-" \
@@ -339,21 +558,19 @@ function main() {
         "http://localhost:$PORT/web/database/backup"
 
       if [ -s "$BACKUP_FILE_PATH" ]; then
-        log_success "Odoo Database '$DB' has been backed up to: $BACKUP_FILE_PATH"
+        log_success "Odoo Database '$DB' has been backed up on '$LOCAL_HOSTNAME' to: $BACKUP_FILE_PATH"
       else
         log_error "Backup failed for database '$DB'. The output file is empty. Check Odoo logs."
-        # Clean up the empty file
         rm -f "$BACKUP_FILE_PATH"
       fi
     fi
   done
 
-  # Set ownership of the backup directory to the user who ran the script with sudo
-  if [ -n "$SUDO_USER" ]; then
-    chown -R "$SUDO_USER":"$SUDO_USER" "$temporary_directory"
+  if [ -n "$TARGET_OWNER" ] && id "$TARGET_OWNER" >/dev/null 2>&1; then
+    chown -R "$TARGET_OWNER":"$TARGET_OWNER" "$temporary_directory"
   fi
 
-  log_success "All backup operations are complete. Files are located in: $temporary_directory"
+  log_success "All backup operations are complete on VPS '$LOCAL_HOSTNAME'. Files are located in: $temporary_directory"
 }
 
 main "$@"

@@ -33,6 +33,11 @@ log_msg() {
   echo "[$(date +"%Y-%m-%d %H:%M:%S")] [$level] $msg" >&2
 }
 
+log_info() { log_msg "INFO" "$1"; }
+log_warn() { log_msg "WARN" "$1"; }
+log_error() { log_msg "ERROR" "$1"; }
+log_success() { log_msg "SUCCESS" "$1"; }
+
 json_error() {
   local msg="$1"
   if [ "$JSON_MODE" = true ]; then
@@ -44,11 +49,14 @@ json_error() {
 }
 
 cleanup() {
+  if declare -F queue_lock_release_all >/dev/null 2>&1; then
+    queue_lock_release_all
+  fi
   if [ -n "$TEMP_WORK_DIR" ] && [ -d "$TEMP_WORK_DIR" ]; then
     rm -rf "$TEMP_WORK_DIR"
   fi
   if [ -n "$REMOTE_CLEANUP_TARGET" ] && [ -n "$REMOTE_CLEANUP_PATH" ]; then
-    ssh "${REMOTE_SSH_OPTS[@]}" "$REMOTE_CLEANUP_TARGET" "rm -f $(printf '%q' "$REMOTE_CLEANUP_PATH")" >/dev/null 2>&1 || true
+    ssh "${REMOTE_SSH_OPTS[@]}" "$REMOTE_CLEANUP_TARGET" "rm -rf $(printf '%q' "$REMOTE_CLEANUP_PATH")" >/dev/null 2>&1 || true
   fi
 }
 trap cleanup EXIT
@@ -184,7 +192,7 @@ run_psql() {
 
 generate_manifest() {
   local db_name="$1"
-  local target_file="$2"
+  local target_file="${2:-}"
   local sql="
     WITH installed_modules AS (
         SELECT json_object_agg(name, latest_version) as modules
@@ -208,14 +216,19 @@ generate_manifest() {
         )
     ) FROM ir_module_module WHERE name = 'base';
   "
-  if ! run_psql -d "$db_name" -t -A -c "$sql" > "$target_file" 2>/dev/null || [ ! -s "$target_file" ]; then
-    echo "{\"odoo_dump\": \"1\", \"db_name\": \"$db_name\"}" > "$target_file"
+  local manifest_out
+  if ! manifest_out=$(run_psql -d "$db_name" -t -A -c "$sql" 2>/dev/null) || [ -z "$manifest_out" ]; then
+    manifest_out="{\"odoo_dump\": \"1\", \"db_name\": \"$db_name\"}"
+  fi
+  if [ -n "$target_file" ]; then
+    printf '%s\n' "$manifest_out" > "$target_file"
+  else
+    printf '%s\n' "$manifest_out"
   fi
 }
 
-append_neutralization_sql() {
-  local dump_file="$1"
-  cat <<'EOSQL' >> "$dump_file"
+emit_neutralization_sql() {
+  cat <<'EOSQL'
 
 -- SudoDevOps Database Neutralization (safe for downloaded backups)
 DO $$
@@ -251,6 +264,11 @@ BEGIN
 EXCEPTION WHEN undefined_table OR undefined_column THEN NULL;
 END $$;
 EOSQL
+}
+
+append_neutralization_sql() {
+  local dump_file="$1"
+  emit_neutralization_sql >> "$dump_file"
 }
 
 upload_to_gdrive() {
@@ -459,59 +477,45 @@ if [ -n "$OWNER_HOME" ] && [ -d "$OWNER_HOME" ]; then
 else
   TEMP_WORK_DIR=$(mktemp -d -t "depcon_dl_XXXXXX")
 fi
-ZIP_PATH="$TEMP_WORK_DIR/$ZIP_NAME"
 
-# Build dump + manifest + filestore
-DB_WORK_DIR="$TEMP_WORK_DIR/payload"
-mkdir -p "$DB_WORK_DIR"
-
-log_msg "INFO" "Dumping PostgreSQL database '$TARGET_DB'..."
-if ! run_pg_dump --no-owner "$TARGET_DB" > "$DB_WORK_DIR/dump.sql"; then
-  json_error "pg_dump failed for database '$TARGET_DB'."
+# Shared queue lock (odoo-backup-system): coordinate I/O & mirror/filestore with snapshot.sh
+SNAPSHOT_QUEUE_NAME="odoo-backup-system"
+DEFAULT_SNAPSHOT_QUEUE_TIMEOUT=43200
+SNAPSHOT_QUEUE_TIMEOUT=$(read_env_val "SNAPSHOT_QUEUE_TIMEOUT")
+if ! [[ "$SNAPSHOT_QUEUE_TIMEOUT" =~ ^[0-9]+$ ]] || [ "$SNAPSHOT_QUEUE_TIMEOUT" -le 0 ]; then
+  SNAPSHOT_QUEUE_TIMEOUT="$DEFAULT_SNAPSHOT_QUEUE_TIMEOUT"
 fi
+SNAPSHOT_QUEUE_POLL_INTERVAL=$(read_env_val "SNAPSHOT_QUEUE_POLL_INTERVAL")
+[[ "$SNAPSHOT_QUEUE_POLL_INTERVAL" =~ ^[0-9]+$ ]] && [ "$SNAPSHOT_QUEUE_POLL_INTERVAL" -gt 0 ] || SNAPSHOT_QUEUE_POLL_INTERVAL=60
+SNAPSHOT_QUEUE_STALE_AFTER=$(read_env_val "SNAPSHOT_QUEUE_STALE_AFTER")
+[[ "$SNAPSHOT_QUEUE_STALE_AFTER" =~ ^[0-9]+$ ]] && [ "$SNAPSHOT_QUEUE_STALE_AFTER" -gt 0 ] || SNAPSHOT_QUEUE_STALE_AFTER=600
 
-if [ "$NEUTRALIZE" = true ]; then
-  log_msg "INFO" "Appending database neutralization SQL..."
-  append_neutralization_sql "$DB_WORK_DIR/dump.sql"
+QUEUE_LOCK_LIB=""
+if [ -f "$CURRENT_DIR/lib/queue_lock.sh" ]; then
+  QUEUE_LOCK_LIB="$CURRENT_DIR/lib/queue_lock.sh"
+elif [ -f "$PATH_TO_ODOO/scripts/lib/queue_lock.sh" ]; then
+  QUEUE_LOCK_LIB="$PATH_TO_ODOO/scripts/lib/queue_lock.sh"
 fi
-
-generate_manifest "$TARGET_DB" "$DB_WORK_DIR/manifest.json"
-
-FILESTORE_SRC="/var/lib/odoo/$SERVICE_NAME/filestore/$TARGET_DB"
-if [ "$NO_FILESTORE" = true ]; then
-  log_msg "INFO" "Skipping filestore (--no-filestore)."
-elif [ -d "$FILESTORE_SRC" ]; then
-  if [ "$EXCLUDE_CHATTER" = true ] || [ "$EXCLUDE_ASSETS" = true ]; then
-    EXCLUDE_LIST="$TEMP_WORK_DIR/exclude_store_fnames.txt"
-    generate_attachment_exclusions "$TARGET_DB" "$EXCLUDE_LIST" "$EXCLUDE_CHATTER" "$EXCLUDE_ASSETS"
-    if [ -s "$EXCLUDE_LIST" ]; then
-      log_msg "INFO" "Packaging lightweight filestore from $FILESTORE_SRC (excluding chatter/assets via hardlinks)..."
-      mkdir -p "$DB_WORK_DIR/filestore"
-      rsync -a --link-dest="$FILESTORE_SRC/" --exclude-from="$EXCLUDE_LIST" "$FILESTORE_SRC/" "$DB_WORK_DIR/filestore/"
-    else
-      log_msg "INFO" "Packaging filestore from $FILESTORE_SRC..."
-      cp -al "$FILESTORE_SRC" "$DB_WORK_DIR/filestore" 2>/dev/null || cp -r "$FILESTORE_SRC" "$DB_WORK_DIR/filestore"
-    fi
-  else
-    log_msg "INFO" "Packaging filestore from $FILESTORE_SRC..."
-    cp -al "$FILESTORE_SRC" "$DB_WORK_DIR/filestore" 2>/dev/null || cp -r "$FILESTORE_SRC" "$DB_WORK_DIR/filestore"
+if [ -n "$QUEUE_LOCK_LIB" ]; then
+  # shellcheck source=/dev/null
+  source "$QUEUE_LOCK_LIB"
+  QUEUE_LOCK_POLL_INTERVAL="$SNAPSHOT_QUEUE_POLL_INTERVAL"
+  QUEUE_LOCK_STALE_AFTER="$SNAPSHOT_QUEUE_STALE_AFTER"
+  QUEUE_LOCK_LEGACY_STALE_AFTER="$SNAPSHOT_QUEUE_TIMEOUT"
+  if ! queue_lock_acquire_local "$SNAPSHOT_QUEUE_NAME" "$SERVICE_NAME" \
+      "$SERVICE_NAME (download-backupdata on $(hostname -s 2>/dev/null || hostname))" "$SNAPSHOT_QUEUE_TIMEOUT"; then
+    json_error "Timed out waiting for local '$SNAPSHOT_QUEUE_NAME' queue."
   fi
 fi
 
-ZIP_CMD="7z"
-command -v 7z >/dev/null 2>&1 || ZIP_CMD="7za"
-if ! command -v "$ZIP_CMD" >/dev/null 2>&1; then
-  json_error "7z/7za is not installed on the server."
+# Lower local I/O and CPU scheduling priority
+if command -v ionice >/dev/null 2>&1; then
+  ionice -c2 -n7 -p $$ 2>/dev/null || true
 fi
+renice -n 19 -p $$ >/dev/null 2>&1 || true
 
-log_msg "INFO" "Compressing backup archive $ZIP_NAME..."
-(cd "$DB_WORK_DIR" && "$ZIP_CMD" a -tzip -mmt=on "$ZIP_PATH" dump.sql manifest.json >/dev/null)
-if [ -d "$DB_WORK_DIR/filestore" ]; then
-  (cd "$DB_WORK_DIR" && "$ZIP_CMD" a -tzip -mx=0 "$ZIP_PATH" filestore >/dev/null)
-fi
-rm -rf "$DB_WORK_DIR"
-
-SIZE_BYTES=$(stat -c %s "$ZIP_PATH")
+FILESTORE_SRC="/var/lib/odoo/$SERVICE_NAME/filestore/$TARGET_DB"
+ENV_DB_NAME=$(read_env_val "DB_NAME")
 SNAPSHOT_REMOTE_HOST=$(read_env_val "SNAPSHOT_REMOTE_HOST")
 
 if [ -n "$SNAPSHOT_REMOTE_HOST" ]; then
@@ -521,18 +525,117 @@ if [ -n "$SNAPSHOT_REMOTE_HOST" ]; then
   [ -z "$SNAPSHOT_REMOTE_PORT" ] && SNAPSHOT_REMOTE_PORT="22"
   [ -z "$SNAPSHOT_REMOTE_USER" ] && json_error "SNAPSHOT_REMOTE_USER is required when SNAPSHOT_REMOTE_HOST is set."
 
-  SSH_OPTS=(-p "$SNAPSHOT_REMOTE_PORT" -o BatchMode=yes -o StrictHostKeyChecking=accept-new)
-  [ -n "$SNAPSHOT_REMOTE_KEY" ] && SSH_OPTS+=(-i "$SNAPSHOT_REMOTE_KEY")
+  if [ -z "$SNAPSHOT_REMOTE_KEY" ] && [ -n "$OWNER_HOME" ]; then
+    THIS_VPS=$(hostname -s 2>/dev/null || hostname 2>/dev/null || echo "vps-source")
+    CLEAN_TGT=$(echo "$SNAPSHOT_REMOTE_HOST" | sed -e 's|^.*://||' -e 's|^.*@||' -e 's|:.*$||' -e 's|/.*$||' -e 's|[^a-zA-Z0-9._-]|_|g')
+    if [ -f "$OWNER_HOME/.ssh/snapshot-${THIS_VPS}-${CLEAN_TGT}" ]; then
+      SNAPSHOT_REMOTE_KEY="$OWNER_HOME/.ssh/snapshot-${THIS_VPS}-${CLEAN_TGT}"
+    elif [ -f "$OWNER_HOME/.ssh/id_ed25519-snapshot-$SERVICE_NAME" ]; then
+      SNAPSHOT_REMOTE_KEY="$OWNER_HOME/.ssh/id_ed25519-snapshot-$SERVICE_NAME"
+    elif [ -f "$OWNER_HOME/.ssh/id_ed25519_snapshot" ]; then
+      SNAPSHOT_REMOTE_KEY="$OWNER_HOME/.ssh/id_ed25519_snapshot"
+    fi
+  elif [ -n "$SNAPSHOT_REMOTE_KEY" ] && [ -n "$OWNER_HOME" ]; then
+    SNAPSHOT_REMOTE_KEY="${SNAPSHOT_REMOTE_KEY/#\~/$OWNER_HOME}"
+  fi
 
-  REMOTE_HOME=$(ssh "${SSH_OPTS[@]}" "$SNAPSHOT_REMOTE_USER@$SNAPSHOT_REMOTE_HOST" 'echo "$HOME"' 2>/dev/null | tr -d '\r\n' || true)
-  REMOTE_TMP="${REMOTE_HOME:-/tmp}/.depcon_dl_${TIMESTAMP}_${ZIP_NAME}"
+  SSH_OPTS=(-p "$SNAPSHOT_REMOTE_PORT" -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o ServerAliveInterval=30 -o ServerAliveCountMax=5)
+  [ -n "$SNAPSHOT_REMOTE_KEY" ] && [ -f "$SNAPSHOT_REMOTE_KEY" ] && SSH_OPTS+=(-i "$SNAPSHOT_REMOTE_KEY")
   REMOTE_SSH_OPTS=("${SSH_OPTS[@]}")
-  REMOTE_CLEANUP_TARGET="$SNAPSHOT_REMOTE_USER@$SNAPSHOT_REMOTE_HOST"
-  REMOTE_CLEANUP_PATH="$REMOTE_TMP"
+  RSYNC_SSH="ssh"
+  for _opt in "${SSH_OPTS[@]}"; do
+    RSYNC_SSH+=" $(printf '%q' "$_opt")"
+  done
 
-  log_msg "INFO" "Transferring archive to Secondary VPS ($SNAPSHOT_REMOTE_USER@$SNAPSHOT_REMOTE_HOST) for Google Drive upload..."
-  rsync -e "ssh ${SSH_OPTS[*]}" -az "$ZIP_PATH" "$SNAPSHOT_REMOTE_USER@$SNAPSHOT_REMOTE_HOST:$REMOTE_TMP"
-  rm -f "$ZIP_PATH"
+  dl_remote_exec() {
+    ssh "${SSH_OPTS[@]}" "$SNAPSHOT_REMOTE_USER@$SNAPSHOT_REMOTE_HOST" "$@"
+  }
+
+  log_msg "INFO" "Connecting to Secondary VPS ($SNAPSHOT_REMOTE_USER@$SNAPSHOT_REMOTE_HOST:$SNAPSHOT_REMOTE_PORT)..."
+  if ! dl_remote_exec "true" 2>/dev/null; then
+    json_error "Failed to establish SSH connection with Secondary VPS ($SNAPSHOT_REMOTE_USER@$SNAPSHOT_REMOTE_HOST:$SNAPSHOT_REMOTE_PORT)."
+  fi
+
+  if declare -F queue_lock_acquire_remote >/dev/null 2>&1; then
+    if ! queue_lock_acquire_remote "$SNAPSHOT_QUEUE_NAME" "$SERVICE_NAME" \
+        "$SERVICE_NAME (download-backupdata from $(hostname -s 2>/dev/null || hostname))" "$SNAPSHOT_QUEUE_TIMEOUT" dl_remote_exec; then
+      json_error "Timed out waiting for remote '$SNAPSHOT_QUEUE_NAME' queue on Secondary VPS."
+    fi
+  fi
+
+  REMOTE_ZIP_CMD=$(dl_remote_exec "command -v 7z 2>/dev/null || command -v 7za 2>/dev/null || true" | tr -d '\r\n')
+  [ -z "$REMOTE_ZIP_CMD" ] && json_error "7z/7za is not installed on Secondary VPS ($SNAPSHOT_REMOTE_HOST)."
+
+  REMOTE_HOME=$(dl_remote_exec 'echo "$HOME"' 2>/dev/null | tr -d '\r\n' || true)
+  [ -z "$REMOTE_HOME" ] && json_error "Could not determine HOME directory on Secondary VPS."
+
+  REMOTE_BASE="$REMOTE_HOME/.odoo-snapshots/$SERVICE_NAME"
+  REMOTE_MIRROR="$REMOTE_BASE/mirror/filestore"
+  REMOTE_DL_DIR="$REMOTE_BASE/dl_${TIMESTAMP}_$$"
+  REMOTE_PAYLOAD_DIR="$REMOTE_DL_DIR/payload"
+  REMOTE_ZIP_PATH="$REMOTE_DL_DIR/$ZIP_NAME"
+
+  REMOTE_CLEANUP_TARGET="$SNAPSHOT_REMOTE_USER@$SNAPSHOT_REMOTE_HOST"
+  REMOTE_CLEANUP_PATH="$REMOTE_DL_DIR"
+
+  dl_remote_exec "mkdir -p $(printf '%q' "$REMOTE_MIRROR") $(printf '%q' "$REMOTE_PAYLOAD_DIR") && chmod 700 $(printf '%q' "$REMOTE_HOME/.odoo-snapshots")"
+
+  log_msg "INFO" "Streaming PostgreSQL dump of '$TARGET_DB' directly to Secondary VPS..."
+  if ! run_pg_dump --no-owner "$TARGET_DB" | dl_remote_exec "cat > $(printf '%q' "$REMOTE_PAYLOAD_DIR/dump.sql")"; then
+    json_error "pg_dump stream to Secondary VPS failed for database '$TARGET_DB'."
+  fi
+
+  if [ "$NEUTRALIZE" = true ]; then
+    log_msg "INFO" "Appending database neutralization SQL on Secondary VPS..."
+    emit_neutralization_sql | dl_remote_exec "cat >> $(printf '%q' "$REMOTE_PAYLOAD_DIR/dump.sql")"
+  fi
+
+  log_msg "INFO" "Writing manifest.json on Secondary VPS..."
+  generate_manifest "$TARGET_DB" | dl_remote_exec "cat > $(printf '%q' "$REMOTE_PAYLOAD_DIR/manifest.json")"
+
+  if [ "$NO_FILESTORE" = true ]; then
+    log_msg "INFO" "Skipping filestore (--no-filestore)."
+  elif [ -d "$FILESTORE_SRC" ]; then
+    EXCLUDE_LIST=""
+    if [ "$EXCLUDE_CHATTER" = true ] || [ "$EXCLUDE_ASSETS" = true ]; then
+      EXCLUDE_LIST="$TEMP_WORK_DIR/exclude_store_fnames.txt"
+      generate_attachment_exclusions "$TARGET_DB" "$EXCLUDE_LIST" "$EXCLUDE_CHATTER" "$EXCLUDE_ASSETS"
+    fi
+
+    if [ -z "$ENV_DB_NAME" ] || [ "$TARGET_DB" = "$ENV_DB_NAME" ]; then
+      log_msg "INFO" "Syncing filestore incrementally to Secondary VPS snapshot mirror ($REMOTE_MIRROR)..."
+      rsync -e "$RSYNC_SSH" -az --delete "$FILESTORE_SRC/" "$SNAPSHOT_REMOTE_USER@$SNAPSHOT_REMOTE_HOST:$REMOTE_MIRROR/"
+      if [ -n "$EXCLUDE_LIST" ] && [ -s "$EXCLUDE_LIST" ]; then
+        log_msg "INFO" "Building lightweight filestore on Secondary VPS via hardlinks (preserving snapshot mirror)..."
+        rsync -e "$RSYNC_SSH" -az "$EXCLUDE_LIST" "$SNAPSHOT_REMOTE_USER@$SNAPSHOT_REMOTE_HOST:$REMOTE_DL_DIR/exclude_store_fnames.txt"
+        dl_remote_exec "mkdir -p $(printf '%q' "$REMOTE_PAYLOAD_DIR/filestore") && rsync -a --link-dest=$(printf '%q' "$REMOTE_MIRROR/") --exclude-from=$(printf '%q' "$REMOTE_DL_DIR/exclude_store_fnames.txt") $(printf '%q' "$REMOTE_MIRROR/") $(printf '%q' "$REMOTE_PAYLOAD_DIR/filestore/")"
+      else
+        log_msg "INFO" "Linking filestore from Secondary VPS snapshot mirror..."
+        dl_remote_exec "cp -al $(printf '%q' "$REMOTE_MIRROR") $(printf '%q' "$REMOTE_PAYLOAD_DIR/filestore") 2>/dev/null || cp -r $(printf '%q' "$REMOTE_MIRROR") $(printf '%q' "$REMOTE_PAYLOAD_DIR/filestore")"
+      fi
+    else
+      log_msg "INFO" "Syncing non-active DB '$TARGET_DB' filestore to Secondary VPS staging (leaving snapshot mirror untouched)..."
+      if [ -n "$EXCLUDE_LIST" ] && [ -s "$EXCLUDE_LIST" ]; then
+        rsync -e "$RSYNC_SSH" -az --exclude-from="$EXCLUDE_LIST" "$FILESTORE_SRC/" "$SNAPSHOT_REMOTE_USER@$SNAPSHOT_REMOTE_HOST:$REMOTE_PAYLOAD_DIR/filestore/"
+      else
+        rsync -e "$RSYNC_SSH" -az "$FILESTORE_SRC/" "$SNAPSHOT_REMOTE_USER@$SNAPSHOT_REMOTE_HOST:$REMOTE_PAYLOAD_DIR/filestore/"
+      fi
+    fi
+  fi
+
+  log_msg "INFO" "Compressing backup archive $ZIP_NAME on Secondary VPS ($SNAPSHOT_REMOTE_HOST)..."
+  SIZE_BYTES=$(dl_remote_exec "
+    set -e
+    if command -v ionice >/dev/null 2>&1; then ionice -c2 -n7 -p \$\$ 2>/dev/null || true; fi
+    renice -n 19 -p \$\$ >/dev/null 2>&1 || true
+    cd $(printf '%q' "$REMOTE_PAYLOAD_DIR")
+    $(printf '%q' "$REMOTE_ZIP_CMD") a -tzip -mmt=on $(printf '%q' "$REMOTE_ZIP_PATH") dump.sql manifest.json >/dev/null
+    if [ -d $(printf '%q' "$REMOTE_PAYLOAD_DIR/filestore") ]; then
+      $(printf '%q' "$REMOTE_ZIP_CMD") a -tzip -mx=0 $(printf '%q' "$REMOTE_ZIP_PATH") filestore >/dev/null
+    fi
+    rm -rf $(printf '%q' "$REMOTE_PAYLOAD_DIR")
+    stat -c %s $(printf '%q' "$REMOTE_ZIP_PATH")
+  " | tr -d '\r\n')
 
   # Upload from Secondary VPS using only the short-lived Bearer token via stdin
   REMOTE_PY_CODE=$(cat <<'REMOTE_PY'
@@ -591,10 +694,60 @@ finally:
         os.remove(file_path)
 REMOTE_PY
   )
-  UPLOAD_JSON=$(printf '%s\n' "$GDRIVE_ACCESS_TOKEN" | ssh "${SSH_OPTS[@]}" "$SNAPSHOT_REMOTE_USER@$SNAPSHOT_REMOTE_HOST" \
-    "python3 -c $(printf '%q' "$REMOTE_PY_CODE") $(printf '%q' "$REMOTE_TMP") $(printf '%q' "$ZIP_NAME") $(printf '%q' "$GDRIVE_FOLDER_ID") $(printf '%q' "$SHARE_EMAIL")")
-  REMOTE_CLEANUP_PATH=""
+  log_msg "INFO" "Uploading archive to Google Drive from Secondary VPS ($SNAPSHOT_REMOTE_HOST)..."
+  UPLOAD_JSON=$(printf '%s\n' "$GDRIVE_ACCESS_TOKEN" | dl_remote_exec \
+    "python3 -c $(printf '%q' "$REMOTE_PY_CODE") $(printf '%q' "$REMOTE_ZIP_PATH") $(printf '%q' "$ZIP_NAME") $(printf '%q' "$GDRIVE_FOLDER_ID") $(printf '%q' "$SHARE_EMAIL")")
 else
+  ZIP_CMD="7z"
+  command -v 7z >/dev/null 2>&1 || ZIP_CMD="7za"
+  if ! command -v "$ZIP_CMD" >/dev/null 2>&1; then
+    json_error "7z/7za is not installed on the server."
+  fi
+
+  ZIP_PATH="$TEMP_WORK_DIR/$ZIP_NAME"
+  DB_WORK_DIR="$TEMP_WORK_DIR/payload"
+  mkdir -p "$DB_WORK_DIR"
+
+  log_msg "INFO" "Dumping PostgreSQL database '$TARGET_DB'..."
+  if ! run_pg_dump --no-owner "$TARGET_DB" > "$DB_WORK_DIR/dump.sql"; then
+    json_error "pg_dump failed for database '$TARGET_DB'."
+  fi
+
+  if [ "$NEUTRALIZE" = true ]; then
+    log_msg "INFO" "Appending database neutralization SQL..."
+    append_neutralization_sql "$DB_WORK_DIR/dump.sql"
+  fi
+
+  generate_manifest "$TARGET_DB" "$DB_WORK_DIR/manifest.json"
+
+  if [ "$NO_FILESTORE" = true ]; then
+    log_msg "INFO" "Skipping filestore (--no-filestore)."
+  elif [ -d "$FILESTORE_SRC" ]; then
+    if [ "$EXCLUDE_CHATTER" = true ] || [ "$EXCLUDE_ASSETS" = true ]; then
+      EXCLUDE_LIST="$TEMP_WORK_DIR/exclude_store_fnames.txt"
+      generate_attachment_exclusions "$TARGET_DB" "$EXCLUDE_LIST" "$EXCLUDE_CHATTER" "$EXCLUDE_ASSETS"
+      if [ -s "$EXCLUDE_LIST" ]; then
+        log_msg "INFO" "Packaging lightweight filestore from $FILESTORE_SRC (excluding chatter/assets via hardlinks)..."
+        mkdir -p "$DB_WORK_DIR/filestore"
+        rsync -a --link-dest="$FILESTORE_SRC/" --exclude-from="$EXCLUDE_LIST" "$FILESTORE_SRC/" "$DB_WORK_DIR/filestore/"
+      else
+        log_msg "INFO" "Packaging filestore from $FILESTORE_SRC..."
+        cp -al "$FILESTORE_SRC" "$DB_WORK_DIR/filestore" 2>/dev/null || cp -r "$FILESTORE_SRC" "$DB_WORK_DIR/filestore"
+      fi
+    else
+      log_msg "INFO" "Packaging filestore from $FILESTORE_SRC..."
+      cp -al "$FILESTORE_SRC" "$DB_WORK_DIR/filestore" 2>/dev/null || cp -r "$FILESTORE_SRC" "$DB_WORK_DIR/filestore"
+    fi
+  fi
+
+  log_msg "INFO" "Compressing backup archive $ZIP_NAME..."
+  (cd "$DB_WORK_DIR" && "$ZIP_CMD" a -tzip -mmt=on "$ZIP_PATH" dump.sql manifest.json >/dev/null)
+  if [ -d "$DB_WORK_DIR/filestore" ]; then
+    (cd "$DB_WORK_DIR" && "$ZIP_CMD" a -tzip -mx=0 "$ZIP_PATH" filestore >/dev/null)
+  fi
+  rm -rf "$DB_WORK_DIR"
+
+  SIZE_BYTES=$(stat -c %s "$ZIP_PATH")
   log_msg "INFO" "Uploading archive to Google Drive..."
   UPLOAD_JSON=$(upload_to_gdrive "$ZIP_PATH" "$ZIP_NAME" "$GDRIVE_FOLDER_ID" "$GDRIVE_ACCESS_TOKEN" "$SHARE_EMAIL")
   rm -f "$ZIP_PATH"

@@ -85,6 +85,23 @@ __ql_try() {
   fi
   if ! flock -n "$fd"; then
     exec {fd}<&-
+    now=$(date +%s)
+    for f in "$base.active" "$base.active."*; do
+      [ -f "$f" ] && [ -s "$f" ] || continue
+      ts="" rest=""
+      read -r ts rest < "$f" 2>/dev/null || true
+      [[ "$ts" =~ ^[0-9]+$ ]] || continue
+      if [ "$f" = "$base.active" ]; then
+        limit="$legacy_stale"; who="$rest"
+      else
+        limit="$stale"; who="${rest#* }"
+      fi
+      age=$((now - ts))
+      if [ "$age" -lt "$limit" ] && [ -n "$who" ]; then
+        echo "BUSY $who"
+        return 1
+      fi
+    done
     echo "BUSY a job holding $lock"
     return 1
   fi
