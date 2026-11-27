@@ -349,6 +349,7 @@ perm_payload = (
     else {"type": "anyone", "role": "reader"}
 )
 perm_url = f"https://www.googleapis.com/drive/v3/files/{file_id}/permissions?supportsAllDrives=true"
+permissions_pending = False
 perm_req = urllib.request.Request(
     perm_url,
     data=json.dumps(perm_payload).encode("utf-8"),
@@ -361,9 +362,11 @@ perm_req = urllib.request.Request(
 try:
     with urllib.request.urlopen(perm_req, timeout=30):
         pass
-except urllib.error.HTTPError:
-    # Fallback to anyoneWithLink if user email is not a Google account
-    if share_email:
+except urllib.error.HTTPError as err:
+    if err.code == 401:
+        permissions_pending = True
+    elif share_email:
+        # Fallback to anyoneWithLink if user email is not a Google account
         fallback_req = urllib.request.Request(
             perm_url,
             data=json.dumps({"type": "anyone", "role": "reader"}).encode("utf-8"),
@@ -373,14 +376,31 @@ except urllib.error.HTTPError:
                 "Content-Type": "application/json",
             },
         )
-        with urllib.request.urlopen(fallback_req, timeout=30):
-            pass
+        try:
+            with urllib.request.urlopen(fallback_req, timeout=30):
+                pass
+        except urllib.error.HTTPError as fb_err:
+            if fb_err.code == 401:
+                permissions_pending = True
+            else:
+                raise
+    else:
+        raise
 
-# 4. Fetch webViewLink & webContentLink
-meta_url = f"https://www.googleapis.com/drive/v3/files/{file_id}?fields=id,name,size,webViewLink,webContentLink&supportsAllDrives=true"
-meta_req = urllib.request.Request(meta_url, headers={"Authorization": f"Bearer {token}"})
-with urllib.request.urlopen(meta_req, timeout=30) as meta_resp:
-    meta = json.loads(meta_resp.read().decode("utf-8"))
+# 4. Fetch webViewLink & webContentLink (defer to Odoo if token expired after upload)
+if permissions_pending:
+    meta = {"id": file_id, "name": file_name, "size": str(file_size), "permissions_pending": True}
+else:
+    meta_url = f"https://www.googleapis.com/drive/v3/files/{file_id}?fields=id,name,size,webViewLink,webContentLink&supportsAllDrives=true"
+    meta_req = urllib.request.Request(meta_url, headers={"Authorization": f"Bearer {token}"})
+    try:
+        with urllib.request.urlopen(meta_req, timeout=30) as meta_resp:
+            meta = json.loads(meta_resp.read().decode("utf-8"))
+    except urllib.error.HTTPError as err:
+        if err.code == 401:
+            meta = {"id": file_id, "name": file_name, "size": str(file_size), "permissions_pending": True}
+        else:
+            raise
 
 print(json.dumps(meta))
 PY
@@ -681,14 +701,34 @@ try:
     file_id = uploaded_info["id"]
     perm_payload = {"type": "user", "role": "reader", "emailAddress": share_email} if share_email else {"type": "anyone", "role": "reader"}
     perm_url = f"https://www.googleapis.com/drive/v3/files/{file_id}/permissions?supportsAllDrives=true"
+    permissions_pending = False
     try:
         urllib.request.urlopen(urllib.request.Request(perm_url, data=json.dumps(perm_payload).encode("utf-8"), method="POST", headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"}), timeout=30).close()
-    except urllib.error.HTTPError:
-        if share_email:
-            urllib.request.urlopen(urllib.request.Request(perm_url, data=json.dumps({"type": "anyone", "role": "reader"}).encode("utf-8"), method="POST", headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"}), timeout=30).close()
-    meta_url = f"https://www.googleapis.com/drive/v3/files/{file_id}?fields=id,name,size,webViewLink,webContentLink&supportsAllDrives=true"
-    with urllib.request.urlopen(urllib.request.Request(meta_url, headers={"Authorization": f"Bearer {token}"}), timeout=30) as mr:
-        print(mr.read().decode("utf-8"))
+    except urllib.error.HTTPError as err:
+        if err.code == 401:
+            permissions_pending = True
+        elif share_email:
+            try:
+                urllib.request.urlopen(urllib.request.Request(perm_url, data=json.dumps({"type": "anyone", "role": "reader"}).encode("utf-8"), method="POST", headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"}), timeout=30).close()
+            except urllib.error.HTTPError as fb_err:
+                if fb_err.code == 401:
+                    permissions_pending = True
+                else:
+                    raise
+        else:
+            raise
+    if permissions_pending:
+        print(json.dumps({"id": file_id, "name": file_name, "size": str(file_size), "permissions_pending": True}))
+    else:
+        meta_url = f"https://www.googleapis.com/drive/v3/files/{file_id}?fields=id,name,size,webViewLink,webContentLink&supportsAllDrives=true"
+        try:
+            with urllib.request.urlopen(urllib.request.Request(meta_url, headers={"Authorization": f"Bearer {token}"}), timeout=30) as mr:
+                print(mr.read().decode("utf-8"))
+        except urllib.error.HTTPError as err:
+            if err.code == 401:
+                print(json.dumps({"id": file_id, "name": file_name, "size": str(file_size), "permissions_pending": True}))
+            else:
+                raise
 finally:
     if os.path.exists(file_path):
         os.remove(file_path)
@@ -766,6 +806,7 @@ print(json.dumps({
     "gdrive_file_id": fid,
     "gdrive_web_view_link": meta.get("webViewLink") or f"https://drive.google.com/file/d/{fid}/view",
     "gdrive_download_link": meta.get("webContentLink") or f"https://drive.google.com/uc?id={fid}&export=download",
+    "permissions_pending": bool(meta.get("permissions_pending")),
     "neutralized": neutralized == "true",
     "filestore_mode": filestore_mode,
 }))
