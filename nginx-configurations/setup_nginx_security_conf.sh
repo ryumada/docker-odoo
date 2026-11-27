@@ -113,7 +113,29 @@ add_header X-Content-Type-Options "nosniff";
 # prevent the the destination site to know where the user came from which is useful because this Odoo deployment is a backoffice application
 add_header Referrer-Policy "strict-origin-when-cross-origin";
 
+# Odoo sends its own Referrer-Policy too, which made every response carry the header twice. Only the one above is sent.
+# (A location with its own proxy_hide_header does not inherit this line.)
+proxy_hide_header Referrer-Policy;
+
+# no Flash/Acrobat cross-domain policy file is served here and none may be honoured
+add_header X-Permitted-Cross-Domain-Policies "none" always;
+
+# a page from another origin that opens this site gets no handle on its window; popups this site opens itself (OAuth, payment) keep working
+add_header Cross-Origin-Opener-Policy "same-origin-allow-popups" always;
+
+# browser features Odoo never uses are off for the page and every frame in it. camera, microphone, geolocation, fullscreen and
+# payment stay at the browser default (same origin only): attendance, barcode scanning, Discuss calls and checkout need them
+add_header Permissions-Policy "accelerometer=(), gyroscope=(), magnetometer=(), midi=(), usb=()" always;
+
+# Content-Security-Policy baseline Odoo runs under unchanged: framing by the same origin only (the modern X-Frame-Options) and no
+# plugin content from other origins. It is NOT a script policy: Odoo needs 'unsafe-inline' and 'unsafe-eval', see the line below.
+add_header Content-Security-Policy "frame-ancestors 'self'; object-src 'self'" always;
+
+# Not set on purpose, they break Odoo: Cross-Origin-Embedder-Policy "require-corp" blocks every cross-origin embed (maps, video,
+# fonts, CDN images) and Cross-Origin-Resource-Policy "same-origin" blocks Odoo images shown in webmail and on other sites.
+
 # protect from certain types of attacks, including Cross-site Scripting (XSS) and data injection attacks [VERY RESTRICTIVE]
+# (to try it, replace the baseline above: two Content-Security-Policy headers are both enforced)
 #add_header Content-Security-Policy "default-src 'self' http: https: data: blob: 'unsafe-inline'" always;
 
 # xss protection for older browsers that don't support Content-Security-Policy [NOT USABLE IN MODERN BROWSER]

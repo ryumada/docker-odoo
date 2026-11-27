@@ -63,6 +63,12 @@ server {
         proxy_set_header X-Forwarded-Proto      $scheme;
         proxy_set_header X-Real-IP              $remote_addr;
 
+        # Odoo sets its cookies without Secure and without SameSite. This server is HTTPS only, so they must never
+        # travel over plain HTTP, and Lax is the value Odoo's own login and payment flows work with (Strict breaks them).
+        # Needs nginx 1.19.3 or newer.
+        proxy_cookie_flags session_id secure samesite=lax;
+        proxy_cookie_flags frontend_lang secure samesite=lax;
+
         # SSL parameters
         ssl_certificate         /etc/letsencrypt/live/$DOMAIN/fullchain.pem;
         ssl_certificate_key     /etc/letsencrypt/live/$DOMAIN/privkey.pem;
@@ -163,6 +169,12 @@ server {
                 expires 10d;
                 add_header Cache-Control "public, no-transform";
                 add_header X-Cache-Status $upstream_cache_status;
+
+                # An add_header in a location stops nginx from applying the ones set in conf.d/01-sudo-nginx-security.conf
+                # to it, so the ones a file or an API answer needs are repeated here. Keep them the same as in that file.
+                add_header X-Frame-Options "SAMEORIGIN";
+                add_header Strict-Transport-Security "max-age=31536000; includeSubdomains; preload" always;
+                add_header X-Content-Type-Options "nosniff";
         }
 
         location ~* /web/image {
@@ -182,6 +194,12 @@ server {
                 proxy_cache_lock_timeout 15s;
 
                 add_header X-Cache-Status $upstream_cache_status;
+
+                # An add_header in a location stops nginx from applying the ones set in conf.d/01-sudo-nginx-security.conf
+                # to it, so the ones a file or an API answer needs are repeated here. Keep them the same as in that file.
+                add_header X-Frame-Options "SAMEORIGIN";
+                add_header Strict-Transport-Security "max-age=31536000; includeSubdomains; preload" always;
+                add_header X-Content-Type-Options "nosniff";
 
                 # Optimization for image delivery
                 tcp_nodelay on;

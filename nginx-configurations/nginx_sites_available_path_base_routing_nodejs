@@ -45,6 +45,12 @@ server {
     proxy_set_header X-Forwarded-For        $proxy_add_x_forwarded_for;
     proxy_set_header X-Forwarded-Proto      $scheme;
 
+    # Odoo sets its cookies without Secure and without SameSite. This server is HTTPS only, so they must never
+    # travel over plain HTTP, and Lax is the value Odoo's own login and payment flows work with (Strict breaks them).
+    # Only these two Odoo cookies are touched, the Node.js app's cookies are not. Needs nginx 1.19.3 or newer.
+    proxy_cookie_flags session_id secure samesite=lax;
+    proxy_cookie_flags frontend_lang secure samesite=lax;
+
     # ==========================================
     # 1. NODE.JS APP
     # ==========================================
