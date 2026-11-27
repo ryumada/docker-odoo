@@ -426,6 +426,10 @@ main() {
         fail_with_json "Git path not found at: $STG_GIT_PATH"
     fi
 
+    if [ ! -d "$STG_GIT_PATH/.git" ]; then
+        fail_with_json "Directory '$STG_GIT_PATH' is not a Git repository (missing .git directory)."
+    fi
+
     # Check if remote branch or tag exists
     log_info "Checking if remote branch or tag '$RELEASE_BRANCH' exists..."
     if [ "$JSON_MODE" = "true" ]; then

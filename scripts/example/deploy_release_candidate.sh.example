@@ -339,9 +339,13 @@ fi
 
 STG_GIT_PATH="$STG_PATH_TO_ODOO/git/$GIT_REPO_NAME"
 
-# Verify Git path exists
+# Verify Git path exists and is a Git repository
 if [ ! -d "$STG_GIT_PATH" ]; then
     fail_with_json "Git path not found at: $STG_GIT_PATH"
+fi
+
+if [ ! -d "$STG_GIT_PATH/.git" ]; then
+    fail_with_json "Directory '$STG_GIT_PATH' is not a Git repository (missing .git directory)."
 fi
 
 # Check if remote branch or tag exists

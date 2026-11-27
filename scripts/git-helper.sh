@@ -20,22 +20,28 @@ else
     GIT_RUN=(git)
 fi
 
+require_git_repo() {
+    local repo_path="$1"
+    [[ -n "$repo_path" && -d "$repo_path" ]] || { echo "Directory not found: $repo_path" >&2; exit 1; }
+    [[ -d "$repo_path/.git" || -f "$repo_path/.git" ]] || { echo "Not a git repository (missing .git): $repo_path" >&2; exit 1; }
+}
+
 case "$ACTION" in
     branches)
         REPO_PATH="$1"
-        [[ -n "$REPO_PATH" && -d "$REPO_PATH" ]] || { echo "Directory not found: $REPO_PATH" >&2; exit 1; }
+        require_git_repo "$REPO_PATH"
         "${GIT_RUN[@]}" -C "$REPO_PATH" branch -a
         ;;
 
     fetch)
         REPO_PATH="$1"
-        [[ -n "$REPO_PATH" && -d "$REPO_PATH" ]] || { echo "Directory not found: $REPO_PATH" >&2; exit 1; }
+        require_git_repo "$REPO_PATH"
         "${GIT_RUN[@]}" -C "$REPO_PATH" fetch --prune
         ;;
 
     info)
         REPO_PATH="$1"
-        [[ -n "$REPO_PATH" && -d "$REPO_PATH" ]] || { echo "Directory not found: $REPO_PATH" >&2; exit 1; }
+        require_git_repo "$REPO_PATH"
         URL=$("${GIT_RUN[@]}" -C "$REPO_PATH" config --get remote.origin.url 2>/dev/null || true)
         BRANCH=$("${GIT_RUN[@]}" -C "$REPO_PATH" rev-parse --abbrev-ref HEAD 2>/dev/null || true)
         echo "URL: $URL"
@@ -55,13 +61,13 @@ case "$ACTION" in
 
     status)
         REPO_PATH="$1"
-        [[ -n "$REPO_PATH" && -d "$REPO_PATH" ]] || { echo "Directory not found: $REPO_PATH" >&2; exit 1; }
+        require_git_repo "$REPO_PATH"
         "${GIT_RUN[@]}" -c safe.directory='*' -C "$REPO_PATH" status --porcelain
         ;;
 
     restore)
         REPO_PATH="$1"
-        [[ -n "$REPO_PATH" && -d "$REPO_PATH" ]] || { echo "Directory not found: $REPO_PATH" >&2; exit 1; }
+        require_git_repo "$REPO_PATH"
         "${GIT_RUN[@]}" -c safe.directory='*' -C "$REPO_PATH" diff --name-only
         "${GIT_RUN[@]}" -c safe.directory='*' -C "$REPO_PATH" diff --cached --name-only
         "${GIT_RUN[@]}" -c safe.directory='*' -C "$REPO_PATH" restore --worktree --staged . 2>/dev/null \

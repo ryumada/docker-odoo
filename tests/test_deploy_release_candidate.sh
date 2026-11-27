@@ -253,6 +253,109 @@ assert_contains "$rc_manual_content" "Moving database dump from Production VPS t
 odoo_utils_content=$(cat scripts/lib/odoo_utils.sh)
 assert_contains "$odoo_utils_content" "docker compose exec -T" "odoo_utils.sh uses non-interactive -T flag"
 
+# Test 5: .git directory validation for non-git addon directories (e.g. local_addons inside docker-odoo)
+echo -e "\n${TEST_COLOR_INFO}Test 5: Verification of .git directory check in deploy_release_candidate and git-helper.sh${TEST_COLOR_RESET}"
+assert_contains "$rc_content" 'if [ ! -d "$STG_GIT_PATH/.git" ]; then' "deploy_release_candidate: Checks for .git directory inside STG_GIT_PATH"
+assert_contains "$rc_content" "is not a Git repository (missing .git directory)" "deploy_release_candidate: Fails with clear message when .git is missing"
+assert_contains "$rc_manual_content" 'if [ ! -d "$STG_GIT_PATH/.git" ]; then' "deploy_release_candidate_manual: Checks for .git directory inside STG_GIT_PATH"
+assert_contains "$rc_manual_content" "is not a Git repository (missing .git directory)" "deploy_release_candidate_manual: Fails with clear message when .git is missing"
+
+FAKE_ODOO_ROOT="$TEST_TEMP_DIR/docker-odoo-instance"
+mkdir -p "$FAKE_ODOO_ROOT/scripts" "$FAKE_ODOO_ROOT/git/local_addons" "$FAKE_ODOO_ROOT/git/valid_addons"
+git -C "$FAKE_ODOO_ROOT" init -q
+git -C "$FAKE_ODOO_ROOT" remote add origin "https://github.com/sudodevops/docker-odoo.git"
+git -C "$FAKE_ODOO_ROOT" config user.email "test@example.com"
+git -C "$FAKE_ODOO_ROOT" config user.name "Test"
+touch "$FAKE_ODOO_ROOT/README.md"
+git -C "$FAKE_ODOO_ROOT" add README.md
+git -C "$FAKE_ODOO_ROOT" commit -q -m "init docker-odoo"
+
+git -C "$FAKE_ODOO_ROOT/git/valid_addons" init -q
+git -C "$FAKE_ODOO_ROOT/git/valid_addons" remote add origin "git@github.com:org/valid_addons.git"
+git -C "$FAKE_ODOO_ROOT/git/valid_addons" config user.email "test@example.com"
+git -C "$FAKE_ODOO_ROOT/git/valid_addons" config user.name "Test"
+touch "$FAKE_ODOO_ROOT/git/valid_addons/__init__.py"
+git -C "$FAKE_ODOO_ROOT/git/valid_addons" add __init__.py
+git -C "$FAKE_ODOO_ROOT/git/valid_addons" commit -q -m "init valid_addons"
+
+cp scripts/git-helper.sh "$FAKE_ODOO_ROOT/scripts/git-helper.sh"
+chmod +x "$FAKE_ODOO_ROOT/scripts/git-helper.sh"
+
+set +e
+info_non_git=$("$FAKE_ODOO_ROOT/scripts/git-helper.sh" info "$FAKE_ODOO_ROOT/git/local_addons" 2>&1)
+rc_info_non_git=$?
+branches_non_git=$("$FAKE_ODOO_ROOT/scripts/git-helper.sh" branches "$FAKE_ODOO_ROOT/git/local_addons" 2>&1)
+rc_branches_non_git=$?
+info_valid_git=$("$FAKE_ODOO_ROOT/scripts/git-helper.sh" info "$FAKE_ODOO_ROOT/git/valid_addons" 2>&1)
+rc_info_valid_git=$?
+set -e
+
+if [ "$rc_info_non_git" -ne 0 ]; then
+  echo -e "${TEST_COLOR_SUCCESS}  [PASS] git-helper.sh info rejects directory without .git${TEST_COLOR_RESET}"
+  test_passed=$((test_passed + 1))
+else
+  echo -e "${TEST_COLOR_FAIL}  [FAIL] git-helper.sh info should fail on directory without .git${TEST_COLOR_RESET}"
+  test_failed=$((test_failed + 1))
+fi
+assert_not_contains "$info_non_git" "docker-odoo.git" "git-helper.sh info does not leak parent docker-odoo URL"
+
+if [ "$rc_branches_non_git" -ne 0 ]; then
+  echo -e "${TEST_COLOR_SUCCESS}  [PASS] git-helper.sh branches rejects directory without .git${TEST_COLOR_RESET}"
+  test_passed=$((test_passed + 1))
+else
+  echo -e "${TEST_COLOR_FAIL}  [FAIL] git-helper.sh branches should fail on directory without .git${TEST_COLOR_RESET}"
+  test_failed=$((test_failed + 1))
+fi
+
+if [ "$rc_info_valid_git" -eq 0 ]; then
+  echo -e "${TEST_COLOR_SUCCESS}  [PASS] git-helper.sh info succeeds on valid git repository${TEST_COLOR_RESET}"
+  test_passed=$((test_passed + 1))
+else
+  echo -e "${TEST_COLOR_FAIL}  [FAIL] git-helper.sh info failed on valid git repository${TEST_COLOR_RESET}"
+  test_failed=$((test_failed + 1))
+fi
+assert_contains "$info_valid_git" "valid_addons.git" "git-helper.sh info returns valid_addons URL"
+
+# Verify deploy_release_candidate .git directory guard rejects local_addons and accepts valid_addons
+set +e
+rc_check_non_git=$(
+  JSON_MODE="true"
+  fail_with_json() { echo "{\"error\": \"$1\"}"; exit 1; }
+  STG_GIT_PATH="$FAKE_ODOO_ROOT/git/local_addons"
+  if [ ! -d "$STG_GIT_PATH" ]; then fail_with_json "Git path not found at: $STG_GIT_PATH"; fi
+  if [ ! -d "$STG_GIT_PATH/.git" ]; then fail_with_json "Directory '$STG_GIT_PATH' is not a Git repository (missing .git directory)."; fi
+  echo "PASSED_CHECK"
+)
+rc_status_non_git=$?
+rc_check_valid=$(
+  JSON_MODE="true"
+  fail_with_json() { echo "{\"error\": \"$1\"}"; exit 1; }
+  STG_GIT_PATH="$FAKE_ODOO_ROOT/git/valid_addons"
+  if [ ! -d "$STG_GIT_PATH" ]; then fail_with_json "Git path not found at: $STG_GIT_PATH"; fi
+  if [ ! -d "$STG_GIT_PATH/.git" ]; then fail_with_json "Directory '$STG_GIT_PATH' is not a Git repository (missing .git directory)."; fi
+  echo "PASSED_CHECK"
+)
+rc_status_valid=$?
+set -e
+
+if [ "$rc_status_non_git" -ne 0 ]; then
+  echo -e "${TEST_COLOR_SUCCESS}  [PASS] deploy_release_candidate .git check rejects local_addons${TEST_COLOR_RESET}"
+  test_passed=$((test_passed + 1))
+else
+  echo -e "${TEST_COLOR_FAIL}  [FAIL] deploy_release_candidate .git check did not reject local_addons${TEST_COLOR_RESET}"
+  test_failed=$((test_failed + 1))
+fi
+assert_contains "$rc_check_non_git" "is not a Git repository (missing .git directory)" "deploy_release_candidate emits JSON error for non-git dir"
+
+if [ "$rc_status_valid" -eq 0 ]; then
+  echo -e "${TEST_COLOR_SUCCESS}  [PASS] deploy_release_candidate .git check accepts valid_addons${TEST_COLOR_RESET}"
+  test_passed=$((test_passed + 1))
+else
+  echo -e "${TEST_COLOR_FAIL}  [FAIL] deploy_release_candidate .git check rejected valid_addons${TEST_COLOR_RESET}"
+  test_failed=$((test_failed + 1))
+fi
+assert_contains "$rc_check_valid" "PASSED_CHECK" "deploy_release_candidate proceeds for directory with .git"
+
 echo -e "\n=========================================="
 echo -e "Test Results: ${TEST_COLOR_SUCCESS}${test_passed} passed${TEST_COLOR_RESET}, ${TEST_COLOR_FAIL}${test_failed} failed${TEST_COLOR_RESET}"
 echo -e "=========================================="
